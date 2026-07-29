@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from "react";
 
-import { CLIENTES } from "@/data/clientes";
 import { PROGRAMAS } from "@/data/programas";
 import { SIN_ASIGNAR, VENDEDORES } from "@/data/vendedores";
 import {
@@ -25,7 +24,8 @@ interface Props {
   query: string;
   filters: Record<string, string | null>;
   cols: string[];
-  extraCount: number;
+  /** Unfiltered lead count, shown alongside the filtered total. */
+  totalCount: number;
   selected: string | null;
   menu: string | null;
   onQuery: (q: string) => void;
@@ -57,7 +57,7 @@ export function Clientes({
   query,
   filters,
   cols,
-  extraCount,
+  totalCount,
   selected,
   menu,
   onQuery,
@@ -254,7 +254,7 @@ export function Clientes({
           }}
         >
           <span>
-            Mostrando {list.length} de {CLIENTES.length + extraCount} clientes
+            Mostrando {list.length} de {totalCount} clientes
           </span>
           <span>Clic en una fila para ver la ficha completa</span>
         </div>

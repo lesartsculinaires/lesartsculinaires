@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
-import { CLIENTES, NUEVO_CLIENTE_BASE } from "@/data/clientes";
+import { createCliente, updateCliente, type ActionResult } from "@/app/actions";
+import { NUEVO_CLIENTE_BASE } from "@/data/clientes";
 import { CAL_EVENTS, TODAY, type CalView } from "@/data/calendario";
 import { COLS } from "@/data/taxonomia";
 import type {
@@ -74,8 +75,18 @@ const INITIAL: CrmState = {
   nextWhen: null,
 };
 
-export function useCrm() {
+/**
+ * @param initialClientes Leads loaded on the server — either live rows from
+ *   Supabase or the bundled seed set.
+ */
+export function useCrm(initialClientes: readonly Cliente[]) {
   const [state, setState] = useState<CrmState>(INITIAL);
+  /** Last write failure, surfaced as a banner without rolling the UI back. */
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Lets the stable action callbacks read current state without re-creating.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const patchState = useCallback(
     (next: Partial<CrmState> | ((s: CrmState) => Partial<CrmState>)) =>
@@ -83,14 +94,21 @@ export function useCrm() {
     [],
   );
 
-  /** Seed rows plus session-added rows, with in-session edits applied on top. */
+  /** Fire a write in the background; only failures reach the user. */
+  const sync = useCallback((run: Promise<ActionResult>) => {
+    run
+      .then((r) => setSyncError(r.ok ? null : r.error))
+      .catch((e: unknown) => setSyncError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  /** Seed/live rows plus session-added rows, with pending edits applied. */
   const clientes = useMemo<Cliente[]>(
     () =>
-      [...state.extra, ...CLIENTES].map((c) => ({
+      [...state.extra, ...initialClientes].map((c) => ({
         ...c,
         ...(state.edits[c.id] ?? {}),
       })),
-    [state.extra, state.edits],
+    [state.extra, state.edits, initialClientes],
   );
 
   const eventos = useMemo<EventoCalendario[]>(
@@ -132,22 +150,24 @@ export function useCrm() {
       select: (id: string | null) => patchState({ sel: id, menu: null }),
       closeDetail: () => patchState({ sel: null, menu: null }),
 
-      patchCliente: (id: string, obj: ClientePatch) =>
+      /** Optimistic: state updates now, the row is written in the background. */
+      patchCliente: (id: string, obj: ClientePatch) => {
         patchState((s) => ({
           edits: { ...s.edits, [id]: { ...(s.edits[id] ?? {}), ...obj } },
           menu: null,
-        })),
+        }));
+        sync(updateCliente(id, obj));
+      },
 
-      addCliente: () =>
-        setState((s) => {
-          const id = "LA-" + (415 + s.extra.length);
-          return {
-            ...s,
-            extra: [{ id, ...NUEVO_CLIENTE_BASE }, ...s.extra],
-            sel: id,
-            menu: null,
-          };
-        }),
+      addCliente: () => {
+        const id = "LA-" + (415 + stateRef.current.extra.length);
+        patchState((s) => ({
+          extra: [{ id, ...NUEVO_CLIENTE_BASE }, ...s.extra],
+          sel: id,
+          menu: null,
+        }));
+        sync(createCliente(id));
+      },
 
       setDrag: (drag: string | null) => patchState({ drag }),
       setOver: (over: string | null) => patchState({ over }),
@@ -156,8 +176,10 @@ export function useCrm() {
       setTipo: (tipo: string) => patchState({ tipo }),
 
       /** Jump to Clientes with a preset filter, from Programas or Equipos. */
-      gotoClientes: (filters: Record<string, string | null>, sel: string | null = null) =>
-        patchState({ mod: "Clientes", filters, q: "", sel, menu: null }),
+      gotoClientes: (
+        filters: Record<string, string | null>,
+        sel: string | null = null,
+      ) => patchState({ mod: "Clientes", filters, q: "", sel, menu: null }),
 
       setCalView: (calView: CalView) => patchState({ calView, menu: null }),
       setCalIdx: (calIdx: number) => patchState({ calIdx, menu: null }),
@@ -169,6 +191,10 @@ export function useCrm() {
       closeEvent: () =>
         patchState({ calSel: null, calClosing: false, menu: null }),
 
+      /**
+       * Calendar events are not backed by Supabase yet — the CSV covered leads
+       * only, so these stay session-local.
+       */
       patchEvento: (id: string, obj: EventoPatch) =>
         patchState((s) => ({
           calEdits: { ...s.calEdits, [id]: { ...(s.calEdits[id] ?? {}), ...obj } },
@@ -232,11 +258,13 @@ export function useCrm() {
             menu: null,
           };
         }),
+
+      dismissSyncError: () => setSyncError(null),
     }),
-    [patchState],
+    [patchState, sync],
   );
 
-  return { state, clientes, eventos, actions };
+  return { state, clientes, eventos, actions, syncError };
 }
 
 export type CrmActions = ReturnType<typeof useCrm>["actions"];
