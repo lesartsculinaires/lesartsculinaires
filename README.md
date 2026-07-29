@@ -44,13 +44,35 @@ La app lee de **`vw_pipeline`**, que aplana los joins y expone tanto el nombre
 como el id de cada catálogo: las pantallas muestran nombres, pero las escrituras
 necesitan ids.
 
+## Despliegue en Netlify
+
+El repo trae `netlify.toml` con el runtime de Next.js ya configurado. En Netlify:
+
+1. **Add new site → Import an existing project** → GitHub →
+   `lesartsculinaires/lesartsculinaires`.
+2. Rama de producción: `main`. El build command y el publish directory los toma
+   del `netlify.toml`, no hay que escribirlos.
+3. **Site configuration → Environment variables**, agregá las dos:
+   `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   Sin ellas el build pasa pero la app no puede iniciar sesión.
+4. Deploy.
+
+Después, en **Supabase → Authentication → URL Configuration**, agregá la URL
+que te dé Netlify como *Site URL* y en *Redirect URLs*. Si no, el login falla en
+producción aunque funcione en local.
+
 ## Migraciones
 
 | Archivo | Qué hace |
 | --- | --- |
 | `20260722000000_initial_schema.sql` | Esquema de recetas heredado, sin relación con el CRM |
-| `20260729100000_crm_normalizado.sql` | Tablas del CRM, vistas y RLS |
-| `20260729110000_seguridad_y_agenda.sql` | Cierra la fuga de las vistas, agrega ids a `vw_pipeline` y crea la agenda |
+| `20260729173224_crm_esquema_normalizado.sql` | Tablas del CRM, vistas y RLS |
+| `20260729174010_cerrar_fuga_vistas_security_definer.sql` | Cierra la fuga de las vistas y agrega los ids a `vw_pipeline` |
+| `20260729174325_vista_con_ids_y_tablas_agenda.sql` | Tablas de la agenda |
+
+Los nombres de archivo coinciden con las versiones registradas en
+`supabase_migrations.schema_migrations`, así que `supabase db push` las ve como
+ya aplicadas y no intenta reaplicarlas.
 
 Los CSV de carga inicial quedan en `supabase/seed/`, numerados en el orden en
 que deben importarse (los catálogos primero, porque las llaves foráneas de

@@ -1,0 +1,26 @@
+# Configuración de despliegue en Netlify.
+#
+# El runtime de Next.js de Netlify se encarga de los Server Components, el
+# middleware (como edge function) y las Server Actions. No hay que fijar
+# `output` en next.config.ts: el plugin arma el bundle por su cuenta.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # Fijar la mayor de Node evita que un cambio del default de Netlify
+  # rompa el build sin que nadie haya tocado el repo.
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Las cabeceras van acá y no en next.config.ts para que apliquen también a
+# las respuestas servidas desde el CDN.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
