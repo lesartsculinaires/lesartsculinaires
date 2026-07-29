@@ -3,12 +3,10 @@
 import { T } from "@/lib/theme";
 
 interface Props {
-  /** False when the seed data is being shown instead of Supabase. */
-  live: boolean;
-  /** Set when the initial server-side read failed. */
   loadError: string | null;
-  /** Set when a background write failed. */
   syncError: string | null;
+  /** True when the query succeeded but returned nothing. */
+  vacio: boolean;
   onDismiss: () => void;
 }
 
@@ -24,17 +22,14 @@ const BOX = {
   lineHeight: 1.45,
 } as const;
 
-/**
- * Tells the user which data source is in play. Silent in the normal case —
- * connected to Supabase with no failures — so it never becomes wallpaper.
- */
-export function SyncBanner({ live, loadError, syncError, onDismiss }: Props) {
+/** Silent when everything is healthy, so it never becomes wallpaper. */
+export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
   if (syncError) {
     return (
       <div style={{ ...BOX, background: "#F7EBE9", color: "#8C3B2F" }}>
         <span>
-          No se pudo guardar el último cambio en Supabase: {syncError}. Lo que ves
-          en pantalla sigue actualizado, pero todavía no está guardado.
+          No se pudo guardar el último cambio: {syncError}. Lo que ves sigue
+          actualizado, pero todavía no está guardado.
         </span>
         <button
           type="button"
@@ -51,15 +46,12 @@ export function SyncBanner({ live, loadError, syncError, onDismiss }: Props) {
   if (loadError) {
     return (
       <div style={{ ...BOX, background: "#F6EEDC", color: "#7A5A12" }}>
-        <span>
-          Supabase está configurado pero la consulta falló: {loadError}. Se están
-          mostrando los datos de ejemplo.
-        </span>
+        <span>No se pudieron cargar los datos: {loadError}</span>
       </div>
     );
   }
 
-  if (!live) {
+  if (vacio) {
     return (
       <div
         style={{
@@ -70,9 +62,8 @@ export function SyncBanner({ live, loadError, syncError, onDismiss }: Props) {
         }}
       >
         <span>
-          Datos de ejemplo. Definí NEXT_PUBLIC_SUPABASE_URL y
-          NEXT_PUBLIC_SUPABASE_ANON_KEY en <code>.env.local</code> para conectar
-          la base real.
+          No hay oportunidades visibles. Si esperabas ver datos, revisá que tu
+          usuario tenga permiso de lectura en las políticas de Supabase.
         </span>
       </div>
     );

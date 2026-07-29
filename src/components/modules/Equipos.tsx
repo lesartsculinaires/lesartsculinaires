@@ -1,76 +1,71 @@
 "use client";
 
-import { ETAPAS, LOST } from "@/data/taxonomia";
-import { SIN_ASIGNAR } from "@/data/vendedores";
-import { useCatalog } from "@/lib/catalog";
-import { ImageSlot } from "@/components/ui/ImageSlot";
+import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
-import { groupBars, isOpen } from "@/lib/selectors";
+import {
+  estaAbierta,
+  esGanada,
+  groupBars,
+  totalCerrado,
+  valorPipeline,
+} from "@/lib/selectors";
 import { T, openTone, softer } from "@/lib/theme";
-import type { Cliente, ClientePatch } from "@/lib/types";
+import type { Oportunidad } from "@/lib/types";
 
 interface Props {
-  clientes: Cliente[];
+  oportunidades: Oportunidad[];
   accent: string;
   vend: number;
   onSelectVend: (i: number) => void;
-  onPatch: (id: string, patch: ClientePatch) => void;
-  onOpenCliente: (id: string) => void;
-  onSeeAll: (vendedor: string) => void;
+  onOpen: (id: number) => void;
+  onVerTodos: (vendedorId: number) => void;
 }
 
-/** Below this share of target the meta bar turns amber. */
-const BEHIND = 70;
-
 export function Equipos({
-  clientes,
+  oportunidades,
   accent,
   vend,
   onSelectVend,
-  onPatch,
-  onOpenCliente,
-  onSeeAll,
+  onOpen,
+  onVerTodos,
 }: Props) {
-  const { vendedores } = useCatalog();
+  const { vendedores, etapas } = useCatalogo();
   const soft = softer(accent);
   const open = openTone(accent);
+
+  if (vendedores.length === 0) {
+    return (
+      <p style={{ fontSize: 13, color: T.muted }}>
+        No hay vendedores cargados en el catálogo.
+      </p>
+    );
+  }
 
   const vi = Math.min(vend, vendedores.length - 1);
   const v = vendedores[vi];
 
-  const mineOf = (name: string) => clientes.filter((c) => c.vendedor === name);
-  const sinAsignar = mineOf(SIN_ASIGNAR);
-  const own = mineOf(v.name);
-  const openOwn = own.filter(isOpen);
-  const wonOwn = own.filter((c) => c.estado === "Ganado");
-  const julio = wonOwn
-    .filter((c) => c.mes === "Julio")
-    .reduce((a, c) => a + (c.cerrada ?? 0), 0);
-  const pct = Math.round((julio / v.meta) * 100);
+  const deVendedor = (id: number | null) =>
+    oportunidades.filter((o) => o.vendedorId === id);
 
-  /** Round-robin the orphaned leads across the team, advancing brand-new ones. */
-  const assignAll = () =>
-    sinAsignar.forEach((c, i) =>
-      onPatch(c.id, {
-        vendedor: vendedores[i % vendedores.length].name,
-        etapa: c.etapa === "Nuevo lead" ? "Asignado" : c.etapa,
-      }),
-    );
+  const sinAsignar = oportunidades.filter((o) => o.vendedorId == null);
+  const propias = deVendedor(v.id);
+  const ganadas = propias.filter(esGanada);
 
   const kpis = [
-    { label: "Leads asignados", value: String(own.length), color: undefined as string | undefined },
-    { label: "En pipeline", value: money(openOwn.reduce((a, c) => a + (c.valor || 0), 0)), color: undefined },
-    { label: "Cerrado en julio", value: money(julio), color: undefined },
-    { label: `Meta ${money(v.meta)}`, value: `${pct}%`, color: pct < BEHIND ? T.warn : accent },
+    { label: "Oportunidades", value: String(propias.length) },
+    { label: "En pipeline", value: money(valorPipeline(propias) || null) },
+    { label: "Venta cerrada", value: money(totalCerrado(propias) || null) },
     {
-      label: "Conversión",
-      value: own.length ? `${Math.round((wonOwn.length / own.length) * 100)}%` : "—",
-      color: undefined,
+      label: "Tasa de cierre",
+      value: propias.length
+        ? `${Math.round((ganadas.length / propias.length) * 100)}%`
+        : "—",
     },
   ];
 
-  const territorios = [...new Set(own.map((c) => c.territorio))];
-  const programas = groupBars(own, "producto", 4);
+  const territorios = [...new Set(propias.map((o) => o.territorio))].filter(
+    (t) => t !== "—",
+  );
 
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
@@ -90,23 +85,17 @@ export function Equipos({
             Equipo de ventas
           </p>
           <p className="mono" style={{ margin: 0, fontSize: 11, color: T.faint }}>
-            {vendedores.length} ejecutivos · {clientes.length} leads en cartera
+            {vendedores.length} ejecutivos · {oportunidades.length} oportunidades
           </p>
         </div>
 
         {vendedores.map((x, i) => {
-          const xs = mineOf(x.name);
-          const p = Math.round(
-            (xs
-              .filter((c) => c.estado === "Ganado" && c.mes === "Julio")
-              .reduce((a, c) => a + (c.cerrada ?? 0), 0) /
-              x.meta) *
-              100,
-          );
+          const xs = deVendedor(x.id);
+          const cerrado = totalCerrado(xs);
           return (
             <button
               type="button"
-              key={x.name}
+              key={x.id}
               className="nav"
               onClick={() => onSelectVend(i)}
               style={{
@@ -126,46 +115,24 @@ export function Equipos({
                   color: i === vi ? accent : T.ink,
                 }}
               >
-                {x.name}
+                {x.nombre}
               </p>
-              <p style={{ margin: 0, fontSize: 12, color: T.muted }}>{x.role}</p>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "baseline",
                   gap: 8,
-                  marginTop: 7,
+                  marginTop: 5,
                 }}
               >
                 <span className="mono" style={{ fontSize: 11, color: T.faint }}>
                   {leadCount(xs.length)}
                 </span>
                 <span className="mono" style={{ fontSize: 12, color: T.muted }}>
-                  {money(xs.filter(isOpen).reduce((a, c) => a + (c.valor || 0), 0))}
+                  {money(cerrado || null)}
                 </span>
               </div>
-              <div
-                style={{
-                  height: 5,
-                  background: "#EDEBE6",
-                  borderRadius: 3,
-                  overflow: "hidden",
-                  marginTop: 7,
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${Math.min(100, p)}%`,
-                    background: p < BEHIND ? T.warn : accent,
-                    borderRadius: 3,
-                  }}
-                />
-              </div>
-              <p style={{ margin: "5px 0 0", fontSize: 10.5, color: T.faint }}>
-                {p}% de su meta de julio
-              </p>
             </button>
           );
         })}
@@ -179,24 +146,11 @@ export function Equipos({
               color: "#7A5A12",
             }}
           >
-            <p style={{ margin: "0 0 9px", fontSize: 12, lineHeight: 1.45 }}>
-              {sinAsignar.length} lead{sinAsignar.length === 1 ? "" : "s"} sin asignar
-              en el pipeline. Nadie les da seguimiento.
+            <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45 }}>
+              {sinAsignar.length}{" "}
+              {sinAsignar.length === 1 ? "oportunidad" : "oportunidades"} sin
+              vendedor asignado. Nadie les da seguimiento.
             </p>
-            <button
-              type="button"
-              onClick={assignAll}
-              style={{
-                height: 30,
-                padding: "0 12px",
-                fontSize: 12,
-                borderRadius: 6,
-                background: "#7A5A12",
-                color: "#fff",
-              }}
-            >
-              Repartir entre el equipo
-            </button>
           </div>
         )}
       </div>
@@ -218,62 +172,26 @@ export function Equipos({
             padding: 20,
           }}
         >
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <ImageSlot width={96} height={110} radius={8} placeholder="Foto" />
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  marginBottom: 14,
-                }}
-              >
-                <div>
-                  <h2
-                    className="dsp"
-                    style={{ margin: "0 0 4px", fontSize: 21, fontWeight: 700 }}
-                  >
-                    {v.name}
-                  </h2>
-                  <p style={{ margin: 0, fontSize: 13, color: T.muted }}>
-                    {v.role} · desde {v.since}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  style={{
-                    height: 32,
-                    padding: "0 13px",
-                    fontSize: 13,
-                    borderRadius: 6,
-                    border: `1px solid ${accent}`,
-                    color: accent,
-                  }}
-                >
-                  Editar
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[v.email, v.tel].map((chip) => (
-                  <span
-                    key={chip}
-                    className="mono"
-                    style={{
-                      fontSize: 11.5,
-                      padding: "5px 10px",
-                      borderRadius: 6,
-                      background: T.paper,
-                      color: T.muted,
-                    }}
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 16,
+            }}
+          >
+            <h2 className="dsp" style={{ margin: 0, fontSize: 21, fontWeight: 700 }}>
+              {v.nombre}
+            </h2>
+            <button
+              type="button"
+              onClick={() => onVerTodos(v.id)}
+              style={{ fontSize: 12.5, color: accent }}
+            >
+              Ver en Clientes ›
+            </button>
           </div>
 
           <div
@@ -281,19 +199,12 @@ export function Equipos({
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))",
               gap: 9,
-              marginTop: 18,
             }}
           >
             {kpis.map((k) => (
-              <div
-                key={k.label}
-                style={{ background: T.paper, borderRadius: 8, padding: "12px 14px" }}
-              >
+              <div key={k.label} style={{ background: T.paper, borderRadius: 8, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 5px", fontSize: 11, color: T.muted }}>{k.label}</p>
-                <p
-                  className="mono dsp"
-                  style={{ margin: 0, fontSize: 20, fontWeight: 500, color: k.color }}
-                >
+                <p className="mono dsp" style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>
                   {k.value}
                 </p>
               </div>
@@ -316,29 +227,26 @@ export function Equipos({
               padding: 20,
             }}
           >
-            <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-              Sus leads por etapa
+            <h3 className="dsp" style={{ margin: "0 0 15px", fontSize: 15, fontWeight: 500 }}>
+              Sus oportunidades por etapa
             </h3>
-            <p style={{ margin: "0 0 15px", fontSize: 12, color: T.muted }}>
-              Mismas etapas del pipeline
-            </p>
-            {ETAPAS.map((label) => {
-              const n = own.filter((c) => c.etapa === label).length;
+            {etapas.map((e) => {
+              const n = propias.filter((o) => o.etapaId === e.id).length;
               return (
                 <div
-                  key={label}
+                  key={e.id}
                   style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}
                 >
                   <span
                     style={{
-                      flex: "0 1 96px",
+                      flex: "0 1 110px",
                       minWidth: 0,
                       fontSize: 11.5,
                       color: n ? T.ink : T.faint,
                       lineHeight: 1.2,
                     }}
                   >
-                    {label}
+                    {e.nombre}
                   </span>
                   <div
                     style={{
@@ -352,20 +260,15 @@ export function Equipos({
                     <div
                       style={{
                         height: "100%",
-                        width: `${(n / Math.max(own.length, 1)) * 100}%`,
-                        background: label === LOST ? "#B85042" : accent,
+                        width: `${(n / Math.max(propias.length, 1)) * 100}%`,
+                        background: accent,
                         borderRadius: 3,
                       }}
                     />
                   </div>
                   <span
                     className="mono"
-                    style={{
-                      width: 18,
-                      textAlign: "right",
-                      fontSize: 12,
-                      color: n ? T.muted : T.faint,
-                    }}
+                    style={{ width: 26, textAlign: "right", fontSize: 12, color: n ? T.muted : T.faint }}
                   >
                     {n}
                   </span>
@@ -382,14 +285,11 @@ export function Equipos({
               padding: 20,
             }}
           >
-            <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
+            <h3 className="dsp" style={{ margin: "0 0 15px", fontSize: 15, fontWeight: 500 }}>
               Programas que vende
             </h3>
-            <p style={{ margin: "0 0 15px", fontSize: 12, color: T.muted }}>
-              Catálogo de diplomados y cursos
-            </p>
-            {programas.map((pr) => (
-              <div key={pr.label} style={{ marginBottom: 11 }}>
+            {groupBars(propias, "producto", 5).map((p) => (
+              <div key={p.label} style={{ marginBottom: 11 }}>
                 <div
                   style={{
                     display: "flex",
@@ -399,10 +299,8 @@ export function Equipos({
                     marginBottom: 4,
                   }}
                 >
-                  <span style={{ fontSize: 12.5 }}>{pr.label}</span>
-                  <span className="mono" style={{ fontSize: 12, color: T.muted }}>
-                    {pr.value}
-                  </span>
+                  <span style={{ fontSize: 12.5 }}>{p.label}</span>
+                  <span className="mono" style={{ fontSize: 12, color: T.muted }}>{p.value}</span>
                 </div>
                 <div
                   style={{
@@ -413,41 +311,44 @@ export function Equipos({
                     overflow: "hidden",
                   }}
                 >
-                  <div style={{ width: `${pr.wonPct}%`, background: accent }} />
-                  <div style={{ width: `${pr.openPct}%`, background: open }} />
+                  <div style={{ width: `${p.wonPct}%`, background: accent }} />
+                  <div style={{ width: `${p.openPct}%`, background: open }} />
                 </div>
               </div>
             ))}
 
-            <p
-              className="mono"
-              style={{
-                margin: "16px 0 8px",
-                fontSize: 10,
-                letterSpacing: "0.1em",
-                color: T.faint,
-                textTransform: "uppercase",
-              }}
-            >
-              Territorios que cubre
-            </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {territorios.map((t) => (
-                <span
-                  key={t}
+            {territorios.length > 0 && (
+              <>
+                <p
+                  className="mono"
                   style={{
-                    fontSize: 11.5,
-                    padding: "5px 10px",
-                    borderRadius: 6,
-                    background: T.paper,
-                    border: `1px solid ${T.border}`,
-                    color: T.ink,
+                    margin: "16px 0 8px",
+                    fontSize: 10,
+                    letterSpacing: "0.1em",
+                    color: T.faint,
+                    textTransform: "uppercase",
                   }}
                 >
-                  {t}
-                </span>
-              ))}
-            </div>
+                  Territorios que cubre
+                </p>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {territorios.map((t) => (
+                    <span
+                      key={t}
+                      style={{
+                        fontSize: 11.5,
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        background: T.paper,
+                        border: `1px solid ${T.border}`,
+                      }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         </div>
 
@@ -459,70 +360,65 @@ export function Equipos({
             overflow: "hidden",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              padding: "16px 20px",
-              borderBottom: `1px solid ${T.border}`,
-            }}
-          >
-            <div>
-              <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-                Leads asignados
-              </h3>
-              <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-                {own.length} en cartera ·{" "}
-                {money(own.reduce((a, c) => a + (c.valor || 0), 0))} en oportunidades
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onSeeAll(v.name)}
-              style={{ fontSize: 12.5, color: accent }}
-            >
-              Ver en Clientes ›
-            </button>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}` }}>
+            <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
+              Cartera asignada
+            </h3>
+            <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
+              {propias.length} en cartera · {money(valorPipeline(propias) || null)} en
+              oportunidades abiertas
+            </p>
           </div>
 
-          {own.map((c, i) => (
-            <div
-              key={c.id}
-              className="row"
-              onClick={() => onOpenCliente(c.id)}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto 80px",
-                alignItems: "center",
-                gap: 12,
-                padding: "11px 20px",
-                cursor: "pointer",
-                borderTop: i === 0 ? "none" : `1px solid ${T.border}`,
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <p style={{ margin: "0 0 2px", fontSize: 13 }}>{c.nombre}</p>
-                <p style={{ margin: 0, fontSize: 11.5, color: T.faint }}>{c.producto}</p>
-              </div>
-              <span
+          <div style={{ maxHeight: 420, overflowY: "auto" }}>
+            {propias.slice(0, 60).map((o, i) => (
+              <div
+                key={o.id}
+                className="row"
+                onClick={() => onOpen(o.id)}
                 style={{
-                  fontSize: 11.5,
-                  padding: "3px 9px",
-                  borderRadius: 20,
-                  whiteSpace: "nowrap",
-                  background: c.etapa === LOST ? "#F7EBE9" : soft,
-                  color: c.etapa === LOST ? "#B85042" : accent,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto 90px",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "11px 20px",
+                  cursor: "pointer",
+                  borderTop: i === 0 ? "none" : `1px solid ${T.border}`,
                 }}
               >
-                {c.etapa}
-              </span>
-              <span className="mono" style={{ fontSize: 12.5, textAlign: "right" }}>
-                {money(c.valor)}
-              </span>
-            </div>
-          ))}
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: "0 0 2px", fontSize: 13 }}>{o.cliente}</p>
+                  <p style={{ margin: 0, fontSize: 11.5, color: T.faint }}>{o.producto}</p>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    padding: "3px 9px",
+                    borderRadius: 20,
+                    whiteSpace: "nowrap",
+                    background: soft,
+                    color: accent,
+                  }}
+                >
+                  {o.etapa}
+                </span>
+                <span className="mono" style={{ fontSize: 12.5, textAlign: "right" }}>
+                  {money(o.valor)}
+                </span>
+              </div>
+            ))}
+            {propias.length > 60 && (
+              <p style={{ margin: 0, padding: "12px 20px", fontSize: 12, color: T.faint }}>
+                Mostrando 60 de {propias.length}. Usá Clientes para ver la lista
+                completa.
+              </p>
+            )}
+            {propias.length === 0 && (
+              <p style={{ margin: 0, padding: "26px 20px", fontSize: 12.5, color: T.faint }}>
+                {v.nombre} no tiene oportunidades asignadas.
+              </p>
+            )}
+          </div>
         </section>
       </div>
     </div>

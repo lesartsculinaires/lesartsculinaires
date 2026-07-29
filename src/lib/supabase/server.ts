@@ -1,6 +1,8 @@
 import "server-only";
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   SUPABASE_ANON_KEY,
@@ -9,16 +11,38 @@ import {
 } from "@/lib/supabase/config";
 
 /**
- * Server-side Supabase client.
+ * Server-side Supabase client bound to the request's auth cookies.
  *
- * Returns null when the environment is not configured; callers treat that as
- * "use the seed data" rather than an error. Sessions are not persisted here —
- * each request builds its own client.
+ * Every query runs as the signed-in user, so the `authenticated` RLS policies
+ * apply. Without a session the database returns nothing — which is the point:
+ * the anon key alone must not reach customer data.
  */
-export function getServerClient(): SupabaseClient | null {
+export async function getServerClient(): Promise<SupabaseClient | null> {
   if (!isSupabaseConfigured()) return null;
 
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
+  const cookieStore = await cookies();
+
+  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (toSet) => {
+        try {
+          for (const { name, value, options } of toSet) {
+            cookieStore.set(name, value, options);
+          }
+        } catch {
+          // Called from a Server Component, where cookies are read-only.
+          // The middleware refreshes the session instead, so this is safe.
+        }
+      },
+    },
   });
+}
+
+/** The signed-in user, or null. */
+export async function getUser() {
+  const supabase = await getServerClient();
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user ?? null;
 }

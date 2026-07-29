@@ -1,54 +1,55 @@
 "use client";
 
-import { GOAL, GOAL_HISTORY, MES_LARGO, YEAR } from "@/data/dashboard";
-import { money } from "@/lib/format";
-import { groupBars, isOpen, monthWon, pipelineValue } from "@/lib/selectors";
+import { mesCorto, money } from "@/lib/format";
+import {
+  estaAbierta,
+  esGanada,
+  groupBars,
+  totalCerrado,
+  valorPipeline,
+} from "@/lib/selectors";
 import { T, openTone } from "@/lib/theme";
-import type { Cliente } from "@/lib/types";
+import type { Oportunidad } from "@/lib/types";
 
 interface Props {
-  clientes: Cliente[];
+  oportunidades: Oportunidad[];
   accent: string;
 }
 
-/** Below this share of target the goal readouts switch to the warning hue. */
-const BEHIND = 70;
-
-export function Dashboard({ clientes, accent }: Props) {
+export function Dashboard({ oportunidades, accent }: Props) {
   const open = openTone(accent);
-
-  // A month recorded as 0 has not happened yet; null means derive it from leads.
-  const series = YEAR.map(([month, v]) => ({
-    month,
-    value: v === null ? monthWon(clientes, MES_LARGO[month] ?? month) : v,
-  }));
-  // Keep the goal line inside the plot even when every month undershoots it.
-  const maxY = Math.max(...series.map((s) => s.value), GOAL * 1.15);
-  const acumulado = series
-    .filter((s) => s.value > 0)
-    .reduce((a, s) => a + s.value, 0);
-
-  const julio = monthWon(clientes, "Julio");
-  const pct = Math.round((julio / GOAL) * 100);
-  const behind = pct < BEHIND;
+  const total = oportunidades.length;
+  const abiertas = oportunidades.filter(estaAbierta);
+  const ganadas = oportunidades.filter(esGanada);
 
   const metrics = [
-    { label: "Leads activos", value: String(clientes.filter(isOpen).length) },
-    { label: "Valor en pipeline", value: money(pipelineValue(clientes)) },
-    { label: "Cerrado en julio", value: money(julio) },
+    { label: "Oportunidades", value: String(total) },
+    { label: "En pipeline", value: String(abiertas.length) },
+    { label: "Venta cerrada", value: money(totalCerrado(oportunidades) || null) },
     {
-      label: "Conversión",
-      value: `${Math.round(
-        (clientes.filter((c) => c.estado === "Ganado").length / clientes.length) * 100,
-      )}%`,
+      label: "Tasa de cierre",
+      value: total ? `${Math.round((ganadas.length / total) * 100)}%` : "—",
     },
   ];
 
+  // Group by the month the opportunity was registered.
+  const porMes = new Map<string, { cerrado: number; n: number }>();
+  for (const o of oportunidades) {
+    const g = porMes.get(o.mes) ?? { cerrado: 0, n: 0 };
+    g.cerrado += o.cerrada ?? 0;
+    g.n += 1;
+    porMes.set(o.mes, g);
+  }
+  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const maxMes = Math.max(...meses.map(([, g]) => g.cerrado), 1);
+
   const charts = [
-    { title: "Vendedores", hint: "por cartera", bars: groupBars(clientes, "vendedor") },
-    { title: "Canales", hint: "origen del lead", bars: groupBars(clientes, "canal") },
-    { title: "Territorio", hint: "top 7 departamentos", bars: groupBars(clientes, "territorio", 7) },
-    { title: "Diplomados y cursos", hint: "top 8 programas", bars: groupBars(clientes, "producto", 8) },
+    { title: "Vendedores", hint: "por cartera", bars: groupBars(oportunidades, "vendedor") },
+    { title: "Etapas", hint: "embudo", bars: groupBars(oportunidades, "etapa") },
+    { title: "Canales", hint: "origen del lead", bars: groupBars(oportunidades, "canal", 8) },
+    { title: "Territorio", hint: "top 8 departamentos", bars: groupBars(oportunidades, "territorio", 8) },
+    { title: "Programas", hint: "top 8 del catálogo", bars: groupBars(oportunidades, "producto", 8) },
+    { title: "Estados", hint: "situación actual", bars: groupBars(oportunidades, "estado") },
   ];
 
   return (
@@ -62,10 +63,7 @@ export function Dashboard({ clientes, accent }: Props) {
         }}
       >
         {metrics.map((m) => (
-          <div
-            key={m.label}
-            style={{ background: T.paper, borderRadius: 8, padding: "14px 16px" }}
-          >
+          <div key={m.label} style={{ background: T.paper, borderRadius: 8, padding: "14px 16px" }}>
             <p style={{ margin: "0 0 6px", fontSize: 12, color: T.muted }}>{m.label}</p>
             <p className="mono dsp" style={{ margin: 0, fontSize: 24, fontWeight: 500 }}>
               {m.value}
@@ -74,261 +72,96 @@ export function Dashboard({ clientes, accent }: Props) {
         ))}
       </div>
 
-      <div
+      <section
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.55fr) minmax(0, 1fr)",
-          gap: 14,
+          background: T.surface,
+          border: `1px solid ${T.border}`,
+          borderRadius: 10,
+          padding: 18,
           marginBottom: 14,
         }}
       >
-        <section
+        <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
+          Venta cerrada por mes
+        </h3>
+        <p style={{ margin: "0 0 20px", fontSize: 12, color: T.muted }}>
+          {meses.length} {meses.length === 1 ? "mes" : "meses"} con registro ·{" "}
+          {money(totalCerrado(oportunidades) || null)} en total
+        </p>
+
+        <div
           style={{
-            background: T.surface,
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            padding: 18,
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))`,
+            gap: 8,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              gap: 12,
-              marginBottom: 20,
-            }}
-          >
-            <div>
-              <h3
-                className="dsp"
-                style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}
-              >
-                Ventas del año
-              </h3>
-              <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-                Acumulado {money(acumulado)} · meta anual {money(GOAL * 12)}
-              </p>
-            </div>
-            <span className="mono" style={{ fontSize: 11, color: T.faint }}>
-              2026
-            </span>
-          </div>
-
-          <div
-            style={{
-              position: "relative",
-              display: "grid",
-              gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-              gap: 6,
-            }}
-          >
+          {meses.map(([mes, g]) => (
             <div
+              key={mes}
               style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: `${(GOAL / maxY) * 100}%`,
-                borderTop: `1px dashed ${T.borderStrong}`,
-                pointerEvents: "none",
+                minWidth: 0,
+                height: 150,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "flex-end",
               }}
-            />
-            {series.map((s) => {
-              const future = s.value === 0;
-              return (
-                <div
-                  key={s.month}
-                  style={{
-                    minWidth: 0,
-                    height: 168,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "flex-end",
-                    alignItems: "stretch",
-                  }}
-                >
-                  <span
-                    className="mono"
-                    style={{
-                      display: "block",
-                      marginBottom: 5,
-                      fontSize: 10,
-                      textAlign: "center",
-                      color: T.faint,
-                    }}
-                  >
-                    {s.value ? "$" + Math.round(s.value / 100) / 10 + "k" : ""}
-                  </span>
-                  <div
-                    style={{
-                      height: future ? 3 : `${Math.max(3, (s.value / maxY) * 100)}%`,
-                      background: future
-                        ? T.border
-                        : s.value >= GOAL
-                          ? accent
-                          : open,
-                      borderRadius: "3px 3px 0 0",
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-              gap: 6,
-              marginTop: 8,
-            }}
-          >
-            {series.map((s) => (
+            >
               <span
-                key={s.month}
+                className="mono"
                 style={{
-                  flex: 1,
-                  fontSize: 10.5,
+                  display: "block",
+                  marginBottom: 5,
+                  fontSize: 10,
                   textAlign: "center",
-                  color: s.value === 0 ? T.faint : T.muted,
+                  color: T.faint,
                 }}
               >
-                {s.month}
+                {g.cerrado ? money(g.cerrado) : ""}
               </span>
-            ))}
-          </div>
-
-          <p style={{ margin: "14px 0 0", fontSize: 11, color: T.faint }}>
-            La línea punteada marca la meta mensual de {money(GOAL)}. Agosto a
-            diciembre aún sin registrar.
-          </p>
-        </section>
-
-        <section
+              <div
+                style={{
+                  height: `${Math.max(3, (g.cerrado / maxMes) * 100)}%`,
+                  background: g.cerrado ? accent : T.border,
+                  borderRadius: "3px 3px 0 0",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        <div
           style={{
-            background: T.surface,
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            padding: 18,
+            display: "grid",
+            gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))`,
+            gap: 8,
+            marginTop: 8,
           }}
         >
-          <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-            Meta mensual
-          </h3>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: T.muted }}>
-            Julio 2026 · faltan 3 días
-          </p>
-          <p
-            className="mono dsp"
-            style={{
-              margin: 0,
-              fontSize: 38,
-              fontWeight: 500,
-              lineHeight: 1,
-              color: behind ? T.warn : accent,
-            }}
-          >
-            {pct}%
-          </p>
-          <div
-            style={{
-              height: 9,
-              background: "#EDEBE6",
-              borderRadius: 5,
-              overflow: "hidden",
-              margin: "10px 0 12px",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${Math.min(100, pct)}%`,
-                background: behind ? T.warn : accent,
-                borderRadius: 5,
-              }}
-            />
-          </div>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 12,
-              color: T.muted,
-              marginBottom: 18,
-            }}
-          >
-            <span className="mono">{money(julio)}</span>
-            <span className="mono">Meta {money(GOAL)}</span>
-          </div>
-
-          <p
-            className="mono"
-            style={{
-              margin: "0 0 10px",
-              fontSize: 10,
-              letterSpacing: "0.1em",
-              color: T.faint,
-              textTransform: "uppercase",
-            }}
-          >
-            Meses anteriores
-          </p>
-          {GOAL_HISTORY.map(([month, v]) => {
-            const value = v === null ? monthWon(clientes, MES_LARGO[month] ?? month) : v;
-            const p = Math.round((value / GOAL) * 100);
-            return (
-              <div
-                key={month}
-                style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}
-              >
-                <span style={{ width: 30, fontSize: 12, color: T.muted }}>{month}</span>
-                <div
-                  style={{
-                    flex: 1,
-                    height: 6,
-                    background: "#EDEBE6",
-                    borderRadius: 3,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${Math.min(100, p)}%`,
-                      background:
-                        p >= 100 ? accent : p < BEHIND ? T.warn : `${accent}80`,
-                    }}
-                  />
-                </div>
-                <span
-                  className="mono"
-                  style={{
-                    width: 34,
-                    textAlign: "right",
-                    fontSize: 11,
-                    color: p >= 100 ? accent : T.muted,
-                  }}
-                >
-                  {p}%
-                </span>
-              </div>
-            );
-          })}
-        </section>
-      </div>
+          {meses.map(([mes, g]) => (
+            <span
+              key={mes}
+              style={{ fontSize: 10.5, textAlign: "center", color: T.muted }}
+            >
+              {mesCorto(mes)}
+              <span style={{ display: "block", fontSize: 9.5, color: T.faint }}>
+                {g.n} leads
+              </span>
+            </span>
+          ))}
+        </div>
+      </section>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-        <span
-          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}
-        >
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
           <span style={{ width: 9, height: 9, borderRadius: 2, background: accent }} />
           Venta cerrada
         </span>
-        <span
-          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}
-        >
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
           <span style={{ width: 9, height: 9, borderRadius: 2, background: open }} />
           En pipeline
+        </span>
+        <span style={{ fontSize: 11, color: T.faint }}>
+          Las barras se escalan contra el grupo más grande, no contra el total.
         </span>
       </div>
 

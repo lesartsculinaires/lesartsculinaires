@@ -1,116 +1,93 @@
 # CRM Les Arts Culinaires
 
-CRM de ventas para Les Arts Culinaires: leads, seguimiento, pipeline, calendario
-de actividades, equipo comercial y catálogo de programas.
-
-Next.js 15 (App Router) + TypeScript + React 19.
+CRM de ventas: oportunidades, pipeline, agenda de seguimiento, equipo comercial
+y catálogo de programas. Next.js 15 (App Router) + TypeScript + React 19, sobre
+Supabase.
 
 ## Puesta en marcha
 
 ```bash
 npm install
-cp .env.example .env.local   # completá la anon key
+cp .env.example .env.local   # completá la clave publicable
 npm run dev                  # http://localhost:3000
 ```
 
-Sin `.env.local` la app arranca igual: muestra el juego de datos de ejemplo que
-vive en `src/data/` y lo avisa con un cartel arriba de cada módulo.
-
-## Conexión con Supabase
-
-Las dos variables salen del panel de Supabase, en **Project Settings**:
+Sin sesión iniciada la app redirige a `/login`. Las cuentas se crean desde
+**Supabase → Authentication → Users**.
 
 | Variable | Dónde está |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Data API → Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | API Keys → anon / publishable |
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → Data API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API Keys → publishable |
 
-La anon key es pública por diseño: viaja al navegador y sólo puede hacer lo que
-permitan tus políticas de Row Level Security. **La service_role key no va acá.**
+La clave publicable es pública por diseño: viaja al navegador y sólo puede hacer
+lo que permitan las políticas RLS. **La `service_role` no va acá.**
 
-### Esquema
+## Modelo de datos
 
-La migración `supabase/migrations/20260729000000_crm_schema.sql` crea todo lo
-que el frontend necesita:
-
-| Tabla | Qué guarda |
-| --- | --- |
-| `leads` | Oportunidades. `id` es el código visible (`LA-0414`). |
-| `vendedores` | Equipo comercial, con su meta mensual. |
-| `programas` | Catálogo de diplomados, cursos y certificaciones. |
-| `tipos_evento` | Tipos de actividad, con su color, código y duración. |
-| `eventos` | Agenda. `dia_idx` va de 1 (1 jul 2026) a 62 (31 ago 2026). |
-
-Se aplica con `supabase db push`, o pegándola en el SQL Editor. Es idempotente:
-se puede volver a correr sin duplicar los datos de referencia.
-
-Sobre una tabla `leads` que ya existía por un import de CSV, la migración sólo
-**agrega** las columnas que falten — no borra ni renombra nada. Si tu CSV usó
-encabezados distintos (`telefono` en vez de `tel`), vas a terminar con las dos
-columnas: la tuya con datos y la nueva vacía. En ese caso conviene o migrar los
-datos con un `update`, o apuntar `COLUMNS` a tus nombres reales.
-
-### Row Level Security
-
-La migración activa RLS y crea políticas que **permiten lectura y escritura al
-rol `anon`**. Es lo que hace falta para que el CRM funcione hoy, pero implica
-que cualquiera con la anon key —que es pública, va en el bundle del navegador—
-puede leer y modificar los datos.
-
-Para producción: montá Supabase Auth y cambiá `to anon` por `to authenticated`
-en las políticas de la migración. El login actual del frontend es sólo un
-selector de área, no autentica contra nada.
-
-Si desactivás las políticas de lectura, la consulta devuelve cero filas **sin
-error**: vas a ver las tablas vacías en vez de un mensaje de permiso denegado.
-
-### Adaptar el mapeo de columnas
-
-Todo lo que depende del nombre real de tu tabla y sus columnas está en un solo
-archivo: **`src/lib/supabase/leads.ts`**.
-
-```ts
-export const TABLE = "leads";
-
-export const COLUMNS: Record<keyof Cliente, string> = {
-  id: "id",
-  nombre: "nombre",
-  tel: "tel",       // si tu CSV trae "telefono", cambiá sólo esto
-  correo: "correo", // si trae "email", ídem
-  ...
-};
+```
+territorios ─┐
+canales ─────┤
+productos ───┼──< oportunidades >── clientes ──> territorios
+vendedores ──┤          │
+etapas ──────┤          ├──< oportunidad_notas
+estados ─────┘          └──< eventos >── tipos_evento
 ```
 
-El resto del código nunca toca nombres de columnas: lee y escribe usando los
-campos del tipo `Cliente`. Cambiar el lado derecho de ese objeto alcanza para
-que todo el CRM apunte a tu esquema.
+- **clientes** — 554 registros, deduplicados por correo, teléfono y nombre.
+- **oportunidades** — 580, una por fila del Excel original. `codigo` conserva el
+  `CRM-####` para rastrear cualquier fila contra la hoja.
+- **oportunidad_notas** — 91 notas rescatadas de columnas numéricas.
+- **eventos** — agenda de seguimiento, colgada de la oportunidad que la origina.
 
-Los importadores de CSV suelen dejar los montos como texto (`"$1,750"`); el
-mapeo ya los limpia, así que no hace falta normalizarlos antes.
+La app lee de **`vw_pipeline`**, que aplana los joins y expone tanto el nombre
+como el id de cada catálogo: las pantallas muestran nombres, pero las escrituras
+necesitan ids.
+
+## Migraciones
+
+| Archivo | Qué hace |
+| --- | --- |
+| `20260722000000_initial_schema.sql` | Esquema de recetas heredado, sin relación con el CRM |
+| `20260729100000_crm_normalizado.sql` | Tablas del CRM, vistas y RLS |
+| `20260729110000_seguridad_y_agenda.sql` | Cierra la fuga de las vistas, agrega ids a `vw_pipeline` y crea la agenda |
+
+Los CSV de carga inicial quedan en `supabase/seed/`, numerados en el orden en
+que deben importarse (los catálogos primero, porque las llaves foráneas de
+`oportunidades` apuntan a ellos). `supabase/seed_post_import.sql` reposiciona
+las secuencias — sin eso, el primer INSERT desde la app da error de llave
+duplicada.
+
+## Seguridad
+
+RLS está activo en las nueve tablas, con políticas `to authenticated`: hay que
+iniciar sesión para ver o escribir cualquier cosa.
+
+**Una corrección importante ya aplicada.** Las tres vistas se habían creado como
+`SECURITY DEFINER`, que es el comportamiento por defecto de Postgres. Eso hacía
+que corrieran con los permisos de su creador y devolvieran todas las filas a
+cualquiera con la clave pública, saltándose el RLS de las tablas: nombre,
+teléfono y correo de los 554 clientes quedaban legibles sin iniciar sesión. La
+segunda migración las pasa a `security_invoker`, así respetan el RLS de quien
+consulta.
+
+Pendiente para producción: las políticas actuales dejan que cualquier usuario
+autenticado vea todo. Para que cada vendedor vea sólo su cartera hay que ligar
+`vendedores` con `auth.users` (una columna `user_id uuid references
+auth.users(id)`) y filtrar por ella.
 
 ## Cómo fluyen los datos
 
-- `src/app/page.tsx` es un Server Component: resuelve leads y catálogo en
-  paralelo y se los pasa a la app ya listos.
-- `src/lib/supabase/queries.ts` lee los leads; `catalog.ts` lee vendedores,
-  programas, tipos de actividad y eventos. Cada uno cae en los datos de ejemplo
-  por separado, así que una tabla vacía no se lleva puestas a las demás.
+- `src/middleware.ts` refresca la sesión en cada request y manda a `/login` a
+  quien no la tenga.
+- `src/app/page.tsx` es un Server Component: resuelve oportunidades, catálogo y
+  agenda en paralelo. Corre como el usuario firmado, así que el RLS decide qué
+  vuelve.
 - `src/app/actions.ts` expone las escrituras como Server Actions.
-- `src/lib/catalog.tsx` reparte los datos de referencia por contexto, para que
-  los módulos no tengan que recibirlos por props.
+- `src/lib/catalog.tsx` reparte los catálogos por contexto.
 - `src/hooks/useCrm.ts` mantiene el estado. Las ediciones son optimistas: la
   pantalla se actualiza al instante y la escritura viaja en segundo plano; si
   falla, aparece un cartel y **no** se descarta lo que hiciste.
-
-Al cerrar un evento se agenda la próxima acción primero y recién después se
-marca el evento como realizado, para que un fallo no deje al lead cerrado y sin
-seguimiento.
-
-## Alcance actual
-
-Leads, vendedores, programas, tipos de actividad y eventos salen de Supabase.
-Las taxonomías fijas del diseño —etapas, estados, canales, territorios— siguen
-siendo constantes en `src/data/taxonomia.ts`.
 
 ## Comandos
 

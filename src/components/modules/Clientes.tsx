@@ -2,99 +2,111 @@
 
 import type { CSSProperties } from "react";
 
-import { SIN_ASIGNAR } from "@/data/vendedores";
-import { useCatalog } from "@/lib/catalog";
-import {
-  CANALES,
-  COLS,
-  ESTADOS,
-  ESTADO_TONE,
-  ETAPAS,
-  TERRITORIOS,
-} from "@/data/taxonomia";
-import { FilterMenu, withTodos } from "@/components/ui/FilterMenu";
-import { money } from "@/lib/format";
-import { isOpen } from "@/lib/selectors";
+import { FilterMenu } from "@/components/ui/FilterMenu";
+import { useCatalogo } from "@/lib/catalog";
+import { fechaCorta, money } from "@/lib/format";
+import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import type { Cliente, ColumnDef } from "@/lib/types";
+import type { CatalogItem, Oportunidad } from "@/lib/types";
 
 interface Props {
-  clientes: Cliente[];
+  oportunidades: Oportunidad[];
   accent: string;
   query: string;
-  filters: Record<string, string | null>;
-  cols: string[];
-  /** Unfiltered lead count, shown alongside the filtered total. */
-  totalCount: number;
-  selected: string | null;
+  filtros: Record<string, number | null>;
+  selected: number | null;
   menu: string | null;
   onQuery: (q: string) => void;
-  onFilter: (key: string, value: string | null) => void;
-  onToggleCol: (key: string) => void;
+  onFiltro: (key: string, value: number | null) => void;
   onToggleMenu: (key: string) => void;
-  onSelect: (id: string) => void;
-  onAdd: () => void;
-  addBtnStyle: CSSProperties;
+  onSelect: (id: number) => void;
+  onLimpiar: () => void;
 }
 
+/** Which `Oportunidad` id field each catalogue filter tests. */
+const CAMPO: Record<string, keyof Oportunidad> = {
+  vendedor: "vendedorId",
+  producto: "productoId",
+  etapa: "etapaId",
+  estado: "estadoId",
+  canal: "canalId",
+  territorio: "territorioId",
+};
+
 export function Clientes({
-  clientes,
+  oportunidades,
   accent,
   query,
-  filters,
-  cols,
-  totalCount,
+  filtros,
   selected,
   menu,
   onQuery,
-  onFilter,
-  onToggleCol,
+  onFiltro,
   onToggleMenu,
   onSelect,
-  onAdd,
-  addBtnStyle,
+  onLimpiar,
 }: Props) {
-  const { programas, vendedores } = useCatalog();
+  const cat = useCatalogo();
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
-  /** Dropdown filters, in toolbar order. */
-  const filterDefs: { key: string; label: string; values: readonly string[] }[] = [
-    { key: "canal", label: "Canal", values: CANALES },
-    { key: "etapa", label: "Etapa", values: ETAPAS },
-    { key: "estado", label: "Estado", values: ESTADOS },
-    { key: "territorio", label: "Territorio", values: TERRITORIOS },
-    { key: "producto", label: "Programa", values: programas.map((p) => p.nombre) },
-    {
-      key: "vendedor",
-      label: "Vendedor",
-      values: [...vendedores.map((v) => v.name), SIN_ASIGNAR],
-    },
+  const filtros_def: { key: string; label: string; items: CatalogItem[] }[] = [
+    { key: "vendedor", label: "Vendedor", items: cat.vendedores },
+    { key: "etapa", label: "Etapa", items: cat.etapas },
+    { key: "estado", label: "Estado", items: cat.estados },
+    { key: "producto", label: "Programa", items: cat.productos },
+    { key: "canal", label: "Canal", items: cat.canales },
+    { key: "territorio", label: "Territorio", items: cat.territorios },
   ];
 
-  const list = clientes.filter(
-    (c) =>
-      filterDefs.every(({ key }) => {
-        const want = filters[key];
-        return !want || String(c[key as keyof Cliente]) === want;
+  const list = oportunidades.filter(
+    (o) =>
+      filtros_def.every(({ key }) => {
+        const want = filtros[key];
+        return want == null || o[CAMPO[key]] === want;
       }) &&
-      (!q || [c.nombre, c.id, c.tel].join(" ").toLowerCase().includes(q)),
+      (!q ||
+        [o.cliente, o.codigo, o.telefono ?? "", o.correo ?? ""]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)),
   );
 
-  const pipeline = list.filter(isOpen).reduce((a, c) => a + (c.valor || 0), 0);
-  const ganado = list.reduce((a, c) => a + (c.cerrada ?? 0), 0);
-  const ticket = list.length
-    ? Math.round(list.reduce((a, c) => a + (c.valor || 0), 0) / list.length)
-    : 0;
-
-  const visibleCols = COLS.filter((c) => cols.includes(c.key));
+  const activos = filtros_def.filter((f) => filtros[f.key] != null).length;
 
   const resumen = [
     { label: "Oportunidades", value: String(list.length) },
-    { label: "Valor en pipeline", value: money(pipeline) },
-    { label: "Venta cerrada", value: money(ganado) },
-    { label: "Ticket promedio", value: money(ticket) },
+    { label: "Valor en pipeline", value: money(valorPipeline(list) || null) },
+    { label: "Venta cerrada", value: money(totalCerrado(list) || null) },
+    {
+      label: "Ticket promedio",
+      value: (() => {
+        const conValor = list.filter((o) => o.valor != null);
+        return conValor.length
+          ? money(
+              Math.round(
+                conValor.reduce((a, o) => a + (o.valor ?? 0), 0) / conValor.length,
+              ),
+            )
+          : "—";
+      })(),
+    },
   ];
+
+  const th: CSSProperties = {
+    textAlign: "left",
+    padding: "9px 14px",
+    fontWeight: 500,
+    fontSize: 11.5,
+    color: T.muted,
+    whiteSpace: "nowrap",
+    borderBottom: `1px solid ${T.border}`,
+  };
+  const td: CSSProperties = {
+    padding: "11px 14px",
+    whiteSpace: "nowrap",
+    color: T.muted,
+  };
 
   return (
     <div>
@@ -124,13 +136,7 @@ export function Clientes({
         ))}
       </div>
 
-      <div
-        style={{
-          background: T.surface,
-          border: `1px solid ${T.border}`,
-          borderRadius: 10,
-        }}
-      >
+      <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10 }}>
         <div
           style={{
             display: "flex",
@@ -144,10 +150,10 @@ export function Clientes({
           <input
             value={query}
             onChange={(e) => onQuery(e.target.value)}
-            placeholder="Buscar nombre, ID o teléfono"
+            placeholder="Buscar nombre, código, teléfono o correo"
             style={{
               flex: 1,
-              minWidth: 190,
+              minWidth: 220,
               height: 32,
               padding: "0 12px",
               fontSize: 13,
@@ -157,88 +163,122 @@ export function Clientes({
             }}
           />
 
-          {filterDefs.map((f) => {
+          {filtros_def.map((f) => {
             const key = `f:${f.key}`;
             return (
               <FilterMenu
                 key={key}
                 menuKey={key}
                 label={f.label}
-                options={withTodos(f.values)}
-                current={filters[f.key] ?? null}
+                options={[
+                  { label: "Todos", value: null },
+                  ...f.items.map((i) => ({ label: i.nombre, value: i.id })),
+                ]}
+                current={filtros[f.key] ?? null}
+                valueText={
+                  filtros[f.key] == null
+                    ? "Todos"
+                    : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
+                }
                 open={menu === key}
                 accent={accent}
                 onToggle={() => onToggleMenu(key)}
-                onPick={(v) => onFilter(f.key, v as string | null)}
+                onPick={(v) => onFiltro(f.key, v as number | null)}
               />
             );
           })}
 
-          <FilterMenu
-            menuKey="f:cols"
-            label="Columnas"
-            options={COLS.map((c) => ({ label: c.label, value: c.key }))}
-            open={menu === "f:cols"}
-            accent={accent}
-            multi={{ selected: cols, summary: `${cols.length} de ${COLS.length}` }}
-            onToggle={() => onToggleMenu("f:cols")}
-            onPick={(v) => onToggleCol(v as string)}
-          />
-
-          <button type="button" onClick={onAdd} style={addBtnStyle}>
-            Agregar
-          </button>
+          {(activos > 0 || q) && (
+            <button
+              type="button"
+              onClick={onLimpiar}
+              style={{ fontSize: 12.5, color: accent, padding: "0 6px" }}
+            >
+              Limpiar
+            </button>
+          )}
         </div>
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
-                {visibleCols.map((col) => (
-                  <th
-                    key={col.key}
-                    style={{
-                      textAlign: col.kind === "money" ? "right" : "left",
-                      padding: "9px 14px",
-                      fontWeight: 500,
-                      fontSize: 11.5,
-                      color: T.muted,
-                      whiteSpace: "nowrap",
-                      borderBottom: `1px solid ${T.border}`,
-                    }}
-                  >
-                    {col.label}
-                  </th>
-                ))}
+                <th style={th}>Código</th>
+                <th style={th}>Fecha</th>
+                <th style={th}>Cliente</th>
+                <th style={th}>Programa</th>
+                <th style={th}>Vendedor</th>
+                <th style={th}>Etapa</th>
+                <th style={th}>Estado</th>
+                <th style={{ ...th, textAlign: "right" }}>Valor</th>
+                <th style={{ ...th, textAlign: "right" }}>Cerrada</th>
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>
             <tbody>
-              {list.map((c) => (
-                <tr
-                  key={c.id}
-                  className="row"
-                  onClick={() => onSelect(c.id)}
-                  style={{
-                    borderTop: `1px solid ${T.border}`,
-                    cursor: "pointer",
-                    background: selected === c.id ? T.paper : "transparent",
-                  }}
-                >
-                  {visibleCols.map((col) => (
-                    <Cell key={col.key} cliente={c} col={col} accent={accent} soft={soft} />
-                  ))}
-                  <td
+              {list.map((o) => {
+                const [fg, bg] = estadoTone(o.estado, accent);
+                return (
+                  <tr
+                    key={o.id}
+                    className="row"
+                    onClick={() => onSelect(o.id)}
                     style={{
-                      padding: "10px 14px 10px 0",
-                      textAlign: "right",
-                      color: T.borderStrong,
+                      borderTop: `1px solid ${T.border}`,
+                      cursor: "pointer",
+                      background: selected === o.id ? T.paper : "transparent",
                     }}
                   >
-                    ›
-                  </td>
-                </tr>
-              ))}
+                    <td className="mono" style={td}>{o.codigo}</td>
+                    <td className="mono" style={td}>{fechaCorta(o.fechaRegistro)}</td>
+                    <td style={{ ...td, padding: "9px 14px", color: T.ink }}>
+                      <span style={{ display: "block", fontSize: 13 }}>{o.cliente}</span>
+                      <span style={{ display: "block", marginTop: 2, fontSize: 11, color: T.faint }}>
+                        {o.correo ?? o.telefono ?? "—"}
+                      </span>
+                    </td>
+                    <td style={td}>{o.producto}</td>
+                    <td style={td}>{o.vendedor}</td>
+                    <td style={{ ...td, padding: "9px 14px" }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          fontSize: 12,
+                          padding: "3px 10px",
+                          borderRadius: 20,
+                          background: soft,
+                          color: accent,
+                        }}
+                      >
+                        {o.etapa}
+                      </span>
+                    </td>
+                    <td style={{ ...td, padding: "9px 14px" }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          fontSize: 12,
+                          padding: "3px 10px",
+                          borderRadius: 20,
+                          background: bg,
+                          color: fg,
+                        }}
+                      >
+                        {o.estado}
+                      </span>
+                    </td>
+                    <td className="mono" style={{ ...td, textAlign: "right" }}>
+                      {money(o.valor)}
+                    </td>
+                    <td className="mono" style={{ ...td, textAlign: "right" }}>
+                      {money(o.cerrada)}
+                    </td>
+                    <td style={{ padding: "10px 14px 10px 0", textAlign: "right", color: T.borderStrong }}>
+                      ›
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -255,82 +295,11 @@ export function Clientes({
           }}
         >
           <span>
-            Mostrando {list.length} de {totalCount} clientes
+            Mostrando {list.length} de {oportunidades.length} oportunidades
           </span>
           <span>Clic en una fila para ver la ficha completa</span>
         </div>
       </div>
     </div>
-  );
-}
-
-function Cell({
-  cliente,
-  col,
-  accent,
-  soft,
-}: {
-  cliente: Cliente;
-  col: ColumnDef;
-  accent: string;
-  soft: string;
-}) {
-  const raw = cliente[col.key];
-  const isMoney = col.kind === "money";
-  const base: CSSProperties = {
-    padding: "11px 14px",
-    whiteSpace: "nowrap",
-    color: col.key === "nombre" ? T.ink : T.muted,
-    textAlign: isMoney ? "right" : "left",
-  };
-
-  if (col.kind === "pill") {
-    const [fg, bg] =
-      col.key === "estado"
-        ? (ESTADO_TONE[cliente.estado] ?? [T.muted, T.paper])
-        : [accent, soft];
-    return (
-      <td style={{ ...base, padding: "9px 14px" }}>
-        <span
-          style={{
-            display: "inline-block",
-            fontSize: 12,
-            padding: "3px 10px",
-            borderRadius: 20,
-            background: bg,
-            color: fg,
-          }}
-        >
-          {String(raw)}
-        </span>
-      </td>
-    );
-  }
-
-  if (col.kind === "name") {
-    return (
-      <td style={{ ...base, padding: "9px 14px" }}>
-        <span style={{ display: "block", fontSize: 13, color: T.ink }}>
-          {String(raw)}
-        </span>
-        <span
-          style={{ display: "block", marginTop: 2, fontSize: 11, color: T.faint }}
-        >
-          {cliente.correo}
-        </span>
-      </td>
-    );
-  }
-
-  const text = isMoney
-    ? money(raw as number | null)
-    : raw === "" || raw == null
-      ? "—"
-      : String(raw);
-
-  return (
-    <td className={col.kind === "mono" || isMoney ? "mono" : ""} style={base}>
-      {text}
-    </td>
   );
 }

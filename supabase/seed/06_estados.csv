@@ -1,0 +1,6 @@
+id,nombre,es_final
+1,Activo,false
+2,Reserva,false
+3,En pausa/inactivo,false
+4,Ganado,true
+5,Perdido,true

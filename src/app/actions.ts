@@ -1,116 +1,109 @@
 "use server";
 
-import { NUEVO_CLIENTE_BASE } from "@/data/clientes";
-import { ID_COLUMN, TABLE, toRow } from "@/lib/supabase/leads";
+import { revalidatePath } from "next/cache";
+
 import { getServerClient } from "@/lib/supabase/server";
-import type {
-  Cliente,
-  ClientePatch,
-  EventoCalendario,
-  EventoPatch,
-} from "@/lib/types";
+import type { EventoPatch, OportunidadPatch } from "@/lib/types";
 
 export interface ActionResult {
   ok: boolean;
-  /** True when the write was skipped because Supabase is not configured. */
-  skipped: boolean;
   error: string | null;
 }
 
-const skipped: ActionResult = { ok: true, skipped: true, error: null };
+const NO_SESSION: ActionResult = {
+  ok: false,
+  error: "Sesión no válida. Volvé a iniciar sesión.",
+};
 
 /**
- * Persist an edit to one lead.
+ * Persist an edit to one opportunity.
  *
  * The UI updates optimistically and calls this in the background; a failure
  * surfaces as a banner rather than rolling the interface back, so a dropped
- * connection never discards what the user typed.
+ * connection never discards what the user just did.
  */
-export async function updateCliente(
-  id: string,
-  patch: ClientePatch,
+export async function updateOportunidad(
+  id: number,
+  patch: OportunidadPatch,
 ): Promise<ActionResult> {
-  const supabase = getServerClient();
-  if (!supabase) return skipped;
+  if (Object.keys(patch).length === 0) return { ok: true, error: null };
 
-  const payload = toRow(patch);
-  if (Object.keys(payload).length === 0) {
-    return { ok: true, skipped: false, error: null };
-  }
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
 
-  const { error } = await supabase.from(TABLE).update(payload).eq(ID_COLUMN, id);
+  const { error } = await supabase.from("oportunidades").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
 
-  return error
-    ? { ok: false, skipped: false, error: error.message }
-    : { ok: true, skipped: false, error: null };
+  revalidatePath("/");
+  return { ok: true, error: null };
 }
 
-/** Insert a blank lead so the "Agregar" button creates a real row. */
-export async function createCliente(id: string): Promise<ActionResult> {
-  const supabase = getServerClient();
-  if (!supabase) return skipped;
+/** Add a note to an opportunity's log. */
+export async function addNota(
+  oportunidadId: number,
+  nota: string,
+): Promise<ActionResult> {
+  const texto = nota.trim();
+  if (!texto) return { ok: true, error: null };
 
-  const nuevo: Cliente = { id, ...NUEVO_CLIENTE_BASE };
-  const { error } = await supabase.from(TABLE).insert(toRow(nuevo));
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
 
-  return error
-    ? { ok: false, skipped: false, error: error.message }
-    : { ok: true, skipped: false, error: null };
+  const { error } = await supabase
+    .from("oportunidad_notas")
+    .insert({ oportunidad_id: oportunidadId, nota: texto, origen: "comentario" });
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
 }
-
-/** App field names → the columns of `public.eventos`. */
-const EVENTO_COLUMNS: Record<string, string> = {
-  idx: "dia_idx",
-  h: "hora",
-  t: "tipo_id",
-  lead: "lead_id",
-  vend: "vendedor",
-  canal: "canal",
-  estado: "estado",
-  nextText: "next_text",
-};
-
-const eventoRow = (patch: EventoPatch): Record<string, unknown> => {
-  const row: Record<string, unknown> = {};
-  for (const [field, value] of Object.entries(patch)) {
-    const column = EVENTO_COLUMNS[field];
-    if (column) row[column] = value;
-  }
-  return row;
-};
 
 export async function updateEvento(
-  id: string,
+  id: number,
   patch: EventoPatch,
 ): Promise<ActionResult> {
-  const supabase = getServerClient();
-  if (!supabase) return skipped;
+  if (Object.keys(patch).length === 0) return { ok: true, error: null };
 
-  const payload = eventoRow(patch);
-  if (Object.keys(payload).length === 0) {
-    return { ok: true, skipped: false, error: null };
-  }
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
 
-  const { error } = await supabase.from("eventos").update(payload).eq("id", id);
+  const { error } = await supabase.from("eventos").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
 
-  return error
-    ? { ok: false, skipped: false, error: error.message }
-    : { ok: true, skipped: false, error: null };
+  revalidatePath("/");
+  return { ok: true, error: null };
 }
 
-/** Used both by "Nuevo evento" and by the follow-up booked when closing one. */
+export interface NuevoEvento {
+  oportunidad_id: number;
+  tipo_id: number;
+  vendedor_id: number | null;
+  inicia_en: string;
+  duracion_min: number;
+  canal: string;
+}
+
+/** Used by "Nuevo evento" and by the follow-up booked when closing one. */
 export async function createEvento(
-  evento: EventoCalendario,
-): Promise<ActionResult> {
-  const supabase = getServerClient();
-  if (!supabase) return skipped;
+  evento: NuevoEvento,
+): Promise<ActionResult & { id: number | null }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ...NO_SESSION, id: null };
 
-  const { id, ...rest } = evento;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("eventos")
-    .insert({ id, ...eventoRow(rest) });
+    .insert({ ...evento, estado: "Pendiente" })
+    .select("id")
+    .single();
 
-  return error
-    ? { ok: false, skipped: false, error: error.message }
-    : { ok: true, skipped: false, error: null };
+  if (error) return { ok: false, error: error.message, id: null };
+
+  revalidatePath("/");
+  return { ok: true, error: null, id: (data as { id: number }).id };
+}
+
+export async function signOut(): Promise<void> {
+  const supabase = await getServerClient();
+  if (supabase) await supabase.auth.signOut();
 }

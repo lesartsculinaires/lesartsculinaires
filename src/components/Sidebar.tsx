@@ -1,20 +1,31 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 
-import type { Area } from "@/data/area";
-import { modulesFor } from "@/data/area";
+import { signOut } from "@/app/actions";
+import { getBrowserClient } from "@/lib/supabase/browser";
 import { T, soft } from "@/lib/theme";
 
+export const MODULOS = [
+  "Dashboard",
+  "Clientes",
+  "Pipeline",
+  "Calendario",
+  "Equipos",
+  "Programas",
+] as const;
+
 interface Props {
-  area: Area;
   accent: string;
   mod: string;
+  userEmail: string;
   onSelect: (mod: string) => void;
-  onLogout: () => void;
 }
 
-export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
+export function Sidebar({ accent, mod, userEmail, onSelect }: Props) {
+  const router = useRouter();
+
   const navStyle = (label: string): CSSProperties => ({
     display: "block",
     width: "100%",
@@ -27,6 +38,15 @@ export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
     background: mod === label ? soft(accent) : "transparent",
     color: mod === label ? accent : T.muted,
   });
+
+  const cerrarSesion = async () => {
+    // Clear the browser copy of the session as well as the server cookie,
+    // otherwise the client would keep a stale token in memory.
+    await getBrowserClient().auth.signOut();
+    await signOut();
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <aside
@@ -74,10 +94,19 @@ export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
           Sesión activa
         </p>
         <p className="dsp" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-          {area.label}
+          Ventas
         </p>
-        <p className="mono" style={{ margin: "2px 0 0", fontSize: 10, opacity: 0.8 }}>
-          {area.email}
+        <p
+          className="mono"
+          style={{
+            margin: "2px 0 0",
+            fontSize: 10,
+            opacity: 0.8,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {userEmail}
         </p>
       </div>
 
@@ -94,7 +123,7 @@ export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
         Módulos
       </p>
       <nav style={{ flex: 1 }}>
-        {modulesFor(area).map((m) => (
+        {MODULOS.map((m) => (
           <button
             type="button"
             key={m}
@@ -109,9 +138,6 @@ export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
 
       <div
         style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
           borderTop: `1px solid ${T.border}`,
           marginTop: 16,
           paddingTop: 12,
@@ -119,15 +145,7 @@ export function Sidebar({ area, accent, mod, onSelect, onLogout }: Props) {
       >
         <button
           type="button"
-          className="nav"
-          onClick={() => onSelect("Configuración")}
-          style={{ ...navStyle("Configuración"), marginBottom: 0 }}
-        >
-          Configuración
-        </button>
-        <button
-          type="button"
-          onClick={onLogout}
+          onClick={cerrarSesion}
           style={{
             textAlign: "left",
             padding: "8px 10px",

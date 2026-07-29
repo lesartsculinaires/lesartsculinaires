@@ -1,0 +1,15 @@
+id,nombre,categoria,activo
+1,Diplomado de Mixología,Diplomado,true
+2,Diplomado de Pasteleria,Diplomado,true
+3,Curso corto Bowl Fusion,Curso corto,true
+4,Curso corto Bolleria Francesa,Curso corto,true
+5,Curso corto Pastelería Saludable,Curso corto,true
+6,Información general,Otro,true
+7,Curso corto Cocina Nikkei,Curso corto,true
+8,Curso corto Les Petits Chefs,Curso corto,true
+9,Curso corto Mixología 360,Curso corto,true
+10,Diplomado Management Gastronómico,Diplomado,true
+11,Certificación,Certificación,true
+12,Diplomado de Cocina,Diplomado,true
+13,Diplomado de Barismo y Extracción de Café,Diplomado,true
+14,Dark Kitchen,Otro,true

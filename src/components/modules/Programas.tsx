@@ -1,38 +1,46 @@
 "use client";
 
-import { PROGRAMA_TABS } from "@/data/programas";
-import { useCatalog } from "@/lib/catalog";
+import { useCatalogo } from "@/lib/catalog";
 import { money } from "@/lib/format";
-import { isOpen } from "@/lib/selectors";
+import { estaAbierta, esGanada, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import type { Cliente } from "@/lib/types";
+import type { Oportunidad } from "@/lib/types";
 
 interface Props {
-  clientes: Cliente[];
+  oportunidades: Oportunidad[];
   accent: string;
-  tipo: string;
-  onTipo: (tipo: string) => void;
-  onOpenLeads: (programa: string) => void;
+  categoria: string;
+  onCategoria: (c: string) => void;
+  onVerLeads: (productoId: number) => void;
 }
 
-/** Below this fill rate a cohort is flagged as needing enrolments. */
-const LOW_FILL = 50;
+const CATEGORIAS = ["Todos", "Diplomado", "Curso corto", "Certificación", "Otro"];
 
-export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props) {
-  const { programas } = useCatalog();
+export function Programas({
+  oportunidades,
+  accent,
+  categoria,
+  onCategoria,
+  onVerLeads,
+}: Props) {
+  const { productos } = useCatalogo();
   const soft = softer(accent);
-  const shown = programas.filter((p) => tipo === "Todos" || p.tipo === tipo);
-  const llenos = programas.reduce((a, p) => a + p.cuposLlenos, 0);
-  const totales = programas.reduce((a, p) => a + p.cuposTotal, 0);
+
+  const visibles = productos.filter(
+    (p) => categoria === "Todos" || p.categoria === categoria,
+  );
 
   const stats = [
-    { label: "Programas activos", value: String(programas.length) },
-    { label: "Cupos vendidos", value: `${llenos}/${totales}` },
-    { label: "Ocupación", value: `${Math.round((llenos / totales) * 100)}%` },
+    { label: "Programas", value: String(productos.length) },
     {
-      label: "Ingreso proyectado",
-      value: money(programas.reduce((a, p) => a + p.precio * p.cuposLlenos, 0)),
+      label: "Con demanda",
+      value: String(
+        productos.filter((p) => oportunidades.some((o) => o.productoId === p.id))
+          .length,
+      ),
     },
+    { label: "Valor en pipeline", value: money(valorPipeline(oportunidades) || null) },
+    { label: "Venta cerrada", value: money(totalCerrado(oportunidades) || null) },
   ];
 
   return (
@@ -64,17 +72,18 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        {PROGRAMA_TABS.map(([value, plural]) => {
-          const on = value === tipo;
+        {CATEGORIAS.map((c) => {
+          const on = c === categoria;
           const n =
-            value === "Todos"
-              ? programas.length
-              : programas.filter((p) => p.tipo === value).length;
+            c === "Todos"
+              ? productos.length
+              : productos.filter((p) => p.categoria === c).length;
+          if (n === 0 && c !== "Todos") return null;
           return (
             <button
               type="button"
-              key={value}
-              onClick={() => onTipo(value)}
+              key={c}
+              onClick={() => onCategoria(c)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -88,7 +97,7 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
                 color: on ? accent : T.muted,
               }}
             >
-              {plural}
+              {c}
               <span style={{ fontSize: 11, color: on ? accent : T.faint }}>{n}</span>
             </button>
           );
@@ -103,18 +112,15 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
           alignItems: "start",
         }}
       >
-        {shown.map((p) => {
-          const leads = clientes.filter((c) => c.producto === p.nombre);
-          const abiertos = leads.filter(isOpen);
-          const inscritos = leads.filter((c) => c.estado === "Ganado").length;
-          const pct = Math.round((p.cuposLlenos / p.cuposTotal) * 100);
-          const full = p.cuposLlenos >= p.cuposTotal;
-          const low = pct < LOW_FILL;
-          const estado = full ? "Lleno" : low ? "Cupos abiertos" : "Casi lleno";
+        {visibles.map((p) => {
+          const leads = oportunidades.filter((o) => o.productoId === p.id);
+          const abiertas = leads.filter(estaAbierta);
+          const inscritos = leads.filter(esGanada).length;
+          const cerrado = totalCerrado(leads);
 
           return (
             <section
-              key={p.nombre}
+              key={p.id}
               className="card"
               style={{
                 background: T.surface,
@@ -141,65 +147,69 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
                     color: T.faint,
                   }}
                 >
-                  {p.tipo}
+                  {p.categoria}
                 </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 9px",
-                    borderRadius: 20,
-                    whiteSpace: "nowrap",
-                    background: full ? "#E6F0E9" : low ? "#F6EEDC" : soft,
-                    color: full ? "#2F6B4F" : low ? "#9C7118" : accent,
-                  }}
-                >
-                  {estado}
-                </span>
+                {inscritos > 0 && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      padding: "3px 9px",
+                      borderRadius: 20,
+                      whiteSpace: "nowrap",
+                      background: "#E6F0E9",
+                      color: "#2F6B4F",
+                    }}
+                  >
+                    {inscritos} {inscritos === 1 ? "inscrito" : "inscritos"}
+                  </span>
+                )}
               </div>
 
               <h3
                 className="dsp"
-                style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, lineHeight: 1.2 }}
+                style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}
               >
                 {p.nombre}
               </h3>
-              <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted }}>
-                {p.duracion} · {p.cuposTotal} cupos
-              </p>
 
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  marginBottom: 5,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                  marginBottom: 12,
                 }}
               >
-                <span style={{ fontSize: 12, color: T.muted }}>Cupos</span>
-                <span
-                  className="mono"
-                  style={{ fontSize: 12, color: low ? T.warn : T.muted }}
-                >
-                  {p.cuposLlenos}/{p.cuposTotal}
-                </span>
-              </div>
-              <div
-                style={{
-                  height: 6,
-                  background: "#EDEBE6",
-                  borderRadius: 3,
-                  overflow: "hidden",
-                  marginBottom: 14,
-                }}
-              >
+                <div style={{ background: T.paper, borderRadius: 7, padding: "9px 11px" }}>
+                  <p style={{ margin: "0 0 3px", fontSize: 10.5, color: T.muted }}>
+                    En pipeline
+                  </p>
+                  <p className="mono" style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>
+                    {money(abiertas.reduce((a, o) => a + (o.valor ?? 0), 0) || null)}
+                  </p>
+                </div>
                 <div
                   style={{
-                    height: "100%",
-                    width: `${pct}%`,
-                    background: full ? "#2F6B4F" : low ? T.warn : accent,
-                    borderRadius: 3,
+                    background: cerrado ? soft : T.paper,
+                    borderRadius: 7,
+                    padding: "9px 11px",
                   }}
-                />
+                >
+                  <p style={{ margin: "0 0 3px", fontSize: 10.5, color: T.muted }}>
+                    Cerrado
+                  </p>
+                  <p
+                    className="mono"
+                    style={{
+                      margin: 0,
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: cerrado ? accent : T.faint,
+                    }}
+                  >
+                    {money(cerrado || null)}
+                  </p>
+                </div>
               </div>
 
               <div
@@ -208,39 +218,21 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
                   justifyContent: "space-between",
                   alignItems: "center",
                   borderTop: `1px solid ${T.border}`,
-                  paddingTop: 12,
-                }}
-              >
-                <span className="mono dsp" style={{ fontSize: 17, fontWeight: 500 }}>
-                  {money(p.precio)}
-                </span>
-                <span style={{ fontSize: 12, color: T.muted }}>Inicia {p.inicio}</span>
-              </div>
-
-              <div
-                onClick={() => onOpenLeads(p.nombre)}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                  marginTop: 12,
                   paddingTop: 11,
-                  borderTop: `1px solid ${T.border}`,
-                  cursor: "pointer",
-                  color: T.muted,
                 }}
               >
-                <span style={{ fontSize: 12 }}>
+                <span style={{ fontSize: 12, color: T.muted }}>
+                  {p.precio != null ? `Lista ${money(p.precio)}` : "Sin precio de lista"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onVerLeads(p.id)}
+                  style={{ fontSize: 12, color: accent, whiteSpace: "nowrap" }}
+                >
                   {leads.length
-                    ? `${abiertos.length} en pipeline · ${money(
-                        abiertos.reduce((a, c) => a + (c.valor || 0), 0),
-                      )}${inscritos ? ` · ${inscritos} inscrito${inscritos > 1 ? "s" : ""}` : ""}`
-                    : "Sin leads registrados"}
-                </span>
-                <span style={{ fontSize: 12, color: accent, whiteSpace: "nowrap" }}>
-                  Ver clientes ›
-                </span>
+                    ? `${leads.length} ${leads.length === 1 ? "lead" : "leads"} ›`
+                    : "Sin leads"}
+                </button>
               </div>
             </section>
           );
