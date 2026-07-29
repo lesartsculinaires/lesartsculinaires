@@ -3,13 +3,19 @@
 import { useState } from "react";
 
 import { addNota } from "@/app/actions";
+import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, mesLargo, money } from "@/lib/format";
 import { estadoTone } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import type { CatalogItem, Oportunidad, OportunidadPatch } from "@/lib/types";
+import type {
+  CatalogItem,
+  ClientePatch,
+  Oportunidad,
+  OportunidadPatch,
+} from "@/lib/types";
 
 interface Props {
   oportunidad: Oportunidad;
@@ -21,8 +27,23 @@ interface Props {
     patch: OportunidadPatch,
     display: Partial<Oportunidad>,
   ) => void;
+  onEditarCliente: (
+    clienteId: number,
+    patch: ClientePatch,
+    display: Partial<Oportunidad>,
+  ) => void;
   onClose: () => void;
 }
+
+/** Text box → the value a nullable column should store. */
+const oNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
+
+/** Money box → number, or null when cleared. */
+const oMonto = (s: string): number | null => {
+  if (s.trim() === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
 
 export function ClienteDrawer({
   oportunidad: o,
@@ -30,6 +51,7 @@ export function ClienteDrawer({
   menu,
   onToggleMenu,
   onEditar,
+  onEditarCliente,
   onClose,
 }: Props) {
   const cat = useCatalogo();
@@ -63,12 +85,76 @@ export function ClienteDrawer({
   const etapaIdx = cat.etapas.findIndex((e) => e.id === o.etapaId);
   const perdida = o.estado === "Perdido";
 
-  const registro: [string, string][] = [
-    ["Código", o.codigo],
-    ["Fecha de registro", fechaCorta(o.fechaRegistro)],
-    ["Mes", mesLargo(o.mes)],
-    ["Fecha de cierre", o.fechaCierre ? fechaCorta(o.fechaCierre) : "—"],
-    ["Descuento / promoción", o.descuento ?? "—"],
+  /** Fields stored on the opportunity itself. */
+  const editables = [
+    {
+      label: "Fecha de registro",
+      value: o.fechaRegistro,
+      tipo: "fecha" as const,
+      requerido: true,
+      guardar: (v: string) =>
+        onEditar(o.id, { fecha_registro: v }, { fechaRegistro: v, mes: v.slice(0, 8) + "01" }),
+    },
+    {
+      label: "Fecha de cierre",
+      value: o.fechaCierre ?? "",
+      tipo: "fecha" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditar(o.id, { fecha_cierre: oNull(v) }, { fechaCierre: oNull(v) }),
+    },
+    {
+      label: "Valor oportunidad",
+      value: o.valor == null ? "" : String(o.valor),
+      tipo: "monto" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditar(o.id, { valor_oportunidad: oMonto(v) }, { valor: oMonto(v) }),
+    },
+    {
+      label: "Venta cerrada",
+      value: o.cerrada == null ? "" : String(o.cerrada),
+      tipo: "monto" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditar(o.id, { venta_cerrada: oMonto(v) }, { cerrada: oMonto(v) }),
+    },
+    {
+      label: "Descuento / promoción",
+      value: o.descuento ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditar(o.id, { descuento_promocion: oNull(v) }, { descuento: oNull(v) }),
+    },
+  ];
+
+  /** Fields stored on the shared client record. */
+  const delCliente = [
+    {
+      label: "Nombre",
+      value: o.cliente,
+      tipo: "texto" as const,
+      requerido: true,
+      guardar: (v: string) =>
+        onEditarCliente(o.clienteId, { nombre: v }, { cliente: v }),
+    },
+    {
+      label: "Teléfono",
+      value: o.telefono ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditarCliente(o.clienteId, { telefono: oNull(v) }, { telefono: oNull(v) }),
+    },
+    {
+      label: "Correo",
+      value: o.correo ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      guardar: (v: string) =>
+        onEditarCliente(o.clienteId, { correo: oNull(v) }, { correo: oNull(v) }),
+    },
   ];
 
   const guardarNota = async () => {
@@ -218,76 +304,94 @@ export function ClienteDrawer({
       </div>
 
       <SectionLabel>Registro</SectionLabel>
-      <div style={{ border: `1px solid ${T.border}`, borderRadius: 9, marginBottom: 20 }}>
-        {registro.map(([label, value], i) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 14,
-              padding: "9px 13px",
-              borderTop: i ? `1px solid ${T.border}` : "none",
-            }}
-          >
-            <span style={{ fontSize: 12, color: T.muted }}>{label}</span>
-            <span style={{ fontSize: 13, textAlign: "right" }}>{value}</span>
-          </div>
-        ))}
-      </div>
-
-      <SectionLabel>Contacto</SectionLabel>
-      <div style={{ display: "grid", gap: 8, marginBottom: 20 }}>
+      <div style={{ border: `1px solid ${T.border}`, borderRadius: 9, marginBottom: 8 }}>
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            gap: 12,
-            background: T.paper,
-            borderRadius: 8,
-            padding: "11px 14px",
+            gap: 14,
+            padding: "9px 13px",
           }}
         >
-          <span className="mono" style={{ fontSize: 13 }}>{o.telefono ?? "Sin teléfono"}</span>
+          <span style={{ fontSize: 12, color: T.muted }}>Código</span>
+          <span className="mono" style={{ fontSize: 13 }}>{o.codigo}</span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 14,
+            padding: "9px 13px",
+            borderTop: `1px solid ${T.border}`,
+          }}
+        >
+          <span style={{ fontSize: 12, color: T.muted }}>Mes</span>
+          <span style={{ fontSize: 13 }}>{mesLargo(o.mes)}</span>
+        </div>
+        {editables.map((f) => (
+          <div key={f.label} style={{ borderTop: `1px solid ${T.border}` }}>
+            <CampoEditable
+              label={f.label}
+              value={f.value}
+              tipo={f.tipo}
+              requerido={f.requerido}
+              accent={accent}
+              onGuardar={f.guardar}
+            />
+          </div>
+        ))}
+      </div>
+      <p style={{ margin: "0 0 20px", fontSize: 11, color: T.faint }}>
+        Los cambios se guardan al salir del campo. Escape descarta.
+      </p>
+
+      <SectionLabel>Datos del cliente</SectionLabel>
+      <div style={{ border: `1px solid ${T.border}`, borderRadius: 9 }}>
+        {delCliente.map((f, i) => (
+          <div key={f.label} style={{ borderTop: i ? `1px solid ${T.border}` : "none" }}>
+            <CampoEditable
+              label={f.label}
+              value={f.value}
+              tipo={f.tipo}
+              requerido={f.requerido}
+              accent={accent}
+              placeholder={f.requerido ? undefined : "Sin dato"}
+              onGuardar={f.guardar}
+            />
+          </div>
+        ))}
+      </div>
+      <p style={{ margin: "6px 0 14px", fontSize: 11, color: T.warn, lineHeight: 1.45 }}>
+        Ojo: estos datos son del cliente, no de esta oportunidad. Si tiene varias,
+        el cambio se ve en todas.
+      </p>
+
+      {(o.telefono || o.correo) && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
           {o.telefono && (
-            <div style={{ display: "flex", gap: 6 }}>
+            <>
               <a href={`tel:${o.telefono}`} style={{ ...miniBtn, textDecoration: "none", lineHeight: "28px" }}>
                 Llamar
               </a>
               <a
-                href={`https://wa.me/503${o.telefono}`}
+                href={`https://wa.me/503${o.telefono.replace(/\D/g, "")}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{ ...miniBtn, textDecoration: "none", lineHeight: "28px" }}
               >
                 WhatsApp
               </a>
-            </div>
+            </>
           )}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            background: T.paper,
-            borderRadius: 8,
-            padding: "11px 14px",
-          }}
-        >
-          <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>
-            {o.correo ?? "Sin correo"}
-          </span>
           {o.correo && (
             <a href={`mailto:${o.correo}`} style={{ ...miniBtn, textDecoration: "none", lineHeight: "28px" }}>
               Escribir
             </a>
           )}
         </div>
-      </div>
+      )}
 
       <SectionLabel>Registrar seguimiento</SectionLabel>
       <textarea

@@ -2,8 +2,12 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { updateOportunidad, type ActionResult } from "@/app/actions";
-import type { Oportunidad, OportunidadPatch } from "@/lib/types";
+import {
+  updateCliente,
+  updateOportunidad,
+  type ActionResult,
+} from "@/app/actions";
+import type { ClientePatch, Oportunidad, OportunidadPatch } from "@/lib/types";
 
 export interface CrmState {
   mod: string;
@@ -93,6 +97,26 @@ export function useCrm(initial: readonly Oportunidad[]) {
         sync(updateOportunidad(id, patch));
       },
 
+      /**
+       * Edit the shared client record. The optimistic update touches every
+       * opportunity of that client, matching what the database will return.
+       */
+      editarCliente: (
+        clienteId: number,
+        patch: ClientePatch,
+        display: Partial<Oportunidad>,
+      ) => {
+        patchState((s) => {
+          const edits = { ...s.edits };
+          for (const o of initial) {
+            if (o.clienteId !== clienteId) continue;
+            edits[o.id] = { ...(edits[o.id] ?? {}), ...display };
+          }
+          return { edits, menu: null };
+        });
+        sync(updateCliente(clienteId, patch));
+      },
+
       setDrag: (drag: number | null) => patchState({ drag }),
       setOver: (over: number | null) => patchState({ over }),
 
@@ -105,7 +129,8 @@ export function useCrm(initial: readonly Oportunidad[]) {
 
       dismissSyncError: () => setSyncError(null),
     }),
-    [patchState, sync],
+    // `initial` is read by editarCliente to find the client's other rows.
+    [patchState, sync, initial],
   );
 
   return { state, oportunidades, actions, syncError };

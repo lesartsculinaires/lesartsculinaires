@@ -166,6 +166,7 @@ export default function CrmApp({
               menu={state.menu}
               onToggleMenu={actions.toggleMenu}
               onEditar={actions.editar}
+              onEditarCliente={actions.editarCliente}
               onClose={() => actions.select(null)}
             />
           )}

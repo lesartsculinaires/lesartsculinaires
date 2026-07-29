@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getServerClient } from "@/lib/supabase/server";
-import type { EventoPatch, OportunidadPatch } from "@/lib/types";
+import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
 export interface ActionResult {
   ok: boolean;
@@ -32,6 +32,38 @@ export async function updateOportunidad(
   if (!supabase) return NO_SESSION;
 
   const { error } = await supabase.from("oportunidades").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Update the client record behind an opportunity.
+ *
+ * `clientes` is shared across opportunities, so renaming a client or fixing a
+ * phone number changes every opportunity that points at it. The drawer says so
+ * before the user edits.
+ */
+export async function updateCliente(
+  clienteId: number,
+  patch: ClientePatch,
+): Promise<ActionResult> {
+  if (Object.keys(patch).length === 0) return { ok: true, error: null };
+
+  // The column is `not null`; an empty box would otherwise wipe the name.
+  if (patch.nombre !== undefined && patch.nombre.trim() === "") {
+    return { ok: false, error: "El nombre del cliente no puede quedar vacío." };
+  }
+
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase
+    .from("clientes")
+    .update(patch)
+    .eq("id", clienteId);
+
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/");

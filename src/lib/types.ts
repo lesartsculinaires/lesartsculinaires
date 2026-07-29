@@ -94,7 +94,7 @@ export interface Oportunidad {
   descuento: string | null;
 }
 
-/** The foreign keys and amounts the UI can edit on an opportunity. */
+/** What the UI can edit on an opportunity. Keys are column names. */
 export interface OportunidadPatch {
   vendedor_id?: number | null;
   producto_id?: number | null;
@@ -102,9 +102,24 @@ export interface OportunidadPatch {
   canal_id?: number | null;
   etapa_id?: number | null;
   estado_id?: number | null;
+  /** ISO date; the column is `not null`, so never send null. */
+  fecha_registro?: string;
+  fecha_cierre?: string | null;
   valor_oportunidad?: number | null;
   venta_cerrada?: number | null;
   descuento_promocion?: string | null;
+}
+
+/**
+ * What the UI can edit on the client record.
+ *
+ * `clientes` is shared: one client can own several opportunities, so a change
+ * here shows up in every one of them.
+ */
+export interface ClientePatch {
+  nombre?: string;
+  telefono?: string | null;
+  correo?: string | null;
 }
 
 export type CanalEvento = "Presencial" | "Llamada" | "WhatsApp" | "Meet";
