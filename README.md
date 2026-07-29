@@ -44,9 +44,20 @@ La app lee de **`vw_pipeline`**, que aplana los joins y expone tanto el nombre
 como el id de cada catálogo: las pantallas muestran nombres, pero las escrituras
 necesitan ids.
 
-## Despliegue en Netlify
+## Despliegue
 
-El repo trae `netlify.toml` con el runtime de Next.js ya configurado. En Netlify:
+**En producción:** https://crm-les-arts.netlify.app
+
+El repo trae `netlify.toml` con el runtime de Next.js ya configurado, y el sitio
+`crm-les-arts` ya existe con las dos variables de entorno cargadas.
+
+**Falta un paso manual:** conectar el sitio al repositorio para que cada push
+despliegue solo. En Netlify → **Site configuration → Build & deploy → Continuous
+deployment → Link repository** → GitHub → `lesartsculinaires/lesartsculinaires`,
+rama de producción `main`. Hasta que eso esté hecho, los despliegues se hacen a
+mano con `npx netlify deploy --build --prod`.
+
+Si querés crear el sitio desde cero en otra cuenta:
 
 1. **Add new site → Import an existing project** → GitHub →
    `lesartsculinaires/lesartsculinaires`.
