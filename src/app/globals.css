@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter+Tight:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.lac * {
+  box-sizing: border-box;
+}
+
+.lac {
+  font-family: 'Inter Tight', system-ui, sans-serif;
+  color: #1f1d1a;
+}
+
+/* Display face — headings and figure values. */
+.lac .dsp {
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+/* Tabular figures keep money columns aligned across rows. */
+.lac .mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.lac button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+.lac button:focus-visible,
+.lac input:focus-visible,
+.lac textarea:focus-visible {
+  outline: 2px solid #1f1d1a;
+  outline-offset: 2px;
+}
+
+.lac a {
+  color: #028090;
+}
+
+.lac a:hover {
+  color: #015f66;
+}
+
+.lac .nav:hover {
+  background: #f5f4f1;
+}
+
+.lac .row:hover {
+  background: #f5f4f1;
+}
+
+.lac .card:hover {
+  border-color: #cfcac0;
+}
+
+.lac .gate:hover {
+  border-color: #cfcac0;
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lac .card,
+  .lac .nav,
+  .lac .row {
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .lac .gate {
+    transition: border-color 140ms ease, transform 140ms ease;
+  }
+}
