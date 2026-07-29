@@ -28,13 +28,41 @@ Las dos variables salen del panel de Supabase, en **Project Settings**:
 La anon key es pública por diseño: viaja al navegador y sólo puede hacer lo que
 permitan tus políticas de Row Level Security. **La service_role key no va acá.**
 
+### Esquema
+
+La migración `supabase/migrations/20260729000000_crm_schema.sql` crea todo lo
+que el frontend necesita:
+
+| Tabla | Qué guarda |
+| --- | --- |
+| `leads` | Oportunidades. `id` es el código visible (`LA-0414`). |
+| `vendedores` | Equipo comercial, con su meta mensual. |
+| `programas` | Catálogo de diplomados, cursos y certificaciones. |
+| `tipos_evento` | Tipos de actividad, con su color, código y duración. |
+| `eventos` | Agenda. `dia_idx` va de 1 (1 jul 2026) a 62 (31 ago 2026). |
+
+Se aplica con `supabase db push`, o pegándola en el SQL Editor. Es idempotente:
+se puede volver a correr sin duplicar los datos de referencia.
+
+Sobre una tabla `leads` que ya existía por un import de CSV, la migración sólo
+**agrega** las columnas que falten — no borra ni renombra nada. Si tu CSV usó
+encabezados distintos (`telefono` en vez de `tel`), vas a terminar con las dos
+columnas: la tuya con datos y la nueva vacía. En ese caso conviene o migrar los
+datos con un `update`, o apuntar `COLUMNS` a tus nombres reales.
+
 ### Row Level Security
 
-Si la tabla tiene RLS activo hace falta una política de lectura, y otra de
-escritura para que se guarden los cambios desde la app. Para un CRM interno
-detrás de login propio, lo mínimo es habilitar `select` y `update`. Sin la
-política de lectura la consulta devuelve cero filas sin error, y vas a ver la
-tabla vacía en vez de un mensaje.
+La migración activa RLS y crea políticas que **permiten lectura y escritura al
+rol `anon`**. Es lo que hace falta para que el CRM funcione hoy, pero implica
+que cualquiera con la anon key —que es pública, va en el bundle del navegador—
+puede leer y modificar los datos.
+
+Para producción: montá Supabase Auth y cambiá `to anon` por `to authenticated`
+en las políticas de la migración. El login actual del frontend es sólo un
+selector de área, no autentica contra nada.
+
+Si desactivás las políticas de lectura, la consulta devuelve cero filas **sin
+error**: vas a ver las tablas vacías en vez de un mensaje de permiso denegado.
 
 ### Adaptar el mapeo de columnas
 
@@ -62,19 +90,27 @@ mapeo ya los limpia, así que no hace falta normalizarlos antes.
 
 ## Cómo fluyen los datos
 
-- `src/app/page.tsx` es un Server Component: consulta los leads y se los pasa a
-  la app ya resueltos.
-- `src/lib/supabase/queries.ts` hace la lectura y cae en los datos de ejemplo si
-  Supabase no está configurado o la consulta falla.
+- `src/app/page.tsx` es un Server Component: resuelve leads y catálogo en
+  paralelo y se los pasa a la app ya listos.
+- `src/lib/supabase/queries.ts` lee los leads; `catalog.ts` lee vendedores,
+  programas, tipos de actividad y eventos. Cada uno cae en los datos de ejemplo
+  por separado, así que una tabla vacía no se lleva puestas a las demás.
 - `src/app/actions.ts` expone las escrituras como Server Actions.
+- `src/lib/catalog.tsx` reparte los datos de referencia por contexto, para que
+  los módulos no tengan que recibirlos por props.
 - `src/hooks/useCrm.ts` mantiene el estado. Las ediciones son optimistas: la
   pantalla se actualiza al instante y la escritura viaja en segundo plano; si
   falla, aparece un cartel y **no** se descarta lo que hiciste.
 
+Al cerrar un evento se agenda la próxima acción primero y recién después se
+marca el evento como realizado, para que un fallo no deje al lead cerrado y sin
+seguimiento.
+
 ## Alcance actual
 
-Los leads salen de Supabase. El calendario, los vendedores y el catálogo de
-programas todavía viven en `src/data/` — el CSV cubría leads solamente.
+Leads, vendedores, programas, tipos de actividad y eventos salen de Supabase.
+Las taxonomías fijas del diseño —etapas, estados, canales, territorios— siguen
+siendo constantes en `src/data/taxonomia.ts`.
 
 ## Comandos
 

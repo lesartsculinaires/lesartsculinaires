@@ -1,9 +1,15 @@
 import type { CSSProperties } from "react";
 
-import { ACAD, DOW, TIPOS } from "@/data/calendario";
-import { PROGRAMAS } from "@/data/programas";
+import { ACAD, DOW } from "@/data/calendario";
 import { T, softer } from "@/lib/theme";
-import type { Cliente, EstadoEvento, EventoCalendario, Tone } from "@/lib/types";
+import type {
+  Cliente,
+  EstadoEvento,
+  EventoCalendario,
+  Programa,
+  TipoEvento,
+  Tone,
+} from "@/lib/types";
 
 /** An event joined to its lead, ready to render. */
 export interface EventoVista extends EventoCalendario {
@@ -16,13 +22,14 @@ export interface EventoVista extends EventoCalendario {
 export function enrich(
   e: EventoCalendario,
   clientes: readonly Cliente[],
+  tipos: readonly TipoEvento[],
 ): EventoVista {
   const lead = clientes.find((c) => c.id === e.lead);
   return {
     ...e,
     leadName: lead ? lead.nombre : "Sin lead vinculado",
     programa: lead ? lead.producto : "—",
-    dur: TIPOS[e.t].dur,
+    dur: tipos[e.t]?.dur ?? 30,
   };
 }
 
@@ -52,10 +59,10 @@ export const dowLabel = (i: number): string => DOW[wd(i)];
 export const weekStartOf = (i: number): number => i - wd(i);
 
 /** Academic note for a day: a July milestone, or an August cohort start. */
-export function acadOf(i: number): string {
+export function acadOf(i: number, programas: readonly Programa[]): string {
   const { m, d } = md(i);
   if (m === 7) return ACAD[d] ?? "";
-  const p = PROGRAMAS.find((x) => x.inicio === `${d} ago`);
+  const p = programas.find((x) => x.inicio === `${d} ago`);
   return p ? `Inicia ${p.nombre}` : "";
 }
 
@@ -68,7 +75,7 @@ export function estadoTone(e: EstadoEvento, accent: string): Tone {
 }
 
 /** Square colour-coded badge carrying the event type's two-letter code. */
-export function badgeStyle(t: number, size?: number): CSSProperties {
+export function badgeStyle(tipo: TipoEvento | undefined, size?: number): CSSProperties {
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -77,7 +84,7 @@ export function badgeStyle(t: number, size?: number): CSSProperties {
     height: size ?? 20,
     flexShrink: 0,
     borderRadius: 5,
-    background: TIPOS[t].color,
+    background: tipo?.color ?? "#6B665F",
     color: "#fff",
     fontSize: size ? 10.5 : 9.5,
     letterSpacing: "0.02em",

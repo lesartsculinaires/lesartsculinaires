@@ -2,15 +2,8 @@
 
 import type { CSSProperties } from "react";
 
-import {
-  CAL_VIEWS,
-  ESTADOS_EV,
-  TIPOS,
-  TODAY,
-  type CalView,
-} from "@/data/calendario";
-import { PROGRAMAS } from "@/data/programas";
-import { VENDEDORES } from "@/data/vendedores";
+import { CAL_VIEWS, ESTADOS_EV, TODAY, type CalView } from "@/data/calendario";
+import { useCatalog } from "@/lib/catalog";
 import { FilterMenu, withTodos } from "@/components/ui/FilterMenu";
 import { AgendaView } from "@/components/modules/calendario/AgendaView";
 import { MonthView } from "@/components/modules/calendario/MonthView";
@@ -50,13 +43,6 @@ interface Props {
 /** Weekday columns shown in the Semana grid. */
 const WEEK_COLUMNS = 5;
 
-const FILTER_DEFS: { key: string; label: string; values: readonly string[] }[] = [
-  { key: "vend", label: "Vendedor", values: VENDEDORES.map((v) => v.name) },
-  { key: "tipo", label: "Tipo", values: TIPOS.map((t) => t.label) },
-  { key: "programa", label: "Programa", values: PROGRAMAS.map((p) => p.nombre) },
-  { key: "estado", label: "Estado", values: ESTADOS_EV },
-];
-
 export function Calendario({
   eventos,
   accent,
@@ -72,10 +58,19 @@ export function Calendario({
   onOpenEvent,
   onNewEvent,
 }: Props) {
+  const { tipos, programas, vendedores } = useCatalog();
+
+  const filterDefs: { key: string; label: string; values: readonly string[] }[] = [
+    { key: "vend", label: "Vendedor", values: vendedores.map((v) => v.name) },
+    { key: "tipo", label: "Tipo", values: tipos.map((t) => t.label) },
+    { key: "programa", label: "Programa", values: programas.map((p) => p.nombre) },
+    { key: "estado", label: "Estado", values: ESTADOS_EV },
+  ];
+
   const shown = eventos.filter(
     (e) =>
       (!filters.vend || e.vend === filters.vend) &&
-      (!filters.tipo || TIPOS[e.t].label === filters.tipo) &&
+      (!filters.tipo || tipos[e.t]?.label === filters.tipo) &&
       (!filters.programa || e.programa === filters.programa) &&
       (!filters.estado || e.estado === filters.estado),
   );
@@ -173,7 +168,7 @@ export function Calendario({
         </span>
         <span style={{ flex: 1, minWidth: 8 }} />
 
-        {FILTER_DEFS.map((f) => {
+        {filterDefs.map((f) => {
           const key = `c:${f.key}`;
           return (
             <FilterMenu
@@ -207,7 +202,7 @@ export function Calendario({
           borderRadius: 9,
         }}
       >
-        {TIPOS.map((t, i) => (
+        {tipos.map((t) => (
           <span
             key={t.code}
             style={{
@@ -218,7 +213,7 @@ export function Calendario({
               color: T.muted,
             }}
           >
-            <span className="mono" style={badgeStyle(i)}>
+            <span className="mono" style={badgeStyle(t)}>
               {t.code}
             </span>
             {t.label}

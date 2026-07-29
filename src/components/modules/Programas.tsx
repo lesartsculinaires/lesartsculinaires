@@ -1,6 +1,7 @@
 "use client";
 
-import { PROGRAMAS, PROGRAMA_TABS } from "@/data/programas";
+import { PROGRAMA_TABS } from "@/data/programas";
+import { useCatalog } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { isOpen } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
@@ -18,18 +19,19 @@ interface Props {
 const LOW_FILL = 50;
 
 export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props) {
+  const { programas } = useCatalog();
   const soft = softer(accent);
-  const shown = PROGRAMAS.filter((p) => tipo === "Todos" || p.tipo === tipo);
-  const llenos = PROGRAMAS.reduce((a, p) => a + p.cuposLlenos, 0);
-  const totales = PROGRAMAS.reduce((a, p) => a + p.cuposTotal, 0);
+  const shown = programas.filter((p) => tipo === "Todos" || p.tipo === tipo);
+  const llenos = programas.reduce((a, p) => a + p.cuposLlenos, 0);
+  const totales = programas.reduce((a, p) => a + p.cuposTotal, 0);
 
   const stats = [
-    { label: "Programas activos", value: String(PROGRAMAS.length) },
+    { label: "Programas activos", value: String(programas.length) },
     { label: "Cupos vendidos", value: `${llenos}/${totales}` },
     { label: "Ocupación", value: `${Math.round((llenos / totales) * 100)}%` },
     {
       label: "Ingreso proyectado",
-      value: money(PROGRAMAS.reduce((a, p) => a + p.precio * p.cuposLlenos, 0)),
+      value: money(programas.reduce((a, p) => a + p.precio * p.cuposLlenos, 0)),
     },
   ];
 
@@ -66,8 +68,8 @@ export function Programas({ clientes, accent, tipo, onTipo, onOpenLeads }: Props
           const on = value === tipo;
           const n =
             value === "Todos"
-              ? PROGRAMAS.length
-              : PROGRAMAS.filter((p) => p.tipo === value).length;
+              ? programas.length
+              : programas.filter((p) => p.tipo === value).length;
           return (
             <button
               type="button"

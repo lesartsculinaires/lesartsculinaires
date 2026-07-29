@@ -1,7 +1,8 @@
 "use client";
 
-import { TIPOS, TODAY } from "@/data/calendario";
+import { TODAY } from "@/data/calendario";
 import { eventCount, hora } from "@/lib/format";
+import { useCatalog } from "@/lib/catalog";
 import {
   badgeStyle,
   dayLabel,
@@ -24,6 +25,7 @@ const LOOKAHEAD_DAYS = 14;
 const MAX_DAYS = 6;
 
 export function AgendaView({ from, accent, ofDay, onOpen }: Props) {
+  const { tipos } = useCatalog();
   const days = Array.from({ length: LOOKAHEAD_DAYS }, (_, k) => from + k)
     .filter((i) => i <= 62 && ofDay(i).length)
     .slice(0, MAX_DAYS);
@@ -95,13 +97,13 @@ export function AgendaView({ from, accent, ofDay, onOpen }: Props) {
                   >
                     {hora(e.h)}
                   </span>
-                  <span className="mono" style={badgeStyle(e.t, 18)}>
-                    {TIPOS[e.t].code}
+                  <span className="mono" style={badgeStyle(tipos[e.t], 18)}>
+                    {tipos[e.t].code}
                   </span>
                   <span style={{ minWidth: 0, textAlign: "left" }}>
                     <span style={{ display: "block", fontSize: 13 }}>{e.leadName}</span>
                     <span style={{ display: "block", fontSize: 11.5, color: T.faint }}>
-                      {TIPOS[e.t].label} · {e.programa}
+                      {tipos[e.t].label} · {e.programa}
                     </span>
                   </span>
                   <span

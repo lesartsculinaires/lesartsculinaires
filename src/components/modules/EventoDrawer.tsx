@@ -1,7 +1,7 @@
 "use client";
 
-import { CANALES_EV, ESTADOS_EV, NEXT_WHEN, TIPOS } from "@/data/calendario";
-import { VENDEDORES } from "@/data/vendedores";
+import { CANALES_EV, ESTADOS_EV, NEXT_WHEN } from "@/data/calendario";
+import { useCatalog } from "@/lib/catalog";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { hora } from "@/lib/format";
@@ -59,9 +59,11 @@ export function EventoDrawer({
   onConfirmClose,
   onClose,
 }: Props) {
+  const { tipos, vendedores } = useCatalog();
   const soft = softer(accent);
   const canClose = e.estado === "Pendiente" && !closing;
   const ready = nextTipo != null && nextWhen != null;
+  const tipo = tipos[e.t];
 
   const detalle = [
     {
@@ -74,14 +76,14 @@ export function EventoDrawer({
     {
       key: "t",
       label: "Tipo",
-      options: TIPOS.map((t, i) => ({ label: t.label, value: i })),
+      options: tipos.map((t, i) => ({ label: t.label, value: i })),
       current: e.t,
-      valueText: TIPOS[e.t].label,
+      valueText: tipo?.label,
     },
     {
       key: "vend",
       label: "Vendedor",
-      options: VENDEDORES.map((v) => ({ label: v.name, value: v.name })),
+      options: vendedores.map((v) => ({ label: v.name, value: v.name })),
       current: e.vend,
       valueText: undefined,
     },
@@ -108,7 +110,7 @@ export function EventoDrawer({
       nextTipo,
       nextWhen,
       nextIdx,
-      `${TIPOS[nextTipo].label} agendada para el ${dayLabel(nextIdx)}`,
+      `${tipos[nextTipo].label} agendada para el ${dayLabel(nextIdx)}`,
     );
   };
 
@@ -127,16 +129,16 @@ export function EventoDrawer({
           <span
             style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}
           >
-            <span className="mono" style={badgeStyle(e.t, 26)}>
-              {TIPOS[e.t].code}
+            <span className="mono" style={badgeStyle(tipo, 26)}>
+              {tipo?.code}
             </span>
-            <span style={{ fontSize: 12, color: T.muted }}>{TIPOS[e.t].label}</span>
+            <span style={{ fontSize: 12, color: T.muted }}>{tipo?.label}</span>
           </span>
           <h2
             className="dsp"
             style={{ margin: "0 0 4px", fontSize: 21, fontWeight: 700, lineHeight: 1.2 }}
           >
-            {TIPOS[e.t].label} · {e.leadName}
+            {tipo?.label} · {e.leadName}
           </h2>
           <p className="mono" style={{ margin: 0, fontSize: 12.5, color: T.muted }}>
             {dowLabel(e.idx)} {dayLabel(e.idx)} · {hora(e.h)} – {hora(e.h + e.dur / 60)}{" "}
@@ -289,9 +291,9 @@ export function EventoDrawer({
               menuKey="n:tipo"
               label="Tipo de la próxima acción"
               variant="block"
-              options={TIPOS.map((t, i) => ({ label: t.label, value: i }))}
+              options={tipos.map((t, i) => ({ label: t.label, value: i }))}
               current={nextTipo}
-              valueText={nextTipo == null ? "Todos" : TIPOS[nextTipo].label}
+              valueText={nextTipo == null ? "Todos" : tipos[nextTipo].label}
               open={menu === "n:tipo"}
               accent={accent}
               onToggle={() => onToggleMenu("n:tipo")}

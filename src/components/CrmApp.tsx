@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { AREAS } from "@/data/area";
-import { VENDEDORES } from "@/data/vendedores";
+import { CatalogProvider, type CatalogValue } from "@/lib/catalog";
 import { Calendario } from "@/components/modules/Calendario";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
 import { Clientes } from "@/components/modules/Clientes";
@@ -18,27 +18,38 @@ import { SyncBanner } from "@/components/SyncBanner";
 import { useCrm } from "@/hooks/useCrm";
 import { enrich } from "@/lib/calendar";
 import { T } from "@/lib/theme";
-import type { Cliente } from "@/lib/types";
+import type { Cliente, EventoCalendario } from "@/lib/types";
 
 interface Props {
   /** Leads resolved on the server: live Supabase rows, or the seed set. */
   initialClientes: Cliente[];
+  initialEventos: EventoCalendario[];
+  /** Sales team, programme catalogue and activity types. */
+  catalog: CatalogValue;
   /** False when the seed data is being shown instead of the database. */
   live: boolean;
   /** Set when Supabase is configured but the initial read failed. */
   loadError: string | null;
 }
 
-export default function CrmApp({ initialClientes, live, loadError }: Props) {
-  const { state, clientes, eventos, actions, syncError } =
-    useCrm(initialClientes);
+export default function CrmApp({
+  initialClientes,
+  initialEventos,
+  catalog,
+  live,
+  loadError,
+}: Props) {
+  const { state, clientes, eventos, actions, syncError } = useCrm(
+    initialClientes,
+    initialEventos,
+  );
 
   const area = AREAS.find((a) => a.key === state.user) ?? null;
   const accent = area?.accent ?? AREAS[0].accent;
 
   const vistas = useMemo(
-    () => eventos.map((e) => enrich(e, clientes)),
-    [eventos, clientes],
+    () => eventos.map((e) => enrich(e, clientes, catalog.tipos)),
+    [eventos, clientes, catalog.tipos],
   );
 
   if (!area) {
@@ -73,6 +84,7 @@ export default function CrmApp({ initialClientes, live, loadError }: Props) {
   } as const;
 
   return (
+    <CatalogProvider value={catalog}>
     <div className="lac" style={{ minHeight: "100vh", background: T.paper, display: "flex" }}>
       <Sidebar
         area={area}
@@ -202,8 +214,8 @@ export default function CrmApp({ initialClientes, live, loadError }: Props) {
                 idx: state.calIdx,
                 h: 9,
                 t: 0,
-                lead: "LA-0414",
-                vend: VENDEDORES[0].name,
+                lead: clientes[0]?.id ?? "",
+                vend: catalog.vendedores[0]?.name ?? "",
                 canal: "Llamada",
                 estado: "Pendiente",
               })
@@ -307,5 +319,6 @@ export default function CrmApp({ initialClientes, live, loadError }: Props) {
         )}
       </main>
     </div>
+    </CatalogProvider>
   );
 }

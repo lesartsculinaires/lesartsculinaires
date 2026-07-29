@@ -1,7 +1,8 @@
 "use client";
 
 import { ETAPAS, LOST } from "@/data/taxonomia";
-import { SIN_ASIGNAR, VENDEDORES } from "@/data/vendedores";
+import { SIN_ASIGNAR } from "@/data/vendedores";
+import { useCatalog } from "@/lib/catalog";
 import { ImageSlot } from "@/components/ui/ImageSlot";
 import { leadCount, money } from "@/lib/format";
 import { groupBars, isOpen } from "@/lib/selectors";
@@ -30,11 +31,12 @@ export function Equipos({
   onOpenCliente,
   onSeeAll,
 }: Props) {
+  const { vendedores } = useCatalog();
   const soft = softer(accent);
   const open = openTone(accent);
 
-  const vi = Math.min(vend, VENDEDORES.length - 1);
-  const v = VENDEDORES[vi];
+  const vi = Math.min(vend, vendedores.length - 1);
+  const v = vendedores[vi];
 
   const mineOf = (name: string) => clientes.filter((c) => c.vendedor === name);
   const sinAsignar = mineOf(SIN_ASIGNAR);
@@ -50,7 +52,7 @@ export function Equipos({
   const assignAll = () =>
     sinAsignar.forEach((c, i) =>
       onPatch(c.id, {
-        vendedor: VENDEDORES[i % VENDEDORES.length].name,
+        vendedor: vendedores[i % vendedores.length].name,
         etapa: c.etapa === "Nuevo lead" ? "Asignado" : c.etapa,
       }),
     );
@@ -88,11 +90,11 @@ export function Equipos({
             Equipo de ventas
           </p>
           <p className="mono" style={{ margin: 0, fontSize: 11, color: T.faint }}>
-            {VENDEDORES.length} ejecutivos · {clientes.length} leads en cartera
+            {vendedores.length} ejecutivos · {clientes.length} leads en cartera
           </p>
         </div>
 
-        {VENDEDORES.map((x, i) => {
+        {vendedores.map((x, i) => {
           const xs = mineOf(x.name);
           const p = Math.round(
             (xs

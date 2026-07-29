@@ -2,8 +2,8 @@
 
 import type { CSSProperties } from "react";
 
-import { PROGRAMAS } from "@/data/programas";
-import { SIN_ASIGNAR, VENDEDORES } from "@/data/vendedores";
+import { SIN_ASIGNAR } from "@/data/vendedores";
+import { useCatalog } from "@/lib/catalog";
 import {
   CANALES,
   COLS,
@@ -37,20 +37,6 @@ interface Props {
   addBtnStyle: CSSProperties;
 }
 
-/** Dropdown filters, in toolbar order. */
-const FILTER_DEFS: { key: string; label: string; values: readonly string[] }[] = [
-  { key: "canal", label: "Canal", values: CANALES },
-  { key: "etapa", label: "Etapa", values: ETAPAS },
-  { key: "estado", label: "Estado", values: ESTADOS },
-  { key: "territorio", label: "Territorio", values: TERRITORIOS },
-  { key: "producto", label: "Programa", values: PROGRAMAS.map((p) => p.nombre) },
-  {
-    key: "vendedor",
-    label: "Vendedor",
-    values: [...VENDEDORES.map((v) => v.name), SIN_ASIGNAR],
-  },
-];
-
 export function Clientes({
   clientes,
   accent,
@@ -68,12 +54,27 @@ export function Clientes({
   onAdd,
   addBtnStyle,
 }: Props) {
+  const { programas, vendedores } = useCatalog();
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
+  /** Dropdown filters, in toolbar order. */
+  const filterDefs: { key: string; label: string; values: readonly string[] }[] = [
+    { key: "canal", label: "Canal", values: CANALES },
+    { key: "etapa", label: "Etapa", values: ETAPAS },
+    { key: "estado", label: "Estado", values: ESTADOS },
+    { key: "territorio", label: "Territorio", values: TERRITORIOS },
+    { key: "producto", label: "Programa", values: programas.map((p) => p.nombre) },
+    {
+      key: "vendedor",
+      label: "Vendedor",
+      values: [...vendedores.map((v) => v.name), SIN_ASIGNAR],
+    },
+  ];
+
   const list = clientes.filter(
     (c) =>
-      FILTER_DEFS.every(({ key }) => {
+      filterDefs.every(({ key }) => {
         const want = filters[key];
         return !want || String(c[key as keyof Cliente]) === want;
       }) &&
@@ -156,7 +157,7 @@ export function Clientes({
             }}
           />
 
-          {FILTER_DEFS.map((f) => {
+          {filterDefs.map((f) => {
             const key = `f:${f.key}`;
             return (
               <FilterMenu

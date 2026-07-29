@@ -1,7 +1,8 @@
 "use client";
 
-import { CAL_HOURS, HOUR_ROW, TIPOS, TODAY } from "@/data/calendario";
+import { CAL_HOURS, HOUR_ROW, TODAY } from "@/data/calendario";
 import { eventCount, hora } from "@/lib/format";
+import { useCatalog } from "@/lib/catalog";
 import {
   badgeStyle,
   dayLabel,
@@ -24,6 +25,7 @@ const COMPACT_MINUTES = 60;
 const META_MIN_HEIGHT = 58;
 
 export function TimeView({ days, accent, ofDay, onOpen }: Props) {
+  const { tipos } = useCatalog();
   const soft = softer(accent);
   const columns = `48px repeat(${days.length}, minmax(0, 1fr))`;
 
@@ -132,15 +134,15 @@ export function TimeView({ days, accent, ofDay, onOpen }: Props) {
                     padding: compact ? "0 7px" : "5px 7px",
                     background: e.estado === "Pendiente" ? T.surface : T.paper,
                     border: `1px solid ${T.border}`,
-                    borderLeft: `3px solid ${TIPOS[e.t].color}`,
+                    borderLeft: `3px solid ${tipos[e.t].color}`,
                     opacity: e.estado === "No se presentó" ? 0.6 : 1,
                   }}
                 >
                   <span
                     style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}
                   >
-                    <span className="mono" style={badgeStyle(e.t, 17)}>
-                      {TIPOS[e.t].code}
+                    <span className="mono" style={badgeStyle(tipos[e.t], 17)}>
+                      {tipos[e.t].code}
                     </span>
                     <span className="mono" style={{ fontSize: 10, color: "#5F5A53" }}>
                       {hora(e.h)}

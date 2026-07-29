@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 
 import { CANALES, ESTADOS, ESTADO_TONE, ETAPAS, ETAPA_DESC, LOST, TERRITORIOS } from "@/data/taxonomia";
-import { PROGRAMAS } from "@/data/programas";
+import { useCatalog } from "@/lib/catalog";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu, type MenuValue } from "@/components/ui/FilterMenu";
 import { money } from "@/lib/format";
@@ -19,19 +19,6 @@ interface Props {
   onClose: () => void;
 }
 
-/** Editable classification fields, each backed by a controlled dropdown. */
-const CLASIFICACION: {
-  key: "etapa" | "estado" | "producto" | "canal" | "territorio";
-  label: string;
-  values: readonly string[];
-}[] = [
-  { key: "etapa", label: "Etapa", values: ETAPAS },
-  { key: "estado", label: "Estado", values: ESTADOS },
-  { key: "producto", label: "Programa", values: PROGRAMAS.map((p) => p.nombre) },
-  { key: "canal", label: "Canal", values: CANALES },
-  { key: "territorio", label: "Territorio", values: TERRITORIOS },
-];
-
 export function ClienteDrawer({
   cliente: c,
   accent,
@@ -40,8 +27,22 @@ export function ClienteDrawer({
   onPatch,
   onClose,
 }: Props) {
+  const { programas } = useCatalog();
   const soft = softer(accent);
   const stageIdx = ETAPAS.indexOf(c.etapa);
+
+  /** Editable classification fields, each backed by a controlled dropdown. */
+  const clasificacion: {
+    key: "etapa" | "estado" | "producto" | "canal" | "territorio";
+    label: string;
+    values: readonly string[];
+  }[] = [
+    { key: "etapa", label: "Etapa", values: ETAPAS },
+    { key: "estado", label: "Estado", values: ESTADOS },
+    { key: "producto", label: "Programa", values: programas.map((p) => p.nombre) },
+    { key: "canal", label: "Canal", values: CANALES },
+    { key: "territorio", label: "Territorio", values: TERRITORIOS },
+  ];
   const lost = c.etapa === LOST;
   const [estadoFg, estadoBg] = ESTADO_TONE[c.estado] ?? [T.muted, T.paper];
 
@@ -210,7 +211,7 @@ export function ClienteDrawer({
           marginBottom: 20,
         }}
       >
-        {CLASIFICACION.map((f) => {
+        {clasificacion.map((f) => {
           const key = `d:${f.key}`;
           return (
             <FilterMenu

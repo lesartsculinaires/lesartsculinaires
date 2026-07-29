@@ -1,7 +1,8 @@
 "use client";
 
-import { DOW, TIPOS, TODAY } from "@/data/calendario";
+import { DOW, TODAY } from "@/data/calendario";
 import { hora } from "@/lib/format";
+import { useCatalog } from "@/lib/catalog";
 import {
   acadOf,
   badgeStyle,
@@ -25,6 +26,7 @@ const CELLS = 35;
 const MAX_PER_CELL = 2;
 
 export function MonthView({ gridStart, month, accent, ofDay, onOpen }: Props) {
+  const { tipos, programas } = useCatalog();
   const soft = softer(accent);
 
   return (
@@ -107,7 +109,7 @@ export function MonthView({ gridStart, month, accent, ofDay, onOpen }: Props) {
                     maxWidth: "72%",
                   }}
                 >
-                  {inMonth ? acadOf(i) : ""}
+                  {inMonth ? acadOf(i, programas) : ""}
                 </span>
               </div>
 
@@ -128,8 +130,8 @@ export function MonthView({ gridStart, month, accent, ofDay, onOpen }: Props) {
                       padding: "2px 0",
                     }}
                   >
-                    <span className="mono" style={badgeStyle(e.t, 16)}>
-                      {TIPOS[e.t].code}
+                    <span className="mono" style={badgeStyle(tipos[e.t], 16)}>
+                      {tipos[e.t].code}
                     </span>
                     <span className="mono" style={{ fontSize: 10, color: T.muted }}>
                       {hora(e.h)}

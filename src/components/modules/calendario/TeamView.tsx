@@ -1,8 +1,7 @@
 "use client";
 
-import { TIPOS } from "@/data/calendario";
-import { VENDEDORES } from "@/data/vendedores";
 import { eventCount, hora } from "@/lib/format";
+import { useCatalog } from "@/lib/catalog";
 import { badgeStyle, type EventoVista } from "@/lib/calendar";
 import { T } from "@/lib/theme";
 
@@ -15,6 +14,7 @@ interface Props {
 
 /** One column per sales rep, showing that day's load side by side. */
 export function TeamView({ day, ofDay, onOpen }: Props) {
+  const { tipos, vendedores } = useCatalog();
   const dayEvents = ofDay(day);
 
   return (
@@ -26,7 +26,7 @@ export function TeamView({ day, ofDay, onOpen }: Props) {
         alignItems: "start",
       }}
     >
-      {VENDEDORES.map((v) => {
+      {vendedores.map((v) => {
         const evs = dayEvents.filter((e) => e.vend === v.name);
         const mins = evs.reduce((a, e) => a + e.dur, 0);
 
@@ -83,7 +83,7 @@ export function TeamView({ day, ofDay, onOpen }: Props) {
                     borderRadius: 8,
                     background: T.surface,
                     border: `1px solid ${T.border}`,
-                    borderLeft: `3px solid ${TIPOS[e.t].color}`,
+                    borderLeft: `3px solid ${tipos[e.t].color}`,
                     opacity: e.estado === "Pendiente" ? 1 : 0.65,
                   }}
                 >
@@ -95,8 +95,8 @@ export function TeamView({ day, ofDay, onOpen }: Props) {
                       marginBottom: 4,
                     }}
                   >
-                    <span className="mono" style={badgeStyle(e.t, 17)}>
-                      {TIPOS[e.t].code}
+                    <span className="mono" style={badgeStyle(tipos[e.t], 17)}>
+                      {tipos[e.t].code}
                     </span>
                     <span className="mono" style={{ fontSize: 11, color: T.muted }}>
                       {hora(e.h)} · {e.dur}′
@@ -113,7 +113,7 @@ export function TeamView({ day, ofDay, onOpen }: Props) {
                       textAlign: "left",
                     }}
                   >
-                    {TIPOS[e.t].label} · {e.canal}
+                    {tipos[e.t].label} · {e.canal}
                   </span>
                 </button>
               ))}

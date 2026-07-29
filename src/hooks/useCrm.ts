@@ -2,9 +2,15 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { createCliente, updateCliente, type ActionResult } from "@/app/actions";
+import {
+  createCliente,
+  createEvento,
+  updateCliente,
+  updateEvento,
+  type ActionResult,
+} from "@/app/actions";
 import { NUEVO_CLIENTE_BASE } from "@/data/clientes";
-import { CAL_EVENTS, TODAY, type CalView } from "@/data/calendario";
+import { TODAY, type CalView } from "@/data/calendario";
 import { COLS } from "@/data/taxonomia";
 import type {
   Cliente,
@@ -78,8 +84,12 @@ const INITIAL: CrmState = {
 /**
  * @param initialClientes Leads loaded on the server — either live rows from
  *   Supabase or the bundled seed set.
+ * @param initialEventos Calendar events, from the same source.
  */
-export function useCrm(initialClientes: readonly Cliente[]) {
+export function useCrm(
+  initialClientes: readonly Cliente[],
+  initialEventos: readonly EventoCalendario[],
+) {
   const [state, setState] = useState<CrmState>(INITIAL);
   /** Last write failure, surfaced as a banner without rolling the UI back. */
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -113,11 +123,11 @@ export function useCrm(initialClientes: readonly Cliente[]) {
 
   const eventos = useMemo<EventoCalendario[]>(
     () =>
-      [...CAL_EVENTS, ...state.calExtra].map((e) => ({
+      [...initialEventos, ...state.calExtra].map((e) => ({
         ...e,
         ...(state.calEdits[e.id] ?? {}),
       })),
-    [state.calExtra, state.calEdits],
+    [state.calExtra, state.calEdits, initialEventos],
   );
 
   const actions = useMemo(
@@ -191,23 +201,23 @@ export function useCrm(initialClientes: readonly Cliente[]) {
       closeEvent: () =>
         patchState({ calSel: null, calClosing: false, menu: null }),
 
-      /**
-       * Calendar events are not backed by Supabase yet — the CSV covered leads
-       * only, so these stay session-local.
-       */
-      patchEvento: (id: string, obj: EventoPatch) =>
+      patchEvento: (id: string, obj: EventoPatch) => {
         patchState((s) => ({
           calEdits: { ...s.calEdits, [id]: { ...(s.calEdits[id] ?? {}), ...obj } },
           menu: null,
-        })),
+        }));
+        sync(updateEvento(id, obj));
+      },
 
-      addEvento: (e: EventoCalendario) =>
+      addEvento: (e: EventoCalendario) => {
         patchState((s) => ({
           calExtra: [...s.calExtra, e],
           calSel: e.id,
           calClosing: false,
           menu: null,
-        })),
+        }));
+        sync(createEvento(e));
+      },
 
       startClose: () =>
         patchState({ calClosing: true, nextTipo: null, nextWhen: null }),
@@ -226,38 +236,39 @@ export function useCrm(initialClientes: readonly Cliente[]) {
         offset: number,
         nextIdx: number,
         nextText: string,
-      ) =>
-        setState((s) => {
-          const id = `EV-X${Object.keys(s.calEdits).length}${offset}${tipo}`;
-          return {
-            ...s,
-            calExtra: [
-              ...s.calExtra,
-              {
-                id,
-                idx: nextIdx,
-                h: 10,
-                t: tipo,
-                lead: source.lead,
-                vend: source.vend,
-                canal: tipo === 1 ? "Presencial" : "Llamada",
-                estado: "Pendiente",
-              },
-            ],
-            calEdits: {
-              ...s.calEdits,
-              [source.id]: {
-                ...(s.calEdits[source.id] ?? {}),
-                estado: "Realizado",
-                nextText,
-              },
-            },
-            calClosing: false,
-            nextTipo: null,
-            nextWhen: null,
-            menu: null,
-          };
-        }),
+      ) => {
+        const seguimiento: EventoCalendario = {
+          id: `EV-X${Object.keys(stateRef.current.calEdits).length}${offset}${tipo}`,
+          idx: nextIdx,
+          h: 10,
+          t: tipo,
+          lead: source.lead,
+          vend: source.vend,
+          canal: tipo === 1 ? "Presencial" : "Llamada",
+          estado: "Pendiente",
+        };
+        const cierre: EventoPatch = { estado: "Realizado", nextText };
+
+        patchState((s) => ({
+          calExtra: [...s.calExtra, seguimiento],
+          calEdits: {
+            ...s.calEdits,
+            [source.id]: { ...(s.calEdits[source.id] ?? {}), ...cierre },
+          },
+          calClosing: false,
+          nextTipo: null,
+          nextWhen: null,
+          menu: null,
+        }));
+
+        // Book the follow-up first: if that fails, the original event stays
+        // Pendiente rather than being closed with nothing scheduled after it.
+        sync(
+          createEvento(seguimiento).then((r) =>
+            r.ok ? updateEvento(source.id, cierre) : r,
+          ),
+        );
+      },
 
       dismissSyncError: () => setSyncError(null),
     }),
