@@ -1,11 +1,17 @@
 name: Deploy Supabase migrations
 
+# Sólo manual, a propósito.
+#
+# Corría automáticamente en cada push a main que tocara supabase/migrations/**,
+# pero `supabase db push` aplicaría también 20260722000000_initial_schema.sql
+# —el esquema de recetas heredado, que no tiene relación con el CRM— y crearía
+# siete tablas ajenas en la base de producción. Las migraciones del CRM ya están
+# aplicadas y sus nombres de archivo coinciden con lo registrado en
+# supabase_migrations, así que un push las ve como hechas.
+#
+# Antes de volver a activarlo en automático: borrá esa migración heredada (o
+# marcala como aplicada) y confirmá que los tres secrets estén cargados.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "supabase/migrations/**"
   workflow_dispatch: {}
 
 jobs:
