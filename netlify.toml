@@ -15,12 +15,3 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-# Las cabeceras van acá y no en next.config.ts para que apliquen también a
-# las respuestas servidas desde el CDN.
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
