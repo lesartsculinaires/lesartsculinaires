@@ -51,11 +51,8 @@ necesitan ids.
 El repo trae `netlify.toml` con el runtime de Next.js ya configurado, y el sitio
 `crm-les-arts` ya existe con las dos variables de entorno cargadas.
 
-**Falta un paso manual:** conectar el sitio al repositorio para que cada push
-despliegue solo. En Netlify → **Site configuration → Build & deploy → Continuous
-deployment → Link repository** → GitHub → `lesartsculinaires/lesartsculinaires`,
-rama de producción `main`. Hasta que eso esté hecho, los despliegues se hacen a
-mano con `npx netlify deploy --build --prod`.
+El sitio está enlazado al repositorio: cada push a `main` dispara un build y se
+publica solo. No hace falta desplegar a mano.
 
 Si querés crear el sitio desde cero en otra cuenta:
 
