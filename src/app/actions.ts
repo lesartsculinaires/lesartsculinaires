@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAdminClient } from "@/lib/supabase/admin";
+import { SUPABASE_URL } from "@/lib/supabase/config";
 import { getServerClient } from "@/lib/supabase/server";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
@@ -350,4 +351,85 @@ export async function eliminarUsuario(userId: string): Promise<ActionResult> {
 
   revalidatePath("/");
   return { ok: true, error: null };
+}
+
+// ------------------------------------------------------- diagnóstico de la llave
+
+export interface Diagnostico {
+  /** The variable exists and is not blank. */
+  presente: boolean;
+  /** Character count. Never the value itself. */
+  longitud: number;
+  /**
+   * Which kind of key was pasted. The two wrong ones are worth naming: the
+   * publishable/anon key is the most common mistake, because it sits right
+   * next to the service_role key on the same Supabase page.
+   */
+  formato:
+    | "service_role"
+    | "secreta"
+    | "publicable-o-anon"
+    | "desconocido"
+    | "ausente";
+  /** True when the value is byte-for-byte the public anon key. */
+  esLaAnon: boolean;
+  /** Result of an actual call to Supabase with the key. */
+  prueba: "ok" | "sin-llave" | string;
+  /** Project the key points at, so a key from another project is visible. */
+  proyecto: string;
+}
+
+/**
+ * Tell an administrator exactly why account creation is or is not working.
+ *
+ * "Falta la llave" covers four different problems — not set, set with the
+ * wrong scope, wrong key pasted, key from another project — and they need
+ * different fixes. This reports which one it is, without ever returning the
+ * key: only its length, its shape, and whether Supabase accepts it.
+ */
+export async function diagnosticarServiceRole(): Promise<
+  { ok: true; datos: Diagnostico } | { ok: false; error: string }
+> {
+  const problema = await exigirAdmin();
+  if (problema) return { ok: false, error: problema };
+
+  const bruto = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const llave = bruto.trim();
+  const anon =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    "";
+
+  const datos: Diagnostico = {
+    presente: llave.length > 0,
+    longitud: llave.length,
+    formato: "ausente",
+    esLaAnon: llave.length > 0 && llave === anon.trim(),
+    prueba: "sin-llave",
+    proyecto: SUPABASE_URL.replace(/^https:\/\/|\.supabase\.co.*$/g, ""),
+  };
+
+  if (llave.startsWith("sb_publishable_")) datos.formato = "publicable-o-anon";
+  else if (llave.startsWith("sb_secret_")) datos.formato = "secreta";
+  else if (llave.startsWith("eyJ")) {
+    // A Supabase JWT carries its role in the payload; anon and service_role
+    // look identical from the outside, so the claim is what tells them apart.
+    try {
+      const carga = JSON.parse(
+        Buffer.from(llave.split(".")[1] ?? "", "base64").toString("utf8"),
+      );
+      datos.formato =
+        carga.role === "service_role" ? "service_role" : "publicable-o-anon";
+    } catch {
+      datos.formato = "desconocido";
+    }
+  } else if (llave.length > 0) datos.formato = "desconocido";
+
+  const admin = getAdminClient();
+  if (admin) {
+    const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
+    datos.prueba = error ? error.message : "ok";
+  }
+
+  return { ok: true, datos };
 }

@@ -8,9 +8,11 @@ import {
   cambiarPassword,
   crearRol,
   crearUsuario,
+  diagnosticarServiceRole,
   eliminarRol,
   eliminarUsuario,
   guardarPermisos,
+  type Diagnostico,
 } from "@/app/actions";
 import { T, soft, softer } from "@/lib/theme";
 import { ACCIONES, type Accesos, type Accion, type Permiso } from "@/lib/types";
@@ -59,6 +61,8 @@ export function UsuariosRoles({
   const [nRol, setNRol] = useState<string>("");
   const [passDe, setPassDe] = useState<string | null>(null);
   const [passNueva, setPassNueva] = useState("");
+  const [diag, setDiag] = useState<Diagnostico | null>(null);
+  const [diagCargando, setDiagCargando] = useState(false);
   const [pestana, setPestana] = useState<Pestana>("usuarios");
   const [rolSel, setRolSel] = useState<number | null>(
     accesos.roles[0]?.id ?? null,
@@ -206,6 +210,18 @@ export function UsuariosRoles({
     onRefresh();
   };
 
+  const correrDiagnostico = async () => {
+    setDiagCargando(true);
+    setError(null);
+    const r = await diagnosticarServiceRole();
+    setDiagCargando(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setDiag(r.datos);
+  };
+
   const campo = {
     height: 32,
     padding: "0 10px",
@@ -328,15 +344,12 @@ export function UsuariosRoles({
               }}
             >
               {!puedeCrearCuentas ? (
-                <p style={{ margin: 0, fontSize: 12.5, color: "#7A5A12", lineHeight: 1.55 }}>
-                  Para crear cuentas desde acá falta cargar la variable{" "}
-                  <code className="mono">SUPABASE_SERVICE_ROLE_KEY</code> en el
-                  servidor (Netlify → Site configuration → Environment variables, y
-                  en <code className="mono">.env.local</code> para desarrollo). La
-                  llave está en Supabase → Project Settings → API. Mientras tanto las
-                  cuentas se crean en Supabase → Authentication → Users y acá se les
-                  asigna el rol.
-                </p>
+                <PanelLlave
+                  accent={accent}
+                  diag={diag}
+                  cargando={diagCargando}
+                  onProbar={correrDiagnostico}
+                />
               ) : (
                 <>
                   <div
@@ -430,6 +443,29 @@ export function UsuariosRoles({
                       La cuenta queda confirmada y puede entrar de inmediato. Pasale
                       la contraseña por un canal seguro.
                     </span>
+                  </div>
+
+                  {/*
+                    La llave puede estar cargada y aun así no servir: la de otro
+                    proyecto, o la pública pegada por error. Sin esto el único
+                    síntoma sería un error críptico al apretar "Crear usuario".
+                  */}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+                    <button
+                      type="button"
+                      onClick={correrDiagnostico}
+                      disabled={diagCargando}
+                      style={{ fontSize: 12, color: accent, textDecoration: "underline" }}
+                    >
+                      {diagCargando
+                        ? "Probando…"
+                        : "¿Falla al crear? Probar la conexión con Supabase"}
+                    </button>
+                    {diag && (
+                      <div style={{ marginTop: 10 }}>
+                        <ResultadoDiag diag={diag} />
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -955,5 +991,178 @@ export function UsuariosRoles({
         </div>
       )}
     </div>
+  );
+}
+
+// ------------------------------------------------- diagnóstico de la llave
+
+/** One line of the checklist, with its own verdict. */
+function Linea({ ok, texto }: { ok: boolean | null; texto: React.ReactNode }) {
+  const color = ok == null ? T.faint : ok ? "#2F6B4F" : "#B85042";
+  return (
+    <li style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
+      <span style={{ color, fontSize: 12, lineHeight: 1.5, flexShrink: 0 }}>
+        {ok == null ? "·" : ok ? "✓" : "✕"}
+      </span>
+      <span style={{ fontSize: 12.5, lineHeight: 1.5 }}>{texto}</span>
+    </li>
+  );
+}
+
+/**
+ * Why account creation is unavailable, and what to change.
+ *
+ * "Falta la llave" hides four different problems that need four different
+ * fixes, so guessing between them wastes the administrator's time. The
+ * button asks the server what it actually sees and names the one that applies.
+ */
+function PanelLlave({
+  accent,
+  diag,
+  cargando,
+  onProbar,
+}: {
+  accent: string;
+  diag: Diagnostico | null;
+  cargando: boolean;
+  onProbar: () => void;
+}) {
+  return (
+    <div>
+      <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#7A5A12", lineHeight: 1.55 }}>
+        Crear cuentas necesita la llave <code className="mono">service_role</code> de
+        Supabase, cargada en el servidor como{" "}
+        <code className="mono">SUPABASE_SERVICE_ROLE_KEY</code>. Ahora mismo el
+        servidor no la está viendo. Probá la conexión para saber por qué.
+      </p>
+
+      <button
+        type="button"
+        onClick={onProbar}
+        disabled={cargando}
+        style={{
+          height: 32,
+          padding: "0 14px",
+          fontSize: 12.5,
+          borderRadius: 6,
+          background: cargando ? T.border : accent,
+          color: cargando ? T.faint : "#fff",
+          marginBottom: diag ? 14 : 0,
+        }}
+      >
+        {cargando ? "Probando…" : diag ? "Probar de nuevo" : "Probar conexión"}
+      </button>
+
+      {diag && <ResultadoDiag diag={diag} />}
+    </div>
+  );
+}
+
+/** La lista de comprobaciones, compartida por los dos estados del panel. */
+function ResultadoDiag({ diag }: { diag: Diagnostico }) {
+  const esAnon = diag.esLaAnon || diag.formato === "publicable-o-anon";
+  return (
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 8,
+          background: T.surface,
+          border: `1px solid ${T.border}`,
+        }}
+      >
+        <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+          <Linea
+            ok={diag.presente}
+            texto={
+              diag.presente ? (
+                <>
+                  La variable llega al servidor ({diag.longitud} caracteres).
+                </>
+              ) : (
+                <>
+                  <strong>La variable no llega al servidor.</strong> Existe en
+                  Netlify pero la función no la recibe, o todavía no está creada.
+                </>
+              )
+            }
+          />
+
+          {diag.presente && (
+            <Linea
+              ok={!esAnon && diag.formato !== "desconocido"}
+              texto={
+                esAnon ? (
+                  <>
+                    <strong>Es la llave pública, no la privada.</strong>{" "}
+                    {diag.esLaAnon
+                      ? "Es exactamente la misma que ya usa el navegador."
+                      : "Empieza con sb_publishable_ o su rol es anon."}{" "}
+                    La que sirve es <code className="mono">service_role</code>, que
+                    está en la misma pantalla de Supabase pero oculta detrás de
+                    «Reveal».
+                  </>
+                ) : diag.formato === "desconocido" ? (
+                  <>
+                    El valor no tiene forma de llave de Supabase. Puede haber
+                    quedado cortado, o con comillas o espacios al pegarlo.
+                  </>
+                ) : (
+                  <>Tiene forma de llave privada ({diag.formato}).</>
+                )
+              }
+            />
+          )}
+
+          {diag.presente && (
+            <Linea
+              ok={diag.prueba === "ok"}
+              texto={
+                diag.prueba === "ok" ? (
+                  <>
+                    Supabase la acepta. Recargá la página y el formulario queda
+                    habilitado.
+                  </>
+                ) : (
+                  <>
+                    Supabase la rechaza: <em>{diag.prueba}</em>. Si la llave es
+                    correcta, revisá que sea del proyecto{" "}
+                    <code className="mono">{diag.proyecto}</code> y no de otro.
+                  </>
+                )
+              }
+            />
+          )}
+        </ul>
+
+        {!diag.presente && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+            <p style={{ margin: "0 0 7px", fontSize: 12, fontWeight: 500 }}>
+              Qué revisar en Netlify, en este orden:
+            </p>
+            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.6, color: T.muted }}>
+              <li>
+                <strong>Scopes.</strong> Site configuration → Environment variables →
+                la variable → Options → Edit. Si dice solo «Builds», las funciones
+                del servidor no la leen. Tiene que incluir <strong>Functions</strong>{" "}
+                (lo más simple es «All scopes»).
+              </li>
+              <li>
+                <strong>Contexto.</strong> En la misma pantalla, el valor tiene que
+                estar en <strong>Production</strong>, no solo en «Deploy previews»
+                o en una rama.
+              </li>
+              <li>
+                <strong>Nombre exacto.</strong>{" "}
+                <code className="mono">SUPABASE_SERVICE_ROLE_KEY</code>, sin{" "}
+                <code className="mono">NEXT_PUBLIC_</code> adelante y sin espacios.
+              </li>
+              <li>
+                <strong>Redeploy.</strong> Deploys → Trigger deploy → Deploy site.
+                Después volvé a probar acá.
+              </li>
+            </ol>
+          </div>
+        )}
+      </div>
   );
 }
