@@ -25,6 +25,8 @@ interface Props {
   accesos: Accesos;
   /** True when the roles tables do not exist yet. */
   faltaMigracionAccesos: boolean;
+  /** False when the server has no service-role key to create logins with. */
+  puedeCrearCuentas: boolean;
   loadError: string | null;
 }
 
@@ -38,6 +40,7 @@ export default function CrmApp({
   userEmail,
   accesos,
   faltaMigracionAccesos,
+  puedeCrearCuentas,
   loadError,
 }: Props) {
   const router = useRouter();
@@ -185,6 +188,7 @@ export default function CrmApp({
               <UsuariosRoles
                 accesos={accesos}
                 accent={accent}
+                puedeCrearCuentas={puedeCrearCuentas}
                 onRefresh={() => router.refresh()}
               />
             ) : (

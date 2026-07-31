@@ -5,8 +5,11 @@ import { useMemo, useState } from "react";
 import {
   actualizarRol,
   actualizarUsuario,
+  cambiarPassword,
   crearRol,
+  crearUsuario,
   eliminarRol,
+  eliminarUsuario,
   guardarPermisos,
 } from "@/app/actions";
 import { T, soft, softer } from "@/lib/theme";
@@ -15,6 +18,8 @@ import { ACCIONES, type Accesos, type Accion, type Permiso } from "@/lib/types";
 interface Props {
   accesos: Accesos;
   accent: string;
+  /** False when SUPABASE_SERVICE_ROLE_KEY is missing on the server. */
+  puedeCrearCuentas: boolean;
   onRefresh: () => void;
 }
 
@@ -41,7 +46,19 @@ function aBorrador(permisos: readonly Permiso[], rolId: number, claves: string[]
   return out;
 }
 
-export function UsuariosRoles({ accesos, accent, onRefresh }: Props) {
+export function UsuariosRoles({
+  accesos,
+  accent,
+  puedeCrearCuentas,
+  onRefresh,
+}: Props) {
+  const [altaAbierta, setAltaAbierta] = useState(false);
+  const [nCorreo, setNCorreo] = useState("");
+  const [nPass, setNPass] = useState("");
+  const [nNombre, setNNombre] = useState("");
+  const [nRol, setNRol] = useState<string>("");
+  const [passDe, setPassDe] = useState<string | null>(null);
+  const [passNueva, setPassNueva] = useState("");
   const [pestana, setPestana] = useState<Pestana>("usuarios");
   const [rolSel, setRolSel] = useState<number | null>(
     accesos.roles[0]?.id ?? null,
@@ -137,6 +154,67 @@ export function UsuariosRoles({ accesos, accent, onRefresh }: Props) {
     else onRefresh();
   };
 
+  const agregarUsuario = async () => {
+    setBusy(true);
+    setError(null);
+    setAviso(null);
+    const r = await crearUsuario(
+      nCorreo,
+      nPass,
+      nRol ? Number(nRol) : null,
+      nNombre,
+    );
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setAviso(`Cuenta creada para ${nCorreo.trim().toLowerCase()}.`);
+    setNCorreo("");
+    setNPass("");
+    setNNombre("");
+    setNRol("");
+    setAltaAbierta(false);
+    onRefresh();
+  };
+
+  const guardarPassword = async (userId: string) => {
+    setBusy(true);
+    setError(null);
+    setAviso(null);
+    const r = await cambiarPassword(userId, passNueva);
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setPassDe(null);
+    setPassNueva("");
+    setAviso("Contraseña actualizada.");
+  };
+
+  const borrarUsuario = async (userId: string, correo: string) => {
+    if (!confirm(`¿Eliminar la cuenta de ${correo}? No se puede deshacer.`)) return;
+    setBusy(true);
+    setError(null);
+    const r = await eliminarUsuario(userId);
+    setBusy(false);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    onRefresh();
+  };
+
+  const campo = {
+    height: 32,
+    padding: "0 10px",
+    fontSize: 13,
+    border: `1px solid ${T.border}`,
+    borderRadius: 6,
+    background: T.paper,
+  } as const;
+
   const tabStyle = (p: Pestana) => ({
     display: "flex",
     alignItems: "center",
@@ -175,6 +253,21 @@ export function UsuariosRoles({ accesos, accent, onRefresh }: Props) {
         </p>
       )}
 
+      {pestana === "usuarios" && aviso && (
+        <p
+          style={{
+            margin: "0 0 14px",
+            padding: "10px 14px",
+            fontSize: 12.5,
+            borderRadius: 9,
+            background: "#E6F0E9",
+            color: "#2F6B4F",
+          }}
+        >
+          {aviso}
+        </p>
+      )}
+
       {pestana === "usuarios" ? (
         <div
           style={{
@@ -184,21 +277,169 @@ export function UsuariosRoles({ accesos, accent, onRefresh }: Props) {
             overflow: "hidden",
           }}
         >
-          <div style={{ padding: "14px 18px", borderBottom: `1px solid ${T.border}` }}>
-            <p className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-              Usuarios
-            </p>
-            <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-              {accesos.usuarios.length}{" "}
-              {accesos.usuarios.length === 1 ? "cuenta" : "cuentas"}. Las cuentas se
-              crean en Supabase → Authentication → Users; acá se les asigna el rol.
-            </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+              padding: "14px 18px",
+              borderBottom: `1px solid ${T.border}`,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <p className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
+                Usuarios
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
+                {accesos.usuarios.length}{" "}
+                {accesos.usuarios.length === 1 ? "cuenta" : "cuentas"} con acceso a
+                la plataforma. Creá la cuenta con correo y contraseña, y asignale el
+                rol que define qué puede ver.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAltaAbierta((v) => !v);
+                setError(null);
+                setAviso(null);
+              }}
+              style={{
+                flexShrink: 0,
+                height: 32,
+                padding: "0 14px",
+                fontSize: 12.5,
+                borderRadius: 6,
+                background: altaAbierta ? T.paper : accent,
+                color: altaAbierta ? T.muted : "#fff",
+              }}
+            >
+              {altaAbierta ? "Cancelar" : "+ Nuevo usuario"}
+            </button>
           </div>
+
+          {altaAbierta && (
+            <div
+              style={{
+                padding: "16px 18px",
+                borderBottom: `1px solid ${T.border}`,
+                background: softer(accent),
+              }}
+            >
+              {!puedeCrearCuentas ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: "#7A5A12", lineHeight: 1.55 }}>
+                  Para crear cuentas desde acá falta cargar la variable{" "}
+                  <code className="mono">SUPABASE_SERVICE_ROLE_KEY</code> en el
+                  servidor (Netlify → Site configuration → Environment variables, y
+                  en <code className="mono">.env.local</code> para desarrollo). La
+                  llave está en Supabase → Project Settings → API. Mientras tanto las
+                  cuentas se crean en Supabase → Authentication → Users y acá se les
+                  asigna el rol.
+                </p>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <label style={{ display: "block" }}>
+                      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+                        Correo
+                      </span>
+                      <input
+                        type="email"
+                        autoComplete="off"
+                        value={nCorreo}
+                        onChange={(e) => setNCorreo(e.target.value)}
+                        placeholder="persona@lesarts.com"
+                        style={{ ...campo, width: "100%", background: T.surface }}
+                      />
+                    </label>
+                    <label style={{ display: "block" }}>
+                      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+                        Contraseña
+                      </span>
+                      <input
+                        type="text"
+                        autoComplete="new-password"
+                        value={nPass}
+                        onChange={(e) => setNPass(e.target.value)}
+                        placeholder="mínimo 8 caracteres"
+                        style={{ ...campo, width: "100%", background: T.surface }}
+                      />
+                    </label>
+                    <label style={{ display: "block" }}>
+                      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+                        Nombre
+                      </span>
+                      <input
+                        value={nNombre}
+                        onChange={(e) => setNNombre(e.target.value)}
+                        placeholder="opcional"
+                        style={{ ...campo, width: "100%", background: T.surface }}
+                      />
+                    </label>
+                    <label style={{ display: "block" }}>
+                      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+                        Rol
+                      </span>
+                      <select
+                        value={nRol}
+                        onChange={(e) => setNRol(e.target.value)}
+                        style={{ ...campo, width: "100%", background: T.surface }}
+                      >
+                        <option value="">Sin rol</option>
+                        {accesos.roles.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      marginTop: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={agregarUsuario}
+                      disabled={busy || !nCorreo.trim() || nPass.length < 8}
+                      style={{
+                        height: 34,
+                        padding: "0 16px",
+                        fontSize: 13,
+                        borderRadius: 6,
+                        background: !busy && nCorreo.trim() && nPass.length >= 8 ? accent : T.border,
+                        color: !busy && nCorreo.trim() && nPass.length >= 8 ? "#fff" : T.faint,
+                      }}
+                    >
+                      {busy ? "Creando…" : "Crear usuario"}
+                    </button>
+                    <span style={{ fontSize: 11.5, color: T.muted }}>
+                      La cuenta queda confirmada y puede entrar de inmediato. Pasale
+                      la contraseña por un canal seguro.
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
-                {["Correo", "Nombre", "Rol", "Estado"].map((h) => (
+                {["Correo", "Nombre", "Rol", "Estado", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -262,12 +503,119 @@ export function UsuariosRoles({ accesos, accent, onRefresh }: Props) {
                       {u.activo ? "Activo" : "Inactivo"}
                     </span>
                   </td>
+                  <td style={{ padding: "8px 18px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      disabled={!puedeCrearCuentas}
+                      title={
+                        puedeCrearCuentas
+                          ? "Cambiar contraseña"
+                          : "Falta SUPABASE_SERVICE_ROLE_KEY en el servidor"
+                      }
+                      onClick={() => {
+                        setPassDe(passDe === u.id ? null : u.id);
+                        setPassNueva("");
+                        setError(null);
+                        setAviso(null);
+                      }}
+                      style={{
+                        height: 26,
+                        padding: "0 10px",
+                        fontSize: 11.5,
+                        borderRadius: 5,
+                        border: `1px solid ${T.border}`,
+                        color: puedeCrearCuentas ? T.muted : T.faint,
+                        cursor: puedeCrearCuentas ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      Contraseña
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!puedeCrearCuentas || u.id === accesos.yo?.id}
+                      title={
+                        u.id === accesos.yo?.id
+                          ? "No podés eliminar tu propia cuenta"
+                          : "Eliminar cuenta"
+                      }
+                      onClick={() => borrarUsuario(u.id, u.correo)}
+                      style={{
+                        marginLeft: 6,
+                        width: 26,
+                        height: 26,
+                        borderRadius: 5,
+                        border: `1px solid ${
+                          puedeCrearCuentas && u.id !== accesos.yo?.id ? "#E4B4AC" : T.border
+                        }`,
+                        color:
+                          puedeCrearCuentas && u.id !== accesos.yo?.id ? "#B85042" : T.border,
+                        fontSize: 12,
+                        cursor:
+                          puedeCrearCuentas && u.id !== accesos.yo?.id
+                            ? "pointer"
+                            : "not-allowed",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </td>
                 </tr>
               ))}
+
+              {passDe && (
+                <tr style={{ borderTop: `1px solid ${T.border}`, background: softer(accent) }}>
+                  <td colSpan={5} style={{ padding: "12px 18px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12.5, color: T.muted }}>
+                        Nueva contraseña para{" "}
+                        {accesos.usuarios.find((x) => x.id === passDe)?.correo}
+                      </span>
+                      <input
+                        type="text"
+                        autoComplete="new-password"
+                        value={passNueva}
+                        onChange={(e) => setPassNueva(e.target.value)}
+                        placeholder="mínimo 8 caracteres"
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && passNueva.length >= 8 && guardarPassword(passDe)
+                        }
+                        style={{ ...campo, width: 220, background: T.surface }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => guardarPassword(passDe)}
+                        disabled={busy || passNueva.length < 8}
+                        style={{
+                          height: 32,
+                          padding: "0 14px",
+                          fontSize: 12.5,
+                          borderRadius: 6,
+                          background: passNueva.length >= 8 && !busy ? accent : T.border,
+                          color: passNueva.length >= 8 && !busy ? "#fff" : T.faint,
+                        }}
+                      >
+                        {busy ? "Guardando…" : "Guardar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPassDe(null);
+                          setPassNueva("");
+                        }}
+                        style={{ fontSize: 12.5, color: T.muted }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
               {accesos.usuarios.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
-                    No hay usuarios registrados.
+                  <td colSpan={5} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
+                    No hay usuarios registrados. Usá “+ Nuevo usuario” para crear el
+                    primer acceso.
                   </td>
                 </tr>
               )}

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import CrmApp from "@/components/CrmApp";
+import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
 import {
   fetchCatalogo,
@@ -33,6 +34,7 @@ export default async function Page() {
       userEmail={user.email ?? ""}
       accesos={accesos.data}
       faltaMigracionAccesos={accesos.faltaMigracion}
+      puedeCrearCuentas={hayServiceRole()}
       loadError={loadError}
     />
   );

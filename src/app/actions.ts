@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient } from "@/lib/supabase/server";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
@@ -227,6 +228,124 @@ export async function actualizarUsuario(
   if (!supabase) return NO_SESSION;
 
   const { error } = await supabase.from("usuarios").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Confirm the caller is an administrator.
+ *
+ * Every action below reaches for the service-role key, which ignores RLS —
+ * so the check has to happen here, in the server action, not in the screen
+ * that calls it.
+ */
+async function exigirAdmin(): Promise<string | null> {
+  const supabase = await getServerClient();
+  if (!supabase) return "Sesión no válida. Volvé a iniciar sesión.";
+
+  const { data, error } = await supabase.rpc("es_admin");
+  if (error) return error.message;
+  if (data !== true) return "Solo un administrador puede administrar usuarios.";
+  return null;
+}
+
+const SIN_LLAVE =
+  "Falta SUPABASE_SERVICE_ROLE_KEY. Cargala en Netlify → Site configuration → " +
+  "Environment variables (y en .env.local para desarrollo) para poder crear cuentas.";
+
+/**
+ * Create a login and its application user in one step.
+ *
+ * The account is created already confirmed: an administrator handing out
+ * access should not have to wait for the person to click a link in an email.
+ */
+export async function crearUsuario(
+  correo: string,
+  password: string,
+  rolId: number | null,
+  nombre: string,
+): Promise<ActionResult> {
+  const email = correo.trim().toLowerCase();
+  if (!email) return { ok: false, error: "El correo es obligatorio." };
+  if (password.length < 8) {
+    return { ok: false, error: "La contraseña debe tener al menos 8 caracteres." };
+  }
+
+  const problema = await exigirAdmin();
+  if (problema) return { ok: false, error: problema };
+
+  const admin = getAdminClient();
+  if (!admin) return { ok: false, error: SIN_LLAVE };
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      error: /already been registered|already exists/i.test(error.message)
+        ? `Ya existe una cuenta con ${email}.`
+        : error.message,
+    };
+  }
+
+  const id = data.user?.id;
+  if (!id) return { ok: false, error: "Supabase no devolvió el usuario creado." };
+
+  // The auth account exists now; if this second write fails the account would
+  // be unusable, so it is rolled back rather than left orphaned.
+  const { error: errPerfil } = await admin
+    .from("usuarios")
+    .insert({ id, correo: email, nombre: nombre.trim() || null, rol_id: rolId });
+
+  if (errPerfil) {
+    await admin.auth.admin.deleteUser(id);
+    return { ok: false, error: errPerfil.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** Change someone's password without knowing the old one. */
+export async function cambiarPassword(
+  userId: string,
+  password: string,
+): Promise<ActionResult> {
+  if (password.length < 8) {
+    return { ok: false, error: "La contraseña debe tener al menos 8 caracteres." };
+  }
+
+  const problema = await exigirAdmin();
+  if (problema) return { ok: false, error: problema };
+
+  const admin = getAdminClient();
+  if (!admin) return { ok: false, error: SIN_LLAVE };
+
+  const { error } = await admin.auth.admin.updateUserById(userId, { password });
+  return error ? { ok: false, error: error.message } : { ok: true, error: null };
+}
+
+/** Delete the login and, by cascade, its application user. */
+export async function eliminarUsuario(userId: string): Promise<ActionResult> {
+  const problema = await exigirAdmin();
+  if (problema) return { ok: false, error: problema };
+
+  const supabase = await getServerClient();
+  const { data: yo } = (await supabase?.auth.getUser()) ?? { data: { user: null } };
+  if (yo?.user?.id === userId) {
+    return { ok: false, error: "No podés eliminar tu propia cuenta." };
+  }
+
+  const admin = getAdminClient();
+  if (!admin) return { ok: false, error: SIN_LLAVE };
+
+  const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/");
