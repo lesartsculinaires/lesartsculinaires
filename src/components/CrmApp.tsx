@@ -27,11 +27,13 @@ interface Props {
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
   puedeCrearCuentas: boolean;
+  /** Módulo a abrir al entrar; lo fija el modo elegido en el login. */
+  modInicial?: string;
   loadError: string | null;
 }
 
 /** Sidebar entry for the admin-only screen. */
-const MOD_USUARIOS = "Usuarios y Roles";
+export const MOD_USUARIOS = "Usuarios y Roles";
 
 export default function CrmApp({
   oportunidades: initial,
@@ -41,10 +43,11 @@ export default function CrmApp({
   accesos,
   faltaMigracionAccesos,
   puedeCrearCuentas,
+  modInicial,
   loadError,
 }: Props) {
   const router = useRouter();
-  const { state, oportunidades, actions, syncError } = useCrm(initial);
+  const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
   const accent = ACCENT;
 
   const seleccionada =

@@ -41,8 +41,10 @@ const INITIAL: CrmState = {
   categoria: "Todos",
 };
 
-export function useCrm(initial: readonly Oportunidad[]) {
-  const [state, setState] = useState<CrmState>(INITIAL);
+export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
+  const [state, setState] = useState<CrmState>(
+    modInicial ? { ...INITIAL, mod: modInicial } : INITIAL,
+  );
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const patchState = useCallback(

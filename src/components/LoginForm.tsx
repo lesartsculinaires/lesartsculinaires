@@ -12,17 +12,47 @@ interface Props {
   configured: boolean;
 }
 
+/** Which door the person is knocking on. */
+type Modo = "ventas" | "admin";
+
+const COPIA: Record<Modo, { titulo: string; bajada: string; boton: string }> = {
+  ventas: {
+    titulo: "Entrá al CRM",
+    bajada:
+      "Ventas administra sus propios datos: leads, seguimiento y cierre de matrículas.",
+    boton: "Iniciar sesión",
+  },
+  admin: {
+    titulo: "Modo administrador",
+    bajada:
+      "Acceso a Usuarios y Roles, además de todo el CRM. Reservado a las cuentas con rol de administrador.",
+    boton: "Entrar como administrador",
+  },
+};
+
 export function LoginForm({ redirectTo, configured }: Props) {
   const router = useRouter();
+  const [modo, setModo] = useState<Modo>("ventas");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Signed in fine, but the account is not an administrator. */
+  const [sinPermiso, setSinPermiso] = useState(false);
+
+  const entrar = (comoAdmin: boolean) => {
+    const destino =
+      comoAdmin && redirectTo === "/" ? "/?mod=admin" : redirectTo;
+    // Full refresh so the middleware and Server Components pick up the cookie.
+    router.replace(destino);
+    router.refresh();
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setSinPermiso(false);
 
     const supabase = getBrowserClient();
     const { error: authError } = await supabase.auth.signInWithPassword({
@@ -40,9 +70,30 @@ export function LoginForm({ redirectTo, configured }: Props) {
       return;
     }
 
-    // Full refresh so the middleware and Server Components pick up the cookie.
-    router.replace(redirectTo);
-    router.refresh();
+    if (modo === "admin") {
+      // La pestaña es sólo una puerta: quien manda es el rol guardado en la
+      // base. Si esto se decidiera en el navegador, cualquiera entraría de
+      // administrador eligiendo la otra pestaña.
+      const { data, error: rpcError } = await supabase.rpc("es_admin");
+
+      if (rpcError) {
+        // No poder verificar no es lo mismo que no tener permiso: se entra
+        // igual, y la pantalla de administración se encarga de gatear.
+        entrar(true);
+        return;
+      }
+
+      if (data !== true) {
+        setSinPermiso(true);
+        setBusy(false);
+        return;
+      }
+
+      entrar(true);
+      return;
+    }
+
+    entrar(false);
   };
 
   const field = {
@@ -84,12 +135,50 @@ export function LoginForm({ redirectTo, configured }: Props) {
           className="dsp"
           style={{ margin: "0 0 6px", fontSize: 32, fontWeight: 700, lineHeight: 1.1 }}
         >
-          Entrá al CRM
+          {COPIA[modo].titulo}
         </h1>
-        <p style={{ margin: "0 0 24px", fontSize: 14, color: T.muted, maxWidth: "44ch" }}>
-          Ventas administra sus propios datos: leads, seguimiento y cierre de
-          matrículas.
+        <p style={{ margin: "0 0 18px", fontSize: 14, color: T.muted, maxWidth: "44ch" }}>
+          {COPIA[modo].bajada}
         </p>
+
+        <div
+          role="tablist"
+          aria-label="Tipo de acceso"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 4,
+            padding: 4,
+            marginBottom: 16,
+            borderRadius: 10,
+            background: "#EDEBE6",
+          }}
+        >
+          {(["ventas", "admin"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={modo === m}
+              onClick={() => {
+                setModo(m);
+                setError(null);
+                setSinPermiso(false);
+              }}
+              style={{
+                height: 34,
+                fontSize: 13,
+                borderRadius: 7,
+                fontWeight: modo === m ? 500 : 400,
+                background: modo === m ? T.surface : "transparent",
+                color: modo === m ? ACCENT : T.muted,
+                boxShadow: modo === m ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+              }}
+            >
+              {m === "ventas" ? "Acceso de ventas" : "Modo administrador"}
+            </button>
+          ))}
+        </div>
 
         {!configured && (
           <p
@@ -151,6 +240,36 @@ export function LoginForm({ redirectTo, configured }: Props) {
             </p>
           )}
 
+          {sinPermiso && (
+            <div
+              style={{
+                padding: "11px 13px",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                borderRadius: 7,
+                background: "#F6EEDC",
+                color: "#7A5A12",
+              }}
+            >
+              La contraseña es correcta, pero esta cuenta no tiene rol de
+              administrador. Un administrador puede asignártelo desde Usuarios y
+              Roles.
+              <button
+                type="button"
+                onClick={() => entrar(false)}
+                style={{
+                  display: "block",
+                  marginTop: 9,
+                  fontSize: 12.5,
+                  color: ACCENT,
+                  textDecoration: "underline",
+                }}
+              >
+                Continuar al CRM con tu acceso normal ›
+              </button>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={busy || !configured}
@@ -164,12 +283,14 @@ export function LoginForm({ redirectTo, configured }: Props) {
               cursor: busy || !configured ? "not-allowed" : "pointer",
             }}
           >
-            {busy ? "Entrando…" : "Iniciar sesión"}
+            {busy ? "Entrando…" : COPIA[modo].boton}
           </button>
         </form>
 
         <p style={{ margin: "18px 0 0", fontSize: 12, color: T.faint, lineHeight: 1.5 }}>
-          Las cuentas se crean desde Supabase → Authentication → Users.
+          {modo === "admin"
+            ? "El rol lo define la cuenta, no esta pantalla: entrar por acá no da permisos de más."
+            : "Las cuentas las crea un administrador desde Usuarios y Roles."}
           <br />
           ¿Problemas para entrar? Escribí a sistemas@lesarts.com
         </p>
