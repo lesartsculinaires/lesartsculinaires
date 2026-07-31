@@ -1,13 +1,8 @@
 "use client";
 
-import { mesCorto, money } from "@/lib/format";
-import {
-  estaAbierta,
-  esGanada,
-  groupBars,
-  totalCerrado,
-  valorPipeline,
-} from "@/lib/selectors";
+import { Evolucion } from "@/components/modules/Evolucion";
+import { money } from "@/lib/format";
+import { estaAbierta, esGanada, groupBars, totalCerrado } from "@/lib/selectors";
 import { T, openTone } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
 
@@ -31,17 +26,6 @@ export function Dashboard({ oportunidades, accent }: Props) {
       value: total ? `${Math.round((ganadas.length / total) * 100)}%` : "—",
     },
   ];
-
-  // Group by the month the opportunity was registered.
-  const porMes = new Map<string, { cerrado: number; n: number }>();
-  for (const o of oportunidades) {
-    const g = porMes.get(o.mes) ?? { cerrado: 0, n: 0 };
-    g.cerrado += o.cerrada ?? 0;
-    g.n += 1;
-    porMes.set(o.mes, g);
-  }
-  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const maxMes = Math.max(...meses.map(([, g]) => g.cerrado), 1);
 
   const charts = [
     { title: "Vendedores", hint: "por cartera", bars: groupBars(oportunidades, "vendedor") },
@@ -72,84 +56,7 @@ export function Dashboard({ oportunidades, accent }: Props) {
         ))}
       </div>
 
-      <section
-        style={{
-          background: T.surface,
-          border: `1px solid ${T.border}`,
-          borderRadius: 10,
-          padding: 18,
-          marginBottom: 14,
-        }}
-      >
-        <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-          Venta cerrada por mes
-        </h3>
-        <p style={{ margin: "0 0 20px", fontSize: 12, color: T.muted }}>
-          {meses.length} {meses.length === 1 ? "mes" : "meses"} con registro ·{" "}
-          {money(totalCerrado(oportunidades) || null)} en total
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))`,
-            gap: 8,
-          }}
-        >
-          {meses.map(([mes, g]) => (
-            <div
-              key={mes}
-              style={{
-                minWidth: 0,
-                height: 150,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "flex-end",
-              }}
-            >
-              <span
-                className="mono"
-                style={{
-                  display: "block",
-                  marginBottom: 5,
-                  fontSize: 10,
-                  textAlign: "center",
-                  color: T.faint,
-                }}
-              >
-                {g.cerrado ? money(g.cerrado) : ""}
-              </span>
-              <div
-                style={{
-                  height: `${Math.max(3, (g.cerrado / maxMes) * 100)}%`,
-                  background: g.cerrado ? accent : T.border,
-                  borderRadius: "3px 3px 0 0",
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.max(meses.length, 1)}, minmax(0, 1fr))`,
-            gap: 8,
-            marginTop: 8,
-          }}
-        >
-          {meses.map(([mes, g]) => (
-            <span
-              key={mes}
-              style={{ fontSize: 10.5, textAlign: "center", color: T.muted }}
-            >
-              {mesCorto(mes)}
-              <span style={{ display: "block", fontSize: 9.5, color: T.faint }}>
-                {g.n} leads
-              </span>
-            </span>
-          ))}
-        </div>
-      </section>
+      <Evolucion oportunidades={oportunidades} accent={accent} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
