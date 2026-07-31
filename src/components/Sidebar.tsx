@@ -20,10 +20,12 @@ interface Props {
   accent: string;
   mod: string;
   userEmail: string;
+  /** Extra entries the signed-in user is allowed to open, e.g. admin-only. */
+  extras?: readonly string[];
   onSelect: (mod: string) => void;
 }
 
-export function Sidebar({ accent, mod, userEmail, onSelect }: Props) {
+export function Sidebar({ accent, mod, userEmail, extras = [], onSelect }: Props) {
   const router = useRouter();
 
   const navStyle = (label: string): CSSProperties => ({
@@ -123,7 +125,7 @@ export function Sidebar({ accent, mod, userEmail, onSelect }: Props) {
         Módulos
       </p>
       <nav style={{ flex: 1 }}>
-        {MODULOS.map((m) => (
+        {[...MODULOS, ...extras].map((m) => (
           <button
             type="button"
             key={m}

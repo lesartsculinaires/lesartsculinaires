@@ -158,3 +158,56 @@ export interface EventoPatch {
 
 /** Foreground / background pair for a status pill. */
 export type Tone = readonly [fg: string, bg: string];
+
+// ---------------------------------------------------------------- accesos
+
+/** The four columns of the permissions table. */
+export type Accion = "ver" | "crear" | "editar" | "eliminar";
+
+export const ACCIONES: readonly Accion[] = ["ver", "crear", "editar", "eliminar"];
+
+export interface Modulo {
+  clave: string;
+  nombre: string;
+  /** Null on a top-level module; the parent's key on a sub-permission. */
+  padre: string | null;
+  orden: number;
+}
+
+export interface Rol {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  /** Always allowed everything, and protected from deletion. */
+  esAdmin: boolean;
+}
+
+/** One row of the permissions grid. */
+export interface Permiso {
+  rolId: number;
+  modulo: string;
+  ver: boolean;
+  crear: boolean;
+  editar: boolean;
+  eliminar: boolean;
+}
+
+export interface Usuario {
+  id: string;
+  nombre: string | null;
+  correo: string;
+  rolId: number | null;
+  activo: boolean;
+}
+
+/** Everything the access screens and the sidebar gate need. */
+export interface Accesos {
+  modulos: Modulo[];
+  roles: Rol[];
+  permisos: Permiso[];
+  usuarios: Usuario[];
+  /** The signed-in user's own record, when it exists. */
+  yo: Usuario | null;
+  esAdmin: boolean;
+}

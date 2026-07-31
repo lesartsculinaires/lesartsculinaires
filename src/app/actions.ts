@@ -139,3 +139,96 @@ export async function signOut(): Promise<void> {
   const supabase = await getServerClient();
   if (supabase) await supabase.auth.signOut();
 }
+
+// ---------------------------------------------------------------- accesos
+
+/**
+ * Save the whole permission grid for one role in a single call.
+ *
+ * The screen edits many toggles before pressing "Guardar permisos", so this
+ * upserts every row at once rather than writing on each flip.
+ */
+export async function guardarPermisos(
+  rolId: number,
+  filas: { modulo: string; ver: boolean; crear: boolean; editar: boolean; eliminar: boolean }[],
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase
+    .from("rol_permisos")
+    .upsert(
+      filas.map((f) => ({ rol_id: rolId, ...f })),
+      { onConflict: "rol_id,modulo" },
+    );
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+export async function crearRol(
+  nombre: string,
+  descripcion: string,
+): Promise<ActionResult> {
+  const limpio = nombre.trim();
+  if (!limpio) return { ok: false, error: "El rol necesita un nombre." };
+
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase
+    .from("roles")
+    .insert({ nombre: limpio, descripcion: descripcion.trim() || null });
+
+  if (error) {
+    return {
+      ok: false,
+      error: error.code === "23505" ? `Ya existe un rol llamado "${limpio}".` : error.message,
+    };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+export async function actualizarRol(
+  id: number,
+  patch: { nombre?: string; descripcion?: string | null; activo?: boolean },
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase.from("roles").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** The database trigger refuses to drop the last administrator role. */
+export async function eliminarRol(id: number): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase.from("roles").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+export async function actualizarUsuario(
+  id: string,
+  patch: { nombre?: string | null; rol_id?: number | null; activo?: boolean },
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { error } = await supabase.from("usuarios").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}

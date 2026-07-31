@@ -1,0 +1,102 @@
+import "server-only";
+
+import { getServerClient } from "@/lib/supabase/server";
+import type { Accesos, Modulo, Permiso, Rol, Usuario } from "@/lib/types";
+
+type Row = Record<string, unknown>;
+
+const rows = (r: { data: unknown }): Row[] =>
+  Array.isArray(r.data) ? (r.data as Row[]) : [];
+
+const str = (v: unknown, fallback = ""): string =>
+  v == null || v === "" ? fallback : String(v);
+
+const VACIO: Accesos = {
+  modulos: [],
+  roles: [],
+  permisos: [],
+  usuarios: [],
+  yo: null,
+  esAdmin: false,
+};
+
+/**
+ * Load the access model: modules, roles, their permissions and the users.
+ *
+ * RLS decides the reach — a non-admin gets the catalogue plus only their own
+ * user row, which is all the sidebar needs to know what to show.
+ */
+export async function fetchAccesos(userId: string): Promise<{
+  data: Accesos;
+  /** Set when the tables are missing, i.e. the migration has not been run. */
+  faltaMigracion: boolean;
+}> {
+  const supabase = await getServerClient();
+  if (!supabase) return { data: VACIO, faltaMigracion: false };
+
+  const [mods, rls, perms, usrs] = await Promise.all([
+    supabase.from("modulos").select("clave, nombre, padre, orden").order("orden"),
+    supabase.from("roles").select("id, nombre, descripcion, activo, es_admin").order("nombre"),
+    supabase.from("rol_permisos").select("*"),
+    supabase.from("usuarios").select("id, nombre, correo, rol_id, activo").order("correo"),
+  ]);
+
+  // PostgREST answers PGRST205 ("Could not find the table … in the schema
+  // cache") for a table that does not exist — not Postgres' own 42P01, which
+  // only surfaces on direct SQL.
+  const falta = [mods, rls, perms, usrs].some(
+    (r) =>
+      r.error &&
+      (r.error.code === "PGRST205" ||
+        r.error.code === "42P01" ||
+        /schema cache|does not exist/i.test(r.error.message)),
+  );
+  if (falta) return { data: VACIO, faltaMigracion: true };
+
+  const roles: Rol[] = rows(rls).map((r) => ({
+    id: Number(r.id),
+    nombre: str(r.nombre),
+    descripcion: r.descripcion ? str(r.descripcion) : null,
+    activo: r.activo !== false,
+    esAdmin: r.es_admin === true,
+  }));
+
+  const usuarios: Usuario[] = rows(usrs).map((r) => ({
+    id: str(r.id),
+    nombre: r.nombre ? str(r.nombre) : null,
+    correo: str(r.correo),
+    rolId: r.rol_id == null ? null : Number(r.rol_id),
+    activo: r.activo !== false,
+  }));
+
+  const yo = usuarios.find((u) => u.id === userId) ?? null;
+  const miRol = yo ? roles.find((r) => r.id === yo.rolId) : undefined;
+
+  return {
+    data: {
+      modulos: rows(mods).map(
+        (r): Modulo => ({
+          clave: str(r.clave),
+          nombre: str(r.nombre),
+          padre: r.padre ? str(r.padre) : null,
+          orden: Number(r.orden ?? 0),
+        }),
+      ),
+      roles,
+      permisos: rows(perms).map(
+        (r): Permiso => ({
+          rolId: Number(r.rol_id),
+          modulo: str(r.modulo),
+          ver: r.ver === true,
+          crear: r.crear === true,
+          editar: r.editar === true,
+          eliminar: r.eliminar === true,
+        }),
+      ),
+      usuarios,
+      yo,
+      esAdmin: miRol?.esAdmin === true,
+    },
+    faltaMigracion: false,
+  };
+}

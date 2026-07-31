@@ -9,26 +9,35 @@ import { Dashboard } from "@/components/modules/Dashboard";
 import { Equipos } from "@/components/modules/Equipos";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
+import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { useCrm } from "@/hooks/useCrm";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
-import type { Catalogo, Evento, Oportunidad } from "@/lib/types";
+import type { Accesos, Catalogo, Evento, Oportunidad } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
   catalogo: Catalogo;
   eventos: Evento[];
   userEmail: string;
+  accesos: Accesos;
+  /** True when the roles tables do not exist yet. */
+  faltaMigracionAccesos: boolean;
   loadError: string | null;
 }
+
+/** Sidebar entry for the admin-only screen. */
+const MOD_USUARIOS = "Usuarios y Roles";
 
 export default function CrmApp({
   oportunidades: initial,
   catalogo,
   eventos,
   userEmail,
+  accesos,
+  faltaMigracionAccesos,
   loadError,
 }: Props) {
   const router = useRouter();
@@ -52,6 +61,10 @@ export default function CrmApp({
           accent={accent}
           mod={mod}
           userEmail={userEmail}
+          // Cuando faltan las tablas nadie es admin todavía, así que la entrada
+          // se muestra igual: si no, no habría forma de leer el aviso que dice
+          // cómo crearlas.
+          extras={accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : []}
           onSelect={actions.setMod}
         />
 
@@ -88,6 +101,24 @@ export default function CrmApp({
               vendedores · {catalogo.productos.length} programas
             </p>
           </header>
+
+          {faltaMigracionAccesos && mod === MOD_USUARIOS && (
+            <p
+              style={{
+                margin: "0 0 14px",
+                padding: "11px 14px",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                borderRadius: 9,
+                background: "#F6EEDC",
+                color: "#7A5A12",
+              }}
+            >
+              Las tablas de usuarios y roles todavía no existen. Corré la migración{" "}
+              <code>supabase/migrations/20260730120000_usuarios_roles_permisos.sql</code>{" "}
+              en Supabase → SQL Editor y recargá.
+            </p>
+          )}
 
           <SyncBanner
             loadError={loadError}
@@ -148,6 +179,19 @@ export default function CrmApp({
               onVerTodos={(vendedorId) => actions.verEnClientes({ vendedor: vendedorId })}
             />
           )}
+
+          {mod === MOD_USUARIOS &&
+            (accesos.esAdmin || faltaMigracionAccesos ? (
+              <UsuariosRoles
+                accesos={accesos}
+                accent={accent}
+                onRefresh={() => router.refresh()}
+              />
+            ) : (
+              <p style={{ fontSize: 13, color: T.muted }}>
+                Esta sección es solo para administradores.
+              </p>
+            ))}
 
           {mod === "Programas" && (
             <Programas

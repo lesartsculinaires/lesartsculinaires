@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import CrmApp from "@/components/CrmApp";
+import { fetchAccesos } from "@/lib/supabase/accesos";
 import {
   fetchCatalogo,
   fetchEventos,
@@ -15,10 +16,11 @@ export default async function Page() {
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos] = await Promise.all([
+  const [ops, catalogo, eventos, accesos] = await Promise.all([
     fetchOportunidades(),
     fetchCatalogo(),
     fetchEventos(),
+    fetchAccesos(user.id),
   ]);
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
@@ -29,6 +31,8 @@ export default async function Page() {
       catalogo={catalogo.data}
       eventos={eventos.data}
       userEmail={user.email ?? ""}
+      accesos={accesos.data}
+      faltaMigracionAccesos={accesos.faltaMigracion}
       loadError={loadError}
     />
   );
