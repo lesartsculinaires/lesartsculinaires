@@ -3,13 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
+import { signOut } from "@/app/actions";
 import { getBrowserClient } from "@/lib/supabase/browser";
-import { ACCENT, T } from "@/lib/theme";
+import { ACCENT, T, soft } from "@/lib/theme";
 
 interface Props {
   redirectTo: string;
   /** False when the Supabase environment variables are missing. */
   configured: boolean;
+  /** Correo de la sesión ya abierta, si la hay. */
+  sesionDe: string | null;
+  /** Se llegó acá justo después de cerrar sesión. */
+  recienCerrada: boolean;
 }
 
 /** Which door the person is knocking on. */
@@ -30,7 +35,12 @@ const COPIA: Record<Modo, { titulo: string; bajada: string; boton: string }> = {
   },
 };
 
-export function LoginForm({ redirectTo, configured }: Props) {
+export function LoginForm({
+  redirectTo,
+  configured,
+  sesionDe,
+  recienCerrada,
+}: Props) {
   const router = useRouter();
   const [modo, setModo] = useState<Modo>("ventas");
   const [email, setEmail] = useState("");
@@ -39,6 +49,15 @@ export function LoginForm({ redirectTo, configured }: Props) {
   const [busy, setBusy] = useState(false);
   /** Signed in fine, but the account is not an administrator. */
   const [sinPermiso, setSinPermiso] = useState(false);
+
+  const cerrarSesion = async () => {
+    try {
+      await getBrowserClient().auth.signOut({ scope: "local" });
+    } catch {
+      // La limpieza local no puede bloquear el cierre de sesión.
+    }
+    await signOut();
+  };
 
   const entrar = (comoAdmin: boolean) => {
     const destino =
@@ -179,6 +198,49 @@ export function LoginForm({ redirectTo, configured }: Props) {
             </button>
           ))}
         </div>
+
+        {sesionDe && (
+          <div
+            style={{
+              margin: "0 0 16px",
+              padding: "11px 14px",
+              fontSize: 12.5,
+              lineHeight: 1.5,
+              borderRadius: 9,
+              background: soft(ACCENT),
+              color: T.ink,
+            }}
+          >
+            Ya tenés una sesión abierta como <strong>{sesionDe}</strong>.
+            <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+              <a href="/" style={{ fontSize: 12.5, color: ACCENT, textDecoration: "underline" }}>
+                Continuar al CRM ›
+              </a>
+              <button
+                type="button"
+                onClick={cerrarSesion}
+                style={{ fontSize: 12.5, color: T.muted, textDecoration: "underline" }}
+              >
+                Cerrar sesión y entrar con otra cuenta
+              </button>
+            </div>
+          </div>
+        )}
+
+        {recienCerrada && (
+          <p
+            style={{
+              margin: "0 0 16px",
+              padding: "10px 14px",
+              fontSize: 12.5,
+              borderRadius: 9,
+              background: "#E6F0E9",
+              color: "#2F6B4F",
+            }}
+          >
+            Cerraste sesión. Ya podés entrar con otra cuenta.
+          </p>
+        )}
 
         {!configured && (
           <p

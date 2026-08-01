@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 
 import { signOut } from "@/app/actions";
@@ -26,7 +25,6 @@ interface Props {
 }
 
 export function Sidebar({ accent, mod, userEmail, extras = [], onSelect }: Props) {
-  const router = useRouter();
 
   const navStyle = (label: string): CSSProperties => ({
     display: "block",
@@ -42,12 +40,16 @@ export function Sidebar({ accent, mod, userEmail, extras = [], onSelect }: Props
   });
 
   const cerrarSesion = async () => {
-    // Clear the browser copy of the session as well as the server cookie,
-    // otherwise the client would keep a stale token in memory.
-    await getBrowserClient().auth.signOut();
+    // Limpieza local del token que supabase-js guarda en memoria. Va con
+    // scope "local" a propósito: no necesita red, así que no puede fallar y
+    // dejar el botón sin efecto. Revocar del lado del servidor es tarea de
+    // la acción de abajo, que además borra la cookie y navega.
+    try {
+      await getBrowserClient().auth.signOut({ scope: "local" });
+    } catch {
+      // Que la limpieza local falle no puede impedir cerrar la sesión.
+    }
     await signOut();
-    router.replace("/login");
-    router.refresh();
   };
 
   return (

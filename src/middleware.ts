@@ -44,12 +44,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
+  // A quien ya tiene sesión no se lo expulsa de la portada: necesita poder
+  // llegar para cambiar de cuenta o cerrar sesión. La propia pantalla avisa
+  // que la sesión está abierta y ofrece las dos salidas.
 
   return response;
 }

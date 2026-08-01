@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_URL } from "@/lib/supabase/config";
@@ -137,9 +139,31 @@ export async function createEvento(
   return { ok: true, error: null, id: (data as { id: number }).id };
 }
 
-export async function signOut(): Promise<void> {
+export async function signOut(): Promise<never> {
   const supabase = await getServerClient();
-  if (supabase) await supabase.auth.signOut();
+
+  // Revocar en Supabase es lo deseable, pero no puede ser lo que decida si la
+  // sesión se cierra: si la red falla o el token ya venció, el usuario quedaría
+  // encerrado adentro. Se intenta, y pase lo que pase se borra la cookie.
+  try {
+    if (supabase) await supabase.auth.signOut();
+  } catch {
+    // Sin sesión válida no hay nada que revocar del otro lado.
+  }
+
+  // La cookie es la única fuente de verdad para el middleware, así que se
+  // borra explícitamente. @supabase/ssr la parte en varias cuando es larga
+  // (`...auth-token.0`, `.1`), y dejar una sola atrás revive la sesión.
+  const cookieStore = await cookies();
+  for (const { name } of cookieStore.getAll()) {
+    if (name.startsWith("sb-") && name.includes("auth-token")) {
+      cookieStore.delete(name);
+    }
+  }
+
+  // Navegar desde el servidor, ya sin cookie: así no depende de que el
+  // navegador haga bien su parte.
+  redirect("/login?fin=1");
 }
 
 // ---------------------------------------------------------------- accesos
