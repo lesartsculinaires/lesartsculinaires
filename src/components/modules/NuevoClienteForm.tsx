@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { crearCliente, type NuevoCliente } from "@/app/actions";
+import { CampoTexto } from "@/components/ui/CampoTexto";
 import { useCatalogo } from "@/lib/catalog";
 import {
   buscarDuplicados,
@@ -47,6 +48,62 @@ const vacio = (): NuevoCliente => ({
 
 /** Texto vacío → null, para no guardar cadenas en blanco. */
 const oNull = (v: string): string | null => (v.trim() ? v.trim() : null);
+
+/**
+ * `Etiqueta` y `Select` viven fuera del componente a propósito.
+ *
+ * Declaradas adentro, React las ve como un tipo distinto en cada render:
+ * desmonta el subárbol y lo vuelve a montar, así que el <input> se destruye
+ * y se recrea con cada tecla. Además de ser un desperdicio, hace imposible
+ * controlar dónde queda el cursor, que es justo lo que necesita el teclado
+ * de acentos.
+ */
+const CAMPO: React.CSSProperties = {
+  width: "100%",
+  height: 34,
+  padding: "0 10px",
+  fontSize: 13,
+  border: `1px solid ${T.border}`,
+  borderRadius: 6,
+  background: T.surface,
+  color: T.ink,
+};
+
+function Etiqueta({ texto, children }: { texto: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "block", minWidth: 0 }}>
+      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+        {texto}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function Select({
+  valor,
+  items,
+  onPick,
+}: {
+  valor: number | null;
+  items: readonly CatalogItem[];
+  onPick: (v: number | null) => void;
+}) {
+  return (
+    <select
+      value={valor ?? ""}
+      onChange={(e) => onPick(e.target.value ? Number(e.target.value) : null)}
+      style={CAMPO}
+    >
+      <option value="">Sin definir</option>
+      {items.map((i) => (
+        <option key={i.id} value={i.id}>
+          {i.nombre}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: Props) {
   const cat = useCatalogo();
@@ -107,55 +164,6 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
     }
     onCreado(r.codigo ?? "");
   };
-
-  const campo = {
-    width: "100%",
-    height: 34,
-    padding: "0 10px",
-    fontSize: 13,
-    border: `1px solid ${T.border}`,
-    borderRadius: 6,
-    background: T.surface,
-    color: T.ink,
-  } as const;
-
-  const Etiqueta = ({
-    texto,
-    children,
-  }: {
-    texto: string;
-    children: React.ReactNode;
-  }) => (
-    <label style={{ display: "block", minWidth: 0 }}>
-      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
-        {texto}
-      </span>
-      {children}
-    </label>
-  );
-
-  const Select = ({
-    valor,
-    items,
-    onPick,
-  }: {
-    valor: number | null;
-    items: readonly CatalogItem[];
-    onPick: (v: number | null) => void;
-  }) => (
-    <select
-      value={valor ?? ""}
-      onChange={(e) => onPick(e.target.value ? Number(e.target.value) : null)}
-      style={campo}
-    >
-      <option value="">Sin definir</option>
-      {items.map((i) => (
-        <option key={i.id} value={i.id}>
-          {i.nombre}
-        </option>
-      ))}
-    </select>
-  );
 
   const grid = {
     display: "grid",
@@ -231,12 +239,13 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
           </p>
           <div style={{ ...grid, marginBottom: 20 }}>
             <Etiqueta texto="Nombre *">
-              <input
-                value={d.nombre}
-                onChange={(e) => set("nombre", e.target.value)}
+              <CampoTexto
+                valor={d.nombre}
+                onCambio={(v) => set("nombre", v)}
                 placeholder="Nombre y apellido"
                 autoFocus
-                style={campo}
+                accent={accent}
+                esNombre
               />
             </Etiqueta>
             <Etiqueta texto="Teléfono">
@@ -244,7 +253,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 value={d.telefono ?? ""}
                 onChange={(e) => set("telefono", oNull(e.target.value))}
                 placeholder="opcional"
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
             <Etiqueta texto="Correo">
@@ -253,7 +262,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 value={d.correo ?? ""}
                 onChange={(e) => set("correo", oNull(e.target.value))}
                 placeholder="opcional"
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
           </div>
@@ -291,7 +300,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 type="date"
                 value={d.fecha_registro}
                 onChange={(e) => set("fecha_registro", e.target.value)}
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
             <Etiqueta texto="Fecha de cierre">
@@ -299,7 +308,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 type="date"
                 value={d.fecha_cierre ?? ""}
                 onChange={(e) => set("fecha_cierre", e.target.value || null)}
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
             <Etiqueta texto="Valor de la oportunidad">
@@ -312,7 +321,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                   set("valor_oportunidad", e.target.value === "" ? null : Number(e.target.value))
                 }
                 placeholder="0.00"
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
             <Etiqueta texto="Descuento o promoción">
@@ -320,7 +329,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 value={d.descuento_promocion ?? ""}
                 onChange={(e) => set("descuento_promocion", oNull(e.target.value))}
                 placeholder="opcional"
-                style={campo}
+                style={CAMPO}
               />
             </Etiqueta>
           </div>

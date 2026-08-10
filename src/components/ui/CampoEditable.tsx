@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { T } from "@/lib/theme";
 
 type Tipo = "texto" | "fecha" | "monto";
@@ -17,6 +18,10 @@ interface Props {
   requerido?: boolean;
   /** Called on blur or Enter, only when the value actually changed. */
   onGuardar: (nuevo: string) => void;
+  /** Muestra el teclado de tildes mientras se edita. Para texto libre. */
+  acentos?: boolean;
+  /** Agrega el botón de capitalizar. Para nombres propios. */
+  esNombre?: boolean;
 }
 
 /**
@@ -33,7 +38,10 @@ export function CampoEditable({
   placeholder,
   requerido = false,
   onGuardar,
+  acentos = false,
+  esNombre = false,
 }: Props) {
+  const ref = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState(value);
   const [focus, setFocus] = useState(false);
 
@@ -83,6 +91,7 @@ export function CampoEditable({
       <span style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{label}</span>
       <span style={{ flex: 1, maxWidth: tipo === "texto" ? "62%" : 150 }}>
         <input
+          ref={ref}
           type={tipo === "fecha" ? "date" : "text"}
           inputMode={tipo === "monto" ? "decimal" : undefined}
           value={draft}
@@ -101,6 +110,17 @@ export function CampoEditable({
           className={tipo === "texto" ? undefined : "mono"}
           style={input}
         />
+        {acentos && focus && (
+          <div style={{ marginTop: 6 }}>
+            <TecladoAcentos
+              campo={ref}
+              valor={draft}
+              onCambio={setDraft}
+              accent={accent}
+              conCapitalizar={esNombre}
+            />
+          </div>
+        )}
       </span>
     </div>
   );

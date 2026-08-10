@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { addNota } from "@/app/actions";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
+import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, mesLargo, money } from "@/lib/format";
 import { estadoTone } from "@/lib/selectors";
@@ -58,6 +59,7 @@ export function ClienteDrawer({
   const soft = softer(accent);
   const [nota, setNota] = useState("");
   const [notaEstado, setNotaEstado] = useState<"idle" | "guardando" | "listo">("idle");
+  const notaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [estadoFg, estadoBg] = estadoTone(o.estado, accent);
 
@@ -136,6 +138,8 @@ export function ClienteDrawer({
       value: o.cliente,
       tipo: "texto" as const,
       requerido: true,
+      acentos: true,
+      esNombre: true,
       guardar: (v: string) =>
         onEditarCliente(o.clienteId, { nombre: v }, { cliente: v }),
     },
@@ -357,6 +361,8 @@ export function ClienteDrawer({
               tipo={f.tipo}
               requerido={f.requerido}
               accent={accent}
+              acentos={"acentos" in f && f.acentos}
+              esNombre={"esNombre" in f && f.esNombre}
               placeholder={f.requerido ? undefined : "Sin dato"}
               onGuardar={f.guardar}
             />
@@ -395,6 +401,7 @@ export function ClienteDrawer({
 
       <SectionLabel>Registrar seguimiento</SectionLabel>
       <textarea
+        ref={notaRef}
         value={nota}
         onChange={(e) => {
           setNota(e.target.value);
@@ -414,6 +421,18 @@ export function ClienteDrawer({
           resize: "vertical",
         }}
       />
+      <div style={{ marginTop: 8 }}>
+        <TecladoAcentos
+          campo={notaRef}
+          valor={nota}
+          onCambio={(v: string) => {
+            setNota(v);
+            setNotaEstado("idle");
+          }}
+          accent={accent}
+        />
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
         <button
           type="button"
