@@ -302,7 +302,7 @@ export function Clientes({
                     <td style={td}>{o.producto}</td>
                     <td style={td}>{o.vendedor}</td>
                     <td style={{ ...td, padding: "9px 14px" }}>
-                      <span
+                      <span className="pill"
                         style={{
                           display: "inline-block",
                           fontSize: 12,
@@ -316,7 +316,7 @@ export function Clientes({
                       </span>
                     </td>
                     <td style={{ ...td, padding: "9px 14px" }}>
-                      <span
+                      <span className="pill"
                         style={{
                           display: "inline-block",
                           fontSize: 12,

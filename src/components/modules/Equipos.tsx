@@ -252,7 +252,7 @@ export function Equipos({
                     style={{
                       flex: 1,
                       height: 6,
-                      background: "#EDEBE6",
+                      background: "#E4E9F3",
                       borderRadius: 3,
                       overflow: "hidden",
                     }}
@@ -306,7 +306,7 @@ export function Equipos({
                   style={{
                     display: "flex",
                     height: 6,
-                    background: "#EDEBE6",
+                    background: "#E4E9F3",
                     borderRadius: 3,
                     overflow: "hidden",
                   }}
@@ -390,7 +390,7 @@ export function Equipos({
                   <p style={{ margin: "0 0 2px", fontSize: 13 }}>{o.cliente}</p>
                   <p style={{ margin: 0, fontSize: 11.5, color: T.faint }}>{o.producto}</p>
                 </div>
-                <span
+                <span className="pill"
                   style={{
                     fontSize: 11.5,
                     padding: "3px 9px",

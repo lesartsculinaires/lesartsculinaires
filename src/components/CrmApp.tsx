@@ -61,7 +61,7 @@ export default function CrmApp({
     <CatalogoProvider value={catalogo}>
       <div
         className="lac"
-        style={{ minHeight: "100vh", background: T.paper, display: "flex" }}
+        style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
       >
         <Sidebar
           accent={accent}

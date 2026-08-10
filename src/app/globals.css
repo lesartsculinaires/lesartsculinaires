@@ -1,9 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter+Tight:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
 html,
 body {
   margin: 0;
   padding: 0;
+  background: #ffffff;
 }
 
 .lac * {
@@ -11,20 +10,35 @@ body {
 }
 
 .lac {
-  font-family: 'Inter Tight', system-ui, sans-serif;
-  color: #1f1d1a;
+  font-family: var(--fuente-cuerpo), system-ui, sans-serif;
+  color: #031b4f;
 }
 
-/* Display face — headings and figure values. */
+/* Títulos y cifras destacadas. */
 .lac .dsp {
-  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
-  letter-spacing: -0.015em;
+  font-family: var(--fuente-titulos), Georgia, serif;
+  letter-spacing: 0;
 }
 
-/* Tabular figures keep money columns aligned across rows. */
+/*
+ * Old Standard TT sólo trae regular y bold; pedir 500 hace que el navegador
+ * sintetice un intermedio falso y el trazo sale sucio. Se redondea a bold.
+ */
+.lac .dsp {
+  font-synthesis-weight: none;
+}
+
+.lac h1.dsp,
+.lac h2.dsp,
+.lac h3.dsp {
+  font-weight: 700;
+}
+
+/* Cifras alineadas columna a columna en las tablas de dinero. */
 .lac .mono {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: var(--fuente-cuerpo), system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .lac button {
@@ -35,46 +49,88 @@ body {
   color: inherit;
 }
 
+/*
+ * Amarillo al pasar el mouse.
+ *
+ * Lleva !important a propósito. Toda la app está pintada con estilos en
+ * línea —viene de un prototipo HTML—, y en línea gana siempre sobre una
+ * clase: sin esto el hover no se vería en ningún botón. El alcance queda
+ * acotado a :hover, así que no interfiere con ningún estado en reposo.
+ *
+ * Los interruptores de permisos quedan afuera: son botones cuyo color ES el
+ * dato (encendido o apagado), y pintarlos de amarillo al pasar por encima
+ * haría creer que cambiaron de valor.
+ */
+.lac button:hover:not(:disabled):not([role="switch"]),
+.lac .nav:hover,
+.lac .row:hover {
+  background: #ffce00 !important;
+  color: #031b4f !important;
+}
+
+/*
+ * Sobre el amarillo, el texto secundario y terciario de la fila queda con muy
+ * poco contraste: llevan su color en línea, que no se hereda del padre. Se
+ * fuerzan al azul. Las fichas de estado quedan afuera —su color ES el dato—
+ * y ya traen su propio fondo, así que se leen igual.
+ */
+.lac .row:hover *:not(.pill):not(.pill *),
+.lac .nav:hover * {
+  color: #031b4f !important;
+}
+
+/* Los interruptores se señalan con un aro, sin tocar su color. */
+.lac [role="switch"]:hover:not(:disabled) {
+  box-shadow: 0 0 0 3px #ffce00;
+}
+
 .lac button:focus-visible,
 .lac input:focus-visible,
-.lac textarea:focus-visible {
-  outline: 2px solid #1f1d1a;
+.lac select:focus-visible,
+.lac textarea:focus-visible,
+.lac [role="switch"]:focus-visible {
+  outline: 2px solid #031b4f;
   outline-offset: 2px;
 }
 
+/* Texto seleccionado con el mouse. */
+.lac ::selection {
+  background: #ffce00;
+  color: #031b4f;
+}
+
 .lac a {
-  color: #028090;
+  color: #031b4f;
 }
 
 .lac a:hover {
-  color: #015f66;
-}
-
-.lac .nav:hover {
-  background: #f5f4f1;
-}
-
-.lac .row:hover {
-  background: #f5f4f1;
+  background: #ffce00;
+  color: #031b4f;
 }
 
 .lac .card:hover {
-  border-color: #cfcac0;
+  border-color: #031b4f;
 }
 
 .lac .gate:hover {
-  border-color: #cfcac0;
+  border-color: #031b4f;
   transform: translateY(-2px);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .lac .card,
   .lac .nav,
-  .lac .row {
-    transition: background 120ms ease, border-color 120ms ease;
+  .lac .row,
+  .lac button {
+    transition:
+      background 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease;
   }
 
   .lac .gate {
-    transition: border-color 140ms ease, transform 140ms ease;
+    transition:
+      border-color 140ms ease,
+      transform 140ms ease;
   }
 }

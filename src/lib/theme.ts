@@ -1,24 +1,46 @@
-/** Neutral palette shared by every module. */
+/**
+ * Paleta de la marca.
+ *
+ * Azul #031B4F como color principal, blanco como fondo dominante, y amarillo
+ * #FFCE00 reservado para una sola cosa: señalar lo que el mouse está tocando
+ * o lo que el usuario puede accionar. Si el amarillo apareciera también como
+ * relleno decorativo dejaría de significar «acá se puede hacer clic».
+ *
+ * Los grises son azules desaturados, no neutros: sobre un fondo blanco con
+ * texto azul marino, un gris neutro se ve sucio al lado.
+ */
 export const T = {
-  ink: "#1F1D1A",
-  paper: "#F5F4F1",
+  /** Texto principal y títulos. */
+  ink: "#031B4F",
+  /** Fondo de la aplicación. */
+  fondo: "#FFFFFF",
+  /** Tarjetas y superficies elevadas. */
   surface: "#FFFFFF",
-  border: "#E3E0D9",
-  borderStrong: "#CFCAC0",
-  muted: "#75706A",
-  faint: "#9A948C",
-  warn: "#C8811E",
+  /** Relleno sutil: encabezados de tabla, campos, celdas de indicadores. */
+  paper: "#F4F6FB",
+  border: "#DCE2EF",
+  borderStrong: "#B4BFD8",
+  /** Texto secundario. */
+  muted: "#4C5A7A",
+  /** Texto terciario y marcas de agua. */
+  faint: "#8792AC",
+  warn: "#B07D00",
 } as const;
 
-/** Sales accent. The design exposes this as a prop; it is the only hue that varies. */
-export const ACCENT = "#028090";
+/** Azul de la marca. El diseño lo pasa como prop; es el único tono que varía. */
+export const ACCENT = "#031B4F";
+
+/** Amarillo de acción: hover, foco y selección. */
+export const RESALTE = "#FFCE00";
+/** Texto sobre el amarillo. Es el único par de contraste aprobado. */
+export const SOBRE_RESALTE = "#031B4F";
 
 /**
- * Accent tints. The design appends 8-bit alpha suffixes to the accent hex, so
- * these stay in sync automatically when the accent changes.
+ * Tintes del azul. El diseño agrega sufijos de alfa de 8 bits al hex, así
+ * que se mantienen en sintonía solos cuando cambia el acento.
  */
 export const soft = (accent: string) => `${accent}1A`;
-/** Menu/chip fill — slightly lighter than `soft`. */
+/** Relleno de menús y fichas — algo más claro que `soft`. */
 export const softer = (accent: string) => `${accent}14`;
-/** "In pipeline" bar segments, sitting behind the solid won segment. */
+/** Segmentos «en pipeline», detrás del segmento sólido de lo ganado. */
 export const openTone = (accent: string) => `${accent}3D`;

@@ -527,12 +527,12 @@ export function UsuariosRoles({
                     </select>
                   </td>
                   <td style={{ padding: "11px 18px" }}>
-                    <span
+                    <span className="pill"
                       style={{
                         fontSize: 11,
                         padding: "3px 9px",
                         borderRadius: 20,
-                        background: u.activo ? "#E6F0E9" : "#EDEBE6",
+                        background: u.activo ? "#E6F0E9" : "#E4E9F3",
                         color: u.activo ? "#2F6B4F" : T.muted,
                       }}
                     >
@@ -761,12 +761,12 @@ export function UsuariosRoles({
                   </p>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                  <span
+                  <span className="pill"
                     style={{
                       fontSize: 10.5,
                       padding: "2px 8px",
                       borderRadius: 20,
-                      background: r.activo ? "#E6F0E9" : "#EDEBE6",
+                      background: r.activo ? "#E6F0E9" : "#E4E9F3",
                       color: r.activo ? "#2F6B4F" : T.muted,
                     }}
                   >
@@ -945,7 +945,7 @@ export function UsuariosRoles({
                                 width: 38,
                                 height: 21,
                                 borderRadius: 11,
-                                background: on ? accent : "#D8D4CC",
+                                background: on ? accent : "#C3CBDD",
                                 position: "relative",
                                 cursor: rol?.esAdmin ? "not-allowed" : "pointer",
                                 opacity: rol?.esAdmin ? 0.65 : 1,

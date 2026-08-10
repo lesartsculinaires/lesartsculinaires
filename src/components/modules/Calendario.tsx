@@ -388,7 +388,7 @@ export function Calendario({ eventos, oportunidades, accent, onRefresh }: Props)
                           Marcar realizado
                         </button>
                       )}
-                      <span
+                      <span className="pill"
                         style={{
                           flexShrink: 0,
                           fontSize: 11,

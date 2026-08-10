@@ -588,7 +588,7 @@ function VistaAnual({
                   style={{
                     flex: 1,
                     height: 7,
-                    background: "#EDEBE6",
+                    background: "#E4E9F3",
                     borderRadius: 4,
                     overflow: "hidden",
                   }}

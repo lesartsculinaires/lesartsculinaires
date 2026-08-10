@@ -130,7 +130,7 @@ export function LoginForm({
       className="lac"
       style={{
         minHeight: "100vh",
-        background: T.paper,
+        background: T.fondo,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -170,7 +170,7 @@ export function LoginForm({
             padding: 4,
             marginBottom: 16,
             borderRadius: 10,
-            background: "#EDEBE6",
+            background: "#E4E9F3",
           }}
         >
           {(["ventas", "admin"] as const).map((m) => (
