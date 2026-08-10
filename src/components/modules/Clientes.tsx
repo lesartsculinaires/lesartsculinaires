@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 
+import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { NuevoClienteForm } from "@/components/modules/NuevoClienteForm";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
@@ -52,6 +53,7 @@ export function Clientes({
 }: Props) {
   const cat = useCatalogo();
   const [alta, setAlta] = useState(false);
+  const [importando, setImportando] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
@@ -222,6 +224,26 @@ export function Clientes({
           >
             + Nuevo cliente
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCreado(null);
+              setImportando(true);
+            }}
+            style={{
+              height: 32,
+              padding: "0 14px",
+              fontSize: 12.5,
+              borderRadius: 6,
+              border: `1px solid ${accent}`,
+              color: accent,
+              background: "transparent",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ↑ Subir base de datos
+          </button>
         </div>
 
         {creado && (
@@ -235,8 +257,7 @@ export function Clientes({
               color: "#2F6B4F",
             }}
           >
-            Cliente creado con el código <span className="mono">{creado}</span>. Ya
-            aparece en la lista.
+            {creado}
           </p>
         )}
 
@@ -348,7 +369,20 @@ export function Clientes({
           onCerrar={() => setAlta(false)}
           onCreado={(codigo) => {
             setAlta(false);
-            setCreado(codigo);
+            setCreado(`Cliente creado con el código ${codigo}. Ya aparece en la lista.`);
+            onRefresh();
+          }}
+        />
+      )}
+
+      {importando && (
+        <ImportarClientes
+          accent={accent}
+          oportunidades={oportunidades}
+          onCerrar={() => setImportando(false)}
+          onImportado={(resumen) => {
+            setImportando(false);
+            setCreado(resumen);
             onRefresh();
           }}
         />

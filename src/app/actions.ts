@@ -560,3 +560,126 @@ export async function crearCliente(
   await supabase.from("clientes").delete().eq("id", cliente.id);
   return { ok: false, error: ultimoError };
 }
+
+// -------------------------------------------------------- importación masiva
+
+/** Una fila lista para insertar, ya validada y resuelta por la pantalla. */
+export interface FilaParaImportar {
+  nombre: string;
+  telefono: string | null;
+  correo: string | null;
+  vendedor_id: number | null;
+  producto_id: number | null;
+  territorio_id: number | null;
+  canal_id: number | null;
+  etapa_id: number | null;
+  estado_id: number | null;
+  fecha_registro: string;
+  fecha_cierre: string | null;
+  valor_oportunidad: number | null;
+  venta_cerrada: number | null;
+  descuento_promocion: string | null;
+}
+
+export interface ResultadoImportacion {
+  ok: boolean;
+  error: string | null;
+  /** Cuántos clientes con su oportunidad quedaron creados. */
+  creados: number;
+  /** Códigos asignados, para que la pantalla los muestre. */
+  desde: string | null;
+  hasta: string | null;
+}
+
+/**
+ * Insertar un lote de clientes con su primera oportunidad.
+ *
+ * Va en dos inserciones masivas y no fila por fila: 300 clientes serían 600
+ * viajes de ida y vuelta, y a mitad de camino un corte dejaría la mitad
+ * cargada sin forma de saber cuál.
+ */
+export async function importarClientes(
+  filas: FilaParaImportar[],
+): Promise<ResultadoImportacion> {
+  const vacio = { creados: 0, desde: null, hasta: null };
+
+  if (filas.length === 0) {
+    return { ok: false, error: "No hay filas para importar.", ...vacio };
+  }
+  if (filas.length > 500) {
+    return { ok: false, error: "Máximo 500 filas por lote.", ...vacio };
+  }
+
+  const supabase = await getServerClient();
+  if (!supabase) return { ...NO_SESSION, ...vacio };
+
+  const { data: clientes, error: errClientes } = await supabase
+    .from("clientes")
+    .insert(
+      filas.map((f) => ({
+        nombre: f.nombre.trim(),
+        telefono: f.telefono,
+        correo: f.correo,
+        territorio_id: f.territorio_id,
+      })),
+    )
+    .select("id");
+
+  if (errClientes) return { ok: false, error: errClientes.message, ...vacio };
+  if (!clientes || clientes.length !== filas.length) {
+    return {
+      ok: false,
+      error: "La base devolvió menos clientes de los enviados; no se importó nada.",
+      ...vacio,
+    };
+  }
+
+  const { data: previo } = await supabase
+    .from("oportunidades")
+    .select("codigo")
+    .like("codigo", "CRM-%")
+    .order("codigo", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const base = numeroDeCodigo(previo?.codigo ?? null);
+  const codigo = (i: number) => `CRM-${String(base + 1 + i).padStart(4, "0")}`;
+
+  const { error: errOps } = await supabase.from("oportunidades").insert(
+    filas.map((f, i) => ({
+      codigo: codigo(i),
+      cliente_id: clientes[i].id,
+      vendedor_id: f.vendedor_id,
+      producto_id: f.producto_id,
+      territorio_id: f.territorio_id,
+      canal_id: f.canal_id,
+      etapa_id: f.etapa_id,
+      estado_id: f.estado_id,
+      fecha_registro: f.fecha_registro,
+      fecha_cierre: f.fecha_cierre,
+      valor_oportunidad: f.valor_oportunidad,
+      venta_cerrada: f.venta_cerrada,
+      descuento_promocion: f.descuento_promocion,
+    })),
+  );
+
+  if (errOps) {
+    // Los clientes ya entraron. Sin su oportunidad no aparecen en ninguna
+    // pantalla, así que se deshacen: es preferible no importar nada a dejar
+    // filas invisibles que después nadie encuentra para limpiar.
+    await supabase
+      .from("clientes")
+      .delete()
+      .in("id", clientes.map((c) => c.id));
+    return { ok: false, error: errOps.message, ...vacio };
+  }
+
+  revalidatePath("/");
+  return {
+    ok: true,
+    error: null,
+    creados: filas.length,
+    desde: codigo(0),
+    hasta: codigo(filas.length - 1),
+  };
+}
