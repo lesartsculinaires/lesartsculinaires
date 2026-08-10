@@ -7,6 +7,8 @@ import { revisarNombre } from "@/lib/texto";
 import { T } from "@/lib/theme";
 
 interface Props {
+  /** Para poder enfocarlo desde afuera al señalar un error. */
+  id?: string;
   valor: string;
   onCambio: (v: string) => void;
   /** Un `textarea` en vez de un `input`. */
@@ -18,6 +20,8 @@ interface Props {
   accent: string;
   /** Muestra el botón de capitalizar y el aviso de ortografía. */
   esNombre?: boolean;
+  /** Pinta el borde de rojo. */
+  error?: boolean;
   onEnter?: () => void;
   onBlur?: () => void;
 }
@@ -31,6 +35,7 @@ interface Props {
  * posición del cursor, sin obligar a aprender combinaciones de teclas.
  */
 export function CampoTexto({
+  id,
   valor,
   onCambio,
   multilinea = false,
@@ -40,6 +45,7 @@ export function CampoTexto({
   estilo,
   accent,
   esNombre = false,
+  error = false,
   onEnter,
   onBlur,
 }: Props) {
@@ -52,7 +58,7 @@ export function CampoTexto({
     fontSize: 13,
     fontFamily: "inherit",
     lineHeight: multilinea ? 1.5 : undefined,
-    border: `1px solid ${T.border}`,
+    border: `1px solid ${error ? "#B85042" : T.border}`,
     borderRadius: 6,
     background: T.surface,
     color: T.ink,
@@ -66,6 +72,7 @@ export function CampoTexto({
     <div>
       {multilinea ? (
         <textarea
+          id={id}
           ref={ref as React.RefObject<HTMLTextAreaElement>}
           rows={filas}
           value={valor}
@@ -77,6 +84,7 @@ export function CampoTexto({
         />
       ) : (
         <input
+          id={id}
           ref={ref as React.RefObject<HTMLInputElement>}
           value={valor}
           placeholder={placeholder}

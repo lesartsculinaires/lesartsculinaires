@@ -12,6 +12,14 @@ import {
   type ContactoConocido,
 } from "@/lib/duplicados";
 import { T } from "@/lib/theme";
+import {
+  OBLIGATORIOS,
+  bloqueantes,
+  listarCampos,
+  validarAlta,
+  type CampoCliente,
+  type Problema,
+} from "@/lib/validacion";
 import type { CatalogItem, Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -69,13 +77,44 @@ const CAMPO: React.CSSProperties = {
   color: T.ink,
 };
 
-function Etiqueta({ texto, children }: { texto: string; children: React.ReactNode }) {
+function Etiqueta({
+  texto,
+  campo,
+  problema,
+  children,
+}: {
+  texto: string;
+  campo?: CampoCliente;
+  problema?: Problema;
+  children: React.ReactNode;
+}) {
+  const obligatorio = campo ? OBLIGATORIOS.includes(campo) : false;
+  const color = problema ? (problema.bloquea ? "#B85042" : T.warn) : T.muted;
+
   return (
     <label style={{ display: "block", minWidth: 0 }}>
-      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
+      <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color }}>
         {texto}
+        {obligatorio && (
+          <span style={{ color: "#B85042" }} title="Campo obligatorio">
+            {" *"}
+          </span>
+        )}
       </span>
       {children}
+      {problema && (
+        <span
+          style={{
+            display: "block",
+            marginTop: 4,
+            fontSize: 11.5,
+            lineHeight: 1.4,
+            color: problema.bloquea ? "#B85042" : T.warn,
+          }}
+        >
+          {problema.mensaje}
+        </span>
+      )}
     </label>
   );
 }
@@ -112,6 +151,12 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
   const [error, setError] = useState<string | null>(null);
   /** Coincidencias que devolvió el servidor al intentar guardar. */
   const [choque, setChoque] = useState<Coincidencia[] | null>(null);
+  /**
+   * Los problemas se muestran recién después del primer intento de guardar.
+   * Pintar de rojo un formulario que todavía no se terminó de llenar es
+   * regañar a alguien por no haber hecho algo que estaba haciendo.
+   */
+  const [intentado, setIntentado] = useState(false);
 
   // Un contacto puede tener varias oportunidades; interesa una sola vez.
   const conocidos: ContactoConocido[] = useMemo(() => {
@@ -140,12 +185,39 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
 
   const coincidencias = choque ?? posibles;
 
+  const problemas = useMemo(() => validarAlta(d), [d]);
+  const faltantes = bloqueantes(problemas);
+  // Una vez que se intentó, los errores se actualizan en vivo mientras se
+  // corrigen: así se ve desaparecer el rojo al arreglar cada campo.
+  const visibles = intentado ? problemas : [];
+  const problemaDe = (campo: CampoCliente) => visibles.find((p) => p.campo === campo);
+
+  /** Borde rojo y un id estable para poder enfocar el campo con problema. */
+  const marco = (campo: CampoCliente) => {
+    const p = problemaDe(campo);
+    return {
+      id: `campo-${campo}`,
+      style: p
+        ? { ...CAMPO, borderColor: p.bloquea ? "#B85042" : T.warn }
+        : CAMPO,
+    };
+  };
+
   const set = <K extends keyof NuevoCliente>(k: K, v: NuevoCliente[K]) => {
     setChoque(null);
     setD((prev) => ({ ...prev, [k]: v }));
   };
 
   const guardar = async (forzar = false) => {
+    setIntentado(true);
+
+    if (faltantes.length > 0) {
+      // Llevar el foco al primero evita tener que buscar el rojo en un
+      // formulario de trece campos.
+      document.getElementById(`campo-${faltantes[0].campo}`)?.focus();
+      return;
+    }
+
     setBusy(true);
     setError(null);
     const r = await crearCliente(d, forzar);
@@ -220,7 +292,9 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
               Nuevo cliente
             </p>
             <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-              Se crea el cliente y su primera oportunidad. El código se asigna solo.
+              Se crea el cliente y su primera oportunidad. El código se asigna solo.{" "}
+              Los campos con <span style={{ color: "#B85042" }}>*</span> son
+              obligatorios.
             </p>
           </div>
           <button
@@ -238,31 +312,33 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             Datos del cliente
           </p>
           <div style={{ ...grid, marginBottom: 20 }}>
-            <Etiqueta texto="Nombre *">
+            <Etiqueta texto="Nombre" campo="nombre" problema={problemaDe("nombre")}>
               <CampoTexto
+                id="campo-nombre"
                 valor={d.nombre}
                 onCambio={(v) => set("nombre", v)}
                 placeholder="Nombre y apellido"
                 autoFocus
                 accent={accent}
                 esNombre
+                error={Boolean(problemaDe("nombre"))}
               />
             </Etiqueta>
-            <Etiqueta texto="Teléfono">
+            <Etiqueta texto="Teléfono" campo="telefono" problema={problemaDe("telefono")}>
               <input
+                {...marco("telefono")}
                 value={d.telefono ?? ""}
                 onChange={(e) => set("telefono", oNull(e.target.value))}
                 placeholder="opcional"
-                style={CAMPO}
               />
             </Etiqueta>
-            <Etiqueta texto="Correo">
+            <Etiqueta texto="Correo" campo="correo" problema={problemaDe("correo")}>
               <input
+                {...marco("correo")}
                 type="email"
                 value={d.correo ?? ""}
                 onChange={(e) => set("correo", oNull(e.target.value))}
                 placeholder="opcional"
-                style={CAMPO}
               />
             </Etiqueta>
           </div>
@@ -295,24 +371,25 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             Fechas y montos
           </p>
           <div style={grid}>
-            <Etiqueta texto="Fecha de registro *">
+            <Etiqueta texto="Fecha de registro" campo="fecha_registro" problema={problemaDe("fecha_registro")}>
               <input
+                {...marco("fecha_registro")}
                 type="date"
                 value={d.fecha_registro}
                 onChange={(e) => set("fecha_registro", e.target.value)}
-                style={CAMPO}
               />
             </Etiqueta>
-            <Etiqueta texto="Fecha de cierre">
+            <Etiqueta texto="Fecha de cierre" campo="fecha_cierre" problema={problemaDe("fecha_cierre")}>
               <input
+                {...marco("fecha_cierre")}
                 type="date"
                 value={d.fecha_cierre ?? ""}
                 onChange={(e) => set("fecha_cierre", e.target.value || null)}
-                style={CAMPO}
               />
             </Etiqueta>
-            <Etiqueta texto="Valor de la oportunidad">
+            <Etiqueta texto="Valor de la oportunidad" campo="valor_oportunidad" problema={problemaDe("valor_oportunidad")}>
               <input
+                {...marco("valor_oportunidad")}
                 type="number"
                 min="0"
                 step="0.01"
@@ -321,7 +398,6 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                   set("valor_oportunidad", e.target.value === "" ? null : Number(e.target.value))
                 }
                 placeholder="0.00"
-                style={CAMPO}
               />
             </Etiqueta>
             <Etiqueta texto="Descuento o promoción">
@@ -333,6 +409,31 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
               />
             </Etiqueta>
           </div>
+
+          {intentado && faltantes.length > 0 && (
+            <div
+              role="alert"
+              style={{
+                margin: "16px 0 0",
+                padding: "12px 14px",
+                borderRadius: 8,
+                background: "#F7EBE9",
+                border: "1px solid #E4B4AC",
+                color: "#8C3B2F",
+              }}
+            >
+              <p style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 600 }}>
+                {faltantes.length === 1
+                  ? `Falta completar ${listarCampos(faltantes)}.`
+                  : `Faltan ${faltantes.length} campos: ${listarCampos(faltantes)}.`}
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55 }}>
+                {faltantes.map((f) => (
+                  <li key={f.campo}>{f.mensaje}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {coincidencias.length > 0 && (
             <div
@@ -422,15 +523,18 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
           <button
             type="button"
             onClick={() => guardar(coincidencias.length > 0)}
-            disabled={busy || !d.nombre.trim()}
+            // A propósito no se deshabilita cuando faltan campos: un botón
+            // muerto no dice qué falta. Al apretarlo, el aviso lo explica y el
+            // foco salta al primer campo con problema.
+            disabled={busy}
             style={{
               height: 36,
               padding: "0 18px",
               fontSize: 13,
               borderRadius: 7,
-              background: !busy && d.nombre.trim() ? accent : T.border,
-              color: !busy && d.nombre.trim() ? "#fff" : T.faint,
-              cursor: !busy && d.nombre.trim() ? "pointer" : "not-allowed",
+              background: busy ? T.border : accent,
+              color: busy ? T.faint : "#fff",
+              cursor: busy ? "not-allowed" : "pointer",
             }}
           >
             {busy
