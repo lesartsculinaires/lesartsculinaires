@@ -457,3 +457,106 @@ export async function diagnosticarServiceRole(): Promise<
 
   return { ok: true, datos };
 }
+
+// ------------------------------------------------------------ alta de cliente
+
+/** Lo que el formulario de alta manda. Las claves son nombres de columna. */
+export interface NuevoCliente {
+  nombre: string;
+  telefono: string | null;
+  correo: string | null;
+  vendedor_id: number | null;
+  producto_id: number | null;
+  territorio_id: number | null;
+  canal_id: number | null;
+  etapa_id: number | null;
+  estado_id: number | null;
+  fecha_registro: string;
+  fecha_cierre: string | null;
+  valor_oportunidad: number | null;
+  descuento_promocion: string | null;
+}
+
+/** "CRM-0581" → 581. Devuelve 0 si no tiene esa forma. */
+const numeroDeCodigo = (codigo: string | null): number => {
+  const m = /^CRM-(\d+)$/.exec(codigo ?? "");
+  return m ? Number(m[1]) : 0;
+};
+
+/**
+ * Dar de alta un cliente con su primera oportunidad.
+ *
+ * La pantalla de Clientes lista oportunidades, no clientes: un cliente sin
+ * ninguna no aparecería en ningún lado. Por eso el alta crea las dos cosas.
+ */
+export async function crearCliente(
+  datos: NuevoCliente,
+): Promise<ActionResult & { codigo?: string }> {
+  const nombre = datos.nombre.trim();
+  if (!nombre) return { ok: false, error: "El nombre del cliente es obligatorio." };
+  if (!datos.fecha_registro) {
+    return { ok: false, error: "La fecha de registro es obligatoria." };
+  }
+
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: cliente, error: errCliente } = await supabase
+    .from("clientes")
+    .insert({
+      nombre,
+      telefono: datos.telefono,
+      correo: datos.correo,
+      territorio_id: datos.territorio_id,
+    })
+    .select("id")
+    .single();
+
+  if (errCliente) return { ok: false, error: errCliente.message };
+
+  // El código se calcula leyendo el último y sumando uno. Dos altas
+  // simultáneas pueden pedir el mismo número; la columna es `unique`, así que
+  // la segunda choca y se reintenta con el siguiente en vez de fallar.
+  let ultimoError = "No se pudo asignar un código.";
+
+  for (let intento = 0; intento < 5; intento += 1) {
+    const { data: previo } = await supabase
+      .from("oportunidades")
+      .select("codigo")
+      .like("codigo", "CRM-%")
+      .order("codigo", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const codigo = `CRM-${String(numeroDeCodigo(previo?.codigo ?? null) + 1 + intento).padStart(4, "0")}`;
+
+    const { error: errOp } = await supabase.from("oportunidades").insert({
+      codigo,
+      cliente_id: cliente.id,
+      vendedor_id: datos.vendedor_id,
+      producto_id: datos.producto_id,
+      territorio_id: datos.territorio_id,
+      canal_id: datos.canal_id,
+      etapa_id: datos.etapa_id,
+      estado_id: datos.estado_id,
+      fecha_registro: datos.fecha_registro,
+      fecha_cierre: datos.fecha_cierre,
+      valor_oportunidad: datos.valor_oportunidad,
+      descuento_promocion: datos.descuento_promocion,
+    });
+
+    if (!errOp) {
+      revalidatePath("/");
+      return { ok: true, error: null, codigo };
+    }
+
+    ultimoError = errOp.message;
+    // 23505 es violación de unicidad: el código lo ganó otra alta.
+    if (!errOp.message.includes("duplicate key") && errOp.code !== "23505") break;
+  }
+
+  // Sin oportunidad el cliente no se vería en ninguna pantalla, así que se
+  // deshace el alta en vez de dejar una fila huérfana.
+  await supabase.from("clientes").delete().eq("id", cliente.id);
+  return { ok: false, error: ultimoError };
+}

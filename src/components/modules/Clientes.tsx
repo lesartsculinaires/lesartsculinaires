@@ -1,7 +1,8 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
+import { NuevoClienteForm } from "@/components/modules/NuevoClienteForm";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
@@ -21,6 +22,8 @@ interface Props {
   onToggleMenu: (key: string) => void;
   onSelect: (id: number) => void;
   onLimpiar: () => void;
+  /** Recarga los datos del servidor tras dar de alta un cliente. */
+  onRefresh: () => void;
 }
 
 /** Which `Oportunidad` id field each catalogue filter tests. */
@@ -45,8 +48,11 @@ export function Clientes({
   onToggleMenu,
   onSelect,
   onLimpiar,
+  onRefresh,
 }: Props) {
   const cat = useCatalogo();
+  const [alta, setAlta] = useState(false);
+  const [creado, setCreado] = useState<string | null>(null);
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
@@ -197,7 +203,42 @@ export function Clientes({
               Limpiar
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setCreado(null);
+              setAlta(true);
+            }}
+            style={{
+              height: 32,
+              padding: "0 14px",
+              fontSize: 12.5,
+              borderRadius: 6,
+              background: accent,
+              color: "#fff",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + Nuevo cliente
+          </button>
         </div>
+
+        {creado && (
+          <p
+            style={{
+              margin: 0,
+              padding: "10px 16px",
+              fontSize: 12.5,
+              borderBottom: `1px solid ${T.border}`,
+              background: "#E6F0E9",
+              color: "#2F6B4F",
+            }}
+          >
+            Cliente creado con el código <span className="mono">{creado}</span>. Ya
+            aparece en la lista.
+          </p>
+        )}
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -300,6 +341,18 @@ export function Clientes({
           <span>Clic en una fila para ver la ficha completa</span>
         </div>
       </div>
+
+      {alta && (
+        <NuevoClienteForm
+          accent={accent}
+          onCerrar={() => setAlta(false)}
+          onCreado={(codigo) => {
+            setAlta(false);
+            setCreado(codigo);
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

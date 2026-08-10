@@ -150,6 +150,7 @@ export default function CrmApp({
               onToggleMenu={actions.toggleMenu}
               onSelect={actions.select}
               onLimpiar={actions.limpiarFiltros}
+              onRefresh={() => router.refresh()}
             />
           )}
 
