@@ -1,11 +1,13 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_URL } from "@/lib/supabase/config";
+import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import { getServerClient } from "@/lib/supabase/server";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
@@ -489,9 +491,51 @@ const numeroDeCodigo = (codigo: string | null): number => {
  * La pantalla de Clientes lista oportunidades, no clientes: un cliente sin
  * ninguna no aparecería en ningún lado. Por eso el alta crea las dos cosas.
  */
+/**
+ * Contactos ya guardados, para comparar contra ellos.
+ *
+ * Trae la tabla entera de clientes reducida a cuatro columnas en vez de
+ * filtrar en la consulta. El teléfono se guarda con guiones y espacios
+ * ("7100-0001", "+503 7100 0001"), así que un `where` sobre el texto crudo no
+ * encontraría los repetidos; hay que normalizar, y eso pasa en JavaScript.
+ * Con la base actual son unos pocos cientos de filas. Si algún día fueran
+ * decenas de miles, esto se convierte en una función en Postgres.
+ */
+async function contactosConocidos(
+  supabase: SupabaseClient,
+): Promise<{ clienteId: number; nombre: string; telefono: string | null; correo: string | null }[]> {
+  const { data } = await supabase
+    .from("clientes")
+    .select("id, nombre, telefono, correo")
+    .limit(20000);
+
+  return (data ?? []).map((c) => ({
+    clienteId: c.id as number,
+    nombre: (c.nombre as string) ?? "",
+    telefono: (c.telefono as string | null) ?? null,
+    correo: (c.correo as string | null) ?? null,
+  }));
+}
+
+/** Contactos existentes que coinciden con los datos dados. */
+export async function revisarDuplicados(
+  datos: DatosContacto,
+): Promise<{ ok: boolean; error: string | null; coincidencias: Coincidencia[] }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ...NO_SESSION, coincidencias: [] };
+
+  return {
+    ok: true,
+    error: null,
+    coincidencias: buscarDuplicados(datos, await contactosConocidos(supabase)),
+  };
+}
+
 export async function crearCliente(
   datos: NuevoCliente,
-): Promise<ActionResult & { codigo?: string }> {
+  /** Crear aunque coincida con un contacto existente. */
+  forzar = false,
+): Promise<ActionResult & { codigo?: string; coincidencias?: Coincidencia[] }> {
   const nombre = datos.nombre.trim();
   if (!nombre) return { ok: false, error: "El nombre del cliente es obligatorio." };
   if (!datos.fecha_registro) {
@@ -500,6 +544,23 @@ export async function crearCliente(
 
   const supabase = await getServerClient();
   if (!supabase) return NO_SESSION;
+
+  // El navegador ya avisó mientras se escribía, pero su lista es una foto del
+  // momento en que se cargó la pantalla. Entre eso y el guardado, otra persona
+  // pudo dar de alta el mismo contacto. La comprobación que cuenta es esta.
+  if (!forzar) {
+    const coincidencias = buscarDuplicados(
+      { nombre, telefono: datos.telefono, correo: datos.correo },
+      await contactosConocidos(supabase),
+    );
+    if (coincidencias.length > 0) {
+      return {
+        ok: false,
+        error: "Ya existe un contacto con estos datos.",
+        coincidencias,
+      };
+    }
+  }
 
   const { data: cliente, error: errCliente } = await supabase
     .from("clientes")

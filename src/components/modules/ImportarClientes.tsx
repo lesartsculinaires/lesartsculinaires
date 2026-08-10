@@ -5,11 +5,11 @@ import { useMemo, useState } from "react";
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
+import type { ContactoConocido } from "@/lib/duplicados";
 import {
   CAMPOS,
   construirFilas,
   detectarMapeo,
-  normalizar,
   parseDelimitado,
   type ClaveCampo,
   type FilaImportada,
@@ -48,10 +48,21 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   /** Aviso cuando el Excel traía varias hojas. */
   const [hoja, setHoja] = useState<string | null>(null);
 
-  const existentes = useMemo(
-    () => new Set(oportunidades.map((o) => normalizar(o.cliente))),
-    [oportunidades],
-  );
+  const existentes: ContactoConocido[] = useMemo(() => {
+    const m = new Map<number, ContactoConocido>();
+    for (const o of oportunidades) {
+      if (!m.has(o.clienteId)) {
+        m.set(o.clienteId, {
+          clienteId: o.clienteId,
+          nombre: o.cliente,
+          telefono: o.telefono,
+          correo: o.correo,
+          codigo: o.codigo,
+        });
+      }
+    }
+    return [...m.values()];
+  }, [oportunidades]);
 
   const filas: FilaImportada[] = useMemo(() => {
     if (!matriz || matriz.length < 2) return [];
@@ -447,10 +458,10 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                     style={{ marginTop: 2 }}
                   />
                   <span>
-                    {duplicadas} {duplicadas === 1 ? "fila coincide" : "filas coinciden"} con un
-                    cliente que ya existe (o se repite dentro del archivo). Por defecto se
-                    omiten. Marcá acá para importarlas igual, si de verdad son personas
-                    distintas con el mismo nombre.
+                    {duplicadas} {duplicadas === 1 ? "fila coincide" : "filas coinciden"} por
+                    nombre, teléfono o correo con un contacto que ya existe (o con otra fila
+                    del mismo archivo). Por defecto se omiten. Marcá acá para importarlas
+                    igual, si de verdad son personas distintas.
                   </span>
                 </label>
               )}

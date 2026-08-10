@@ -366,6 +366,7 @@ export function Clientes({
       {alta && (
         <NuevoClienteForm
           accent={accent}
+          oportunidades={oportunidades}
           onCerrar={() => setAlta(false)}
           onCreado={(codigo) => {
             setAlta(false);

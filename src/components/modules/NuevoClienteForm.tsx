@@ -1,14 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { crearCliente, type NuevoCliente } from "@/app/actions";
 import { useCatalogo } from "@/lib/catalog";
+import {
+  buscarDuplicados,
+  describirMotivos,
+  type Coincidencia,
+  type ContactoConocido,
+} from "@/lib/duplicados";
 import { T } from "@/lib/theme";
-import type { CatalogItem } from "@/lib/types";
+import type { CatalogItem, Oportunidad } from "@/lib/types";
 
 interface Props {
   accent: string;
+  /** De acá salen los contactos ya guardados con los que comparar. */
+  oportunidades: readonly Oportunidad[];
   onCerrar: () => void;
   /** Se llama tras un alta exitosa, con el código asignado. */
   onCreado: (codigo: string) => void;
@@ -40,21 +48,60 @@ const vacio = (): NuevoCliente => ({
 /** Texto vacío → null, para no guardar cadenas en blanco. */
 const oNull = (v: string): string | null => (v.trim() ? v.trim() : null);
 
-export function NuevoClienteForm({ accent, onCerrar, onCreado }: Props) {
+export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: Props) {
   const cat = useCatalogo();
   const [d, setD] = useState<NuevoCliente>(vacio);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Coincidencias que devolvió el servidor al intentar guardar. */
+  const [choque, setChoque] = useState<Coincidencia[] | null>(null);
 
-  const set = <K extends keyof NuevoCliente>(k: K, v: NuevoCliente[K]) =>
+  // Un contacto puede tener varias oportunidades; interesa una sola vez.
+  const conocidos: ContactoConocido[] = useMemo(() => {
+    const m = new Map<number, ContactoConocido>();
+    for (const o of oportunidades) {
+      if (!m.has(o.clienteId)) {
+        m.set(o.clienteId, {
+          clienteId: o.clienteId,
+          nombre: o.cliente,
+          telefono: o.telefono,
+          correo: o.correo,
+          codigo: o.codigo,
+        });
+      }
+    }
+    return [...m.values()];
+  }, [oportunidades]);
+
+  // Aviso en vivo mientras se escribe, contra la copia que ya tiene la
+  // pantalla. Es instantáneo y sin pedidos al servidor; la palabra final la
+  // tiene igual el servidor al guardar.
+  const posibles = useMemo(
+    () => buscarDuplicados({ nombre: d.nombre, telefono: d.telefono, correo: d.correo }, conocidos),
+    [d.nombre, d.telefono, d.correo, conocidos],
+  );
+
+  const coincidencias = choque ?? posibles;
+
+  const set = <K extends keyof NuevoCliente>(k: K, v: NuevoCliente[K]) => {
+    setChoque(null);
     setD((prev) => ({ ...prev, [k]: v }));
+  };
 
-  const guardar = async () => {
+  const guardar = async (forzar = false) => {
     setBusy(true);
     setError(null);
-    const r = await crearCliente(d);
+    const r = await crearCliente(d, forzar);
     setBusy(false);
+
     if (!r.ok) {
+      if (r.coincidencias && r.coincidencias.length > 0) {
+        // El servidor encontró algo que la pantalla no tenía: alguien más lo
+        // creó mientras se llenaba el formulario.
+        setChoque(r.coincidencias);
+        setError(null);
+        return;
+      }
       setError(r.error);
       return;
     }
@@ -278,6 +325,60 @@ export function NuevoClienteForm({ accent, onCerrar, onCreado }: Props) {
             </Etiqueta>
           </div>
 
+          {coincidencias.length > 0 && (
+            <div
+              role="alert"
+              style={{
+                margin: "16px 0 0",
+                padding: "12px 14px",
+                borderRadius: 8,
+                background: "#FFF6D6",
+                border: "1px solid #F0CE55",
+                color: "#6B5200",
+              }}
+            >
+              <p style={{ margin: "0 0 7px", fontSize: 12.5, fontWeight: 600 }}>
+                {choque
+                  ? "Este contacto se acaba de crear en otra sesión."
+                  : coincidencias.length === 1
+                    ? "Este contacto ya existe en la base de datos."
+                    : `Hay ${coincidencias.length} contactos que ya existen con estos datos.`}
+              </p>
+
+              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {coincidencias.slice(0, 4).map((c) => (
+                  <li
+                    key={c.clienteId}
+                    style={{ fontSize: 12.5, lineHeight: 1.55, marginBottom: 4 }}
+                  >
+                    <strong>{c.nombre}</strong>
+                    {c.codigo && (
+                      <span className="mono" style={{ marginLeft: 6, fontSize: 11.5 }}>
+                        {c.codigo}
+                      </span>
+                    )}
+                    <span style={{ display: "block" }}>
+                      Coincide {describirMotivos(c.motivos)}
+                      {c.telefono || c.correo ? " — " : ""}
+                      {[c.telefono, c.correo].filter(Boolean).join(" · ")}
+                    </span>
+                  </li>
+                ))}
+                {coincidencias.length > 4 && (
+                  <li style={{ fontSize: 12, marginTop: 4 }}>
+                    y {coincidencias.length - 4} más.
+                  </li>
+                )}
+              </ul>
+
+              <p style={{ margin: "9px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                Si es la misma persona, cerrá esto y buscala en la lista para
+                agregarle la oportunidad ahí. Si de verdad es alguien distinto,
+                podés crearla igual.
+              </p>
+            </div>
+          )}
+
           {error && (
             <p
               style={{
@@ -311,7 +412,7 @@ export function NuevoClienteForm({ accent, onCerrar, onCreado }: Props) {
           </button>
           <button
             type="button"
-            onClick={guardar}
+            onClick={() => guardar(coincidencias.length > 0)}
             disabled={busy || !d.nombre.trim()}
             style={{
               height: 36,
@@ -323,7 +424,11 @@ export function NuevoClienteForm({ accent, onCerrar, onCreado }: Props) {
               cursor: !busy && d.nombre.trim() ? "pointer" : "not-allowed",
             }}
           >
-            {busy ? "Guardando…" : "Crear cliente"}
+            {busy
+              ? "Guardando…"
+              : coincidencias.length > 0
+                ? "Crear igual"
+                : "Crear cliente"}
           </button>
         </div>
       </div>

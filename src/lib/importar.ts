@@ -6,6 +6,7 @@
  * con eso; este módulo no toca la base ni el DOM.
  */
 
+import { buscarDuplicados, type ContactoConocido } from "@/lib/duplicados";
 import type { Catalogo, CatalogItem } from "@/lib/types";
 
 /** Minúsculas, sin acentos, sin espacios de más. Para comparar encabezados y catálogos. */
@@ -258,7 +259,7 @@ export interface FilaImportada {
   errores: string[];
   /** Cosas que se importan igual, pero conviene mirar. */
   avisos: string[];
-  /** Ya existe un cliente con este nombre. */
+  /** Coincide con un contacto ya guardado o con otra fila del archivo. */
   duplicado: boolean;
 }
 
@@ -279,8 +280,8 @@ export interface OpcionesFilas {
   matriz: string[][];
   mapeo: Mapeo;
   catalogo: Catalogo;
-  /** Nombres de clientes que ya existen, normalizados. */
-  existentes: ReadonlySet<string>;
+  /** Contactos ya guardados, para detectar repetidos. */
+  existentes: readonly ContactoConocido[];
   /** Fecha a usar cuando la fila no trae ninguna. */
   fechaPorDefecto: string;
 }
@@ -302,7 +303,10 @@ export function construirFilas({
   const valor = (fila: string[], clave: ClaveCampo): string | null =>
     col[clave] >= 0 ? oNull(fila[col[clave]]) : null;
 
-  const vistos = new Set<string>();
+  // Los repetidos se buscan contra la base y contra las filas ya leídas del
+  // propio archivo: subir una planilla que se repite a sí misma duplicaría
+  // igual, aunque la base estuviera limpia.
+  const acumulado: ContactoConocido[] = [...existentes];
 
   return matriz.slice(1).map((fila, i) => {
     const errores: string[] = [];
@@ -328,15 +332,26 @@ export function construirFilas({
     const fechaCierre = parseFecha(crudaCierre);
     if (crudaCierre && !fechaCierre) avisos.push(`Fecha de cierre «${crudaCierre}» no se entiende`);
 
-    const n = normalizar(nombre);
-    const duplicado = Boolean(nombre) && (existentes.has(n) || vistos.has(n));
-    if (nombre) vistos.add(n);
+    const telefono = valor(fila, "telefono");
+    const correo = valor(fila, "correo");
+
+    const choques = buscarDuplicados({ nombre, telefono, correo }, acumulado);
+    const duplicado = choques.length > 0;
+    if (duplicado) {
+      const c = choques[0];
+      avisos.push(
+        `Ya existe «${c.nombre}»${c.codigo ? ` (${c.codigo})` : ""} con los mismos datos`,
+      );
+    }
+    if (nombre || telefono || correo) {
+      acumulado.push({ clienteId: -(i + 1), nombre, telefono, correo });
+    }
 
     return {
       linea: i + 2,
       nombre,
-      telefono: valor(fila, "telefono"),
-      correo: valor(fila, "correo"),
+      telefono,
+      correo,
       producto_id: cat("producto", catalogo.productos, "Programa"),
       vendedor_id: cat("vendedor", catalogo.vendedores, "Vendedor"),
       etapa_id: cat("etapa", catalogo.etapas, "Etapa"),
