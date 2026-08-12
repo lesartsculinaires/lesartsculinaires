@@ -6,9 +6,11 @@ import { addNota } from "@/app/actions";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
+import { Sugerencias } from "@/components/ui/Sugerencias";
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, mesLargo, money } from "@/lib/format";
+import { promocionesUsadas } from "@/lib/promociones";
 import { estadoTone } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
 import type {
@@ -20,6 +22,8 @@ import type {
 
 interface Props {
   oportunidad: Oportunidad;
+  /** Para ofrecer las promociones ya escritas en otras oportunidades. */
+  todas: readonly Oportunidad[];
   accent: string;
   menu: string | null;
   onToggleMenu: (key: string) => void;
@@ -48,6 +52,7 @@ const oMonto = (s: string): number | null => {
 
 export function ClienteDrawer({
   oportunidad: o,
+  todas,
   accent,
   menu,
   onToggleMenu,
@@ -60,6 +65,7 @@ export function ClienteDrawer({
   const [nota, setNota] = useState("");
   const [notaEstado, setNotaEstado] = useState<"idle" | "guardando" | "listo">("idle");
   const notaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promos = promocionesUsadas(todas);
 
   const [estadoFg, estadoBg] = estadoTone(o.estado, accent);
 
@@ -126,6 +132,9 @@ export function ClienteDrawer({
       value: o.descuento ?? "",
       tipo: "texto" as const,
       requerido: false,
+      multilinea: true,
+      acentos: true,
+      placeholder: "Describí la promoción",
       guardar: (v: string) =>
         onEditar(o.id, { descuento_promocion: oNull(v) }, { descuento: oNull(v) }),
     },
@@ -342,6 +351,21 @@ export function ClienteDrawer({
               tipo={f.tipo}
               requerido={f.requerido}
               accent={accent}
+              acentos={"acentos" in f && f.acentos}
+              multilinea={"multilinea" in f && f.multilinea}
+              placeholder={"placeholder" in f ? f.placeholder : undefined}
+              extra={
+                f.label === "Descuento / promoción"
+                  ? (borrador, poner) => (
+                      <Sugerencias
+                        opciones={promos}
+                        valor={borrador}
+                        onElegir={poner}
+                        accent={accent}
+                      />
+                    )
+                  : undefined
+              }
               onGuardar={f.guardar}
             />
           </div>

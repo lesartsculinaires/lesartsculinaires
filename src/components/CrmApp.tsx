@@ -231,6 +231,7 @@ export default function CrmApp({
           {seleccionada && (
             <ClienteDrawer
               oportunidad={seleccionada}
+              todas={oportunidades}
               accent={accent}
               menu={state.menu}
               onToggleMenu={actions.toggleMenu}

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { crearCliente, type NuevoCliente } from "@/app/actions";
 import { CampoTexto } from "@/components/ui/CampoTexto";
+import { Sugerencias } from "@/components/ui/Sugerencias";
 import { useCatalogo } from "@/lib/catalog";
 import {
   buscarDuplicados,
@@ -11,6 +12,7 @@ import {
   type Coincidencia,
   type ContactoConocido,
 } from "@/lib/duplicados";
+import { promocionesUsadas } from "@/lib/promociones";
 import { T } from "@/lib/theme";
 import {
   OBLIGATORIOS,
@@ -178,6 +180,8 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
   // Aviso en vivo mientras se escribe, contra la copia que ya tiene la
   // pantalla. Es instantáneo y sin pedidos al servidor; la palabra final la
   // tiene igual el servidor al guardar.
+  const promos = useMemo(() => promocionesUsadas(oportunidades), [oportunidades]);
+
   const posibles = useMemo(
     () => buscarDuplicados({ nombre: d.nombre, telefono: d.telefono, correo: d.correo }, conocidos),
     [d.nombre, d.telefono, d.correo, conocidos],
@@ -400,14 +404,26 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 placeholder="0.00"
               />
             </Etiqueta>
-            <Etiqueta texto="Descuento o promoción">
-              <input
-                value={d.descuento_promocion ?? ""}
-                onChange={(e) => set("descuento_promocion", oNull(e.target.value))}
-                placeholder="opcional"
-                style={CAMPO}
-              />
-            </Etiqueta>
+          </div>
+
+          <p className="mono" style={seccion}>
+            Descuento o promoción
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <CampoTexto
+              valor={d.descuento_promocion ?? ""}
+              onCambio={(v) => set("descuento_promocion", oNull(v))}
+              multilinea
+              filas={2}
+              placeholder="Ej: Bono de $100 a la matrícula por pago de contado antes del 30/09"
+              accent={accent}
+            />
+            <Sugerencias
+              opciones={promos}
+              valor={d.descuento_promocion ?? ""}
+              onElegir={(t) => set("descuento_promocion", t || null)}
+              accent={accent}
+            />
           </div>
 
           {intentado && faltantes.length > 0 && (

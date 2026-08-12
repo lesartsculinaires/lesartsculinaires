@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { T } from "@/lib/theme";
@@ -22,6 +22,10 @@ interface Props {
   acentos?: boolean;
   /** Agrega el botón de capitalizar. Para nombres propios. */
   esNombre?: boolean;
+  /** Caja de varias líneas, para texto que se describe y no se rellena. */
+  multilinea?: boolean;
+  /** Se dibuja bajo el campo mientras se edita. Recibe el borrador. */
+  extra?: (borrador: string, poner: (v: string) => void) => ReactNode;
 }
 
 /**
@@ -40,8 +44,10 @@ export function CampoEditable({
   onGuardar,
   acentos = false,
   esNombre = false,
+  multilinea = false,
+  extra,
 }: Props) {
-  const ref = useRef<HTMLInputElement | null>(null);
+  const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [draft, setDraft] = useState(value);
   const [focus, setFocus] = useState(false);
 
@@ -89,9 +95,28 @@ export function CampoEditable({
       }}
     >
       <span style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{label}</span>
-      <span style={{ flex: 1, maxWidth: tipo === "texto" ? "62%" : 150 }}>
+      <span style={{ flex: 1, maxWidth: multilinea ? "72%" : tipo === "texto" ? "62%" : 150 }}>
+        {multilinea ? (
+          <textarea
+            ref={ref as React.RefObject<HTMLTextAreaElement>}
+            rows={focus ? 3 : 1}
+            value={draft}
+            placeholder={placeholder ?? "—"}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={() => setFocus(true)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setDraft(value);
+                setFocus(false);
+                e.currentTarget.blur();
+              }
+            }}
+            style={{ ...input, height: "auto", resize: "vertical", lineHeight: 1.45, padding: "6px 8px" }}
+          />
+        ) : (
         <input
-          ref={ref}
+          ref={ref as React.RefObject<HTMLInputElement>}
           type={tipo === "fecha" ? "date" : "text"}
           inputMode={tipo === "monto" ? "decimal" : undefined}
           value={draft}
@@ -110,6 +135,8 @@ export function CampoEditable({
           className={tipo === "texto" ? undefined : "mono"}
           style={input}
         />
+        )}
+        {extra && focus && <div style={{ marginTop: 6 }}>{extra(draft, setDraft)}</div>}
         {acentos && focus && (
           <div style={{ marginTop: 6 }}>
             <TecladoAcentos
