@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
+import { Bases } from "@/components/modules/Bases";
 import { Calendario } from "@/components/modules/Calendario";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
 import { Clientes } from "@/components/modules/Clientes";
@@ -15,12 +16,15 @@ import { SyncBanner } from "@/components/SyncBanner";
 import { useCrm } from "@/hooks/useCrm";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
-import type { Accesos, Catalogo, Evento, Oportunidad } from "@/lib/types";
+import type { Accesos, Catalogo, Evento, Importacion, Oportunidad } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
   catalogo: Catalogo;
   eventos: Evento[];
+  importaciones: Importacion[];
+  /** La tabla de importaciones todavía no existe. */
+  faltaMigracionBases: boolean;
   userEmail: string;
   accesos: Accesos;
   /** True when the roles tables do not exist yet. */
@@ -39,6 +43,8 @@ export default function CrmApp({
   oportunidades: initial,
   catalogo,
   eventos,
+  importaciones,
+  faltaMigracionBases,
   userEmail,
   accesos,
   faltaMigracionAccesos,
@@ -151,6 +157,16 @@ export default function CrmApp({
               onSelect={actions.select}
               onLimpiar={actions.limpiarFiltros}
               onRefresh={() => router.refresh()}
+            />
+          )}
+
+          {mod === "Bases" && (
+            <Bases
+              oportunidades={oportunidades}
+              importaciones={importaciones}
+              faltaMigracion={faltaMigracionBases}
+              accent={accent}
+              onAbrir={(id) => actions.verEnClientes({}, id)}
             />
           )}
 

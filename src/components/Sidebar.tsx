@@ -9,6 +9,7 @@ import { T, soft } from "@/lib/theme";
 export const MODULOS = [
   "Dashboard",
   "Clientes",
+  "Bases",
   "Pipeline",
   "Calendario",
   "Equipos",

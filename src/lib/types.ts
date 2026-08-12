@@ -92,6 +92,24 @@ export interface Oportunidad {
   valor: number | null;
   cerrada: number | null;
   descuento: string | null;
+
+  /**
+   * Cuándo entró la fila al sistema. Distinto de `fechaRegistro`, que es
+   * cuando el lead llegó al negocio: una base histórica se sube hoy con
+   * fechas de hace meses.
+   */
+  creadoEn: string | null;
+  /** Base de la que vino, si vino de una importación. */
+  importacionId: number | null;
+}
+
+/** Una base subida al sistema. */
+export interface Importacion {
+  id: number;
+  archivo: string;
+  filas: number;
+  creadoEn: string;
+  creadoPor: string | null;
 }
 
 /** What the UI can edit on an opportunity. Keys are column names. */

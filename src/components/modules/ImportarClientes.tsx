@@ -172,10 +172,12 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     let creados = 0;
     let primero: string | null = null;
     let ultimo: string | null = null;
+    // Todos los lotes del mismo archivo cuelgan de una sola base.
+    let base: number | null = null;
 
     for (let i = 0; i < aImportar.length; i += LOTE) {
       const lote = aImportar.slice(i, i + LOTE).map(cargaDe);
-      const r = await importarClientes(lote);
+      const r = await importarClientes(lote, archivo ?? "sin nombre", base);
 
       if (!r.ok) {
         setProgreso(null);
@@ -190,6 +192,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       creados += r.creados;
       primero = primero ?? r.desde;
       ultimo = r.hasta;
+      base = base ?? r.importacionId ?? null;
       setProgreso({ hechas: creados, total: aImportar.length });
     }
 

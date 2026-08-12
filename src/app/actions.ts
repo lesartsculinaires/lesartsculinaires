@@ -650,6 +650,8 @@ export interface ResultadoImportacion {
   /** Códigos asignados, para que la pantalla los muestre. */
   desde: string | null;
   hasta: string | null;
+  /** Base abierta para esta importación, si se pudo registrar. */
+  importacionId?: number | null;
 }
 
 /**
@@ -661,6 +663,13 @@ export interface ResultadoImportacion {
  */
 export async function importarClientes(
   filas: FilaParaImportar[],
+  /** Nombre del archivo, para poder encontrar la base después. */
+  archivo?: string,
+  /**
+   * Id de una base ya abierta. La pantalla manda de a 200 filas; sin esto,
+   * un archivo grande aparecería como varias bases distintas.
+   */
+  importacionId?: number | null,
 ): Promise<ResultadoImportacion> {
   const vacio = { creados: 0, desde: null, hasta: null };
 
@@ -673,6 +682,20 @@ export async function importarClientes(
 
   const supabase = await getServerClient();
   if (!supabase) return { ...NO_SESSION, ...vacio };
+
+  // El encabezado se abre en el primer lote y se reutiliza en los siguientes.
+  // Si la tabla todavía no existe —falta correr la migración— la importación
+  // sigue adelante sin registrar la base: es preferible a no poder importar.
+  let baseId: number | null = importacionId ?? null;
+  if (baseId == null && archivo) {
+    const { data: { user } = { user: null } } = await supabase.auth.getUser();
+    const { data: base } = await supabase
+      .from("importaciones")
+      .insert({ archivo, filas: 0, creado_por: user?.id ?? null })
+      .select("id")
+      .single();
+    baseId = (base?.id as number | undefined) ?? null;
+  }
 
   const { data: clientes, error: errClientes } = await supabase
     .from("clientes")
@@ -709,6 +732,7 @@ export async function importarClientes(
   const { error: errOps } = await supabase.from("oportunidades").insert(
     filas.map((f, i) => ({
       codigo: codigo(i),
+      importacion_id: baseId,
       cliente_id: clientes[i].id,
       vendedor_id: f.vendedor_id,
       producto_id: f.producto_id,
@@ -735,6 +759,20 @@ export async function importarClientes(
     return { ok: false, error: errOps.message, ...vacio };
   }
 
+  // El contador de la base se acumula lote a lote.
+  if (baseId != null) {
+    const { data: previo } = await supabase
+      .from("importaciones")
+      .select("filas")
+      .eq("id", baseId)
+      .maybeSingle();
+
+    await supabase
+      .from("importaciones")
+      .update({ filas: ((previo?.filas as number | undefined) ?? 0) + filas.length })
+      .eq("id", baseId);
+  }
+
   revalidatePath("/");
   return {
     ok: true,
@@ -742,5 +780,6 @@ export async function importarClientes(
     creados: filas.length,
     desde: codigo(0),
     hasta: codigo(filas.length - 1),
+    importacionId: baseId,
   };
 }

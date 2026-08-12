@@ -64,6 +64,11 @@ function toOportunidad(r: Row): Oportunidad {
     valor: numOrNull(r.valor_oportunidad),
     cerrada: numOrNull(r.venta_cerrada),
     descuento: r.descuento_promocion ? str(r.descuento_promocion) : null,
+
+    // Vienen en null mientras no se haya corrido la migración de bases: la
+    // vista vieja no las trae y la app tiene que seguir funcionando igual.
+    creadoEn: r.created_at ? str(r.created_at) : null,
+    importacionId: numOrNull(r.importacion_id),
   };
 }
 
@@ -84,7 +89,27 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
     .order("id", { ascending: false });
 
   if (error) return { data: [], error: error.message };
-  return { data: ((data ?? []) as Row[]).map(toOportunidad), error: null };
+
+  const filas = ((data ?? []) as Row[]).map(toOportunidad);
+
+  // La vista sólo expone `created_at` después de la migración de bases. La
+  // columna existe en la tabla desde siempre, así que se completa desde ahí:
+  // el módulo de Bases puede agrupar por día de carga sin esperar a nadie.
+  if (filas.length > 0 && filas[0].creadoEn == null) {
+    const { data: fechas } = await supabase
+      .from("oportunidades")
+      .select("id, created_at")
+      .limit(20000);
+
+    if (fechas) {
+      const porId = new Map(
+        (fechas as Row[]).map((r) => [num(r.id), r.created_at ? str(r.created_at) : null]),
+      );
+      for (const f of filas) f.creadoEn = porId.get(f.id) ?? null;
+    }
+  }
+
+  return { data: filas, error: null };
 }
 
 const EMPTY_CATALOGO: Catalogo = {

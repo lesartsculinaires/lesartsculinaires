@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import CrmApp, { MOD_USUARIOS } from "@/components/CrmApp";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
+import { fetchImportaciones } from "@/lib/supabase/bases";
 import {
   fetchCatalogo,
   fetchEventos,
@@ -22,11 +23,12 @@ export default async function Page({
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos, accesos] = await Promise.all([
+  const [ops, catalogo, eventos, accesos, bases] = await Promise.all([
     fetchOportunidades(),
     fetchCatalogo(),
     fetchEventos(),
     fetchAccesos(user.id),
+    fetchImportaciones(),
   ]);
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
@@ -36,6 +38,8 @@ export default async function Page({
       oportunidades={ops.data}
       catalogo={catalogo.data}
       eventos={eventos.data}
+      importaciones={bases.data}
+      faltaMigracionBases={bases.faltaMigracion}
       userEmail={user.email ?? ""}
       accesos={accesos.data}
       faltaMigracionAccesos={accesos.faltaMigracion}

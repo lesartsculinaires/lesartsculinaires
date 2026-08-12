@@ -213,24 +213,60 @@ const oNull = (v: unknown): string | null => {
 
 // ------------------------------------------------------------------ mapeo
 
-/** Adivina qué columna del archivo corresponde a cada campo del CRM. */
+/** ¿Aparece `alias` como palabra completa dentro de `texto`? */
+const contienePalabra = (texto: string, alias: string): boolean =>
+  new RegExp(`(^| )${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(texto);
+
+/**
+ * Adivina qué columna del archivo corresponde a cada campo del CRM.
+ *
+ * Dos pasadas. Primero los encabezados que coinciden exactamente con un
+ * alias, que no admiten discusión. Después los que sólo empiezan por uno,
+ * y sólo si ningún otro campo aparece nombrado en el mismo encabezado.
+ *
+ * Esa segunda condición existe por un caso real: "Nombre del curso" empieza
+ * por "nombre" y se asignaba al nombre del cliente, así que una base entera
+ * entró con el programa donde iba la persona. Ante la duda es mejor dejar la
+ * columna sin asignar —la pantalla la muestra en la vista previa y quien
+ * importa la elige— que adivinar mal en silencio.
+ */
 export function detectarMapeo(encabezados: readonly string[]): Mapeo {
   const mapeo: Mapeo = {};
   const usados = new Set<ClaveCampo>();
+  const normalizados = encabezados.map((h) => normalizar(h));
 
-  encabezados.forEach((h, i) => {
-    const n = normalizar(h);
-    if (!n) {
-      mapeo[i] = "";
-      return;
+  normalizados.forEach((n, i) => {
+    mapeo[i] = "";
+    if (!n) return;
+    const exacto = CAMPOS.find(
+      (c) => !usados.has(c.clave) && (c.alias as readonly string[]).includes(n),
+    );
+    if (exacto) {
+      mapeo[i] = exacto.clave;
+      usados.add(exacto.clave);
     }
-    const campo = CAMPOS.find(
+  });
+
+  normalizados.forEach((n, i) => {
+    if (!n || mapeo[i]) return;
+
+    const candidato = CAMPOS.find(
       (c) =>
         !usados.has(c.clave) &&
-        (c.alias as readonly string[]).some((a) => a === n || n.startsWith(a)),
+        (c.alias as readonly string[]).some((a) => contienePalabra(n, a)),
     );
-    mapeo[i] = campo?.clave ?? "";
-    if (campo) usados.add(campo.clave);
+    if (!candidato) return;
+
+    // Si el encabezado también nombra otro campo, la columna es ambigua.
+    const ambiguo = CAMPOS.some(
+      (c) =>
+        c.clave !== candidato.clave &&
+        (c.alias as readonly string[]).some((a) => contienePalabra(n, a)),
+    );
+    if (ambiguo) return;
+
+    mapeo[i] = candidato.clave;
+    usados.add(candidato.clave);
   });
 
   return mapeo;
