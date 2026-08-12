@@ -12,6 +12,15 @@ interface Props {
   importaciones: Importacion[];
   /** La tabla de importaciones todavía no existe. */
   faltaMigracion: boolean;
+  /**
+   * Sin esto sólo se ve el listado de bases, no lo que hay adentro.
+   *
+   * Es una restricción de esta pantalla, no del acceso a los datos: los
+   * mismos nombres siguen estando en Clientes, que ventas necesita para
+   * trabajar. Sirve para que el módulo de Bases no sea un atajo para
+   * exportar la cartera entera, no para ocultarle datos a nadie.
+   */
+  esAdmin: boolean;
   accent: string;
   /** Abre una oportunidad en Clientes. */
   onAbrir: (id: number) => void;
@@ -21,6 +30,7 @@ export function Bases({
   oportunidades,
   importaciones,
   faltaMigracion,
+  esAdmin,
   accent,
   onAbrir,
 }: Props) {
@@ -112,7 +122,10 @@ export function Bases({
             Bases subidas
           </p>
           <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-            De la más reciente a la más antigua. Clic en una para ver sus registros.
+            De la más reciente a la más antigua.{" "}
+            {esAdmin
+              ? "Clic en una para ver sus registros."
+              : "El detalle de cada base es solo para administradores."}
           </p>
         </div>
 
@@ -123,9 +136,9 @@ export function Bases({
                 <th style={th}>Base</th>
                 <th style={th}>Ingresada</th>
                 <th style={{ ...th, textAlign: "right" }}>Registros</th>
-                <th style={{ ...th, textAlign: "right" }}>Clientes</th>
-                <th style={{ ...th, textAlign: "right" }}>Ganados</th>
-                <th style={{ ...th, textAlign: "right" }}>Venta cerrada</th>
+                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Clientes</th>}
+                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Ganados</th>}
+                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Venta cerrada</th>}
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>
@@ -137,11 +150,13 @@ export function Bases({
                   <>
                     <tr
                       key={b.clave}
-                      className="row"
-                      onClick={() => setAbierta(expandida ? null : b.clave)}
+                      className={esAdmin ? "row" : undefined}
+                      onClick={
+                        esAdmin ? () => setAbierta(expandida ? null : b.clave) : undefined
+                      }
                       style={{
                         borderTop: i ? `1px solid ${T.border}` : "none",
-                        cursor: "pointer",
+                        cursor: esAdmin ? "pointer" : "default",
                         background: expandida ? softer(accent) : "transparent",
                       }}
                     >
@@ -173,23 +188,29 @@ export function Bases({
                             </span>
                           )}
                       </td>
-                      <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
-                        {r.clientes}
-                      </td>
-                      <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
-                        {r.ganados}
-                      </td>
-                      <td className="mono" style={{ ...td, textAlign: "right" }}>
-                        {money(r.cerrado || null)}
-                      </td>
+                      {esAdmin && (
+                        <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
+                          {r.clientes}
+                        </td>
+                      )}
+                      {esAdmin && (
+                        <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
+                          {r.ganados}
+                        </td>
+                      )}
+                      {esAdmin && (
+                        <td className="mono" style={{ ...td, textAlign: "right" }}>
+                          {money(r.cerrado || null)}
+                        </td>
+                      )}
                       <td style={{ ...td, textAlign: "right", color: T.borderStrong }}>
-                        {expandida ? "▾" : "›"}
+                        {esAdmin ? (expandida ? "▾" : "›") : ""}
                       </td>
                     </tr>
 
-                    {expandida && (
+                    {esAdmin && expandida && (
                       <tr key={`${b.clave}-detalle`}>
-                        <td colSpan={7} style={{ padding: 0, background: T.paper }}>
+                        <td colSpan={esAdmin ? 7 : 4} style={{ padding: 0, background: T.paper }}>
                           {b.oportunidades.length === 0 ? (
                             <p style={{ margin: 0, padding: "18px 20px", fontSize: 12.5, color: T.faint }}>
                               Esta base no tiene registros vivos. Se subió, pero sus
@@ -242,7 +263,7 @@ export function Bases({
 
               {bases.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
+                  <td colSpan={esAdmin ? 7 : 4} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
                     Todavía no hay bases cargadas. Subí una desde Clientes → Subir
                     base de datos.
                   </td>

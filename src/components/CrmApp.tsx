@@ -165,6 +165,7 @@ export default function CrmApp({
               oportunidades={oportunidades}
               importaciones={importaciones}
               faltaMigracion={faltaMigracionBases}
+              esAdmin={accesos.esAdmin}
               accent={accent}
               onAbrir={(id) => actions.verEnClientes({}, id)}
             />
