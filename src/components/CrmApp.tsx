@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
+import { Autorizaciones } from "@/components/modules/Autorizaciones";
 import { Bases } from "@/components/modules/Bases";
 import { Calendario } from "@/components/modules/Calendario";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
@@ -16,7 +17,14 @@ import { SyncBanner } from "@/components/SyncBanner";
 import { useCrm } from "@/hooks/useCrm";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
-import type { Accesos, Catalogo, Evento, Importacion, Oportunidad } from "@/lib/types";
+import type {
+  Accesos,
+  Autorizacion,
+  Catalogo,
+  Evento,
+  Importacion,
+  Oportunidad,
+} from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -25,6 +33,9 @@ interface Props {
   importaciones: Importacion[];
   /** La tabla de importaciones todavía no existe. */
   faltaMigracionBases: boolean;
+  autorizaciones: Autorizacion[];
+  /** La tabla de autorizaciones todavía no existe. */
+  faltaMigracionAutorizaciones: boolean;
   userEmail: string;
   accesos: Accesos;
   /** True when the roles tables do not exist yet. */
@@ -45,6 +56,8 @@ export default function CrmApp({
   eventos,
   importaciones,
   faltaMigracionBases,
+  autorizaciones,
+  faltaMigracionAutorizaciones,
   userEmail,
   accesos,
   faltaMigracionAccesos,
@@ -217,6 +230,17 @@ export default function CrmApp({
                 Esta sección es solo para administradores.
               </p>
             ))}
+
+          {mod === "Autorizaciones" && (
+            <Autorizaciones
+              autorizaciones={autorizaciones}
+              usuarios={accesos.usuarios}
+              esAdmin={accesos.esAdmin}
+              faltaMigracion={faltaMigracionAutorizaciones}
+              accent={accent}
+              onRefresh={() => router.refresh()}
+            />
+          )}
 
           {mod === "Programas" && (
             <Programas

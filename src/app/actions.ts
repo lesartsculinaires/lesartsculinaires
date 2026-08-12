@@ -936,3 +936,98 @@ export async function unificarCliente(
 
   return { ok: false, error: ultimoError };
 }
+
+// ------------------------------------------------------------ autorizaciones
+
+/** Pedir una autorización a dirección general. */
+export async function pedirAutorizacion(
+  nombre: string,
+  descripcion: string,
+): Promise<ActionResult> {
+  const titulo = nombre.trim();
+  if (!titulo) return { ok: false, error: "Poné un nombre para la autorización." };
+
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+  if (!user) return NO_SESSION;
+
+  const { error } = await supabase.from("autorizaciones").insert({
+    nombre: titulo,
+    descripcion: descripcion.trim(),
+    // El estado y el solicitante van explícitos porque la política de la base
+    // los exige: así nadie puede insertar una autorización ya aprobada.
+    estado: "pendiente",
+    solicitado_por: user.id,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Autorizar o rechazar. Reservado a dirección general.
+ *
+ * La comprobación de administrador se hace acá y, sobre todo, en la política
+ * de la tabla: una acción del servidor se puede llamar por HTTP con cualquier
+ * sesión, así que la interfaz escondiendo el botón no alcanza.
+ */
+export async function resolverAutorizacion(
+  id: number,
+  estado: "autorizada" | "rechazada",
+  comentario: string,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección general puede resolver autorizaciones." };
+  }
+
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from("autorizaciones")
+    .update({
+      estado,
+      comentario: comentario.trim() || null,
+      resuelto_por: user?.id ?? null,
+      resuelto_en: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+  // Sin filas devueltas, la política de la base rechazó el cambio.
+  if (!data || data.length === 0) {
+    return { ok: false, error: "La base no permitió el cambio. ¿Seguís con sesión de administrador?" };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** Volver una autorización a pendiente, para corregir una decisión. */
+export async function reabrirAutorizacion(id: number): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección general puede reabrir autorizaciones." };
+  }
+
+  const { error } = await supabase
+    .from("autorizaciones")
+    .update({ estado: "pendiente", resuelto_por: null, resuelto_en: null, comentario: null })
+    .eq("id", id);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
