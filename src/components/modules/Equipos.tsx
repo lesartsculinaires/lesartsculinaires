@@ -1,7 +1,10 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
+import { porMes, variacion } from "@/lib/periodos";
 import {
   estaAbierta,
   esGanada,
@@ -11,6 +14,22 @@ import {
 } from "@/lib/selectors";
 import { T, openTone, softer } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
+
+/** Clave del selector para ver todo junto, sin recortar por mes. */
+const ACUMULADO = "acumulado";
+
+/** "▲ +12%" contra el mes anterior, o nada si no hay con qué comparar. */
+function Delta({ pct }: { pct: number | null }) {
+  if (pct == null) return null;
+  const sube = pct >= 0;
+  const n = Math.abs(pct) >= 10 ? Math.round(pct) : Math.round(pct * 10) / 10;
+  return (
+    <span className="mono" style={{ fontSize: 11, color: sube ? "#2F6B4F" : "#B85042" }}>
+      {sube ? "▲ +" : "▼ −"}
+      {Math.abs(n)}%
+    </span>
+  );
+}
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -48,20 +67,66 @@ export function Equipos({
     oportunidades.filter((o) => o.vendedorId === id);
 
   const sinAsignar = oportunidades.filter((o) => o.vendedorId == null);
-  const propias = deVendedor(v.id);
+  const todasSuyas = deVendedor(v.id);
+
+  /**
+   * Los contadores no se reinician borrando nada: se calculan sobre el mes
+   * elegido. Cada lead ya trae su fecha, así que al cambiar de mes los
+   * números arrancan de cero solos y los meses anteriores quedan intactos,
+   * incluidos los que pasaron antes de que existiera esta pantalla.
+   */
+  const meses = useMemo(() => porMes(todasSuyas), [todasSuyas]);
+  const [mesSel, setMesSel] = useState<string | null>(null);
+
+  // Por defecto, el mes más reciente con actividad de esta persona. Si se
+  // cambia de vendedor y el mes elegido no es uno de los suyos, se cae al
+  // último que sí tiene: mostrar ceros de un mes ajeno confundiría más.
+  const elegido = mesSel ?? meses[meses.length - 1]?.clave ?? null;
+  const claveMes =
+    elegido === ACUMULADO || meses.some((m) => m.clave === elegido)
+      ? elegido
+      : (meses[meses.length - 1]?.clave ?? null);
+  const acumulado = claveMes === ACUMULADO;
+  const idxMes = meses.findIndex((m) => m.clave === claveMes);
+  const mesActual = idxMes >= 0 ? meses[idxMes] : null;
+  const mesPrevio = idxMes > 0 ? meses[idxMes - 1] : null;
+
+  const propias = acumulado
+    ? todasSuyas
+    : todasSuyas.filter((o) => o.mes?.slice(0, 7) === claveMes);
   const ganadas = propias.filter(esGanada);
 
-  const kpis = [
-    { label: "Oportunidades", value: String(propias.length) },
-    { label: "En pipeline", value: money(valorPipeline(propias) || null) },
-    { label: "Venta cerrada", value: money(totalCerrado(propias) || null) },
-    {
-      label: "Tasa de cierre",
-      value: propias.length
-        ? `${Math.round((ganadas.length / propias.length) * 100)}%`
-        : "—",
-    },
-  ];
+  const tasa = (g: number, t: number) => (t ? `${Math.round((g / t) * 100)}%` : "—");
+
+  const kpis = acumulado
+    ? [
+        { label: "Oportunidades", value: String(todasSuyas.length), pct: null },
+        { label: "En pipeline", value: money(valorPipeline(todasSuyas) || null), pct: null },
+        { label: "Venta cerrada", value: money(totalCerrado(todasSuyas) || null), pct: null },
+        { label: "Tasa de cierre", value: tasa(todasSuyas.filter(esGanada).length, todasSuyas.length), pct: null },
+      ]
+    : [
+        {
+          label: "Oportunidades",
+          value: String(mesActual?.leads ?? 0),
+          pct: mesPrevio ? variacion(mesActual?.leads ?? 0, mesPrevio.leads) : null,
+        },
+        {
+          label: "En pipeline",
+          value: money((mesActual?.pipeline ?? 0) || null),
+          pct: mesPrevio ? variacion(mesActual?.pipeline ?? 0, mesPrevio.pipeline) : null,
+        },
+        {
+          label: "Venta cerrada",
+          value: money((mesActual?.cerrado ?? 0) || null),
+          pct: mesPrevio ? variacion(mesActual?.cerrado ?? 0, mesPrevio.cerrado) : null,
+        },
+        {
+          label: "Tasa de cierre",
+          value: tasa(mesActual?.ganados ?? 0, mesActual?.leads ?? 0),
+          pct: null,
+        },
+      ];
 
   const territorios = [...new Set(propias.map((o) => o.territorio))].filter(
     (t) => t !== "—",
@@ -194,6 +259,30 @@ export function Equipos({
             </button>
           </div>
 
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+            {[...meses.map((m) => ({ clave: m.clave, texto: m.etiqueta })),
+              { clave: ACUMULADO, texto: "Acumulado" }].map((op) => {
+              const activo = op.clave === claveMes;
+              return (
+                <button
+                  key={op.clave}
+                  type="button"
+                  onClick={() => setMesSel(op.clave)}
+                  style={{
+                    padding: "5px 11px",
+                    fontSize: 12,
+                    borderRadius: 6,
+                    border: `1px solid ${activo ? accent : T.border}`,
+                    background: activo ? soft : "transparent",
+                    color: activo ? accent : T.muted,
+                  }}
+                >
+                  {op.texto}
+                </button>
+              );
+            })}
+          </div>
+
           <div
             style={{
               display: "grid",
@@ -204,12 +293,26 @@ export function Equipos({
             {kpis.map((k) => (
               <div key={k.label} style={{ background: T.paper, borderRadius: 8, padding: "12px 14px" }}>
                 <p style={{ margin: "0 0 5px", fontSize: 11, color: T.muted }}>{k.label}</p>
-                <p className="mono dsp" style={{ margin: 0, fontSize: 20, fontWeight: 500 }}>
+                <p className="mono dsp" style={{ margin: "0 0 3px", fontSize: 20, fontWeight: 500 }}>
                   {k.value}
                 </p>
+                <div style={{ minHeight: 15 }}>
+                  <Delta pct={k.pct} />
+                  {k.pct != null && mesPrevio && (
+                    <span style={{ marginLeft: 5, fontSize: 10.5, color: T.faint }}>
+                      vs {mesPrevio.etiqueta}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
+
+          <p style={{ margin: "12px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.5 }}>
+            {acumulado
+              ? "Todo el histórico de esta persona, sin recortar por mes."
+              : `Sólo ${mesActual?.etiquetaLarga ?? "el mes elegido"}. Los meses anteriores no se borran: quedan guardados abajo.`}
+          </p>
         </section>
 
         <div
@@ -362,11 +465,88 @@ export function Equipos({
         >
           <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}` }}>
             <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
-              Cartera asignada
+              Mes a mes
             </h3>
             <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-              {propias.length} en cartera · {money(valorPipeline(propias) || null)} en
-              oportunidades abiertas
+              Cada mes cerrado queda guardado acá. Clic en una fila para ver ese mes
+              arriba.
+            </p>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: T.paper }}>
+                  {["Mes", "Leads", "Ganados", "Tasa", "Venta cerrada", "Pipeline"].map((h, i) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: i === 0 ? "left" : "right",
+                        padding: "9px 20px",
+                        fontWeight: 500,
+                        fontSize: 11.5,
+                        color: T.muted,
+                        whiteSpace: "nowrap",
+                        borderBottom: `1px solid ${T.border}`,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...meses].reverse().map((m, i) => (
+                  <tr
+                    key={m.clave}
+                    className="row"
+                    onClick={() => setMesSel(m.clave)}
+                    style={{
+                      borderTop: i ? `1px solid ${T.border}` : "none",
+                      cursor: "pointer",
+                      background: m.clave === claveMes ? soft : "transparent",
+                    }}
+                  >
+                    <td style={{ padding: "10px 20px" }}>{m.etiquetaLarga}</td>
+                    <td className="mono" style={{ padding: "10px 20px", textAlign: "right" }}>{m.leads}</td>
+                    <td className="mono" style={{ padding: "10px 20px", textAlign: "right" }}>{m.ganados}</td>
+                    <td className="mono" style={{ padding: "10px 20px", textAlign: "right", color: T.muted }}>
+                      {m.leads ? `${Math.round((m.ganados / m.leads) * 100)}%` : "—"}
+                    </td>
+                    <td className="mono" style={{ padding: "10px 20px", textAlign: "right" }}>
+                      {money(m.cerrado || null)}
+                    </td>
+                    <td className="mono" style={{ padding: "10px 20px", textAlign: "right", color: T.muted }}>
+                      {money(m.pipeline || null)}
+                    </td>
+                  </tr>
+                ))}
+                {meses.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: "22px 20px", fontSize: 12.5, color: T.faint }}>
+                      {v.nombre} todavía no tiene actividad registrada.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section
+          style={{
+            background: T.surface,
+            border: `1px solid ${T.border}`,
+            borderRadius: 10,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}` }}>
+            <h3 className="dsp" style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 500 }}>
+              {acumulado ? "Cartera asignada" : `Leads de ${mesActual?.etiquetaLarga ?? "el mes"}`}
+            </h3>
+            <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
+              {propias.length} {propias.length === 1 ? "lead" : "leads"} ·{" "}
+              {money(valorPipeline(propias) || null)} en oportunidades abiertas
             </p>
           </div>
 
@@ -409,13 +589,15 @@ export function Equipos({
             ))}
             {propias.length > 60 && (
               <p style={{ margin: 0, padding: "12px 20px", fontSize: 12, color: T.faint }}>
-                Mostrando 60 de {propias.length}. Usá Clientes para ver la lista
-                completa.
+                Mostrando 60 de {propias.length}. Elegí un mes para acotar la lista,
+                o usá Clientes para verla completa.
               </p>
             )}
             {propias.length === 0 && (
               <p style={{ margin: 0, padding: "26px 20px", fontSize: 12.5, color: T.faint }}>
-                {v.nombre} no tiene oportunidades asignadas.
+                {acumulado
+                  ? `${v.nombre} no tiene oportunidades asignadas.`
+                  : `${v.nombre} no registró leads en ${mesActual?.etiquetaLarga ?? "ese mes"}.`}
               </p>
             )}
           </div>
