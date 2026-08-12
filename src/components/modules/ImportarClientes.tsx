@@ -41,7 +41,8 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const [archivo, setArchivo] = useState<string | null>(null);
   const [matriz, setMatriz] = useState<string[][] | null>(null);
   const [mapeo, setMapeo] = useState<Mapeo>({});
-  const [incluirDuplicados, setIncluirDuplicados] = useState(false);
+  /** Qué hacer con las filas que coinciden con un contacto existente. */
+  const [modoDuplicados, setModoDuplicados] = useState<"omitir" | "unificar" | "crear">("omitir");
   const [leyendo, setLeyendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
@@ -79,7 +80,19 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const conError = filas.length - validas.length;
   const duplicadas = validas.filter((f) => f.duplicado).length;
   const conAviso = validas.filter((f) => f.avisos.length > 0).length;
-  const aImportar = incluirDuplicados ? validas : validas.filter((f) => !f.duplicado);
+  // Unificar sólo aplica a las que chocan con un contacto guardado; las que
+  // se repiten dentro del mismo archivo no tienen con quién unificarse.
+  const aImportar =
+    modoDuplicados === "crear"
+      ? validas
+      : modoDuplicados === "unificar"
+        ? validas.filter((f) => !f.duplicado || f.coincideCon != null)
+        : validas.filter((f) => !f.duplicado);
+
+  const seUnifican =
+    modoDuplicados === "unificar"
+      ? validas.filter((f) => f.duplicado && f.coincideCon != null).length
+      : 0;
   const hayNombre = Object.values(mapeo).includes("nombre");
 
   const leerArchivo = async (file: File) => {
@@ -153,6 +166,8 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     setProgreso({ hechas: 0, total: aImportar.length });
 
     const cargaDe = (f: FilaImportada): FilaParaImportar => ({
+      unificar_con:
+        modoDuplicados === "unificar" && f.duplicado ? f.coincideCon : null,
       nombre: f.nombre,
       telefono: f.telefono,
       correo: f.correo,
@@ -423,7 +438,10 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
               >
                 {[
                   { l: "Se importan", v: String(aImportar.length), destaca: true },
-                  { l: "Duplicados", v: String(duplicadas) },
+                  {
+                    l: modoDuplicados === "unificar" ? "Se unifican" : "Duplicados",
+                    v: String(modoDuplicados === "unificar" ? seUnifican : duplicadas),
+                  },
                   { l: "Con advertencia", v: String(conAviso) },
                   { l: "Con error", v: String(conError) },
                 ].map((k) => (
@@ -440,33 +458,53 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
               </div>
 
               {duplicadas > 0 && (
-                <label
+                <div
                   style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "flex-start",
                     marginBottom: 16,
-                    padding: "10px 13px",
-                    fontSize: 12.5,
-                    lineHeight: 1.5,
-                    borderRadius: 7,
-                    background: "#F6EEDC",
-                    color: "#7A5A12",
+                    padding: "12px 14px",
+                    borderRadius: 8,
+                    background: "#FFF6D6",
+                    border: "1px solid #F0CE55",
+                    color: "#6B5200",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={incluirDuplicados}
-                    onChange={(e) => setIncluirDuplicados(e.target.checked)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <span>
+                  <p style={{ margin: "0 0 9px", fontSize: 12.5, lineHeight: 1.5 }}>
                     {duplicadas} {duplicadas === 1 ? "fila coincide" : "filas coinciden"} por
-                    nombre, teléfono o correo con un contacto que ya existe (o con otra fila
-                    del mismo archivo). Por defecto se omiten. Marcá acá para importarlas
-                    igual, si de verdad son personas distintas.
-                  </span>
-                </label>
+                    nombre, teléfono o correo con un contacto que ya existe (o con otra
+                    fila del mismo archivo). ¿Qué hacemos con ellas?
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {([
+                      ["omitir", "Omitirlas", "No se importan. La base queda como está."],
+                      ["unificar", "Unificarlas", "La oportunidad se agrega al contacto que ya existe y se completan sus datos vacíos. No se crea una ficha repetida."],
+                      ["crear", "Crearlas igual", "Se crea un contacto nuevo. Sólo si de verdad son personas distintas."],
+                    ] as const).map(([valor, titulo, detalle]) => (
+                      <label
+                        key={valor}
+                        style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}
+                      >
+                        <input
+                          type="radio"
+                          name="duplicados"
+                          checked={modoDuplicados === valor}
+                          onChange={() => setModoDuplicados(valor)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <span style={{ fontSize: 12.5, lineHeight: 1.45 }}>
+                          <strong>{titulo}.</strong> {detalle}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {modoDuplicados === "unificar" && duplicadas > seUnifican && (
+                    <p style={{ margin: "9px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                      {duplicadas - seUnifican}{" "}
+                      {duplicadas - seUnifican === 1 ? "fila se repite" : "filas se repiten"}{" "}
+                      dentro del propio archivo, así que no hay con quién unificarlas: esas
+                      se omiten.
+                    </p>
+                  )}
+                </div>
               )}
 
               <p
@@ -500,7 +538,10 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                       const nom = (id: number | null, items: readonly { id: number; nombre: string }[]) =>
                         items.find((x) => x.id === id)?.nombre ?? "—";
                       const malo = f.errores.length > 0;
-                      const omitida = !malo && f.duplicado && !incluirDuplicados;
+                      const unificada =
+                        !malo && f.duplicado && modoDuplicados === "unificar" && f.coincideCon != null;
+                      const omitida =
+                        !malo && f.duplicado && !unificada && modoDuplicados !== "crear";
                       return (
                         <tr
                           key={f.linea}
@@ -519,10 +560,13 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                           <td style={{ padding: "8px 10px", fontSize: 11.5, lineHeight: 1.45 }}>
                             {malo && <span style={{ color: "#B85042" }}>{f.errores.join("; ")}</span>}
                             {omitida && <span style={{ color: "#7A5A12" }}>Duplicado, se omite</span>}
+                            {unificada && (
+                              <span style={{ color: "#2F6B4F" }}>Se une al contacto existente</span>
+                            )}
                             {!malo && f.avisos.length > 0 && (
                               <span style={{ color: T.faint, display: "block" }}>{f.avisos.join("; ")}</span>
                             )}
-                            {!malo && !omitida && f.avisos.length === 0 && (
+                            {!malo && !omitida && !unificada && f.avisos.length === 0 && (
                               <span style={{ color: "#2F6B4F" }}>Lista</span>
                             )}
                           </td>
@@ -559,7 +603,9 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
             {progreso
               ? `Importando ${progreso.hechas} de ${progreso.total}…`
               : matriz
-                ? `Se van a crear ${aImportar.length} clientes con su primera oportunidad.`
+                ? seUnifican > 0
+                  ? `Se crean ${aImportar.length - seUnifican} contactos nuevos y ${seUnifican} se une${seUnifican === 1 ? "" : "n"} a contactos que ya existen.`
+                  : `Se van a crear ${aImportar.length} clientes con su primera oportunidad.`
                 : ""}
           </span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>

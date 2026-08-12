@@ -368,9 +368,9 @@ export function Clientes({
           accent={accent}
           oportunidades={oportunidades}
           onCerrar={() => setAlta(false)}
-          onCreado={(codigo) => {
+          onCreado={(mensaje) => {
             setAlta(false);
-            setCreado(`Cliente creado con el código ${codigo}. Ya aparece en la lista.`);
+            setCreado(mensaje);
             onRefresh();
           }}
         />

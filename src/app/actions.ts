@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
+import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
 import { getServerClient } from "@/lib/supabase/server";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
@@ -626,6 +627,11 @@ export async function crearCliente(
 
 /** Una fila lista para insertar, ya validada y resuelta por la pantalla. */
 export interface FilaParaImportar {
+  /**
+   * Cliente existente al que sumar esta oportunidad. Con esto no se crea una
+   * ficha nueva: se completan sus huecos y se le agrega la oportunidad.
+   */
+  unificar_con?: number | null;
   nombre: string;
   telefono: string | null;
   correo: string | null;
@@ -697,26 +703,65 @@ export async function importarClientes(
     baseId = (base?.id as number | undefined) ?? null;
   }
 
-  const { data: clientes, error: errClientes } = await supabase
-    .from("clientes")
-    .insert(
-      filas.map((f) => ({
-        nombre: f.nombre.trim(),
-        telefono: f.telefono,
-        correo: f.correo,
-        territorio_id: f.territorio_id,
-      })),
-    )
-    .select("id");
+  // Las filas que se unifican no crean cliente: usan el que ya existe.
+  const nuevas = filas.filter((f) => f.unificar_con == null);
 
-  if (errClientes) return { ok: false, error: errClientes.message, ...vacio };
-  if (!clientes || clientes.length !== filas.length) {
-    return {
-      ok: false,
-      error: "La base devolvió menos clientes de los enviados; no se importó nada.",
-      ...vacio,
-    };
+  let creados: { id: number }[] = [];
+  if (nuevas.length > 0) {
+    const { data, error: errClientes } = await supabase
+      .from("clientes")
+      .insert(
+        nuevas.map((f) => ({
+          nombre: f.nombre.trim(),
+          telefono: f.telefono,
+          correo: f.correo,
+          territorio_id: f.territorio_id,
+        })),
+      )
+      .select("id");
+
+    if (errClientes) return { ok: false, error: errClientes.message, ...vacio };
+    if (!data || data.length !== nuevas.length) {
+      return {
+        ok: false,
+        error: "La base devolvió menos clientes de los enviados; no se importó nada.",
+        ...vacio,
+      };
+    }
+    creados = data as { id: number }[];
   }
+
+  // Completar los huecos de los contactos que se unifican. Va de a uno: son
+  // pocos comparados con el lote, y cada uno necesita leer lo que ya tiene
+  // para no pisarlo.
+  const aUnificar = filas.filter((f) => f.unificar_con != null);
+  if (aUnificar.length > 0) {
+    const ids = [...new Set(aUnificar.map((f) => f.unificar_con as number))];
+    const { data: existentes } = await supabase
+      .from("clientes")
+      .select("id, nombre, telefono, telefono_secundario, correo, territorio_id")
+      .in("id", ids);
+
+    for (const previo of existentes ?? []) {
+      const fila = aUnificar.find((f) => f.unificar_con === previo.id);
+      if (!fila) continue;
+      const plan = planificarFusion(previo, {
+        nombre: fila.nombre,
+        telefono: fila.telefono,
+        correo: fila.correo,
+        territorio_id: fila.territorio_id,
+      });
+      if (Object.keys(plan.parche).length > 0) {
+        await supabase.from("clientes").update(plan.parche).eq("id", previo.id);
+      }
+    }
+  }
+
+  // Cada fila apunta a su cliente: el recién creado o el que ya existía.
+  let siguiente = 0;
+  const clientes = filas.map((f) =>
+    f.unificar_con != null ? { id: f.unificar_con } : creados[siguiente++],
+  );
 
   const { data: previo } = await supabase
     .from("oportunidades")
@@ -752,10 +797,14 @@ export async function importarClientes(
     // Los clientes ya entraron. Sin su oportunidad no aparecen en ninguna
     // pantalla, así que se deshacen: es preferible no importar nada a dejar
     // filas invisibles que después nadie encuentra para limpiar.
-    await supabase
-      .from("clientes")
-      .delete()
-      .in("id", clientes.map((c) => c.id));
+    // Sólo se deshacen los que creó este lote: borrar un contacto que ya
+    // existía se llevaría por delante su historia anterior.
+    if (creados.length > 0) {
+      await supabase
+        .from("clientes")
+        .delete()
+        .in("id", creados.map((c) => c.id));
+    }
     return { ok: false, error: errOps.message, ...vacio };
   }
 
@@ -782,4 +831,108 @@ export async function importarClientes(
     hasta: codigo(filas.length - 1),
     importacionId: baseId,
   };
+}
+
+
+// ----------------------------------------------------------------- unificar
+
+export interface ResultadoFusion extends ActionResult {
+  /** Código de la oportunidad que se agregó al contacto existente. */
+  codigo?: string;
+  /** Resumen en castellano de qué se completó. */
+  completados?: string;
+  /** Datos distintos que se conservaron como estaban. */
+  choques?: Choque[];
+}
+
+/**
+ * Sumar una oportunidad a un contacto que ya existe, en vez de duplicarlo.
+ *
+ * El esquema ya contempla que una persona tenga varias oportunidades —una por
+ * programa que le interesa—, así que unificar no es un parche: es usar el
+ * modelo como corresponde. Lo que se agrega es la oportunidad; del cliente
+ * sólo se completan los campos que estaban vacíos.
+ */
+export async function unificarCliente(
+  clienteId: number,
+  datos: NuevoCliente,
+): Promise<ResultadoFusion> {
+  if (!datos.fecha_registro) {
+    return { ok: false, error: "La fecha de registro es obligatoria." };
+  }
+
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: existente, error: errLeer } = await supabase
+    .from("clientes")
+    .select("id, nombre, telefono, telefono_secundario, correo, territorio_id")
+    .eq("id", clienteId)
+    .maybeSingle();
+
+  if (errLeer) return { ok: false, error: errLeer.message };
+  if (!existente) {
+    return { ok: false, error: "Ese contacto ya no existe. Recargá y volvé a intentar." };
+  }
+
+  const plan = planificarFusion(existente, {
+    nombre: datos.nombre,
+    telefono: datos.telefono,
+    correo: datos.correo,
+    territorio_id: datos.territorio_id,
+  });
+
+  if (Object.keys(plan.parche).length > 0) {
+    const { error } = await supabase
+      .from("clientes")
+      .update(plan.parche)
+      .eq("id", clienteId);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  // Mismo cálculo de código y mismo reintento que el alta normal.
+  let ultimoError = "No se pudo asignar un código.";
+
+  for (let intento = 0; intento < 5; intento += 1) {
+    const { data: previo } = await supabase
+      .from("oportunidades")
+      .select("codigo")
+      .like("codigo", "CRM-%")
+      .order("codigo", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const codigo = `CRM-${String(numeroDeCodigo(previo?.codigo ?? null) + 1 + intento).padStart(4, "0")}`;
+
+    const { error: errOp } = await supabase.from("oportunidades").insert({
+      codigo,
+      cliente_id: clienteId,
+      vendedor_id: datos.vendedor_id,
+      producto_id: datos.producto_id,
+      territorio_id: datos.territorio_id,
+      canal_id: datos.canal_id,
+      etapa_id: datos.etapa_id,
+      estado_id: datos.estado_id,
+      fecha_registro: datos.fecha_registro,
+      fecha_cierre: datos.fecha_cierre,
+      valor_oportunidad: datos.valor_oportunidad,
+      descuento_promocion: datos.descuento_promocion,
+    });
+
+    if (!errOp) {
+      revalidatePath("/");
+      return {
+        ok: true,
+        error: null,
+        codigo,
+        completados: listarCampos(plan.completados),
+        choques: plan.choques,
+      };
+    }
+
+    ultimoError = errOp.message;
+    if (!errOp.message.includes("duplicate key") && errOp.code !== "23505") break;
+  }
+
+  return { ok: false, error: ultimoError };
 }

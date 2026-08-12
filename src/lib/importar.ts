@@ -297,6 +297,8 @@ export interface FilaImportada {
   avisos: string[];
   /** Coincide con un contacto ya guardado o con otra fila del archivo. */
   duplicado: boolean;
+  /** Contacto existente con el que coincide. Null si el choque es con otra fila. */
+  coincideCon: number | null;
 }
 
 const buscarEnCatalogo = (
@@ -373,6 +375,8 @@ export function construirFilas({
 
     const choques = buscarDuplicados({ nombre, telefono, correo }, acumulado);
     const duplicado = choques.length > 0;
+    // Los ids negativos son filas del propio archivo, no contactos guardados.
+    const coincideCon = choques.find((c) => c.clienteId > 0)?.clienteId ?? null;
     if (duplicado) {
       const c = choques[0];
       avisos.push(
@@ -402,6 +406,7 @@ export function construirFilas({
       errores,
       avisos,
       duplicado,
+      coincideCon,
     };
   });
 }

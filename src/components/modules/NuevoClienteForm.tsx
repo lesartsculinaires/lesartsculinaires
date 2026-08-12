@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { crearCliente, type NuevoCliente } from "@/app/actions";
+import { crearCliente, unificarCliente, type NuevoCliente } from "@/app/actions";
 import { CampoTexto } from "@/components/ui/CampoTexto";
 import { Sugerencias } from "@/components/ui/Sugerencias";
 import { useCatalogo } from "@/lib/catalog";
@@ -12,6 +12,7 @@ import {
   type Coincidencia,
   type ContactoConocido,
 } from "@/lib/duplicados";
+import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
 import { promocionesUsadas } from "@/lib/promociones";
 import { T } from "@/lib/theme";
 import {
@@ -29,8 +30,8 @@ interface Props {
   /** De acá salen los contactos ya guardados con los que comparar. */
   oportunidades: readonly Oportunidad[];
   onCerrar: () => void;
-  /** Se llama tras un alta exitosa, con el código asignado. */
-  onCreado: (codigo: string) => void;
+  /** Se llama al terminar, con el mensaje ya redactado para la pantalla. */
+  onCreado: (mensaje: string) => void;
 }
 
 /** Hoy en formato ISO, en hora local — no UTC, que en El Salvador va un día atrás. */
@@ -159,6 +160,8 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
    * regañar a alguien por no haber hecho algo que estaba haciendo.
    */
   const [intentado, setIntentado] = useState(false);
+  /** Datos que la fusión conservó porque ya existían distintos. */
+  const [conservados, setConservados] = useState<Choque[] | null>(null);
 
   // Un contacto puede tener varias oportunidades; interesa una sola vez.
   const conocidos: ContactoConocido[] = useMemo(() => {
@@ -212,6 +215,30 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
     setD((prev) => ({ ...prev, [k]: v }));
   };
 
+  const unificar = async (clienteId: number) => {
+    setBusy(true);
+    setError(null);
+    const r = await unificarCliente(clienteId, d);
+    setBusy(false);
+
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+
+    // Si algo no se pudo completar por estar ya ocupado, se muestra antes de
+    // cerrar: enterarse después, revisando la ficha, es peor.
+    if (r.choques && r.choques.length > 0) {
+      setConservados(r.choques);
+      return;
+    }
+
+    onCreado(
+      `Se agregó al contacto existente con el código ${r.codigo}` +
+        (r.completados ? `, completando ${r.completados}.` : "."),
+    );
+  };
+
   const guardar = async (forzar = false) => {
     setIntentado(true);
 
@@ -238,7 +265,9 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
       setError(r.error);
       return;
     }
-    onCreado(r.codigo ?? "");
+    onCreado(
+      `Cliente creado con el código ${r.codigo ?? "—"}. Ya aparece en la lista.`,
+    );
   };
 
   const grid = {
@@ -426,6 +455,50 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             />
           </div>
 
+          {conservados && (
+            <div
+              role="alert"
+              style={{
+                margin: "16px 0 0",
+                padding: "12px 14px",
+                borderRadius: 8,
+                background: "#FFF6D6",
+                border: "1px solid #F0CE55",
+                color: "#6B5200",
+              }}
+            >
+              <p style={{ margin: "0 0 7px", fontSize: 12.5, fontWeight: 600 }}>
+                Se unificó, pero algunos datos ya estaban ocupados y se conservaron.
+              </p>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55 }}>
+                {conservados.map((c) => (
+                  <li key={c.campo}>
+                    <strong>{ETIQUETA_CAMPO[c.campo]}</strong>: quedó «{c.actual}»; no se
+                    guardó «{c.entrante}».
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                Si el dato nuevo es el correcto, cambialo desde la ficha del cliente.
+              </p>
+              <button
+                type="button"
+                onClick={() => onCreado("Oportunidad agregada al contacto existente.")}
+                style={{
+                  marginTop: 9,
+                  height: 30,
+                  padding: "0 13px",
+                  fontSize: 12.5,
+                  borderRadius: 6,
+                  background: accent,
+                  color: "#fff",
+                }}
+              >
+                Entendido, cerrar
+              </button>
+            </div>
+          )}
+
           {intentado && faltantes.length > 0 && (
             <div
               role="alert"
@@ -488,6 +561,28 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                       {c.telefono || c.correo ? " — " : ""}
                       {[c.telefono, c.correo].filter(Boolean).join(" · ")}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => unificar(c.clienteId)}
+                      disabled={busy || faltantes.length > 0}
+                      title={
+                        faltantes.length > 0
+                          ? "Completá los campos obligatorios primero"
+                          : `Agregar esta oportunidad a ${c.nombre}`
+                      }
+                      style={{
+                        marginTop: 4,
+                        height: 27,
+                        padding: "0 11px",
+                        fontSize: 12,
+                        borderRadius: 6,
+                        border: `1px solid ${accent}`,
+                        background: T.surface,
+                        color: accent,
+                      }}
+                    >
+                      Unificar con este contacto
+                    </button>
                   </li>
                 ))}
                 {coincidencias.length > 4 && (
@@ -498,9 +593,10 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
               </ul>
 
               <p style={{ margin: "9px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-                Si es la misma persona, cerrá esto y buscala en la lista para
-                agregarle la oportunidad ahí. Si de verdad es alguien distinto,
-                podés crearla igual.
+                Si es la misma persona, <strong>unificá</strong>: la oportunidad se
+                agrega a ese contacto y se completan sus datos vacíos, sin crear
+                una ficha repetida. Si de verdad es alguien distinto, podés crearla
+                igual.
               </p>
             </div>
           )}
