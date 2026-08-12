@@ -82,7 +82,7 @@ export function LoginForm({
     if (authError) {
       setError(
         authError.message === "Invalid login credentials"
-          ? "Correo o contraseña incorrectos."
+          ? "Usuario o contraseña incorrectos."
           : authError.message,
       );
       setBusy(false);
@@ -264,13 +264,18 @@ export function LoginForm({
           style={{ display: "grid", gap: 12, background: T.surface, padding: 20, borderRadius: 12, border: `1px solid ${T.border}` }}
         >
           <label style={{ display: "grid", gap: 5 }}>
-            <span style={{ fontSize: 12.5, color: T.muted }}>Correo</span>
+            <span style={{ fontSize: 12.5, color: T.muted }}>Usuario</span>
             <input
               type="email"
               autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              // El campo se llama "Usuario", pero sigue siendo la dirección de
+              // correo con la que se creó la cuenta: es lo que identifica a la
+              // persona en Supabase. El ejemplo evita que alguien escriba un
+              // alias y choque contra la validación del navegador.
+              placeholder="tucorreo@lesarts.com"
               style={field}
             />
           </label>

@@ -310,7 +310,7 @@ export function UsuariosRoles({
               <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
                 {accesos.usuarios.length}{" "}
                 {accesos.usuarios.length === 1 ? "cuenta" : "cuentas"} con acceso a
-                la plataforma. Creá la cuenta con correo y contraseña, y asignale el
+                la plataforma. Creá la cuenta con usuario y contraseña, y asignale el
                 rol que define qué puede ver.
               </p>
             </div>
@@ -361,7 +361,7 @@ export function UsuariosRoles({
                   >
                     <label style={{ display: "block" }}>
                       <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
-                        Correo
+                        Usuario
                       </span>
                       <input
                         type="email"
@@ -475,7 +475,7 @@ export function UsuariosRoles({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
-                {["Correo", "Nombre", "Rol", "Estado", ""].map((h) => (
+                {["Usuario", "Nombre", "Rol", "Estado", ""].map((h) => (
                   <th
                     key={h}
                     style={{
