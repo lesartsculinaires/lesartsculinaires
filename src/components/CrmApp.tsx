@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Autorizaciones } from "@/components/modules/Autorizaciones";
@@ -14,6 +15,8 @@ import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
+import { Actualizado } from "@/components/ui/Actualizado";
+import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { useCrm } from "@/hooks/useCrm";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
@@ -68,6 +71,16 @@ export default function CrmApp({
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
   const accent = ACCENT;
+
+  // Cada diez minutos se vuelven a pedir los datos, para que un nombre que
+  // corrigió otra persona aparezca sin que nadie tenga que recargar.
+  useAutoRefresco(10 * 60_000);
+
+  // `initial` sólo cambia de identidad cuando el servidor manda datos nuevos;
+  // los re-render del navegador reusan el mismo arreglo. Sirve entonces como
+  // marca honesta de cuándo llegó lo que se está viendo.
+  const [refrescado, setRefrescado] = useState<number | null>(null);
+  useEffect(() => setRefrescado(Date.now()), [initial]);
 
   const seleccionada =
     state.sel != null
@@ -137,10 +150,25 @@ export default function CrmApp({
                 {mod}
               </h1>
             </div>
-            <p className="mono" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
-              {oportunidades.length} oportunidades · {catalogo.vendedores.length}{" "}
-              vendedores · {catalogo.productos.length} programas
-            </p>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                flexWrap: "wrap",
+                justifyContent: "flex-end",
+              }}
+            >
+              <p className="mono" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
+                {oportunidades.length} oportunidades · {catalogo.vendedores.length}{" "}
+                vendedores · {catalogo.productos.length} programas
+              </p>
+              <Actualizado
+                en={refrescado}
+                accent={accent}
+                onRefrescar={() => router.refresh()}
+              />
+            </div>
           </header>
 
           {faltaMigracionAccesos && mod === MOD_USUARIOS && (

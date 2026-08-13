@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   updateCliente,
@@ -46,6 +46,8 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
     modInicial ? { ...INITIAL, mod: modInicial } : INITIAL,
   );
   const [syncError, setSyncError] = useState<string | null>(null);
+  /** Escrituras lanzadas que todavía no contestan. */
+  const [pendientes, setPendientes] = useState(0);
 
   const patchState = useCallback(
     (next: Partial<CrmState> | ((s: CrmState) => Partial<CrmState>)) =>
@@ -55,12 +57,40 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
 
   /** Fire a write in the background; only failures reach the user. */
   const sync = useCallback((run: Promise<ActionResult>) => {
+    setPendientes((n) => n + 1);
     run
       .then((r) => setSyncError(r.ok ? null : r.error))
       .catch((e: unknown) =>
         setSyncError(e instanceof Error ? e.message : String(e)),
-      );
+      )
+      .finally(() => setPendientes((n) => n - 1));
   }, []);
+
+  /**
+   * Soltar los cambios optimistas cuando llegan datos nuevos del servidor.
+   *
+   * `edits` existe para que la pantalla no espere el viaje de ida y vuelta.
+   * Una vez que el servidor contesta con la fila ya guardada, sostener la capa
+   * encima deja de ayudar y empieza a estorbar: si otra persona corrige ese
+   * mismo campo, lo que uno editó hace rato le seguiría ganando en pantalla,
+   * calladamente y hasta recargar. Con el refresco automático eso pasaría a
+   * cada rato, que es justo lo contrario de lo que se busca.
+   *
+   * Sólo se sueltan si el paquete llegó sin escrituras en vuelo. Un paquete
+   * que viajó al mismo tiempo que un guardado puede no traerlo todavía, y
+   * soltar la capa ahí haría parpadear el valor viejo.
+   *
+   * De paso arregla otra cosa: si un guardado falla, su cambio optimista dejaba
+   * en pantalla un valor que nunca se guardó. Ahora la pantalla vuelve a la
+   * realidad y el aviso de error explica por qué.
+   */
+  const vistos = useRef(initial);
+  useEffect(() => {
+    if (vistos.current === initial) return;
+    vistos.current = initial;
+    if (pendientes > 0) return;
+    setState((s) => (Object.keys(s.edits).length ? { ...s, edits: {} } : s));
+  }, [initial, pendientes]);
 
   /** Server rows with pending optimistic edits applied on top. */
   const oportunidades = useMemo<Oportunidad[]>(
