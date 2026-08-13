@@ -1,4 +1,12 @@
+begin;
+
 -- Registro de las bases importadas.
+--
+-- CORRERLA COMPLETA, DE UNA VEZ. Va envuelta en una transacción a propósito:
+-- más abajo hay que recrear `vw_pipeline` —no se le pueden agregar columnas
+-- con `create or replace`— y entre el `drop` y el `create` la vista no
+-- existe. Sin transacción, quien esté usando la app en ese instante recibe un
+-- error. Con transacción nadie ve el hueco: o está la vista vieja, o la nueva.
 --
 -- Hasta ahora una importación dejaba las filas en `clientes` y
 -- `oportunidades` y nada más: no quedaba rastro de qué archivo las trajo ni
@@ -65,3 +73,5 @@ alter table public.importaciones enable row level security;
 drop policy if exists auth_all_importaciones on public.importaciones;
 create policy auth_all_importaciones on public.importaciones
   for all to authenticated using (true) with check (true);
+
+commit;

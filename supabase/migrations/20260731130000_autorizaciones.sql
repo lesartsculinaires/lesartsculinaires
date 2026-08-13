@@ -1,4 +1,9 @@
+begin;
+
 -- Autorizaciones de dirección general.
+--
+-- Sólo agrega: no toca ninguna tabla ni vista existente, así que se puede
+-- correr con gente trabajando sin ningún riesgo.
 --
 -- Ventas pide, dirección resuelve. Que sólo un administrador pueda autorizar
 -- no se deja a la interfaz: las políticas de abajo lo impiden a nivel de base,
@@ -53,3 +58,5 @@ create policy autorizaciones_resolver on public.autorizaciones
 
 create policy autorizaciones_borrar on public.autorizaciones
   for delete to authenticated using (public.es_admin());
+
+commit;

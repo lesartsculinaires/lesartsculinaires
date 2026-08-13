@@ -94,6 +94,22 @@ export default function CrmApp({
         />
 
         <main style={{ flex: 1, minWidth: 0, padding: "24px 28px" }}>
+          {process.env.NEXT_PUBLIC_ENTORNO === "pruebas" && (
+            <p
+              style={{
+                margin: "0 0 16px",
+                padding: "9px 14px",
+                fontSize: 12.5,
+                fontWeight: 600,
+                borderRadius: 9,
+                background: "#FFCE00",
+                color: "#031B4F",
+              }}
+            >
+              Entorno de pruebas. Lo que hagas acá no es la operación real.
+            </p>
+          )}
+
           <header
             style={{
               display: "flex",

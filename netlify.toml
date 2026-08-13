@@ -15,3 +15,23 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# ---------------------------------------------------------------- entornos
+#
+# `main` es lo que ve el equipo de ventas. Cualquier otra rama se publica en
+# su propia dirección, para poder probar sin tocar la operación.
+#
+# Falta un paso que no se puede dejar escrito acá: en Netlify → Site
+# configuration → Build & deploy → Branches, hay que habilitar el despliegue
+# de ramas. Y en Environment variables, apuntar la rama de pruebas a un
+# proyecto de Supabase aparte: si comparte base con producción, probar sigue
+# significando escribir en los datos reales.
+
+[context.production.environment]
+  NEXT_PUBLIC_ENTORNO = "produccion"
+
+[context.branch-deploy.environment]
+  NEXT_PUBLIC_ENTORNO = "pruebas"
+
+[context.deploy-preview.environment]
+  NEXT_PUBLIC_ENTORNO = "pruebas"
