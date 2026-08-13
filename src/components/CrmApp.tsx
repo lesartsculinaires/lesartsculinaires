@@ -18,6 +18,7 @@ import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { useCrm } from "@/hooks/useCrm";
+import { useEnVivo } from "@/hooks/useEnVivo";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
 import type {
@@ -72,8 +73,12 @@ export default function CrmApp({
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
   const accent = ACCENT;
 
-  // Cada diez minutos se vuelven a pedir los datos, para que un nombre que
-  // corrigió otra persona aparezca sin que nadie tenga que recargar.
+  // Los cambios de otras personas llegan por websocket y se ven al momento.
+  const enVivo = useEnVivo();
+
+  // Y por debajo sigue el refresco cada diez minutos. No sobra: un websocket
+  // se cae en silencio —wifi de hotel, laptop suspendida, proxy de oficina— y
+  // sin esto la pantalla se quedaría quieta sin que nadie lo note.
   useAutoRefresco(10 * 60_000);
 
   // `initial` sólo cambia de identidad cuando el servidor manda datos nuevos;
@@ -166,6 +171,7 @@ export default function CrmApp({
               <Actualizado
                 en={refrescado}
                 accent={accent}
+                enVivo={enVivo}
                 onRefrescar={() => router.refresh()}
               />
             </div>
