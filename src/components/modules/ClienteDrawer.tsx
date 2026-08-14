@@ -3,11 +3,21 @@
 import { useRef, useState } from "react";
 
 import { addNota } from "@/app/actions";
+import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { Sugerencias } from "@/components/ui/Sugerencias";
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
+import {
+  anotar,
+  hayCambios,
+  listar,
+  quitar,
+  valorVisible,
+  VACIOS,
+  type Pendientes,
+} from "@/lib/cambios";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, mesLargo, money } from "@/lib/format";
 import { promocionesUsadas } from "@/lib/promociones";
@@ -67,6 +77,37 @@ export function ClienteDrawer({
   const notaRef = useRef<HTMLTextAreaElement | null>(null);
   const promos = promocionesUsadas(todas);
 
+  // Los campos ya no escriben solos: dejan acá lo que cambiaron y esperan a
+  // que la persona lo revise y lo acepte.
+  const [pendientes, setPendientes] = useState<Pendientes>(VACIOS);
+  const [repasando, setRepasando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [avisoSalida, setAvisoSalida] = useState(false);
+
+  const anotarCambio = (
+    clave: string,
+    etiqueta: string,
+    antes: string,
+    despues: string,
+    aplicar: () => void,
+  ) => setPendientes((p) => anotar(p, { clave, etiqueta, antes, despues, aplicar }));
+
+  const aceptar = () => {
+    setGuardando(true);
+    // Se aplican en el orden en que se hicieron. Cada uno ya es una escritura
+    // optimista con su propio reintento, así que no hace falta esperarlos acá.
+    for (const c of listar(pendientes)) c.aplicar();
+    setPendientes(VACIOS);
+    setGuardando(false);
+    setRepasando(false);
+  };
+
+  /** Cerrar con cambios sin guardar pide confirmación en vez de perderlos. */
+  const intentarCerrar = () => {
+    if (hayCambios(pendientes)) setAvisoSalida(true);
+    else onClose();
+  };
+
   const [estadoFg, estadoBg] = estadoTone(o.estado, accent);
 
   /**
@@ -96,6 +137,7 @@ export function ClienteDrawer({
   /** Fields stored on the opportunity itself. */
   const editables = [
     {
+      clave: "fecha_registro",
       label: "Fecha de registro",
       value: o.fechaRegistro,
       tipo: "fecha" as const,
@@ -104,6 +146,7 @@ export function ClienteDrawer({
         onEditar(o.id, { fecha_registro: v }, { fechaRegistro: v, mes: v.slice(0, 8) + "01" }),
     },
     {
+      clave: "fecha_cierre",
       label: "Fecha de cierre",
       value: o.fechaCierre ?? "",
       tipo: "fecha" as const,
@@ -112,6 +155,7 @@ export function ClienteDrawer({
         onEditar(o.id, { fecha_cierre: oNull(v) }, { fechaCierre: oNull(v) }),
     },
     {
+      clave: "valor_oportunidad",
       label: "Valor oportunidad",
       value: o.valor == null ? "" : String(o.valor),
       tipo: "monto" as const,
@@ -120,6 +164,7 @@ export function ClienteDrawer({
         onEditar(o.id, { valor_oportunidad: oMonto(v) }, { valor: oMonto(v) }),
     },
     {
+      clave: "venta_cerrada",
       label: "Venta cerrada",
       value: o.cerrada == null ? "" : String(o.cerrada),
       tipo: "monto" as const,
@@ -128,6 +173,7 @@ export function ClienteDrawer({
         onEditar(o.id, { venta_cerrada: oMonto(v) }, { cerrada: oMonto(v) }),
     },
     {
+      clave: "descuento_promocion",
       label: "Descuento / promoción",
       value: o.descuento ?? "",
       tipo: "texto" as const,
@@ -143,6 +189,7 @@ export function ClienteDrawer({
   /** Fields stored on the shared client record. */
   const delCliente = [
     {
+      clave: "cliente_nombre",
       label: "Nombre",
       value: o.cliente,
       tipo: "texto" as const,
@@ -153,6 +200,7 @@ export function ClienteDrawer({
         onEditarCliente(o.clienteId, { nombre: v }, { cliente: v }),
     },
     {
+      clave: "cliente_telefono",
       label: "Teléfono",
       value: o.telefono ?? "",
       tipo: "texto" as const,
@@ -161,6 +209,7 @@ export function ClienteDrawer({
         onEditarCliente(o.clienteId, { telefono: oNull(v) }, { telefono: oNull(v) }),
     },
     {
+      clave: "cliente_correo",
       label: "Correo",
       value: o.correo ?? "",
       tipo: "texto" as const,
@@ -189,7 +238,7 @@ export function ClienteDrawer({
   } as const;
 
   return (
-    <Drawer width={500} onClose={onClose}>
+    <Drawer width={500} onClose={intentarCerrar}>
       <div
         style={{
           display: "flex",
@@ -216,7 +265,7 @@ export function ClienteDrawer({
             {o.producto} · {o.territorio}
           </p>
         </div>
-        <DrawerClose onClose={onClose} />
+        <DrawerClose onClose={intentarCerrar} />
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
@@ -290,6 +339,13 @@ export function ClienteDrawer({
       >
         {campos.map((f) => {
           const key = `d:${f.key}`;
+          const nombreDe = (id: number | null) =>
+            f.items.find((i) => i.id === id)?.nombre ?? "—";
+          // El desplegable muestra el borrador si ya se tocó, igual que los
+          // campos de texto: si no, elegir algo no se vería hasta aceptar.
+          const elegido = pendientes.get(`clas_${f.key}`);
+          const nombreActual = elegido?.despues ?? nombreDe(f.current);
+
           return (
             <FilterMenu
               key={key}
@@ -297,18 +353,20 @@ export function ClienteDrawer({
               label={f.label}
               variant="stacked"
               options={f.items.map((i) => ({ label: i.nombre, value: i.id }))}
-              current={f.current}
-              valueText={f.items.find((i) => i.id === f.current)?.nombre ?? "—"}
+              current={f.items.find((i) => i.nombre === nombreActual)?.id ?? f.current}
+              valueText={nombreActual}
               open={menu === key}
               accent={accent}
               onToggle={() => onToggleMenu(key)}
               onPick={(v) => {
                 const id = v as number;
-                const nombre = f.items.find((i) => i.id === id)?.nombre ?? "—";
-                onEditar(
-                  o.id,
-                  { [f.columna]: id } as OportunidadPatch,
-                  { [f.display]: nombre, [f.displayId]: id } as Partial<Oportunidad>,
+                const nombre = nombreDe(id);
+                anotarCambio(`clas_${f.key}`, f.label, nombreDe(f.current), nombre, () =>
+                  onEditar(
+                    o.id,
+                    { [f.columna]: id } as OportunidadPatch,
+                    { [f.display]: nombre, [f.displayId]: id } as Partial<Oportunidad>,
+                  ),
                 );
               }}
             />
@@ -347,7 +405,7 @@ export function ClienteDrawer({
           <div key={f.label} style={{ borderTop: `1px solid ${T.border}` }}>
             <CampoEditable
               label={f.label}
-              value={f.value}
+              value={valorVisible(pendientes, f.clave, f.value)}
               tipo={f.tipo}
               requerido={f.requerido}
               accent={accent}
@@ -366,13 +424,15 @@ export function ClienteDrawer({
                     )
                   : undefined
               }
-              onGuardar={f.guardar}
+              onGuardar={(v) =>
+                anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))
+              }
             />
           </div>
         ))}
       </div>
       <p style={{ margin: "0 0 20px", fontSize: 11, color: T.faint }}>
-        Los cambios se guardan al salir del campo. Escape descarta.
+        Nada se guarda hasta que uses <strong>Guardar cambios</strong>, abajo.
       </p>
 
       <SectionLabel>Datos del cliente</SectionLabel>
@@ -381,14 +441,16 @@ export function ClienteDrawer({
           <div key={f.label} style={{ borderTop: i ? `1px solid ${T.border}` : "none" }}>
             <CampoEditable
               label={f.label}
-              value={f.value}
+              value={valorVisible(pendientes, f.clave, f.value)}
               tipo={f.tipo}
               requerido={f.requerido}
               accent={accent}
               acentos={"acentos" in f && f.acentos}
               esNombre={"esNombre" in f && f.esNombre}
               placeholder={f.requerido ? undefined : "Sin dato"}
-              onGuardar={f.guardar}
+              onGuardar={(v) =>
+                anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))
+              }
             />
           </div>
         ))}
@@ -478,6 +540,145 @@ export function ClienteDrawer({
           <span style={{ fontSize: 12, color: "#2F6B4F" }}>Nota guardada.</span>
         )}
       </div>
+
+      <div
+        style={{
+          marginTop: 22,
+          paddingTop: 16,
+          borderTop: `1px solid ${T.border}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setRepasando(true)}
+          disabled={!hayCambios(pendientes)}
+          style={{
+            height: 38,
+            padding: "0 18px",
+            fontSize: 13,
+            fontWeight: 600,
+            borderRadius: 7,
+            background: hayCambios(pendientes) ? accent : T.border,
+            color: hayCambios(pendientes) ? "#fff" : T.faint,
+            cursor: hayCambios(pendientes) ? "pointer" : "not-allowed",
+          }}
+        >
+          Guardar cambios
+        </button>
+
+        <span style={{ fontSize: 12, color: hayCambios(pendientes) ? T.warn : T.faint }}>
+          {hayCambios(pendientes)
+            ? `${pendientes.size} sin guardar`
+            : "No hay cambios sin guardar"}
+        </span>
+
+        {hayCambios(pendientes) && (
+          <button
+            type="button"
+            onClick={() => setPendientes(VACIOS)}
+            style={{ fontSize: 12, color: T.muted, padding: "0 4px" }}
+          >
+            Descartar todo
+          </button>
+        )}
+      </div>
+
+      {repasando && (
+        <ConfirmarCambios
+          pendientes={pendientes}
+          accent={accent}
+          cliente={o.cliente}
+          guardando={guardando}
+          onAceptar={aceptar}
+          onCancelar={() => setRepasando(false)}
+          onQuitar={(clave) =>
+            setPendientes((p) => {
+              const resto = quitar(p, clave);
+              // Quitado el último, el repaso se queda sin nada que mostrar.
+              if (!hayCambios(resto)) setRepasando(false);
+              return resto;
+            })
+          }
+        />
+      )}
+
+      {avisoSalida && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cambios sin guardar"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 95,
+            background: "rgba(3, 27, 79, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 18,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 380,
+              background: T.surface,
+              border: `1px solid ${T.border}`,
+              borderRadius: 12,
+              padding: "18px 20px",
+              boxShadow: "0 18px 48px rgba(3, 27, 79, 0.22)",
+            }}
+          >
+            <h2 className="dsp" style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
+              Tenés cambios sin guardar
+            </h2>
+            <p style={{ margin: "7px 0 16px", fontSize: 12.5, color: T.muted, lineHeight: 1.5 }}>
+              {pendientes.size === 1 ? "1 cambio" : `${pendientes.size} cambios`} en esta
+              ficha. Si salís ahora se pierden.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 9 }}>
+              <button
+                type="button"
+                onClick={() => setAvisoSalida(false)}
+                style={{
+                  height: 34,
+                  padding: "0 14px",
+                  fontSize: 12.5,
+                  borderRadius: 7,
+                  border: `1px solid ${T.border}`,
+                  color: T.ink,
+                  background: T.surface,
+                }}
+              >
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendientes(VACIOS);
+                  setAvisoSalida(false);
+                  onClose();
+                }}
+                style={{
+                  height: 34,
+                  padding: "0 14px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  borderRadius: 7,
+                  background: "#B85042",
+                  color: "#fff",
+                }}
+              >
+                Salir sin guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Drawer>
   );
 }
