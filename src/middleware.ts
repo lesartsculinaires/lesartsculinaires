@@ -54,6 +54,11 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except Next internals and static assets.
-    "/((?!api/whatsapp|api/chatwoot|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    //
+    // `api/v1` queda afuera porque no entra con cookie de sesión sino con una
+    // llave en la cabecera: pasar por acá lo redirigiría al login, y n8n
+    // recibiría un 307 hacia una página HTML en vez de su JSON. Cada endpoint
+    // comprueba la llave por su cuenta antes de tocar nada (`@/lib/api/http`).
+    "/((?!api/v1|api/whatsapp|api/chatwoot|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
