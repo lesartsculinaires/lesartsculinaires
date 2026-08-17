@@ -22,12 +22,36 @@ interface Props {
   accent: string;
   mod: string;
   userEmail: string;
+  /**
+   * Rol de quien entró: «Administrador», «Ventas»…
+   *
+   * Nulo cuando no se puede saber —faltan las tablas de roles— y entonces no
+   * se dice nada, en vez de suponer uno. Antes acá había un «Ventas» escrito
+   * a mano que salía igual para todos, así que un administrador leía que
+   * estaba en modo ventas.
+   */
+  rol: string | null;
+  /** Nombre de la persona, si su cuenta lo tiene cargado. */
+  nombre: string | null;
   /** Extra entries the signed-in user is allowed to open, e.g. admin-only. */
   extras?: readonly string[];
   onSelect: (mod: string) => void;
 }
 
-export function Sidebar({ accent, mod, userEmail, extras = [], onSelect }: Props) {
+export function Sidebar({
+  accent,
+  mod,
+  userEmail,
+  rol,
+  nombre,
+  extras = [],
+  onSelect,
+}: Props) {
+
+  // Quién sos, con lo mejor que se sepa y sin repetir.
+  const principal = rol ?? nombre ?? userEmail;
+  const secundario =
+    principal === userEmail ? null : rol && nombre ? `${nombre} · ${userEmail}` : userEmail;
 
   const navStyle = (label: string): CSSProperties => ({
     display: "block",
@@ -100,21 +124,28 @@ export function Sidebar({ accent, mod, userEmail, extras = [], onSelect }: Props
         >
           Sesión activa
         </p>
+        {/* Arriba el rol, porque es lo que dice qué se puede hacer. Si no se
+            sabe, manda el nombre; y si tampoco, el correo. Nunca un valor
+            inventado. */}
         <p className="dsp" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-          Ventas
+          {principal}
         </p>
-        <p
-          className="mono"
-          style={{
-            margin: "2px 0 0",
-            fontSize: 10,
-            opacity: 0.8,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {userEmail}
-        </p>
+        {/* Y abajo el correo, salvo que ya sea lo de arriba: repetirlo dos
+            veces se ve a error. */}
+        {secundario && (
+          <p
+            className="mono"
+            style={{
+              margin: "2px 0 0",
+              fontSize: 10,
+              opacity: 0.8,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {secundario}
+          </p>
+        )}
       </div>
 
       <p

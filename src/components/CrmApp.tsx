@@ -107,6 +107,18 @@ export default function CrmApp({
 
   const { mod } = state;
 
+  /**
+   * El rol de quien entró, para no decirle «Ventas» a un administrador.
+   *
+   * Sale del rol que tiene asignada su cuenta. Si las tablas de roles no
+   * existen todavía no se puede saber, y entonces vale más no decir nada que
+   * suponer: `esAdmin` es false en ese caso por precaución, no porque se haya
+   * comprobado que la persona no lo es.
+   */
+  const rol =
+    accesos.roles.find((r) => r.id === accesos.yo?.rolId)?.nombre ??
+    (faltaMigracionAccesos ? null : accesos.esAdmin ? "Administrador" : "Ventas");
+
   return (
     <CatalogoProvider value={catalogo}>
       <div
@@ -117,6 +129,8 @@ export default function CrmApp({
           accent={accent}
           mod={mod}
           userEmail={userEmail}
+          rol={rol}
+          nombre={accesos.yo?.nombre ?? null}
           // Cuando faltan las tablas nadie es admin todavía, así que la entrada
           // se muestra igual: si no, no habría forma de leer el aviso que dice
           // cómo crearlas.
@@ -162,7 +176,7 @@ export default function CrmApp({
                   textTransform: "uppercase",
                 }}
               >
-                Ventas
+                {rol ?? "Sesión activa"}
               </p>
               <h1 className="dsp" style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>
                 {mod}
