@@ -103,10 +103,10 @@ type Cliente = NonNullable<ReturnType<typeof getAdminClient>>;
 /**
  * Guarda un entrante y deja la conversación al día.
  *
- * Adrede NO crea un cliente. La conversación nace sin dueño y ahí se queda
- * hasta que alguien de ventas aprieta «Crear lead». Si cada número que
- * escribe entrara solo a `clientes`, la base se llenaría de equivocados y de
- * spam.
+ * El cliente se crea solo, igual que por la vía de Chatwoot: el asesor no
+ * tiene que copiar nombre ni teléfono, sólo asignar a quién le toca. Para los
+ * números equivocados y los proveedores está el botón «No era lead», que
+ * borra la ficha creada y archiva.
  */
 async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   // Si el número ya es de un cliente conocido, la conversación nace vinculada:
@@ -148,23 +148,14 @@ async function conversacionDe(supabase: Cliente, m: MensajeEntrante): Promise<nu
 
   if (existente) return Number(existente.id);
 
-  // Los teléfonos guardados no tienen código de país ni formato fijo, así que
-  // se comparan por los últimos 8 dígitos, igual que la detección de
-  // duplicados del resto del CRM.
-  const cola = m.telefono.slice(-8);
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("id")
-    .like("telefono", `%${cola}`)
-    .limit(1)
-    .maybeSingle();
+  const clienteId = await clienteDe(supabase, m);
 
   const { data: creada, error } = await supabase
     .from("conversaciones")
     .insert({
       telefono: m.telefono,
       nombre_perfil: m.nombrePerfil,
-      cliente_id: cliente ? Number(cliente.id) : null,
+      cliente_id: clienteId,
     })
     .select("id")
     .single();
@@ -182,4 +173,43 @@ async function conversacionDe(supabase: Cliente, m: MensajeEntrante): Promise<nu
   if (error) throw error;
 
   return creada ? Number(creada.id) : null;
+}
+
+/**
+ * El cliente de esta conversación: el que ya existe, o uno nuevo.
+ *
+ * Los teléfonos guardados no tienen código de país ni formato fijo, así que se
+ * comparan por los últimos 8 dígitos, igual que la detección de duplicados del
+ * resto del CRM. Un número que ya está en la base se vincula a su ficha en vez
+ * de abrir otra.
+ */
+async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number | null> {
+  if (m.telefono.length >= 8) {
+    const { data: ya } = await supabase
+      .from("clientes")
+      .select("id")
+      .like("telefono", `%${m.telefono.slice(-8)}`)
+      .limit(1)
+      .maybeSingle();
+    if (ya) return Number(ya.id);
+  }
+
+  const { data: creado, error } = await supabase
+    .from("clientes")
+    .insert({
+      // Sin nombre de perfil queda el teléfono, que es mejor que «Sin nombre»:
+      // al menos se puede buscar y reconocer.
+      nombre: m.nombrePerfil ?? (m.telefono || "Contacto de WhatsApp"),
+      telefono: m.telefono || null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    // Que falle el alta no debe perder el mensaje: la conversación se guarda
+    // igual, sin cliente, y el asesor lo resuelve desde la bandeja.
+    console.error("[whatsapp] no se pudo crear el cliente", error);
+    return null;
+  }
+  return Number(creado.id);
 }

@@ -4,7 +4,7 @@ import CrmApp, { MOD_USUARIOS } from "@/components/CrmApp";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
 import { fetchInbox } from "@/lib/supabase/inbox";
-import { hayWhatsapp } from "@/lib/whatsapp/enviar";
+import { salidaDisponible } from "@/app/inbox-actions";
 import { fetchAutorizaciones } from "@/lib/supabase/autorizaciones";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import {
@@ -37,6 +37,8 @@ export default async function Page({
       fetchInbox(),
     ]);
 
+  const salida = await salidaDisponible();
+
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
 
   return (
@@ -51,7 +53,7 @@ export default async function Page({
       conversaciones={inbox.conversaciones}
       mensajes={inbox.mensajes}
       faltaMigracionInbox={inbox.faltaMigracion}
-      puedeResponderWhatsapp={hayWhatsapp()}
+      puedeResponderWhatsapp={salida !== "ninguna"}
       userEmail={user.email ?? ""}
       accesos={accesos.data}
       faltaMigracionAccesos={accesos.faltaMigracion}

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
-import { asignar, noEraLead, responderChatwoot } from "@/app/chatwoot-actions";
+import { asignar, noEraLead } from "@/app/chatwoot-actions";
+import { responderConversacion } from "@/app/inbox-actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import type { Conversacion, Mensaje } from "@/lib/types";
@@ -123,7 +124,7 @@ export function Inbox({
     if (!actual || !texto.trim()) return;
     setEnviando(true);
     setAviso(null);
-    const r = await responderChatwoot(actual.id, texto, nota);
+    const r = await responderConversacion(actual.id, texto, nota);
     setEnviando(false);
     if (r.ok) {
       setTexto("");
