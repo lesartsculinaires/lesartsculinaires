@@ -2,12 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import {
-  archivar,
-  crearLeadDesdeConversacion,
-  marcarLeida,
-  responder,
-} from "@/app/whatsapp-actions";
+import { archivar, marcarLeida } from "@/app/whatsapp-actions";
+import { asignar, noEraLead, responderChatwoot } from "@/app/chatwoot-actions";
+import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import type { Conversacion, Mensaje } from "@/lib/types";
 
@@ -65,18 +62,30 @@ export function Inbox({
   onRefrescar,
   onVerCliente,
 }: Props) {
+  const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
   const [verArchivadas, setVerArchivadas] = useState(false);
+  const [soloSinAsignar, setSoloSinAsignar] = useState(false);
+  const [nota, setNota] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [nombreLead, setNombreLead] = useState("");
   const finRef = useRef<HTMLDivElement | null>(null);
   const soft = softer(accent);
 
   const lista = useMemo(
-    () => conversaciones.filter((c) => c.archivada === verArchivadas),
-    [conversaciones, verArchivadas],
+    () =>
+      conversaciones.filter(
+        (c) =>
+          c.archivada === verArchivadas &&
+          (!soloSinAsignar || c.vendedorId == null),
+      ),
+    [conversaciones, verArchivadas, soloSinAsignar],
+  );
+
+  const sinAsignar = useMemo(
+    () => conversaciones.filter((c) => !c.archivada && c.vendedorId == null).length,
+    [conversaciones],
   );
 
   const actual = useMemo(
@@ -103,8 +112,8 @@ export function Inbox({
   }, [actual, onRefrescar]);
 
   useEffect(() => {
-    setNombreLead(actual?.nombrePerfil ?? "");
     setAviso(null);
+    setNota(false);
   }, [actual]);
 
   const horas = horasDesdeEntrante(delHilo);
@@ -114,7 +123,7 @@ export function Inbox({
     if (!actual || !texto.trim()) return;
     setEnviando(true);
     setAviso(null);
-    const r = await responder(actual.id, texto);
+    const r = await responderChatwoot(actual.id, texto, nota);
     setEnviando(false);
     if (r.ok) {
       setTexto("");
@@ -124,11 +133,19 @@ export function Inbox({
     }
   };
 
-  const convertir = async () => {
+  const cambiarVendedor = async (vendedorId: number | null) => {
     if (!actual) return;
     setAviso(null);
-    const r = await crearLeadDesdeConversacion(actual.id, nombreLead);
+    const r = await asignar(actual.id, vendedorId);
     if (r.ok) onRefrescar();
+    else setAviso(r.error);
+  };
+
+  const descartar = async () => {
+    if (!actual) return;
+    setAviso(null);
+    const r = await noEraLead(actual.id);
+    if (r.ok) { setAbierta(null); onRefrescar(); }
     else setAviso(r.error);
   };
 
@@ -181,14 +198,21 @@ export function Inbox({
         <div style={{ ...th, display: "flex", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => setVerArchivadas(false)}
-            style={pestana(!verArchivadas, accent)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); }}
+            style={pestana(!verArchivadas && !soloSinAsignar, accent)}
           >
             Activas
           </button>
           <button
             type="button"
-            onClick={() => setVerArchivadas(true)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); }}
+            style={pestana(!verArchivadas && soloSinAsignar, accent)}
+          >
+            Sin asignar{sinAsignar ? ` ${sinAsignar}` : ""}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); }}
             style={pestana(verArchivadas, accent)}
           >
             Archivadas
@@ -245,8 +269,12 @@ export function Inbox({
                 </span>
 
                 <span style={{ display: "flex", gap: 6, marginTop: 5, alignItems: "center" }}>
-                  {c.clienteId == null && (
-                    <span className="pill" style={chip("#8A5200", "#FFF6D6")}>sin lead</span>
+                  {c.vendedorId == null ? (
+                    <span className="pill" style={chip("#8A5200", "#FFF6D6")}>sin asignar</span>
+                  ) : (
+                    <span className="pill" style={chip(T.muted, T.paper)}>
+                      {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? "asignada"}
+                    </span>
                   )}
                   {c.sinLeer > 0 && (
                     <span className="pill" style={chip("#fff", accent)}>{c.sinLeer}</span>
@@ -286,35 +314,45 @@ export function Inbox({
               </span>
 
               <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                {actual.clienteId != null ? (
+                <select
+                  value={actual.vendedorId ?? ""}
+                  onChange={(e) =>
+                    void cambiarVendedor(e.target.value === "" ? null : Number(e.target.value))
+                  }
+                  title="A quién le toca dar seguimiento"
+                  style={{
+                    height: 30,
+                    padding: "0 8px",
+                    fontSize: 12.5,
+                    borderRadius: 6,
+                    border: `1px solid ${actual.vendedorId == null ? "#FFCE00" : T.border}`,
+                    background: actual.vendedorId == null ? "#FFF6D6" : T.surface,
+                    color: T.ink,
+                  }}
+                >
+                  <option value="">Sin asignar</option>
+                  {cat.vendedores.map((v) => (
+                    <option key={v.id} value={v.id}>{v.nombre}</option>
+                  ))}
+                </select>
+
+                {actual.clienteId != null && (
                   <button
                     type="button"
                     onClick={() => onVerCliente(actual.clienteId!)}
                     style={boton(accent)}
                   >
-                    Ver ficha del cliente
+                    Ver ficha
                   </button>
-                ) : (
-                  <>
-                    <input
-                      value={nombreLead}
-                      onChange={(e) => setNombreLead(e.target.value)}
-                      placeholder="Nombre del cliente"
-                      style={{
-                        height: 30,
-                        padding: "0 9px",
-                        fontSize: 12.5,
-                        border: `1px solid ${T.border}`,
-                        borderRadius: 6,
-                        background: T.paper,
-                        width: 160,
-                      }}
-                    />
-                    <button type="button" onClick={convertir} style={botonLleno(accent)}>
-                      Crear lead
-                    </button>
-                  </>
                 )}
+                <button
+                  type="button"
+                  onClick={descartar}
+                  title="Número equivocado o proveedor: quita el cliente creado y archiva"
+                  style={boton(T.muted)}
+                >
+                  No era lead
+                </button>
                 <button
                   type="button"
                   onClick={() => void archivar(actual.id, !actual.archivada).then(onRefrescar)}
@@ -342,15 +380,24 @@ export function Inbox({
                         maxWidth: "74%",
                         padding: "8px 11px",
                         borderRadius: 10,
-                        background: mio ? accent : T.surface,
-                        color: mio ? "#fff" : T.ink,
-                        border: mio ? "none" : `1px solid ${T.border}`,
+                        background: m.privado ? "#FFF6D6" : mio ? accent : T.surface,
+                        color: m.privado ? "#8A5200" : mio ? "#fff" : T.ink,
+                        border: m.privado
+                          ? "1px dashed #C79A2E"
+                          : mio
+                          ? "none"
+                          : `1px solid ${T.border}`,
                         fontSize: 13,
                         lineHeight: 1.5,
                         whiteSpace: "pre-wrap",
                         wordBreak: "break-word",
                       }}
                     >
+                      {m.privado && (
+                        <span style={{ display: "block", fontSize: 10, fontWeight: 600, marginBottom: 3 }}>
+                          NOTA INTERNA
+                        </span>
+                      )}
                       {contenido(m)}
                       <span
                         className="mono"
@@ -411,7 +458,22 @@ export function Inbox({
               </p>
             )}
 
-            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${T.border}` }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "8px 12px 0",
+                fontSize: 12,
+                color: nota ? "#8A5200" : T.muted,
+                cursor: "pointer",
+              }}
+            >
+              <input type="checkbox" checked={nota} onChange={(e) => setNota(e.target.checked)} />
+              Nota interna — la ve el equipo, no el cliente
+            </label>
+
+            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
               <textarea
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}

@@ -259,6 +259,12 @@ export interface Conversacion {
   ultimoTexto: string | null;
   sinLeer: number;
   archivada: boolean;
+  /** Id en Chatwoot. Nulo si la conversación no vino de ahí. */
+  chatwootId: number | null;
+  /** open / pending / resolved, igual que en Chatwoot. */
+  estado: string;
+  /** Nulo = sin asignar, que es lo que el asesor resuelve. */
+  vendedorId: number | null;
 }
 
 export interface Mensaje {
@@ -272,4 +278,6 @@ export interface Mensaje {
   estado: string | null;
   error: string | null;
   creadoEn: string;
+  /** Nota interna: la ve el equipo, no el cliente. */
+  privado: boolean;
 }

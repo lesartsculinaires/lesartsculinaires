@@ -32,7 +32,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
 
   const { data: convs, error } = await supabase
     .from("conversaciones")
-    .select("id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, sin_leer, archivada")
+    .select("id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, sin_leer, archivada, chatwoot_id, estado, vendedor_id")
     .order("ultimo_mensaje_en", { ascending: false })
     .limit(300);
 
@@ -48,7 +48,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   if (ids.length) {
     const { data: msgs, error: errMsg } = await supabase
       .from("mensajes")
-      .select("id, conversacion_id, direccion, tipo, texto, estado, error, creado_en")
+      .select("id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado")
       .in("conversacion_id", ids)
       .order("creado_en", { ascending: true })
       .limit(4000);
@@ -64,6 +64,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       estado: m.estado ? String(m.estado) : null,
       error: m.error ? String(m.error) : null,
       creadoEn: String(m.creado_en),
+      privado: Boolean(m.privado),
     }));
   }
 
@@ -77,6 +78,9 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       ultimoTexto: c.ultimo_texto ? String(c.ultimo_texto) : null,
       sinLeer: Number(c.sin_leer ?? 0),
       archivada: Boolean(c.archivada),
+      chatwootId: c.chatwoot_id == null ? null : Number(c.chatwoot_id),
+      estado: String(c.estado ?? "open"),
+      vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
     })),
     mensajes,
     faltaMigracion: false,
