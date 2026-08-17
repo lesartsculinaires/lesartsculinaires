@@ -43,10 +43,12 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
   // para no arriesgar un desajuste de hidratación.
   if (en == null) return null;
 
-  // Mientras conecta no se dice nada: el parpadeo de "sin conexión" durante el
-  // segundo del arranque asustaría sin motivo.
+  // "En vivo" sólo cuando los avisos llegan de verdad. Unirse al canal no
+  // alcanza: sin las tablas publicadas la suscripción se acepta igual y no
+  // llega nada, y un punto verde mintiendo es peor que no poner nada.
   const vivo = enVivo === "conectado";
   const caido = enVivo === "sin-conexion";
+  const sinPublicar = enVivo === "sin-publicar";
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -63,7 +65,15 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
           En vivo
         </span>
       ) : (
-        <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
+        <span
+          className="mono"
+          title={
+            sinPublicar
+              ? "Los cambios en vivo no están activados en la base de datos. La pantalla se actualiza sola cada 10 minutos."
+              : undefined
+          }
+          style={{ fontSize: 11.5, color: T.faint }}
+        >
           Actualizado {hace(Math.max(0, ahora - en))}
         </span>
       )}

@@ -27,7 +27,13 @@ const ESPERA_MS = 600;
 /** Tope: con avisos entrando sin parar, se recarga igual cada tanto. */
 const TOPE_MS = 4000;
 
-export type EstadoEnVivo = "conectando" | "conectado" | "sin-conexion";
+export type EstadoEnVivo =
+  | "conectando"
+  /** Canal arriba y tablas publicadas: los avisos llegan de verdad. */
+  | "conectado"
+  /** Canal arriba, pero falta correr la migración: no va a llegar nada. */
+  | "sin-publicar"
+  | "sin-conexion";
 
 /**
  * Trae los cambios de otras personas en el momento en que ocurren.
@@ -39,9 +45,15 @@ export type EstadoEnVivo = "conectando" | "conectado" | "sin-conexion";
  * no hay una segunda copia de los datos en el navegador que pueda quedar
  * distinta de la primera.
  *
- * Devuelve el estado de la conexión para poder decirlo en pantalla. Si se
- * cae, el refresco cada diez minutos sigue corriendo por debajo: la pantalla
- * se atrasa, no se queda muerta.
+ * Sobre el estado que devuelve: unirse al canal no basta para decir «En
+ * vivo». Supabase acepta la suscripción aunque las tablas no estén en la
+ * publicación, y después no manda nada nunca; la pantalla quedaría diciendo
+ * que está en vivo mientras no llega un solo aviso, que es peor que no decir
+ * nada. Por eso además se le pregunta a la base, con
+ * `cambios_en_vivo_activos()`, si los avisos van a salir de verdad.
+ *
+ * En cualquier caso el refresco cada diez minutos sigue corriendo por debajo:
+ * la pantalla se atrasa, no se queda muerta.
  */
 export function useEnVivo(): EstadoEnVivo {
   const router = useRouter();
@@ -55,6 +67,27 @@ export function useEnVivo(): EstadoEnVivo {
 
     const supabase = getBrowserClient();
     let vivo = true;
+
+    /**
+     * ¿Las tablas están publicadas?
+     *
+     * Si la función no existe todavía —la migración no se ha corrido— el
+     * error es la respuesta: tampoco están publicadas las tablas.
+     */
+    let publicadas: boolean | null = null;
+    const revisarPublicacion = async () => {
+      const { data, error } = await supabase.rpc("cambios_en_vivo_activos");
+      publicadas = error ? false : data === true;
+      if (vivo) asentarEstado();
+    };
+
+    /** El canal por su lado y la publicación por el suyo; mandan los dos. */
+    let canalListo: boolean | null = null;
+    const asentarEstado = () => {
+      if (canalListo === false) return setEstado("sin-conexion");
+      if (canalListo == null || publicadas == null) return;
+      setEstado(publicadas ? "conectado" : "sin-publicar");
+    };
 
     const rafaga = crearRafaga(
       () => {
@@ -70,13 +103,17 @@ export function useEnVivo(): EstadoEnVivo {
 
     canal.subscribe((s) => {
       if (!vivo) return;
-      if (s === "SUBSCRIBED") setEstado("conectado");
-      // CHANNEL_ERROR suele ser la tabla sin publicar o la sesión vencida;
-      // TIMED_OUT y CLOSED, la red. Para quien mira son lo mismo: no hay
-      // avisos, y manda el refresco cada diez minutos.
-      else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") {
-        setEstado("sin-conexion");
+      if (s === "SUBSCRIBED") {
+        canalListo = true;
+        // Se pregunta recién acá: si el canal no levanta, la respuesta da
+        // igual y no hay por qué gastar la consulta.
+        void revisarPublicacion();
+      } else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") {
+        // Sesión vencida, red caída, proxy de oficina. Para quien mira son lo
+        // mismo: no hay avisos, y manda el refresco cada diez minutos.
+        canalListo = false;
       }
+      asentarEstado();
     });
 
     return () => {

@@ -64,4 +64,36 @@ begin
   end if;
 end $$;
 
+-- ---------------------------------------------------------------- el aviso
+--
+-- Unirse al canal de Supabase funciona aunque las tablas no estén publicadas:
+-- devuelve «suscrito» y después no llega nada nunca. Para la pantalla eso es
+-- lo peor de los dos mundos, porque diría «En vivo» mientras no llega un solo
+-- aviso. Con esta función puede preguntar y decir la verdad.
+--
+-- No necesita privilegios especiales: `pg_publication_tables` ya es legible
+-- por cualquiera, y sólo se expone un sí o un no sobre la configuración, no
+-- un dato de nadie.
+create or replace function public.cambios_en_vivo_activos()
+returns boolean
+language sql
+stable
+set search_path = public, pg_catalog
+as $$
+  -- Las tres que mueven las pantallas principales. `eventos` queda afuera a
+  -- propósito: sin ella el Calendario tarda, pero los leads siguen llegando
+  -- al momento, y no tendría sentido apagar el aviso entero por eso.
+  select bool_and(
+    exists (
+      select 1 from pg_publication_tables p
+      where p.pubname = 'supabase_realtime'
+        and p.schemaname = 'public'
+        and p.tablename = t.nombre
+    )
+  )
+  from unnest(array['clientes', 'oportunidades', 'oportunidad_notas']) as t(nombre);
+$$;
+
+grant execute on function public.cambios_en_vivo_activos() to authenticated;
+
 commit;
