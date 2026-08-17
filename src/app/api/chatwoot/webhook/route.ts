@@ -50,6 +50,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, nota: "cuerpo ilegible" });
   }
 
+  // Qué evento es y si nos incumbe, ANTES de necesitar la base.
+  //
+  // Una cuenta de Chatwoot puede tener varios canales —WhatsApp, el widget del
+  // sitio, correo— y todos disparan el mismo webhook. Sin este filtro, una
+  // consulta por el chat de la web daría de alta un cliente igual que un
+  // WhatsApp. Si la variable no está puesta se aceptan todos.
+  //
+  // Va antes de pedir el cliente de la base a propósito: un evento que no es
+  // nuestro no debería fallar con 500 y hacer que Chatwoot lo reintente.
+  const cambio = leerEstado(carga);
+  const m = cambio ? null : leerMensaje(carga);
+
+  if (!cambio && !m) return NextResponse.json({ ok: true, nota: "evento ignorado" });
+
+  const soloBandeja = process.env.CHATWOOT_INBOX_ID?.trim();
+  if (m && soloBandeja && String(m.inboxId ?? "") !== soloBandeja) {
+    return NextResponse.json({ ok: true, nota: "otra bandeja" });
+  }
+
   const supabase = getAdminClient();
   if (!supabase) {
     console.error("[chatwoot] falta SUPABASE_SERVICE_ROLE_KEY; el mensaje se pierde");
@@ -57,7 +76,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const cambio = leerEstado(carga);
     if (cambio) {
       await supabase
         .from("conversaciones")
@@ -66,10 +84,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, tipo: "estado" });
     }
 
-    const m = leerMensaje(carga);
-    if (!m) return NextResponse.json({ ok: true, nota: "evento ignorado" });
-
-    await guardar(supabase, m);
+    await guardar(supabase, m!);
     return NextResponse.json({ ok: true, tipo: "mensaje" });
   } catch (e) {
     console.error("[chatwoot] no se pudo procesar el evento", e);
