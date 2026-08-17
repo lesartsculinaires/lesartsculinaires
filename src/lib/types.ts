@@ -244,3 +244,32 @@ export interface Autorizacion {
   resueltoEn: string | null;
   comentario: string | null;
 }
+
+// ------------------------------------------------------------- bandeja
+/** Un hilo de WhatsApp con una persona. */
+export interface Conversacion {
+  id: number;
+  /** Sólo dígitos, con código de país, tal como lo manda Meta. */
+  telefono: string;
+  /** Cómo se llama en su propio WhatsApp; puede no venir. */
+  nombrePerfil: string | null;
+  /** Nulo mientras nadie la haya convertido en lead. */
+  clienteId: number | null;
+  ultimoMensajeEn: string;
+  ultimoTexto: string | null;
+  sinLeer: number;
+  archivada: boolean;
+}
+
+export interface Mensaje {
+  id: number;
+  conversacionId: number;
+  direccion: "entrante" | "saliente";
+  tipo: string;
+  /** Nulo en fotos, audios y demás: ahí manda `tipo`. */
+  texto: string | null;
+  /** Sólo salientes: enviado / entregado / leido / fallido. */
+  estado: string | null;
+  error: string | null;
+  creadoEn: string;
+}

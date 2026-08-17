@@ -13,6 +13,8 @@ const TABLAS = [
   "clientes",
   "oportunidad_notas",
   "eventos",
+  "conversaciones",
+  "mensajes",
 ] as const;
 
 /**

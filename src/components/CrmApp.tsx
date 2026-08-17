@@ -10,6 +10,7 @@ import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
 import { Clientes } from "@/components/modules/Clientes";
 import { Dashboard } from "@/components/modules/Dashboard";
 import { Equipos } from "@/components/modules/Equipos";
+import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
@@ -25,8 +26,10 @@ import type {
   Accesos,
   Autorizacion,
   Catalogo,
+  Conversacion,
   Evento,
   Importacion,
+  Mensaje,
   Oportunidad,
 } from "@/lib/types";
 
@@ -40,6 +43,12 @@ interface Props {
   autorizaciones: Autorizacion[];
   /** La tabla de autorizaciones todavía no existe. */
   faltaMigracionAutorizaciones: boolean;
+  conversaciones: Conversacion[];
+  mensajes: Mensaje[];
+  /** Las tablas de la bandeja todavía no existen. */
+  faltaMigracionInbox: boolean;
+  /** False cuando el servidor no tiene token de WhatsApp. */
+  puedeResponderWhatsapp: boolean;
   userEmail: string;
   accesos: Accesos;
   /** True when the roles tables do not exist yet. */
@@ -62,6 +71,10 @@ export default function CrmApp({
   faltaMigracionBases,
   autorizaciones,
   faltaMigracionAutorizaciones,
+  conversaciones,
+  mensajes,
+  faltaMigracionInbox,
+  puedeResponderWhatsapp,
   userEmail,
   accesos,
   faltaMigracionAccesos,
@@ -220,6 +233,24 @@ export default function CrmApp({
               onSelect={actions.select}
               onLimpiar={actions.limpiarFiltros}
               onRefresh={() => router.refresh()}
+            />
+          )}
+
+          {mod === "Inbox" && (
+            <Inbox
+              conversaciones={conversaciones}
+              mensajes={mensajes}
+              faltaMigracion={faltaMigracionInbox}
+              puedeResponder={puedeResponderWhatsapp}
+              accent={accent}
+              onRefrescar={() => router.refresh()}
+              onVerCliente={(clienteId) => {
+                // Las pantallas listan oportunidades, no clientes: se salta a
+                // la primera de esa persona.
+                const suya = oportunidades.find((o) => o.clienteId === clienteId);
+                if (suya) actions.verEnClientes({}, suya.id);
+                else actions.setMod("Clientes");
+              }}
             />
           )}
 
