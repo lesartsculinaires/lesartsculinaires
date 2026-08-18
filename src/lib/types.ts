@@ -97,6 +97,13 @@ export interface Oportunidad {
 
   valor: number | null;
   cerrada: number | null;
+  /**
+   * Anticipo con el que el cliente apartó el cupo.
+   *
+   * Es una parte de `valor`, no dinero aparte, y por eso no entra en ninguna
+   * métrica: ver `selectors.ts`.
+   */
+  reserva: number | null;
   descuento: string | null;
 
   /**
@@ -131,6 +138,7 @@ export interface OportunidadPatch {
   fecha_cierre?: string | null;
   valor_oportunidad?: number | null;
   venta_cerrada?: number | null;
+  reserva?: number | null;
   descuento_promocion?: string | null;
 }
 

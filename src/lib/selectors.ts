@@ -2,6 +2,19 @@ import { money } from "@/lib/format";
 import { openTone } from "@/lib/theme";
 import type { Estado, Oportunidad, Tone } from "@/lib/types";
 
+/**
+ * NOTA SOBRE `reserva`, que a propósito no aparece en este archivo.
+ *
+ * La reserva es la parte del valor que el cliente ya pagó para apartar el
+ * cupo, no plata adicional: en una inscripción de $495 con $100 de reserva, el
+ * negocio vale $495 y no $595. Sumarla al pipeline lo inflaría, y sumarla al
+ * total cerrado contaría dos veces los mismos $100 el día que la venta se
+ * cierre por el total.
+ *
+ * Si algún día hace falta saber cuánto hay reservado, va como su propia
+ * cuenta —«reservado en negocios abiertos»— y no metida dentro de estas.
+ */
+
 /** Live pipeline: anything not in a final state. */
 export const estaAbierta = (o: Oportunidad): boolean => !o.esFinal;
 

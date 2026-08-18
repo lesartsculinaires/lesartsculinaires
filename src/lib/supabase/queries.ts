@@ -69,6 +69,7 @@ function toOportunidad(r: Row): Oportunidad {
 
     valor: numOrNull(r.valor_oportunidad),
     cerrada: numOrNull(r.venta_cerrada),
+    reserva: numOrNull(r.reserva),
     descuento: r.descuento_promocion ? str(r.descuento_promocion) : null,
 
     // Vienen en null mientras no se haya corrido la migración de bases: la

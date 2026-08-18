@@ -192,6 +192,14 @@ export function ClienteDrawer({
         onEditar(o.id, { valor_oportunidad: oMonto(v) }, { valor: oMonto(v) }),
     },
     {
+      clave: "reserva",
+      label: "Reserva",
+      value: o.reserva == null ? "" : String(o.reserva),
+      tipo: "monto" as const,
+      requerido: false,
+      guardar: (v: string) => onEditar(o.id, { reserva: oMonto(v) }, { reserva: oMonto(v) }),
+    },
+    {
       clave: "venta_cerrada",
       label: "Venta cerrada",
       value: o.cerrada == null ? "" : String(o.cerrada),
@@ -327,6 +335,24 @@ export function ClienteDrawer({
     return puesto.trim() === "" || !Number.isFinite(n) ? null : n;
   })();
 
+  /**
+   * La reserva no puede ser mayor que el valor: es una parte de él.
+   *
+   * Se avisa en vez de impedirlo. Los dos campos se llenan en momentos
+   * distintos —a veces entra el anticipo antes de que alguien ponga el precio—
+   * y bloquear el guardado dejaría al asesor sin poder anotar plata que ya
+   * recibió. Acá quien mira decide cuál de los dos corregir.
+   */
+  const reservaMayorQueValor = (() => {
+    const n = (clave: string, guardado: number | null) => {
+      const v = Number(valorVisible(pendientes, clave, guardado == null ? "" : String(guardado)));
+      return Number.isFinite(v) ? v : null;
+    };
+    const reserva = n("reserva", o.reserva);
+    const valor = n("valor_oportunidad", o.valor);
+    return reserva != null && valor != null && reserva > 0 && valor > 0 && reserva > valor;
+  })();
+
   const pideResponsable = esMenor(edadEnPantalla);
   const faltaResponsable =
     pideResponsable &&
@@ -422,13 +448,17 @@ export function ClienteDrawer({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          // Cuatro tarjetas en dos filas de dos. En una gaveta de 500px, cuatro
+          // columnas dejarían «BONO $100.00 en inscripción» partido en cinco
+          // renglones.
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: 8,
           marginBottom: 20,
         }}
       >
         {[
           { label: "Valor oportunidad", value: money(o.valor), bg: T.paper, color: undefined as string | undefined },
+          { label: "Reserva", value: money(o.reserva), bg: o.reserva ? soft : T.paper, color: o.reserva ? accent : T.faint },
           { label: "Venta cerrada", value: money(o.cerrada), bg: o.cerrada ? soft : T.paper, color: o.cerrada ? accent : T.faint },
           { label: "Descuento", value: o.descuento ?? "—", bg: T.paper, color: undefined },
         ].map((m) => (
@@ -549,7 +579,13 @@ export function ClienteDrawer({
           </div>
         ))}
       </div>
-      <p style={{ margin: "0 0 20px", fontSize: 11, color: T.faint }}>
+      {reservaMayorQueValor && (
+        <p style={{ margin: "6px 0 0", fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
+          La reserva es mayor que el valor de la oportunidad. Revisá cuál de los dos
+          está mal: la reserva es una parte del valor, no algo aparte.
+        </p>
+      )}
+      <p style={{ margin: "6px 0 20px", fontSize: 11, color: T.faint }}>
         Nada se guarda hasta que uses <strong>Guardar cambios</strong>, abajo.
       </p>
 
