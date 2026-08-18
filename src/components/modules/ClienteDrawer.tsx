@@ -98,6 +98,8 @@ export function ClienteDrawer({
   // Los campos ya no escriben solos: dejan acá lo que cambiaron y esperan a
   // que la persona lo revise y lo acepte.
   const [pendientes, setPendientes] = useState<Pendientes>(VACIOS);
+  /** Lo tecleado en la casilla de Edad ahora mismo. Null si nadie la está tocando. */
+  const [borradorEdad, setBorradorEdad] = useState<string | null>(null);
   const [repasando, setRepasando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [avisoSalida, setAvisoSalida] = useState(false);
@@ -262,7 +264,7 @@ export function ClienteDrawer({
       requerido: false,
       acentos: true,
       esNombre: true,
-      placeholder: "Quién responde por el alumno",
+      placeholder: "Nombre y apellido del responsable",
       guardar: (v: string) =>
         onEditarCliente(
           o.clienteId,
@@ -271,26 +273,12 @@ export function ClienteDrawer({
         ),
     },
     {
-      clave: "responsable_telefono",
-      label: "Teléfono",
-      value: o.responsableTelefono ?? "",
-      tipo: "texto" as const,
-      requerido: false,
-      placeholder: "Sin dato",
-      guardar: (v: string) =>
-        onEditarCliente(
-          o.clienteId,
-          { responsable_telefono: oNull(v) },
-          { responsableTelefono: oNull(v) },
-        ),
-    },
-    {
       clave: "responsable_correo",
       label: "Correo",
       value: o.responsableCorreo ?? "",
       tipo: "texto" as const,
       requerido: false,
-      placeholder: "Sin dato",
+      placeholder: "Correo del responsable",
       guardar: (v: string) =>
         onEditarCliente(
           o.clienteId,
@@ -298,13 +286,35 @@ export function ClienteDrawer({
           { responsableCorreo: oNull(v) },
         ),
     },
+    {
+      clave: "responsable_telefono",
+      label: "Celular",
+      value: o.responsableTelefono ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      placeholder: "Celular del responsable",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { responsable_telefono: oNull(v) },
+          { responsableTelefono: oNull(v) },
+        ),
+    },
   ];
 
-  // La edad que manda es la que se está editando en pantalla, no la guardada:
-  // si alguien acaba de escribir 15, las casillas del responsable tienen que
-  // aparecer en ese momento y no después de guardar.
+  // La edad que manda es la que se está tecleando, no la guardada.
+  //
+  // `borradorEdad` es lo que hay en la casilla en este instante. Los campos de
+  // la ficha guardan al perder el foco, así que sin esto las casillas del
+  // responsable saldrían recién cuando el asesor hace clic en otro lado, y
+  // hasta ese momento parecería que escribir la edad no hace nada.
+  //
+  // Con null —nadie tocando la casilla— se cae al valor guardado, o al que
+  // haya quedado pendiente de confirmar.
   const edadEnPantalla = (() => {
-    const puesto = valorVisible(pendientes, "cliente_edad", o.edad == null ? "" : String(o.edad));
+    const puesto =
+      borradorEdad ??
+      valorVisible(pendientes, "cliente_edad", o.edad == null ? "" : String(o.edad));
     const n = Number(puesto);
     return puesto.trim() === "" || !Number.isFinite(n) ? null : n;
   })();
@@ -543,6 +553,7 @@ export function ClienteDrawer({
               acentos={"acentos" in f && f.acentos}
               esNombre={"esNombre" in f && f.esNombre}
               placeholder={f.requerido ? undefined : "Sin dato"}
+              onBorrador={f.clave === "cliente_edad" ? setBorradorEdad : undefined}
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))
               }

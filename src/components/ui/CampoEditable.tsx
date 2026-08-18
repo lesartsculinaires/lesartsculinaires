@@ -26,6 +26,16 @@ interface Props {
   multilinea?: boolean;
   /** Se dibuja bajo el campo mientras se edita. Recibe el borrador. */
   extra?: (borrador: string, poner: (v: string) => void) => ReactNode;
+  /**
+   * Avisa en cada tecla, no al salir del campo.
+   *
+   * `onGuardar` sólo corre al perder el foco o con Enter, que es lo correcto
+   * para escribir en la base: no tiene sentido guardar una vez por letra. Pero
+   * hay pantallas que tienen que reaccionar mientras se escribe —la edad, que
+   * hace aparecer los datos del responsable— y esperar a que la persona haga
+   * clic en otro lado da la sensación de que el campo no hace nada.
+   */
+  onBorrador?: (borrador: string) => void;
 }
 
 /**
@@ -46,10 +56,48 @@ export function CampoEditable({
   esNombre = false,
   multilinea = false,
   extra,
+  onBorrador,
 }: Props) {
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [draft, setDraft] = useState(value);
   const [focus, setFocus] = useState(false);
+
+  /**
+   * Cambia el borrador y avisa afuera.
+   *
+   * Pasa por acá todo lo que mueve el borrador —teclear, Escape, el teclado de
+   * tildes— para que quien escucha nunca vea un valor viejo. Avisar sólo al
+   * teclear dejaría a la pantalla creyendo que sigue diciendo «15» después de
+   * que Escape lo devolvió a vacío.
+   */
+  const poner = (v: string) => {
+    setDraft(v);
+    onBorrador?.(v);
+  };
+
+  /**
+   * Escape acaba de pedir descartar.
+   *
+   * Va en un ref y no en el estado porque hay que leerlo en el `blur` que
+   * dispara el propio Escape, y eso ocurre antes de que React vuelva a pintar:
+   * un `useState` todavía tendría el valor viejo.
+   */
+  const cancelado = useRef(false);
+
+  /**
+   * Descartar lo tecleado y volver a lo guardado.
+   *
+   * Sacar el foco dispara `commit`, y `commit` lee el borrador de su clausura
+   * —todavía el que se quería tirar—, así que sin esta marca Escape terminaba
+   * guardando justo lo que la persona pidió descartar. Es lo contrario de lo
+   * que promete la tecla.
+   */
+  const cancelar = (campo: HTMLInputElement | HTMLTextAreaElement) => {
+    cancelado.current = true;
+    poner(value);
+    setFocus(false);
+    campo.blur();
+  };
 
   // Follow the stored value when it changes elsewhere — a rename from another
   // opportunity of the same client, or a server refresh.
@@ -61,9 +109,13 @@ export function CampoEditable({
 
   const commit = () => {
     setFocus(false);
+    if (cancelado.current) {
+      cancelado.current = false;
+      return;
+    }
     const limpio = tipo === "monto" ? draft.replace(/[^0-9.]/g, "") : draft.trim();
     if (vacioInvalido) {
-      setDraft(value);
+      poner(value);
       return;
     }
     if (limpio === value) return;
@@ -102,15 +154,11 @@ export function CampoEditable({
             rows={focus ? 3 : 1}
             value={draft}
             placeholder={placeholder ?? "—"}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => poner(e.target.value)}
             onFocus={() => setFocus(true)}
             onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setDraft(value);
-                setFocus(false);
-                e.currentTarget.blur();
-              }
+              if (e.key === "Escape") cancelar(e.currentTarget);
             }}
             style={{ ...input, height: "auto", resize: "vertical", lineHeight: 1.45, padding: "6px 8px" }}
           />
@@ -121,28 +169,24 @@ export function CampoEditable({
           inputMode={tipo === "monto" ? "decimal" : undefined}
           value={draft}
           placeholder={placeholder ?? "—"}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => poner(e.target.value)}
           onFocus={() => setFocus(true)}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
-            if (e.key === "Escape") {
-              setDraft(value);
-              setFocus(false);
-              e.currentTarget.blur();
-            }
+            if (e.key === "Escape") cancelar(e.currentTarget);
           }}
           className={tipo === "texto" ? undefined : "mono"}
           style={input}
         />
         )}
-        {extra && focus && <div style={{ marginTop: 6 }}>{extra(draft, setDraft)}</div>}
+        {extra && focus && <div style={{ marginTop: 6 }}>{extra(draft, poner)}</div>}
         {acentos && focus && (
           <div style={{ marginTop: 6 }}>
             <TecladoAcentos
               campo={ref}
               valor={draft}
-              onCambio={setDraft}
+              onCambio={poner}
               accent={accent}
               conCapitalizar={esNombre}
             />
