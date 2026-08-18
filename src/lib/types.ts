@@ -72,6 +72,12 @@ export interface Oportunidad {
   cliente: string;
   telefono: string | null;
   correo: string | null;
+  /** Edad declarada. Null si nadie la preguntó todavía. */
+  edad: number | null;
+  /** El adulto que responde por un menor. Sólo se pide bajo `EDAD_RESPONSABLE`. */
+  responsableNombre: string | null;
+  responsableTelefono: string | null;
+  responsableCorreo: string | null;
 
   vendedorId: number | null;
   vendedor: string;
@@ -138,7 +144,24 @@ export interface ClientePatch {
   nombre?: string;
   telefono?: string | null;
   correo?: string | null;
+  edad?: number | null;
+  responsable_nombre?: string | null;
+  responsable_telefono?: string | null;
+  responsable_correo?: string | null;
 }
+
+/**
+ * Desde qué edad se inscribe alguien sin un adulto que responda.
+ *
+ * Por debajo de esto la ficha pide nombre y contacto del responsable. Está
+ * acá, y no escrito en la pantalla, porque la usan el formulario, la ficha y
+ * el aviso de datos incompletos, y si se cambia tiene que cambiar en los tres.
+ */
+export const EDAD_RESPONSABLE = 17;
+
+/** ¿Esta edad necesita un adulto responsable? */
+export const esMenor = (edad: number | null | undefined): boolean =>
+  edad != null && edad < EDAD_RESPONSABLE;
 
 export type CanalEvento = "Presencial" | "Llamada" | "WhatsApp" | "Meet";
 

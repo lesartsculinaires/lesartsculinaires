@@ -14,6 +14,7 @@ import {
 } from "@/lib/duplicados";
 import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
 import { promocionesUsadas } from "@/lib/promociones";
+import { esMenor } from "@/lib/types";
 import { T } from "@/lib/theme";
 import {
   OBLIGATORIOS,
@@ -45,6 +46,10 @@ const vacio = (): NuevoCliente => ({
   nombre: "",
   telefono: null,
   correo: null,
+  edad: null,
+  responsable_nombre: null,
+  responsable_telefono: null,
+  responsable_correo: null,
   vendedor_id: null,
   producto_id: null,
   territorio_id: null,
@@ -56,6 +61,20 @@ const vacio = (): NuevoCliente => ({
   valor_oportunidad: null,
   descuento_promocion: null,
 });
+
+/**
+ * Casilla de edad → número, o null.
+ *
+ * Acá sí se descarta lo que no sea una edad posible: el formulario se está
+ * llenando de cero, así que no hay nada guardado que se pueda pisar, y la base
+ * rechazaría igual un «1998».
+ */
+const oEdad = (s: string): number | null => {
+  const v = s.trim();
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 120 ? n : null;
+};
 
 /** Texto vacío → null, para no guardar cadenas en blanco. */
 const oNull = (v: string): string | null => (v.trim() ? v.trim() : null);
@@ -374,7 +393,58 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 placeholder="opcional"
               />
             </Etiqueta>
+            <Etiqueta texto="Edad">
+              <input
+                id="campo-edad"
+                style={CAMPO}
+                inputMode="numeric"
+                value={d.edad == null ? "" : String(d.edad)}
+                onChange={(e) => set("edad", oEdad(e.target.value))}
+                placeholder="opcional"
+              />
+            </Etiqueta>
           </div>
+
+          {/* Las casillas del responsable aparecen recién cuando la edad las
+              pide. Mostrarlas siempre agregaría tres campos vacíos al alta más
+              común, que es la de un adulto. */}
+          {esMenor(d.edad) && (
+            <>
+              <p className="mono" style={seccion}>
+                Adulto responsable · {d.edad} años
+              </p>
+              <div style={{ ...grid, marginBottom: 20 }}>
+                <Etiqueta texto="Nombre y apellido">
+                  <input
+                    id="campo-responsable_nombre"
+                style={CAMPO}
+                    value={d.responsable_nombre ?? ""}
+                    onChange={(e) => set("responsable_nombre", oNull(e.target.value))}
+                    placeholder="quién responde por el alumno"
+                  />
+                </Etiqueta>
+                <Etiqueta texto="Teléfono">
+                  <input
+                    id="campo-responsable_telefono"
+                style={CAMPO}
+                    value={d.responsable_telefono ?? ""}
+                    onChange={(e) => set("responsable_telefono", oNull(e.target.value))}
+                    placeholder="opcional"
+                  />
+                </Etiqueta>
+                <Etiqueta texto="Correo">
+                  <input
+                    id="campo-responsable_correo"
+                style={CAMPO}
+                    type="email"
+                    value={d.responsable_correo ?? ""}
+                    onChange={(e) => set("responsable_correo", oNull(e.target.value))}
+                    placeholder="opcional"
+                  />
+                </Etiqueta>
+              </div>
+            </>
+          )}
 
           <p className="mono" style={seccion}>
             Oportunidad

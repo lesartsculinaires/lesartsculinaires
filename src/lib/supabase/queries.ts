@@ -44,6 +44,12 @@ function toOportunidad(r: Row): Oportunidad {
     cliente: str(r.cliente, SIN_DATO),
     telefono: r.telefono ? str(r.telefono) : null,
     correo: r.correo ? str(r.correo) : null,
+    // Vienen en null mientras no se haya corrido la migración de la edad: la
+    // vista vieja no trae estas columnas y la ficha tiene que seguir abriendo.
+    edad: numOrNull(r.edad),
+    responsableNombre: r.responsable_nombre ? str(r.responsable_nombre) : null,
+    responsableTelefono: r.responsable_telefono ? str(r.responsable_telefono) : null,
+    responsableCorreo: r.responsable_correo ? str(r.responsable_correo) : null,
 
     vendedorId: numOrNull(r.vendedor_id),
     vendedor: str(r.vendedor, SIN_ASIGNAR),

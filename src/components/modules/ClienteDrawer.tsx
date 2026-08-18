@@ -24,11 +24,12 @@ import { fechaCorta, mesLargo, money } from "@/lib/format";
 import { promocionesUsadas } from "@/lib/promociones";
 import { estadoTone } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import type {
-  CatalogItem,
-  ClientePatch,
-  Oportunidad,
-  OportunidadPatch,
+import {
+  esMenor,
+  type CatalogItem,
+  type ClientePatch,
+  type Oportunidad,
+  type OportunidadPatch,
 } from "@/lib/types";
 
 interface Props {
@@ -53,6 +54,22 @@ interface Props {
 
 /** Text box → the value a nullable column should store. */
 const oNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
+
+/**
+ * Casilla de edad → número, null al vaciarla, o `undefined` si no se entiende.
+ *
+ * Los tres casos son distintos y hay que poder distinguirlos. Vaciar la
+ * casilla es una orden: borrá la edad. Escribir «1998» —el año de nacimiento
+ * en la casilla equivocada, que pasa seguido— no es una orden de borrar nada,
+ * y tratarlo como `null` haría desaparecer en silencio la edad que ya estaba.
+ * Con `undefined` el cambio no se aplica y el campo vuelve a lo guardado.
+ */
+const oEdad = (s: string): number | null | undefined => {
+  const v = s.trim();
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 120 ? n : undefined;
+};
 
 /** Money box → number, or null when cleared. */
 const oMonto = (s: string): number | null => {
@@ -218,7 +235,84 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditarCliente(o.clienteId, { correo: oNull(v) }, { correo: oNull(v) }),
     },
+    {
+      clave: "cliente_edad",
+      label: "Edad",
+      value: o.edad == null ? "" : String(o.edad),
+      tipo: "monto" as const,
+      requerido: false,
+      placeholder: "Sin dato",
+      guardar: (v: string) => {
+        const edad = oEdad(v);
+        if (edad === undefined) return;
+        onEditarCliente(o.clienteId, { edad }, { edad });
+      },
+    },
   ];
+
+  // Los datos del adulto responsable. Sólo se piden para menores: mostrarlos
+  // siempre llenaría la ficha de casillas vacías que nadie va a completar, y
+  // las que importan se perderían entre ellas.
+  const delResponsable = [
+    {
+      clave: "responsable_nombre",
+      label: "Nombre y apellido",
+      value: o.responsableNombre ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      acentos: true,
+      esNombre: true,
+      placeholder: "Quién responde por el alumno",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { responsable_nombre: oNull(v) },
+          { responsableNombre: oNull(v) },
+        ),
+    },
+    {
+      clave: "responsable_telefono",
+      label: "Teléfono",
+      value: o.responsableTelefono ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      placeholder: "Sin dato",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { responsable_telefono: oNull(v) },
+          { responsableTelefono: oNull(v) },
+        ),
+    },
+    {
+      clave: "responsable_correo",
+      label: "Correo",
+      value: o.responsableCorreo ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      placeholder: "Sin dato",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { responsable_correo: oNull(v) },
+          { responsableCorreo: oNull(v) },
+        ),
+    },
+  ];
+
+  // La edad que manda es la que se está editando en pantalla, no la guardada:
+  // si alguien acaba de escribir 15, las casillas del responsable tienen que
+  // aparecer en ese momento y no después de guardar.
+  const edadEnPantalla = (() => {
+    const puesto = valorVisible(pendientes, "cliente_edad", o.edad == null ? "" : String(o.edad));
+    const n = Number(puesto);
+    return puesto.trim() === "" || !Number.isFinite(n) ? null : n;
+  })();
+
+  const pideResponsable = esMenor(edadEnPantalla);
+  const faltaResponsable =
+    pideResponsable &&
+    !valorVisible(pendientes, "responsable_nombre", o.responsableNombre ?? "").trim();
 
   const guardarNota = async () => {
     if (!nota.trim()) return;
@@ -460,6 +554,48 @@ export function ClienteDrawer({
         Ojo: estos datos son del cliente, no de esta oportunidad. Si tiene varias,
         el cambio se ve en todas.
       </p>
+
+      {pideResponsable && (
+        <div style={{ marginBottom: 14 }}>
+          <SectionLabel>Adulto responsable</SectionLabel>
+          <p style={{ margin: "0 0 8px", fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
+            El alumno tiene {edadEnPantalla} años, así que la inscripción necesita un
+            adulto que responda por él.
+          </p>
+          <div
+            style={{
+              border: `1px solid ${faltaResponsable ? T.warn : T.border}`,
+              borderRadius: 10,
+              overflow: "hidden",
+            }}
+          >
+            {delResponsable.map((f, i) => (
+              <div key={f.clave} style={{ borderTop: i ? `1px solid ${T.border}` : "none" }}>
+                <CampoEditable
+                  label={f.label}
+                  value={valorVisible(pendientes, f.clave, f.value)}
+                  tipo={f.tipo}
+                  requerido={f.requerido}
+                  accent={accent}
+                  acentos={"acentos" in f && f.acentos}
+                  esNombre={"esNombre" in f && f.esNombre}
+                  placeholder={f.placeholder}
+                  onGuardar={(v) =>
+                    anotarCambio(f.clave, `Responsable · ${f.label}`, f.value, v, () =>
+                      f.guardar(v),
+                    )
+                  }
+                />
+              </div>
+            ))}
+          </div>
+          {faltaResponsable && (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
+              Falta el nombre del responsable.
+            </p>
+          )}
+        </div>
+      )}
 
       {(o.telefono || o.correo) && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>

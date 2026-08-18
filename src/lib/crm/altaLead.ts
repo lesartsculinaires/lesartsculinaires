@@ -23,6 +23,11 @@ export interface DatosLead {
   nombre: string;
   telefono: string | null;
   correo: string | null;
+  /** Edad declarada. Bajo `EDAD_RESPONSABLE` hacen falta los datos del adulto. */
+  edad?: number | null;
+  responsable_nombre?: string | null;
+  responsable_telefono?: string | null;
+  responsable_correo?: string | null;
   vendedor_id: number | null;
   producto_id: number | null;
   territorio_id: number | null;
@@ -116,6 +121,10 @@ export async function altaLead(
       telefono: datos.telefono,
       correo: datos.correo,
       territorio_id: datos.territorio_id,
+      edad: datos.edad ?? null,
+      responsable_nombre: datos.responsable_nombre ?? null,
+      responsable_telefono: datos.responsable_telefono ?? null,
+      responsable_correo: datos.responsable_correo ?? null,
     })
     .select("id")
     .single();
