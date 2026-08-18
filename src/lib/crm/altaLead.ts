@@ -23,7 +23,7 @@ export interface DatosLead {
   nombre: string;
   telefono: string | null;
   correo: string | null;
-  /** Edad declarada. Bajo `EDAD_RESPONSABLE` hacen falta los datos del adulto. */
+  /** Edad declarada. De 17 para abajo hacen falta los datos del adulto. */
   edad?: number | null;
   responsable_nombre?: string | null;
   responsable_telefono?: string | null;

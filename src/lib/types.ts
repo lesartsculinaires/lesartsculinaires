@@ -74,7 +74,7 @@ export interface Oportunidad {
   correo: string | null;
   /** Edad declarada. Null si nadie la preguntó todavía. */
   edad: number | null;
-  /** El adulto que responde por un menor. Sólo se pide bajo `EDAD_RESPONSABLE`. */
+  /** El adulto que responde por un menor. Se pide de 17 para abajo. */
   responsableNombre: string | null;
   responsableTelefono: string | null;
   responsableCorreo: string | null;
@@ -151,17 +151,22 @@ export interface ClientePatch {
 }
 
 /**
- * Desde qué edad se inscribe alguien sin un adulto que responda.
+ * Desde qué edad se inscribe alguien sin un adulto que responda: 18.
  *
- * Por debajo de esto la ficha pide nombre y contacto del responsable. Está
- * acá, y no escrito en la pantalla, porque la usan el formulario, la ficha y
- * el aviso de datos incompletos, y si se cambia tiene que cambiar en los tres.
+ * O sea que de 17 para abajo la ficha pide nombre y contacto del responsable.
+ * Se escribe como la edad en que se deja de necesitarlo, y no como «hasta 17»,
+ * porque así el número coincide con la mayoría de edad y se explica solo; con
+ * «hasta 17» hay que acordarse de si el 17 entra o no.
+ *
+ * Vive acá y no en cada pantalla porque lo usan el formulario de alta, la
+ * ficha y el aviso de datos incompletos: si se cambia, tiene que cambiar en
+ * los tres a la vez.
  */
-export const EDAD_RESPONSABLE = 17;
+export const MAYORIA_DE_EDAD = 18;
 
-/** ¿Esta edad necesita un adulto responsable? */
+/** ¿Esta edad necesita un adulto responsable? De 17 para abajo, sí. */
 export const esMenor = (edad: number | null | undefined): boolean =>
-  edad != null && edad < EDAD_RESPONSABLE;
+  edad != null && edad < MAYORIA_DE_EDAD;
 
 export type CanalEvento = "Presencial" | "Llamada" | "WhatsApp" | "Meet";
 
