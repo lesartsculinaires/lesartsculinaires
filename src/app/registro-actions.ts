@@ -5,11 +5,16 @@ import { randomBytes } from "node:crypto";
 import { getServerClient } from "@/lib/supabase/server";
 
 /**
- * Enlaces para pasarle una inscripción al área académica.
+ * Enlaces de registro: para pasarle una inscripción al área académica.
  *
  * El enlace es la llave: quien lo tenga ve esa inscripción sin cuenta ni
  * contraseña. Por eso el token se saca de `randomBytes` y no de `Math.random`,
  * que es predecible, y por eso vence solo.
+ *
+ * La tabla sigue llamándose `enlaces_pago` de cuando esto se llamaba «link de
+ * pago». Cambiarle el nombre obligaría a correr una migración en producción
+ * para no ganar nada: el nombre de una tabla no lo ve nadie más que quien lee
+ * este archivo, y acá queda dicho.
  */
 
 /** 24 bytes: 192 bits de azar, 32 caracteres en la URL. */
@@ -35,7 +40,7 @@ export interface ResultadoEnlace {
  * enlaces buenos dando vueltas para la misma inscripción, y anular «el» enlace
  * dejaría de significar algo.
  */
-export async function crearEnlacePago(oportunidadId: number): Promise<ResultadoEnlace> {
+export async function crearEnlaceRegistro(oportunidadId: number): Promise<ResultadoEnlace> {
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
 
@@ -86,7 +91,7 @@ export async function crearEnlacePago(oportunidadId: number): Promise<ResultadoE
 }
 
 /** Anula el enlace vivo de una oportunidad. El que ya se mandó deja de abrir. */
-export async function anularEnlacePago(
+export async function anularEnlaceRegistro(
   oportunidadId: number,
 ): Promise<{ ok: boolean; error: string | null }> {
   const supabase = await getServerClient();
@@ -115,5 +120,5 @@ async function direccion(token: string): Promise<string> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
   const protocolo = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
-  return `${protocolo}://${host}/pago/${token}`;
+  return `${protocolo}://${host}/registro/${token}`;
 }

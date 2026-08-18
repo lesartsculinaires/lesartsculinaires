@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { crearEnlacePago } from "@/app/pago-actions";
+import { crearEnlaceRegistro } from "@/app/registro-actions";
 import { T } from "@/lib/theme";
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
  * nadie quiere «generar» algo y después buscar dónde copiarlo. Si ya había un
  * enlace vivo se reutiliza, así que apretarlo dos veces devuelve el mismo.
  */
-export function BotonLinkPago({ oportunidadId, accent }: Props) {
+export function BotonLinkRegistro({ oportunidadId, accent }: Props) {
   const [estado, setEstado] = useState<"idle" | "generando" | "copiado" | "error">("idle");
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function BotonLinkPago({ oportunidadId, accent }: Props) {
     setEstado("generando");
     setMensaje(null);
 
-    const r = await crearEnlacePago(oportunidadId);
+    const r = await crearEnlaceRegistro(oportunidadId);
     if (!r.ok || !r.url) {
       setEstado("error");
       setMensaje(r.error ?? "No se pudo generar el enlace.");
@@ -69,8 +69,8 @@ export function BotonLinkPago({ oportunidadId, accent }: Props) {
         {estado === "generando"
           ? "Generando…"
           : estado === "copiado"
-            ? "Link de pago copiado ✓"
-            : "Link de pago"}
+            ? "Link de registro copiado ✓"
+            : "Link de registro"}
       </button>
 
       {mensaje && (

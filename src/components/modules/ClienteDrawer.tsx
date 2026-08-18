@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { addNota } from "@/app/actions";
 import { Adjuntos } from "@/components/modules/Adjuntos";
 import { Bitacora } from "@/components/modules/Bitacora";
-import { BotonLinkPago } from "@/components/modules/BotonLinkPago";
+import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
@@ -393,7 +393,7 @@ export function ClienteDrawer({
         </span>
       </div>
 
-      <BotonLinkPago oportunidadId={o.id} accent={accent} />
+      <BotonLinkRegistro oportunidadId={o.id} accent={accent} />
 
       <SectionLabel>Etapa del proceso</SectionLabel>
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>

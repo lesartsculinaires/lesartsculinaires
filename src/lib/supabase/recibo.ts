@@ -3,7 +3,7 @@ import "server-only";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Lo que ve el área académica al abrir un enlace de pago.
+ * Lo que ve el área académica al abrir un enlace de registro.
  *
  * Se consulta con la llave de servicio y no con la del navegador porque del
  * otro lado no hay sesión: académica no usa el CRM. Eso obliga a ser estricto
@@ -36,6 +36,12 @@ export interface Recibo {
 
 export type EstadoRecibo = "ok" | "no-existe" | "vencido" | "anulado" | "sin-configurar";
 
+/**
+ * La tabla conserva el nombre `enlaces_pago` de cuando esto se llamaba «link
+ * de pago». Renombrarla obligaría a correr una migración en producción sin
+ * ganar nada: el nombre no lo ve nadie fuera de este archivo.
+ */
+
 export interface ResultadoRecibo {
   estado: EstadoRecibo;
   recibo: Recibo | null;
@@ -50,7 +56,7 @@ export async function leerRecibo(token: string): Promise<ResultadoRecibo> {
 
   const supabase = getAdminClient();
   if (!supabase) {
-    console.error("[pago] falta SUPABASE_SERVICE_ROLE_KEY; no se puede abrir el recibo");
+    console.error("[registro] falta SUPABASE_SERVICE_ROLE_KEY; no se puede abrir el recibo");
     return { estado: "sin-configurar", recibo: null };
   }
 
