@@ -27,9 +27,10 @@ export interface Recibo {
   responsableTelefono: string | null;
   responsableCorreo: string | null;
   programa: string | null;
-  sede: string | null;
+  territorio: string | null;
   asesor: string | null;
   valor: number | null;
+  reserva: number | null;
   descuento: string | null;
   emitidoEn: string;
 }
@@ -109,9 +110,10 @@ export async function leerRecibo(token: string): Promise<ResultadoRecibo> {
       responsableTelefono: texto(fila.responsable_telefono),
       responsableCorreo: texto(fila.responsable_correo),
       programa: texto(fila.producto),
-      sede: texto(fila.territorio),
+      territorio: texto(fila.territorio),
       asesor: texto(fila.vendedor),
       valor: fila.valor_oportunidad == null ? null : Number(fila.valor_oportunidad),
+      reserva: fila.reserva == null ? null : Number(fila.reserva),
       descuento: texto(fila.descuento_promocion),
       emitidoEn: new Date().toISOString(),
     },

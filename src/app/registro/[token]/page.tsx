@@ -86,12 +86,26 @@ function ReciboImpreso({ recibo: r }: { recibo: Recibo }) {
       <Regla />
       <Bloque>PROGRAMA</Bloque>
       <Linea etiqueta="Programa" valor={r.programa ?? "—"} />
-      {r.sede && <Linea etiqueta="Sede" valor={r.sede} />}
+      {r.territorio && <Linea etiqueta="Territorio" valor={r.territorio} />}
 
       <Regla />
       <Bloque>MONTO</Bloque>
       <Linea etiqueta="Valor" valor={dinero(r.valor)} />
       {r.descuento && <Linea etiqueta="Descuento" valor={r.descuento} />}
+      {/* La reserva sólo aparece cuando la hay. Una línea «Reserva —» en cada
+          recibo se vuelve invisible de tanto repetirse, y justo cuando dijera
+          un monto nadie la miraría. */}
+      {r.reserva != null && r.reserva > 0 && (
+        <>
+          <Linea etiqueta="Reserva" valor={`${dinero(r.reserva)} ya pagados`} />
+          {/* Lo que hay que cobrar, hecha la resta. Es el número sobre el que
+              actúa quien recibe esto, y dejar la cuenta en manos de cada quien
+              es la forma más barata de cobrar de más. */}
+          {r.valor != null && (
+            <Linea etiqueta="Queda" valor={dinero(Math.max(r.valor - r.reserva, 0))} />
+          )}
+        </>
+      )}
 
       <Regla />
       <p style={{ margin: "14px 0 0", fontSize: 11, color: "#666", lineHeight: 1.6 }}>

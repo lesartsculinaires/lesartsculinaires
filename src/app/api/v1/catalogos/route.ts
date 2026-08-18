@@ -34,8 +34,11 @@ export const GET = manejar(async (req: NextRequest) => {
   return ok({
     ok: true,
     // Los nombres del CRM van al lado del de la tabla: en pantalla se dice
-    // «programa» y «sede», y quien arma el flujo busca esas palabras.
+    // «programa» y «territorio», y quien arma el flujo busca esas palabras.
     programas: listas[0],
+    territorios: listas[1],
+    // `sedes` se llamaba así antes y se queda: un flujo de n8n que ya lo esté
+    // leyendo se rompería sin aviso y el error aparecería lejos de acá.
     sedes: listas[1],
     canales: listas[2],
     etapas: listas[3],

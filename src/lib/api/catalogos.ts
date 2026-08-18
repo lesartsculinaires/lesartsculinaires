@@ -36,7 +36,7 @@ export type Catalogo =
 const ETIQUETAS: Record<Catalogo, { nombre: string; femenino: boolean }> = {
   vendedores: { nombre: "asesor", femenino: false },
   productos: { nombre: "programa", femenino: false },
-  territorios: { nombre: "sede", femenino: true },
+  territorios: { nombre: "territorio", femenino: false },
   canales: { nombre: "canal", femenino: false },
   etapas: { nombre: "etapa", femenino: true },
   estados: { nombre: "estado", femenino: false },

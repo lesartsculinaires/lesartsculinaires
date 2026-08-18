@@ -96,7 +96,7 @@ curl https://crm-les-arts.netlify.app/api/v1/catalogos \
   -H "X-API-Key: TU_LLAVE"
 ```
 
-Devuelve `programas`, `sedes`, `canales`, `etapas`, `estados` y
+Devuelve `programas`, `territorios`, `canales`, `etapas`, `estados` y
 `tipos_evento`, cada uno con su `id` y su `nombre`. Son los valores que se
 pueden mandar en los otros endpoints.
 
@@ -113,7 +113,7 @@ curl -X POST https://crm-les-arts.netlify.app/api/v1/leads \
     "correo": "ana@ejemplo.com",
     "programa": "Diplomado de Pasteleria",
     "canal": "Facebook",
-    "sede": "San Salvador",
+    "territorio": "San Salvador",
     "asesor": "Katya Villatoro"
   }'
 ```
@@ -124,7 +124,7 @@ necesita llevar una tabla de equivalencias escrita adentro. La comparación
 ignora acentos y mayúsculas.
 
 Campos que acepta: `nombre`, `telefono`, `correo` (o `email`), `programa` (o
-`producto`), `canal`, `sede` (o `territorio`), `asesor` (o `vendedor`),
+`producto`), `canal`, `territorio` (o `sede`), `asesor` (o `vendedor`),
 `etapa`, `estado`, `fecha_registro`, `fecha_cierre`, `valor_oportunidad` (o
 `valor`), `descuento_promocion` (o `promocion`), `forzar`.
 

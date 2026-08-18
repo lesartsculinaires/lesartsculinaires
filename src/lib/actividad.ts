@@ -41,7 +41,7 @@ const ETIQUETAS: Record<string, string> = {
   estado_id: "el estado",
   vendedor_id: "el asesor",
   producto_id: "el programa",
-  territorio_id: "la sede",
+  territorio_id: "el territorio",
   canal_id: "el canal",
   valor_oportunidad: "el valor",
   venta_cerrada: "la venta cerrada",
