@@ -5,7 +5,6 @@ import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
 import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
-import { fetchAutorizaciones } from "@/lib/supabase/autorizaciones";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import {
   fetchCatalogo,
@@ -26,14 +25,13 @@ export default async function Page({
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos, accesos, bases, autorizaciones, inbox] =
+  const [ops, catalogo, eventos, accesos, bases, inbox] =
     await Promise.all([
       fetchOportunidades(),
       fetchCatalogo(),
       fetchEventos(),
       fetchAccesos(user.id),
       fetchImportaciones(),
-      fetchAutorizaciones(),
       fetchInbox(),
     ]);
 
@@ -48,8 +46,6 @@ export default async function Page({
       eventos={eventos.data}
       importaciones={bases.data}
       faltaMigracionBases={bases.faltaMigracion}
-      autorizaciones={autorizaciones.data}
-      faltaMigracionAutorizaciones={autorizaciones.faltaMigracion}
       conversaciones={inbox.conversaciones}
       mensajes={inbox.mensajes}
       faltaMigracionInbox={inbox.faltaMigracion}

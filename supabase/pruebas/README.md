@@ -10,6 +10,12 @@ que los permisos siguen haciendo lo que deben. Sirve para dos cosas:
 
 No toca producción ni internet. Todo pasa en un Postgres desechable.
 
+`02_prueba_rls.sql` usa la tabla `autorizaciones` como banco de pruebas. El
+módulo ya no está en la aplicación, pero la prueba sigue valiendo: lo que
+comprueba no es esa pantalla sino que `es_admin()` separe de verdad lo que
+puede hacer ventas de lo que puede hacer dirección, y eso gobierna otras
+tablas.
+
 ## Correrlo
 
 Hace falta Postgres 16 instalado localmente (`postgresql-16`).

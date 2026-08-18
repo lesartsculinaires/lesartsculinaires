@@ -9,6 +9,11 @@
 --   nada más el resultado de la última sentencia, así que un archivo con
 --   varios `select` sueltos deja ver sólo el final.
 --
+-- QUÉ NO ESTÁ EN LA LISTA
+--   `20260731130000_autorizaciones` salió de acá porque el módulo se quitó de
+--   la aplicación. La migración y la tabla siguen en el repositorio por si
+--   vuelve a hacer falta; correrla o no ya no cambia nada de lo que se usa.
+--
 -- CÓMO SE LEE
 --   Cada fila es una migración y dice CORRIDA o FALTA. Las que faltan salen
 --   primero.
@@ -43,9 +48,6 @@ resuelto as (
          '20260731120000_bases_importadas' as migracion,
          'oportunidades.importacion_id' as se_busca,
          exists (select 1 from hay_columna where nombre = 'oportunidades.importacion_id') as presente
-  union all
-  select 2, '20260731130000_autorizaciones', 'tabla autorizaciones',
-         exists (select 1 from hay_tabla where nombre = 'autorizaciones')
   union all
   select 3, '20260813213000_cambios_en_vivo', 'función cambios_en_vivo_activos',
          exists (select 1 from hay_funcion where nombre = 'cambios_en_vivo_activos')

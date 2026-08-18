@@ -258,21 +258,6 @@ export interface Accesos {
   esAdmin: boolean;
 }
 
-/** Estado de una autorización pedida a dirección general. */
-export type EstadoAutorizacion = "pendiente" | "autorizada" | "rechazada";
-
-export interface Autorizacion {
-  id: number;
-  nombre: string;
-  descripcion: string;
-  estado: EstadoAutorizacion;
-  solicitadoPor: string | null;
-  solicitadoEn: string;
-  resueltoPor: string | null;
-  resueltoEn: string | null;
-  comentario: string | null;
-}
-
 // ------------------------------------------------------------- bandeja
 /** Un hilo de WhatsApp con una persona. */
 export interface Conversacion {

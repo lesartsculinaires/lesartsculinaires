@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Autorizaciones } from "@/components/modules/Autorizaciones";
 import { Bases } from "@/components/modules/Bases";
 import { Calendario } from "@/components/modules/Calendario";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
@@ -24,7 +23,6 @@ import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
 import type {
   Accesos,
-  Autorizacion,
   Catalogo,
   Conversacion,
   Evento,
@@ -40,9 +38,6 @@ interface Props {
   importaciones: Importacion[];
   /** La tabla de importaciones todavía no existe. */
   faltaMigracionBases: boolean;
-  autorizaciones: Autorizacion[];
-  /** La tabla de autorizaciones todavía no existe. */
-  faltaMigracionAutorizaciones: boolean;
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
   /** Las tablas de la bandeja todavía no existen. */
@@ -69,8 +64,6 @@ export default function CrmApp({
   eventos,
   importaciones,
   faltaMigracionBases,
-  autorizaciones,
-  faltaMigracionAutorizaciones,
   conversaciones,
   mensajes,
   faltaMigracionInbox,
@@ -325,17 +318,6 @@ export default function CrmApp({
                 Esta sección es solo para administradores.
               </p>
             ))}
-
-          {mod === "Autorizaciones" && (
-            <Autorizaciones
-              autorizaciones={autorizaciones}
-              usuarios={accesos.usuarios}
-              esAdmin={accesos.esAdmin}
-              faltaMigracion={faltaMigracionAutorizaciones}
-              accent={accent}
-              onRefresh={() => router.refresh()}
-            />
-          )}
 
           {mod === "Programas" && (
             <Programas
