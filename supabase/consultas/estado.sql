@@ -69,10 +69,21 @@ resuelto as (
   select 8, '20260820120000_edad_y_responsable', 'clientes.edad',
          exists (select 1 from hay_columna where nombre = 'clientes.edad')
   union all
+  select 9, '20260821120000_responsable_hasta_17', 'el índice corta en 18, no en 17',
+         exists (
+           select 1 from pg_indexes
+           where schemaname = 'public'
+             and indexname = 'ix_clientes_menores_sin_responsable'
+             and indexdef like '%edad < 18%'
+         )
+  union all
+  select 10, '20260822120000_enlaces_pago', 'tabla enlaces_pago',
+         exists (select 1 from hay_tabla where nombre = 'enlaces_pago')
+  union all
   -- No es una migración, pero es lo que hace falta para que la ficha muestre
   -- lo que se guarda: si la columna está en la tabla y no en la vista, la
   -- pantalla no la ve.
-  select 9, '(la vista trae la edad)', 'vw_pipeline.edad',
+  select 11, '(la vista trae la edad)', 'vw_pipeline.edad',
          exists (select 1 from hay_columna where nombre = 'vw_pipeline.edad')
 )
 
