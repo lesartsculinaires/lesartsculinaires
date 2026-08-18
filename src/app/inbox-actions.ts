@@ -3,29 +3,28 @@
 import { revalidatePath } from "next/cache";
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
-import { enviarMensaje as enviarPorChatwoot, hayChatwoot } from "@/lib/chatwoot/enviar";
-import { enviarTexto as enviarPorMeta, hayWhatsapp } from "@/lib/whatsapp/enviar";
+import { enviarTexto, hayWhatsapp } from "@/lib/whatsapp/enviar";
 import type { ActionResult } from "@/app/actions";
+
+/**
+ * La bandeja: responder, asignar y cerrar.
+ *
+ * El CRM habla con Meta directamente. Hubo un tiempo en que podía salir por
+ * Chatwoot, mientras se evaluaba dejarlo de puente; esa rama ya no está, y con
+ * ella se fue la única razón por la que responder tenía que preguntarse por
+ * dónde mandar el mensaje.
+ */
 
 const SIN_SESION: ActionResult = {
   ok: false,
   error: "Sesión no válida. Volvé a iniciar sesión.",
 };
 
-/** Por dónde puede salir un mensaje hoy. */
-export type Salida = "chatwoot" | "meta" | "ninguna";
-
-export const salidaDisponible = async (): Promise<Salida> =>
-  hayChatwoot() ? "chatwoot" : hayWhatsapp() ? "meta" : "ninguna";
+/** Si el servidor puede mandar mensajes hoy. */
+export const salidaDisponible = async (): Promise<boolean> => hayWhatsapp();
 
 /**
- * Responde por WhatsApp, por el camino que esté disponible.
- *
- * Durante la mudanza los dos caminos conviven: las conversaciones que nacieron
- * en Chatwoot tienen su id y se responden por ahí; las que entren después de
- * cortar van derecho a Meta. Elegir por conversación y no por configuración
- * global es lo que permite hacer el cambio un sábado sin dejar hilos viejos
- * sin poder contestar.
+ * Responde por WhatsApp.
  *
  * El orden importa: primero sale el mensaje y sólo después se guarda. Al
  * revés, un fallo de envío dejaría en la bandeja una respuesta que el cliente
@@ -43,39 +42,25 @@ export async function responderConversacion(
   const user = await getUser();
   if (!supabase || !user) return SIN_SESION;
 
+  // Una nota interna no se manda a nadie: es del equipo. Se resuelve antes de
+  // buscar la conversación entera porque no necesita el teléfono ni que
+  // WhatsApp esté configurado.
+  if (privado) return await guardarNotaInterna(supabase, conversacionId, cuerpo, user.id);
+
+  if (!hayWhatsapp()) {
+    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
+  }
+
   const { data: conv, error } = await supabase
     .from("conversaciones")
-    .select("id, telefono, chatwoot_id")
+    .select("id, telefono")
     .eq("id", conversacionId)
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
   if (!conv) return { ok: false, error: "No se encontró la conversación." };
 
-  // Por Chatwoot cuando la conversación vino de ahí y el token sigue puesto.
-  if (conv.chatwoot_id && hayChatwoot()) {
-    const r = await enviarPorChatwoot(Number(conv.chatwoot_id), cuerpo, privado);
-    if (!r.ok) return { ok: false, error: r.error };
-    // No se guarda acá: Chatwoot lo devuelve por su webhook con su id, y
-    // guardarlo en los dos lados lo duplicaría.
-    revalidatePath("/");
-    return { ok: true, error: null };
-  }
-
-  if (!hayWhatsapp()) {
-    return {
-      ok: false,
-      error: conv.chatwoot_id
-        ? "Esta conversación venía de Chatwoot y ya no hay token para responderle. Configurá WhatsApp directo para poder contestar."
-        : "WhatsApp no está configurado en el servidor.",
-    };
-  }
-
-  // Una nota interna no se manda a nadie: es del equipo. Por la vía directa no
-  // existe ese concepto en WhatsApp, así que se guarda y no se envía.
-  if (privado) return await guardarNotaInterna(supabase, conversacionId, cuerpo, user.id);
-
-  const envio = await enviarPorMeta(String(conv.telefono), cuerpo);
+  const envio = await enviarTexto(String(conv.telefono), cuerpo);
   if (!envio.ok) return { ok: false, error: envio.error };
 
   const { error: errGuardar } = await supabase.from("mensajes").insert({
@@ -91,7 +76,10 @@ export async function responderConversacion(
   // Si llega acá el mensaje ya salió. Que falle el registro es molesto, pero
   // decir «no se envió» sería mentir y llevaría a mandarlo dos veces.
   if (errGuardar) {
-    return { ok: false, error: `Se envió, pero no se pudo guardar en la ficha: ${errGuardar.message}` };
+    return {
+      ok: false,
+      error: `Se envió, pero no se pudo guardar en la ficha: ${errGuardar.message}`,
+    };
   }
 
   await supabase
@@ -124,6 +112,125 @@ async function guardarNotaInterna(
   });
 
   if (error) return { ok: false, error: error.message };
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Asigna la conversación a un vendedor.
+ *
+ * Es la única acción manual que le queda al asesor: los datos del cliente ya
+ * entraron solos. Si la conversación tiene un cliente vinculado, la asignación
+ * también se aplica a sus oportunidades abiertas, para que el pipeline y la
+ * bandeja no digan cosas distintas sobre quién lleva a esa persona.
+ */
+export async function asignar(
+  conversacionId: number,
+  vendedorId: number | null,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const { data: conv, error: errConv } = await supabase
+    .from("conversaciones")
+    .select("id, cliente_id")
+    .eq("id", conversacionId)
+    .maybeSingle();
+
+  if (errConv) return { ok: false, error: errConv.message };
+
+  const { error } = await supabase
+    .from("conversaciones")
+    .update({ vendedor_id: vendedorId })
+    .eq("id", conversacionId);
+
+  if (error) return { ok: false, error: error.message };
+
+  if (conv?.cliente_id != null && vendedorId != null) {
+    const { error: errOps } = await supabase
+      .from("oportunidades")
+      .update({ vendedor_id: vendedorId })
+      .eq("cliente_id", conv.cliente_id)
+      .is("fecha_cierre", null);
+
+    // Que falle esto no invalida la asignación de la conversación, que es lo
+    // que el asesor pidió; se avisa sin deshacer.
+    if (errOps) {
+      return {
+        ok: false,
+        error: `Se asignó la conversación, pero no sus oportunidades: ${errOps.message}`,
+      };
+    }
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Abrir, poner en pendiente o resolver.
+ *
+ * Los tres nombres vienen de cuando la bandeja se reflejaba en Chatwoot. Se
+ * quedan porque describen bien el trabajo —hay hilos abiertos, hilos esperando
+ * algo y hilos terminados— y renombrarlos obligaría a migrar las filas que ya
+ * están guardadas con esos valores.
+ */
+export async function resolver(
+  conversacionId: number,
+  estado: "open" | "pending" | "resolved",
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const { error } = await supabase
+    .from("conversaciones")
+    .update({ estado })
+    .eq("id", conversacionId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Marca que el contacto no era un lead.
+ *
+ * Con el alta automática van a entrar números equivocados y proveedores.
+ * Borra el cliente creado —sólo si no tiene oportunidades, para no llevarse
+ * por delante trabajo real— y archiva la conversación.
+ */
+export async function noEraLead(conversacionId: number): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const { data: conv, error } = await supabase
+    .from("conversaciones")
+    .select("id, cliente_id")
+    .eq("id", conversacionId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+
+  if (conv?.cliente_id != null) {
+    const { count } = await supabase
+      .from("oportunidades")
+      .select("id", { count: "exact", head: true })
+      .eq("cliente_id", conv.cliente_id);
+
+    if (!count) {
+      await supabase.from("conversaciones").update({ cliente_id: null }).eq("id", conversacionId);
+      await supabase.from("clientes").delete().eq("id", conv.cliente_id);
+    }
+  }
+
+  const { error: errArch } = await supabase
+    .from("conversaciones")
+    .update({ archivada: true })
+    .eq("id", conversacionId);
+
+  if (errArch) return { ok: false, error: errArch.message };
+
   revalidatePath("/");
   return { ok: true, error: null };
 }

@@ -103,7 +103,7 @@ type Cliente = NonNullable<ReturnType<typeof getAdminClient>>;
 /**
  * Guarda un entrante y deja la conversación al día.
  *
- * El cliente se crea solo, igual que por la vía de Chatwoot: el asesor no
+ * El cliente se crea solo: el asesor no
  * tiene que copiar nombre ni teléfono, sólo asignar a quién le toca. Para los
  * números equivocados y los proveedores está el botón «No era lead», que
  * borra la ficha creada y archiva.

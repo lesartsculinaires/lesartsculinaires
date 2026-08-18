@@ -269,6 +269,6 @@ está cargada esta persona?» y «agendale una llamada mañana a las 3».
 - **Si `/asesores` devuelve `503 falta_migracion`**, falta correr
   `20260817120000_vendedores_telefono.sql` en Supabase.
 
-- **Los webhooks de WhatsApp son otra cosa.** `/api/whatsapp/webhook` y
-  `/api/chatwoot/webhook` no usan esta llave: van firmados por Meta y por
-  Chatwoot. No los toques desde n8n.
+- **El webhook de WhatsApp es otra cosa.** `/api/whatsapp/webhook` no usa esta
+  llave: va firmado por Meta y lo verifica con el secreto de la aplicación. No
+  lo toques desde n8n.

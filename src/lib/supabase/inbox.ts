@@ -32,7 +32,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
 
   const { data: convs, error } = await supabase
     .from("conversaciones")
-    .select("id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, sin_leer, archivada, chatwoot_id, estado, vendedor_id")
+    .select("id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, sin_leer, archivada, estado, vendedor_id")
     .order("ultimo_mensaje_en", { ascending: false })
     .limit(300);
 
@@ -78,7 +78,6 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       ultimoTexto: c.ultimo_texto ? String(c.ultimo_texto) : null,
       sinLeer: Number(c.sin_leer ?? 0),
       archivada: Boolean(c.archivada),
-      chatwootId: c.chatwoot_id == null ? null : Number(c.chatwoot_id),
       estado: String(c.estado ?? "open"),
       vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
     })),

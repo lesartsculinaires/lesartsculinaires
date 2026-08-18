@@ -37,7 +37,7 @@ export default async function Page({
       fetchInbox(),
     ]);
 
-  const salida = await salidaDisponible();
+  const puedeResponder = await salidaDisponible();
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
 
@@ -53,7 +53,7 @@ export default async function Page({
       conversaciones={inbox.conversaciones}
       mensajes={inbox.mensajes}
       faltaMigracionInbox={inbox.faltaMigracion}
-      puedeResponderWhatsapp={salida !== "ninguna"}
+      puedeResponderWhatsapp={puedeResponder}
       userEmail={user.email ?? ""}
       accesos={accesos.data}
       faltaMigracionAccesos={accesos.faltaMigracion}

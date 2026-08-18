@@ -259,9 +259,7 @@ export interface Conversacion {
   ultimoTexto: string | null;
   sinLeer: number;
   archivada: boolean;
-  /** Id en Chatwoot. Nulo si la conversación no vino de ahí. */
-  chatwootId: number | null;
-  /** open / pending / resolved, igual que en Chatwoot. */
+  /** open / pending / resolved: abierto, esperando algo, o terminado. */
   estado: string;
   /** Nulo = sin asignar, que es lo que el asesor resuelve. */
   vendedorId: number | null;
