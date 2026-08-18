@@ -13,6 +13,7 @@ import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
+import { Notificaciones } from "@/components/Notificaciones";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
@@ -194,6 +195,7 @@ export default function CrmApp({
                 enVivo={enVivo}
                 onRefrescar={() => router.refresh()}
               />
+              <Notificaciones accent={accent} catalogo={catalogo} />
             </div>
           </header>
 
