@@ -59,6 +59,11 @@ export const config = {
     // llave en la cabecera: pasar por acá lo redirigiría al login, y n8n
     // recibiría un 307 hacia una página HTML en vez de su JSON. Cada endpoint
     // comprueba la llave por su cuenta antes de tocar nada (`@/lib/api/http`).
-    "/((?!api/v1|api/whatsapp|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    //
+    // `pago` queda afuera porque es para el área académica, que no usa el CRM
+    // y no tiene cuenta: pasando por acá el enlace los mandaría al login y no
+    // servirían para nada. Lo que protege esa página no es la sesión sino el
+    // token de la propia dirección, que se comprueba antes de mostrar nada.
+    "/((?!api/v1|api/whatsapp|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
