@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { altaLead, contactosConocidos, numeroDeCodigo, type DatosLead } from "@/lib/crm/altaLead";
+import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
 import { getServerClient } from "@/lib/supabase/server";
@@ -513,6 +514,17 @@ export interface FilaParaImportar {
    * ficha nueva: se completan sus huecos y se le agrega la oportunidad.
    */
   unificar_con?: number | null;
+  /**
+   * Filas del archivo que son la misma persona, todavía sin ficha en el CRM.
+   *
+   * Las que comparten este valor crean UN solo cliente entre todas y le
+   * cuelgan una oportunidad cada una. Sin esto, alguien que en la planilla
+   * preguntó por tres programas entraría como tres personas distintas, que es
+   * el mismo problema que `unificar_con` resuelve del otro lado.
+   *
+   * Vacío o ausente: la fila es su propia persona.
+   */
+  grupo?: string | null;
   nombre: string;
   telefono: string | null;
   correo: string | null;
@@ -584,15 +596,23 @@ export async function importarClientes(
     baseId = (base?.id as number | undefined) ?? null;
   }
 
-  // Las filas que se unifican no crean cliente: usan el que ya existe.
-  const nuevas = filas.filter((f) => f.unificar_con == null);
+  // Las filas que se unifican no crean cliente: usan el que ya existe. Las
+  // demás se juntan por `grupo`, de modo que tres filas de la misma persona
+  // creen una ficha y no tres. El reparto está en `@/lib/crm/lotesImportacion`
+  // para poder probarlo aparte.
+  const reparto = repartir(filas);
 
   let creados: { id: number }[] = [];
-  if (nuevas.length > 0) {
+  if (reparto.grupos.length > 0) {
+    // De cada grupo manda su primera fila. Los datos ya vienen unificados
+    // desde la pantalla, que eligió el nombre más completo y rellenó los
+    // huecos con lo que trajeran las otras filas.
+    const cabeceras = reparto.cabeceras.map((i) => filas[i]);
+
     const { data, error: errClientes } = await supabase
       .from("clientes")
       .insert(
-        nuevas.map((f) => ({
+        cabeceras.map((f) => ({
           nombre: f.nombre.trim(),
           telefono: f.telefono,
           correo: f.correo,
@@ -602,7 +622,7 @@ export async function importarClientes(
       .select("id");
 
     if (errClientes) return { ok: false, error: errClientes.message, ...vacio };
-    if (!data || data.length !== nuevas.length) {
+    if (!data || data.length !== reparto.grupos.length) {
       return {
         ok: false,
         error: "La base devolvió menos clientes de los enviados; no se importó nada.",
@@ -638,11 +658,9 @@ export async function importarClientes(
     }
   }
 
-  // Cada fila apunta a su cliente: el recién creado o el que ya existía.
-  let siguiente = 0;
-  const clientes = filas.map((f) =>
-    f.unificar_con != null ? { id: f.unificar_con } : creados[siguiente++],
-  );
+  // Cada fila apunta a su cliente: el que ya existía, o el que se creó para
+  // su grupo. Las filas de un mismo grupo apuntan todas al mismo.
+  const clientes = asignarClientes(filas, reparto, creados).map((id) => ({ id }));
 
   const { data: previo } = await supabase
     .from("oportunidades")

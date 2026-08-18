@@ -1,0 +1,250 @@
+/**
+ * Qué va a pasar exactamente si se aprieta Importar.
+ *
+ * Está separado de la pantalla porque es la parte que hay que poder probar:
+ * decide cuántas fichas se crean, cuáles se completan y qué filas se quedan
+ * afuera. La pantalla sólo lo muestra.
+ */
+
+import { agrupar, type Persona, type Sospecha } from "@/lib/agrupar";
+import type { ContactoConocido } from "@/lib/duplicados";
+import type { FilaImportada } from "@/lib/importar";
+
+/**
+ * `unificar`  junta lo que es la misma persona, dentro del archivo y contra el CRM.
+ * `omitir`    deja afuera lo que ya está cargado. Sirve para subir sólo lo nuevo.
+ * `crear`     mete todo tal cual, sin mirar repetidos. Es la salida de emergencia.
+ */
+export type Modo = "unificar" | "omitir" | "crear";
+
+/** Una fila lista para mandar, ya decidido a qué persona pertenece. */
+export interface Destino {
+  fila: FilaImportada;
+  /** Cliente del CRM al que se suma. Null si la persona es nueva. */
+  unificarCon: number | null;
+  /** Filas que comparten esta clave crean una sola ficha entre todas. */
+  grupo: string | null;
+  /** Los datos ya unificados: el nombre más completo, los huecos rellenos. */
+  nombre: string;
+  telefono: string | null;
+  correo: string | null;
+}
+
+export interface Resumen {
+  /** Filas del archivo que se pueden importar (sin errores). */
+  validas: number;
+  /** Filas descartadas por un error, por ejemplo sin nombre. */
+  conError: number;
+  /** Fichas de cliente que se van a crear. */
+  fichasNuevas: number;
+  /** Oportunidades que se van a agregar. Una por fila importada. */
+  oportunidades: number;
+  /** Filas que se suman a un contacto que ya estaba en el CRM. */
+  seUnenAlCrm: number;
+  /** Filas que se juntan con otra fila del mismo archivo. */
+  seJuntanEntreSi: number;
+  /** Filas que no se importan. */
+  omitidas: number;
+  /** Grupos que se unieron pero cuyos nombres no se parecen. Mirar. */
+  aRevisar: Persona[];
+  /** Se llaman igual pero no comparten teléfono ni correo. No se unieron. */
+  sospechas: Sospecha[];
+}
+
+export interface Plan {
+  resumen: Resumen;
+  destinos: Destino[];
+  /** Las personas tal como quedaron agrupadas, para poder mostrarlas. */
+  personas: Persona[];
+}
+
+/**
+ * Cómo se nombra un grupo para poder señalarlo desde la pantalla.
+ *
+ * Se usa la lista de filas que lo componen y no su posición, porque la
+ * posición cambia si el archivo se vuelve a leer o si el modo cambia, y
+ * entonces «separar el tercero» pasaría a separar a otro.
+ */
+export const claveDePersona = (p: Persona): string => p.filas.join("-");
+
+export interface OpcionesPlan {
+  filas: readonly FilaImportada[];
+  existentes: readonly ContactoConocido[];
+  modo: Modo;
+  /**
+   * Grupos que alguien miró y decidió que NO son la misma persona.
+   *
+   * Cada fila del grupo se convierte en su propia ficha, y ninguna se cuelga
+   * del cliente del CRM: si quien conoce a la gente dice que son dos personas,
+   * el parecido de los datos no alcanza para contradecirlo.
+   */
+  separados?: readonly string[];
+}
+
+export function construirPlan({
+  filas,
+  existentes,
+  modo,
+  separados = [],
+}: OpcionesPlan): Plan {
+  const validas = filas.filter((f) => f.errores.length === 0);
+  const conError = filas.length - validas.length;
+
+  // ------------------------------------------------------------------ crear
+  // Sin mirar nada: cada fila es su propia persona. Se sigue agrupando para
+  // poder mostrar lo que se va a duplicar, pero no se aplica.
+  if (modo === "crear") {
+    const { personas, sospechas } = agrupar({ filas: validas, existentes });
+    return {
+      personas,
+      destinos: validas.map((f) => ({
+        fila: f,
+        unificarCon: null,
+        grupo: null,
+        nombre: f.nombre,
+        telefono: f.telefono,
+        correo: f.correo,
+      })),
+      resumen: {
+        validas: validas.length,
+        conError,
+        fichasNuevas: validas.length,
+        oportunidades: validas.length,
+        seUnenAlCrm: 0,
+        seJuntanEntreSi: 0,
+        omitidas: 0,
+        aRevisar: [],
+        sospechas,
+      },
+    };
+  }
+
+  const agrupado = agrupar({ filas: validas, existentes });
+  const sospechas = agrupado.sospechas;
+
+  // Un grupo que alguien separó se deshace en personas de a una. Se hace acá
+  // y no dentro de `agrupar` para que la agrupación siga siendo sólo lo que
+  // dicen los datos, y la decisión de la persona quede aparte y visible.
+  const rotos = new Set(separados);
+  // Se puede separar tanto un grupo de varias filas como una sola fila que
+  // quedó pegada a un contacto del CRM. Ese segundo caso es justamente el que
+  // más se va a usar: el archivo trae a alguien con el teléfono de la casa y
+  // el CRM ya tenía a otra persona de la familia con ese mismo número.
+  const personas: Persona[] = agrupado.personas.flatMap((p) =>
+    rotos.has(claveDePersona(p)) && (p.filas.length > 1 || p.clienteId != null)
+      ? p.filas.map((indice) => ({
+          ...p,
+          clienteId: null,
+          nombre: validas[indice].nombre,
+          telefono: validas[indice].telefono,
+          correo: validas[indice].correo,
+          filas: [indice],
+          certeza: "alta" as const,
+          otrosNombres: [],
+        }))
+      : [p],
+  );
+
+  const destinos: Destino[] = [];
+  let fichasNuevas = 0;
+  let seUnenAlCrm = 0;
+  let seJuntanEntreSi = 0;
+  let omitidas = 0;
+
+  personas.forEach((p, i) => {
+    // ----------------------------------------------------------- omitir
+    // Ya está en el CRM: no entra nada de esta persona.
+    if (modo === "omitir" && p.clienteId != null) {
+      omitidas += p.filas.length;
+      return;
+    }
+
+    // Aunque se omita lo repetido, dentro del archivo sigue habiendo que
+    // decidir: de una persona que aparece tres veces entra una sola fila. Es
+    // lo que hacía antes, dicho explícitamente.
+    const filasDeLaPersona = modo === "omitir" ? p.filas.slice(0, 1) : p.filas;
+    omitidas += p.filas.length - filasDeLaPersona.length;
+
+    // La clave sólo hace falta cuando hay más de una fila creando la misma
+    // ficha; mandarla siempre no rompe nada pero ensucia lo que viaja.
+    const grupo =
+      p.clienteId == null && filasDeLaPersona.length > 1 ? `p${i}` : null;
+
+    if (p.clienteId == null) fichasNuevas += 1;
+    if (p.clienteId != null) seUnenAlCrm += filasDeLaPersona.length;
+    if (filasDeLaPersona.length > 1) seJuntanEntreSi += filasDeLaPersona.length - 1;
+
+    for (const indice of filasDeLaPersona) {
+      destinos.push({
+        fila: validas[indice],
+        unificarCon: p.clienteId,
+        grupo,
+        // Los datos de la ficha son los del grupo, no los de la fila suelta:
+        // por eso unir sirve, porque el teléfono que traía una completa el
+        // hueco de la otra.
+        nombre: p.nombre,
+        telefono: p.telefono,
+        correo: p.correo,
+      });
+    }
+  });
+
+  // Se devuelven en el orden del archivo. Importar salteado haría que los
+  // códigos CRM-XXXX no siguieran el orden de la planilla, y eso confunde a
+  // quien después compara las dos cosas.
+  destinos.sort((a, b) => a.fila.linea - b.fila.linea);
+
+  return {
+    personas,
+    destinos,
+    resumen: {
+      validas: validas.length,
+      conError,
+      fichasNuevas,
+      oportunidades: destinos.length,
+      seUnenAlCrm,
+      seJuntanEntreSi,
+      omitidas,
+      aRevisar: personas.filter((p) => p.certeza === "revisar"),
+      sospechas,
+    },
+  };
+}
+
+/**
+ * Parte la lista en lotes sin cortar un grupo por la mitad.
+ *
+ * La pantalla manda de a 200 filas para no armar una petición gigante, pero
+ * las filas de una misma persona tienen que viajar juntas: el servidor crea
+ * una ficha por grupo *dentro de cada lote*, así que si tres filas de Ana
+ * caen dos en un lote y una en el siguiente, Ana entra dos veces. Es
+ * exactamente el problema que esta pantalla existe para evitar.
+ *
+ * Por eso el tope es orientativo: un lote puede pasarse un poco antes que
+ * cortar un grupo. Los grupos son de dos o tres filas, así que el exceso es
+ * mínimo.
+ */
+export function enLotes<T extends { grupo: string | null }>(
+  destinos: readonly T[],
+  tope: number,
+): T[][] {
+  const lotes: T[][] = [];
+  let actual: T[] = [];
+
+  for (let i = 0; i < destinos.length; i += 1) {
+    actual.push(destinos[i]);
+
+    const siguiente = destinos[i + 1];
+    // Se corta cuando se llegó al tope y lo que sigue no es del mismo grupo.
+    const mismoGrupo =
+      siguiente != null && siguiente.grupo != null && siguiente.grupo === destinos[i].grupo;
+
+    if (actual.length >= tope && !mismoGrupo) {
+      lotes.push(actual);
+      actual = [];
+    }
+  }
+
+  if (actual.length > 0) lotes.push(actual);
+  return lotes;
+}

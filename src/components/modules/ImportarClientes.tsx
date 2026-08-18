@@ -3,6 +3,13 @@
 import { useMemo, useState } from "react";
 
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
+import { RevisarBase } from "@/components/modules/RevisarBase";
+import {
+  claveDePersona,
+  construirPlan,
+  enLotes,
+  type Modo,
+} from "@/lib/planImportacion";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import type { ContactoConocido } from "@/lib/duplicados";
@@ -42,7 +49,13 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const [matriz, setMatriz] = useState<string[][] | null>(null);
   const [mapeo, setMapeo] = useState<Mapeo>({});
   /** Qué hacer con las filas que coinciden con un contacto existente. */
-  const [modoDuplicados, setModoDuplicados] = useState<"omitir" | "unificar" | "crear">("omitir");
+  // Unificar es el valor por omisión: es lo que casi siempre se quiere y lo
+  // que evita el problema por el que existe esta pantalla. Antes venía en
+  // «omitir», que descartaba filas en silencio.
+  const [modoDuplicados, setModoDuplicados] = useState<Modo>("unificar");
+  const [revisando, setRevisando] = useState(false);
+  /** Grupos que alguien miró y dijo que no son la misma persona. */
+  const [separados, setSeparados] = useState<string[]>([]);
   const [leyendo, setLeyendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
@@ -80,19 +93,16 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const conError = filas.length - validas.length;
   const duplicadas = validas.filter((f) => f.duplicado).length;
   const conAviso = validas.filter((f) => f.avisos.length > 0).length;
-  // Unificar sólo aplica a las que chocan con un contacto guardado; las que
-  // se repiten dentro del mismo archivo no tienen con quién unificarse.
-  const aImportar =
-    modoDuplicados === "crear"
-      ? validas
-      : modoDuplicados === "unificar"
-        ? validas.filter((f) => !f.duplicado || f.coincideCon != null)
-        : validas.filter((f) => !f.duplicado);
 
-  const seUnifican =
-    modoDuplicados === "unificar"
-      ? validas.filter((f) => f.duplicado && f.coincideCon != null).length
-      : 0;
+  // Quién es quién: junta las filas del archivo entre sí y contra el CRM, y
+  // deja dicho qué se crea, qué se completa y qué se omite.
+  const plan = useMemo(
+    () => construirPlan({ filas, existentes, modo: modoDuplicados, separados }),
+    [filas, existentes, modoDuplicados, separados],
+  );
+
+  const aImportar = plan.destinos;
+  const seUnifican = plan.resumen.seUnenAlCrm + plan.resumen.seJuntanEntreSi;
   const hayNombre = Object.values(mapeo).includes("nombre");
 
   const leerArchivo = async (file: File) => {
@@ -165,23 +175,27 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     setError(null);
     setProgreso({ hechas: 0, total: aImportar.length });
 
-    const cargaDe = (f: FilaImportada): FilaParaImportar => ({
-      unificar_con:
-        modoDuplicados === "unificar" && f.duplicado ? f.coincideCon : null,
-      nombre: f.nombre,
-      telefono: f.telefono,
-      correo: f.correo,
-      vendedor_id: f.vendedor_id,
-      producto_id: f.producto_id,
-      territorio_id: f.territorio_id,
-      canal_id: f.canal_id,
-      etapa_id: f.etapa_id,
-      estado_id: f.estado_id,
-      fecha_registro: f.fecha_registro,
-      fecha_cierre: f.fecha_cierre,
-      valor_oportunidad: f.valor_oportunidad,
-      venta_cerrada: f.venta_cerrada,
-      descuento_promocion: f.descuento_promocion,
+    // Los datos del contacto salen del grupo y no de la fila suelta: es lo que
+    // hace que el teléfono que traía una fila complete el hueco de la otra. Lo
+    // de la oportunidad —programa, valor, fechas— sí es de cada fila, porque
+    // cada una es una consulta distinta de la misma persona.
+    const cargaDe = (d: (typeof aImportar)[number]): FilaParaImportar => ({
+      unificar_con: d.unificarCon,
+      grupo: d.grupo,
+      nombre: d.nombre,
+      telefono: d.telefono,
+      correo: d.correo,
+      vendedor_id: d.fila.vendedor_id,
+      producto_id: d.fila.producto_id,
+      territorio_id: d.fila.territorio_id,
+      canal_id: d.fila.canal_id,
+      etapa_id: d.fila.etapa_id,
+      estado_id: d.fila.estado_id,
+      fecha_registro: d.fila.fecha_registro,
+      fecha_cierre: d.fila.fecha_cierre,
+      valor_oportunidad: d.fila.valor_oportunidad,
+      venta_cerrada: d.fila.venta_cerrada,
+      descuento_promocion: d.fila.descuento_promocion,
     });
 
     let creados = 0;
@@ -190,8 +204,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     // Todos los lotes del mismo archivo cuelgan de una sola base.
     let base: number | null = null;
 
-    for (let i = 0; i < aImportar.length; i += LOTE) {
-      const lote = aImportar.slice(i, i + LOTE).map(cargaDe);
+    for (const lote of enLotes(aImportar, LOTE).map((l) => l.map(cargaDe))) {
       const r = await importarClientes(lote, archivo ?? "sin nombre", base);
 
       if (!r.ok) {
@@ -211,6 +224,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       setProgreso({ hechas: creados, total: aImportar.length });
     }
 
+    setRevisando(false);
     setProgreso(null);
     onImportado(
       `${creados} ${creados === 1 ? "cliente importado" : "clientes importados"}` +
@@ -619,7 +633,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
             </button>
             <button
               type="button"
-              onClick={importar}
+              onClick={() => setRevisando(true)}
               disabled={Boolean(progreso) || aImportar.length === 0 || !hayNombre}
               style={{
                 height: 36,
@@ -631,11 +645,27 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                 color: !progreso && aImportar.length > 0 && hayNombre ? "#fff" : T.faint,
               }}
             >
-              {progreso ? "Importando…" : `Importar ${aImportar.length}`}
+              {progreso ? "Importando…" : `Revisar e importar ${aImportar.length}`}
             </button>
           </div>
         </div>
       </div>
+
+      {revisando && (
+        <RevisarBase
+          plan={plan}
+          archivo={archivo}
+          accent={accent}
+          separados={separados}
+          onSeparar={(clave) =>
+            setSeparados((s) =>
+              s.includes(clave) ? s.filter((c) => c !== clave) : [...s, clave],
+            )
+          }
+          onVolver={() => setRevisando(false)}
+          onConfirmar={() => void importar()}
+        />
+      )}
     </>
   );
 }
