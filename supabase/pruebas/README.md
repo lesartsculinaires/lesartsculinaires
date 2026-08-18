@@ -28,10 +28,17 @@ psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -f supabase/pruebas/01_shim_sup
 # 4. El instalador
 psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -v ON_ERROR_STOP=1 -f supabase/bootstrap.sql
 
-# 5. Las pruebas de permisos
-psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -tA -f supabase/pruebas/02_prueba_rls.sql
+# 5. Las migraciones posteriores a bootstrap.sql
+for m in supabase/migrations/2026073112*.sql supabase/migrations/2026073113*.sql \
+         supabase/migrations/202608*.sql; do
+  psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -f "$m"
+done
 
-# 6. Botar todo
+# 6. Las pruebas de permisos
+psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -tA -f supabase/pruebas/02_prueba_rls.sql
+psql -h 127.0.0.1 -p 55432 -U postgres -d prueba -f supabase/pruebas/03_prueba_adjuntos.sql
+
+# 7. Botar todo
 pg_ctl -D /tmp/pgcrm stop && rm -rf /tmp/pgcrm
 ```
 
@@ -44,7 +51,7 @@ El paso 4 no debe imprimir ningún `ERROR`, y debe poder correrse dos veces
 seguidas sin fallar (es idempotente a propósito: así se puede volver a pegar
 sin miedo si quedó a medias).
 
-El paso 5 debe terminar exactamente así:
+El paso 6 debe terminar exactamente así:
 
 ```
 anon ve clientes: 0
@@ -56,6 +63,26 @@ admin es_admin(): true
 UPDATE 1                         <- admin SI pudo autorizar
 rol de ventas despues del intento: 2   <- no se pudo hacer administrador
 ```
+
+Y `03_prueba_adjuntos.sql`, así:
+
+```
+adjuntos de ana -> 1
+ERROR: new row violates row-level security policy   <- no pudo firmar como Beto
+beto ve -> 1                     <- todo el equipo ve los comprobantes
+beto borró -> 0                  <- pero NO borra el de otro
+ana borró -> 1                   <- el propio sí
+jefa es_admin() -> true
+jefa borró -> 1                  <- la administradora borra cualquiera
+beto borró el archivo de ana -> 0 (esperado 0)
+ana borró el suyo -> 1 (esperado 1)
+balde público -> false (esperado false)
+```
+
+`beto borró -> 0` es el punto de esa prueba: un comprobante de transferencia
+es el respaldo de que alguien pagó, y nadie debe poder hacer desaparecer el de
+otra persona. `balde público -> false` es el otro: adentro hay documentos de
+identidad, y un balde público sería una URL que cualquiera abre para siempre.
 
 Los dos `UPDATE 0` son el punto de toda la prueba. Si alguno se vuelve
 `UPDATE 1`, una persona de ventas quedó con permiso de autorizar sus propias

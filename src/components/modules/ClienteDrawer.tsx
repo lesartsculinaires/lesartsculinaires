@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { addNota } from "@/app/actions";
+import { Adjuntos } from "@/components/modules/Adjuntos";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
@@ -539,6 +540,11 @@ export function ClienteDrawer({
         {notaEstado === "listo" && (
           <span style={{ fontSize: 12, color: "#2F6B4F" }}>Nota guardada.</span>
         )}
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <SectionLabel>Documentos adjuntos</SectionLabel>
+        <Adjuntos oportunidadId={o.id} accent={accent} />
       </div>
 
       <div
