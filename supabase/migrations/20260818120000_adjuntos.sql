@@ -27,13 +27,24 @@ values (
   'adjuntos',
   false,
   15 * 1024 * 1024,
+  -- La misma lista que aplica el navegador, en `src/lib/adjuntos.ts`. Tienen
+  -- que coincidir: si acá falta un tipo, el archivo se elige bien en la
+  -- pantalla y falla recién al subirlo, que es el peor momento para enterarse.
   array[
-    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+    -- Fotos y capturas.
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'image/heic', 'image/heif',
+    -- Documentos.
     'application/pdf',
+    'text/plain',
+    'text/csv',
+    'application/rtf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   ]
 )
 on conflict (id) do update

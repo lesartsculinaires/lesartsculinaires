@@ -30,25 +30,43 @@ export const TOPE_BYTES = 15 * 1024 * 1024;
 /**
  * Lo que se puede subir.
  *
- * Es una lista blanca, no una negra: se nombra lo que sirve —fotos, PDF,
- * Word, Excel— en vez de intentar adivinar todo lo que podría hacer daño.
+ * Es una lista blanca, no una negra: se nombra lo que sirve —fotos, PDF, texto
+ * y los archivos de Office— en vez de intentar adivinar todo lo que podría
+ * hacer daño. Lo que queda afuera es lo que se ejecuta: un .exe, un .sh, un
+ * .apk. Nada de eso es documentación de un cliente, y una lista negra siempre
+ * se olvida de alguno.
+ *
  * HEIC entra porque es lo que manda un iPhone sin tocar nada.
  */
 export const TIPOS: readonly string[] = [
+  // Fotos y capturas.
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/gif",
   "image/heic",
   "image/heif",
+  // Documentos.
   "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/rtf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ];
 
-/** Para el `accept` del selector de archivos. */
-export const ACEPTA = [...TIPOS, ".heic", ".heif"].join(",");
+/**
+ * Para el `accept` del selector de archivos.
+ *
+ * Van también las extensiones sueltas: Windows no siempre le dice al navegador
+ * el tipo del .heic ni del .csv, y sin ellas esos archivos aparecerían en gris
+ * en el selector aunque después sí se acepten.
+ */
+export const ACEPTA = [...TIPOS, ".heic", ".heif", ".csv", ".txt", ".rtf"].join(",");
 
 /** Qué está mal con este archivo, o null si está bien. */
 export function revisar(f: { name: string; size: number; type: string }): string | null {
@@ -75,13 +93,19 @@ export function porExtension(nombre: string): string {
     jpeg: "image/jpeg",
     png: "image/png",
     webp: "image/webp",
+    gif: "image/gif",
     heic: "image/heic",
     heif: "image/heif",
     pdf: "application/pdf",
+    txt: "text/plain",
+    csv: "text/csv",
+    rtf: "application/rtf",
     doc: "application/msword",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     xls: "application/vnd.ms-excel",
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   };
   return mapa[ext] ?? "";
 }

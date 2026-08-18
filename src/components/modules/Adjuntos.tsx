@@ -216,8 +216,8 @@ export function Adjuntos({ oportunidadId, accent }: Props) {
           {subiendo.length > 0 ? "Subiendo…" : "Adjuntar documento"}
         </button>
         <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.4 }}>
-          Fotos, PDF, Word o Excel, hasta 15 MB. También podés pegar una captura
-          con Ctrl+V.
+          Fotos, PDF, texto, Word o Excel, hasta 15 MB. También podés pegar una
+          captura con Ctrl+V.
         </span>
       </div>
 
