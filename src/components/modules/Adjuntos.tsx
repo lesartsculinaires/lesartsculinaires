@@ -20,6 +20,15 @@ import { T } from "@/lib/theme";
 interface Props {
   oportunidadId: number;
   accent: string;
+  /**
+   * Se llama cuando algo cambió de verdad: subir o quitar un archivo.
+   *
+   * Subir y quitar dejan una línea en la bitácora, así que quien la muestra
+   * tiene que enterarse. Se avisa desde acá en vez de que la bitácora se
+   * recargue sola cada tanto: una recarga a destiempo no muestra nada y una
+   * cada pocos segundos consulta la base sin motivo casi siempre.
+   */
+  onCambio?: () => void;
 }
 
 const BALDE = "adjuntos";
@@ -37,7 +46,7 @@ const BALDE = "adjuntos";
  * está atendiendo agrega el comprobante y sigue escribiendo; un segundo paso
  * es un paso que se olvida, y el archivo quedaría sin subir.
  */
-export function Adjuntos({ oportunidadId, accent }: Props) {
+export function Adjuntos({ oportunidadId, accent, onCambio }: Props) {
   const [lista, setLista] = useState<Adjunto[]>([]);
   const [cargando, setCargando] = useState(true);
   const [subiendo, setSubiendo] = useState<string[]>([]);
@@ -121,9 +130,12 @@ export function Adjuntos({ oportunidadId, accent }: Props) {
         if (!r.ok) setError(r.error);
       }
 
-      if (vivo.current) await recargar();
+      if (vivo.current) {
+        await recargar();
+        onCambio?.();
+      }
     },
-    [oportunidadId, recargar],
+    [oportunidadId, recargar, onCambio],
   );
 
   /**
@@ -163,6 +175,7 @@ export function Adjuntos({ oportunidadId, accent }: Props) {
     if (!vivo.current) return;
     if (!r.ok) setError(r.error);
     await recargar();
+    onCambio?.();
   };
 
   if (faltaMigracion) {

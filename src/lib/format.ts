@@ -82,3 +82,32 @@ export const leadCount = (n: number): string =>
 /** "1 evento" / "3 eventos". */
 export const eventCount = (n: number): string =>
   n === 1 ? "1 evento" : `${n} eventos`;
+
+/**
+ * «hace 5 min», «ayer 14:30», «12/08/26 09:15».
+ *
+ * Lo reciente en relativo y lo viejo con fecha: para una nota de hace un rato
+ * lo que se quiere saber es cuánto hace, y para una de hace meses, cuándo fue.
+ */
+export function cuando(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const minutos = Math.floor((Date.now() - d.getTime()) / 60000);
+  const hora = d.toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  if (minutos < 1) return "recién";
+  if (minutos < 60) return `hace ${minutos} min`;
+  if (minutos < 60 * 8) return `hace ${Math.floor(minutos / 60)} h`;
+
+  const hoy = new Date();
+  const mismoDia = d.toDateString() === hoy.toDateString();
+  if (mismoDia) return `hoy ${hora}`;
+
+  const ayer = new Date(hoy);
+  ayer.setDate(hoy.getDate() - 1);
+  if (d.toDateString() === ayer.toDateString()) return `ayer ${hora}`;
+
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${hora}`;
+}

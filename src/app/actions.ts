@@ -90,14 +90,89 @@ export async function addNota(
   const supabase = await getServerClient();
   if (!supabase) return NO_SESSION;
 
-  const { error } = await supabase
-    .from("oportunidad_notas")
-    .insert({ oportunidad_id: oportunidadId, nota: texto, origen: "comentario" });
+  // Queda firmada. Una bitácora sin autor sirve para acordarse de qué pasó,
+  // pero no para preguntarle a alguien; y cuando un cliente se pasa de asesor,
+  // saber quién escribió cada cosa es la mitad del valor.
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from("oportunidad_notas").insert({
+    oportunidad_id: oportunidadId,
+    nota: texto,
+    origen: "comentario",
+    autor_id: user?.id ?? null,
+  });
 
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/");
   return { ok: true, error: null };
+}
+
+/** Una línea de la bitácora, lista para mostrar. */
+export interface NotaRegistrada {
+  id: number;
+  nota: string;
+  /** `comentario` lo escribió alguien; `adjunto` lo dejó el sistema. */
+  origen: string;
+  creadaEn: string;
+  /** Quién la escribió. Null en las viejas y en las automáticas. */
+  autor: string | null;
+}
+
+export interface ResultadoNotas {
+  ok: boolean;
+  error: string | null;
+  notas: NotaRegistrada[];
+}
+
+/**
+ * La bitácora de una oportunidad, de lo más nuevo a lo más viejo.
+ *
+ * El nombre del autor se busca aparte y no con un `join`: la nota apunta a
+ * `auth.users`, no a la tabla `usuarios` del CRM, así que PostgREST no puede
+ * unirlas solo. Son dos consultas y unas pocas filas.
+ */
+export async function listarNotas(oportunidadId: number): Promise<ResultadoNotas> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ...NO_SESSION, notas: [] };
+
+  const { data, error } = await supabase
+    .from("oportunidad_notas")
+    .select("id, nota, origen, autor_id, created_at")
+    .eq("oportunidad_id", oportunidadId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) return { ok: false, error: error.message, notas: [] };
+
+  const filas = data ?? [];
+  const ids = [...new Set(filas.map((f) => f.autor_id).filter(Boolean))] as string[];
+
+  const nombres = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: gente } = await supabase
+      .from("usuarios")
+      .select("id, nombre, correo")
+      .in("id", ids);
+
+    for (const u of gente ?? []) {
+      // Sin nombre cargado se usa el correo: peor que un nombre, mucho mejor
+      // que no decir nada.
+      nombres.set(String(u.id), String(u.nombre || u.correo || ""));
+    }
+  }
+
+  return {
+    ok: true,
+    error: null,
+    notas: filas.map((f) => ({
+      id: Number(f.id),
+      nota: String(f.nota ?? ""),
+      origen: String(f.origen ?? "comentario"),
+      creadaEn: String(f.created_at),
+      autor: f.autor_id ? (nombres.get(String(f.autor_id)) ?? null) : null,
+    })),
+  };
 }
 
 export async function updateEvento(

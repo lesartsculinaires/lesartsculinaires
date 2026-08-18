@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 
 import { addNota } from "@/app/actions";
 import { Adjuntos } from "@/components/modules/Adjuntos";
+import { Bitacora } from "@/components/modules/Bitacora";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
@@ -92,6 +93,12 @@ export function ClienteDrawer({
   const soft = softer(accent);
   const [nota, setNota] = useState("");
   const [notaEstado, setNotaEstado] = useState<"idle" | "guardando" | "listo">("idle");
+  /**
+   * Se le suma uno cada vez que se guarda algo que deja rastro. La bitácora lo
+   * mira para volver a pedir la lista, sin que esta ficha tenga que saber cómo
+   * se recarga por dentro.
+   */
+  const [refrescoBitacora, setRefrescoBitacora] = useState(0);
   const notaRef = useRef<HTMLTextAreaElement | null>(null);
   const promos = promocionesUsadas(todas);
 
@@ -329,7 +336,10 @@ export function ClienteDrawer({
     setNotaEstado("guardando");
     const r = await addNota(o.id, nota);
     setNotaEstado(r.ok ? "listo" : "idle");
-    if (r.ok) setNota("");
+    if (r.ok) {
+      setNota("");
+      setRefrescoBitacora((n) => n + 1);
+    }
   };
 
   const miniBtn = {
@@ -689,9 +699,18 @@ export function ClienteDrawer({
         )}
       </div>
 
+      <div style={{ marginTop: 16 }}>
+        <SectionLabel>Historial de seguimiento</SectionLabel>
+        <Bitacora oportunidadId={o.id} refresco={refrescoBitacora} />
+      </div>
+
       <div style={{ marginTop: 18 }}>
         <SectionLabel>Documentos adjuntos</SectionLabel>
-        <Adjuntos oportunidadId={o.id} accent={accent} />
+        <Adjuntos
+          oportunidadId={o.id}
+          accent={accent}
+          onCambio={() => setRefrescoBitacora((n) => n + 1)}
+        />
       </div>
 
       <div
@@ -728,6 +747,23 @@ export function ClienteDrawer({
             ? `${pendientes.size} sin guardar`
             : "No hay cambios sin guardar"}
         </span>
+
+        {/* Sin esto el botón apagado se lee como «no me deja guardar». Cubre
+            sólo los campos de arriba; la nota y los adjuntos ya se guardaron
+            solos cuando se apretó su propio botón. */}
+        {!hayCambios(pendientes) && (
+          <span
+            style={{
+              flexBasis: "100%",
+              fontSize: 11,
+              color: T.faint,
+              lineHeight: 1.45,
+            }}
+          >
+            Este botón es para los campos de arriba. Las notas y los documentos
+            adjuntos se guardan solos, ni bien se agregan.
+          </span>
+        )}
 
         {hayCambios(pendientes) && (
           <button
