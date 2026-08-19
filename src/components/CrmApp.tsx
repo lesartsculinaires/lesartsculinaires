@@ -338,6 +338,8 @@ export default function CrmApp({
               categoria={state.categoria}
               onCategoria={actions.setCategoria}
               onVerLeads={(productoId) => actions.verEnClientes({ producto: productoId })}
+              esAdmin={accesos.esAdmin}
+              onRefrescar={() => router.refresh()}
             />
           )}
 

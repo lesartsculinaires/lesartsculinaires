@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import { NuevoPrograma } from "@/components/modules/NuevoPrograma";
 import { useCatalogo } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { estaAbierta, esGanada, totalCerrado, valorPipeline } from "@/lib/selectors";
@@ -12,6 +15,15 @@ interface Props {
   categoria: string;
   onCategoria: (c: string) => void;
   onVerLeads: (productoId: number) => void;
+  /**
+   * Crear programas es cosa de dirección: el catálogo lo comparten todas las
+   * pantallas, y un nombre de más parte los reportes de todo el equipo. La
+   * base lo hace cumplir aparte; esto sólo evita ofrecer un botón que iba a
+   * fallar.
+   */
+  esAdmin: boolean;
+  /** Para volver a pedir el catálogo cuando se crea uno. */
+  onRefrescar: () => void;
 }
 
 const CATEGORIAS = ["Todos", "Diplomado", "Curso corto", "Certificación", "Otro"];
@@ -22,9 +34,12 @@ export function Programas({
   categoria,
   onCategoria,
   onVerLeads,
+  esAdmin,
+  onRefrescar,
 }: Props) {
   const { productos } = useCatalogo();
   const soft = softer(accent);
+  const [creando, setCreando] = useState(false);
 
   const visibles = productos.filter(
     (p) => categoria === "Todos" || p.categoria === categoria,
@@ -45,6 +60,35 @@ export function Programas({
 
   return (
     <div>
+      {esAdmin && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setCreando(true)}
+            style={{
+              height: 34,
+              padding: "0 15px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              borderRadius: 7,
+              background: accent,
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Crear nuevo programa
+          </button>
+        </div>
+      )}
+
+      {creando && (
+        <NuevoPrograma
+          accent={accent}
+          onCerrar={() => setCreando(false)}
+          onCreado={onRefrescar}
+        />
+      )}
+
       <div
         style={{
           display: "grid",

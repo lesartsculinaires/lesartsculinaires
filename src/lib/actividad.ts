@@ -48,6 +48,8 @@ const ETIQUETAS: Record<string, string> = {
   fecha_cierre: "la fecha de cierre",
   descuento_promocion: "el descuento",
   nombre: "el nombre",
+  precio: "el precio",
+  activo: "si está activo",
   telefono: "el teléfono",
   correo: "el correo",
   edad: "la edad",
@@ -117,6 +119,13 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
 
   if (e.entidad === "adjunto") {
     return e.accion === "creo" ? `Adjuntó un documento${a}` : `Quitó un documento${de}`;
+  }
+
+  if (e.entidad === "programa") {
+    // El catálogo no cuelga de una ficha: nombrar una acá sería inventarla.
+    if (e.accion === "creo") return "Creó un programa en el catálogo";
+    if (e.accion === "borro") return "Borró un programa del catálogo";
+    return `Cambió ${listarCambios(e, catalogo)} de un programa`;
   }
 
   if (e.entidad === "curso") {
@@ -226,6 +235,7 @@ export function redactarGrupo(g: Grupo, catalogo: Catalogo): string {
   if (g.cuantos === 1) return redactar(g.evento, catalogo);
 
   const plural: Record<string, string> = {
+    programa: `Creó ${g.cuantos} programas`,
     curso: `Agregó ${g.cuantos} cursos al historial`,
     enlace: `Generó ${g.cuantos} links de registro`,
     oportunidad: `Creó ${g.cuantos} oportunidades`,
@@ -276,6 +286,7 @@ export const ENTIDADES: { valor: string; nombre: string }[] = [
   { valor: "adjunto", nombre: "Documentos" },
   { valor: "enlace", nombre: "Links de registro" },
   { valor: "curso", nombre: "Cursos realizados" },
+  { valor: "programa", nombre: "Catálogo de programas" },
 ];
 
 export const ACCIONES: { valor: string; nombre: string }[] = [

@@ -114,3 +114,36 @@ export function describirMotivos(motivos: readonly MotivoDuplicado[]): string {
   if (lista.length === 1) return lista[0];
   return `${lista.slice(0, -1).join(", ")} y ${lista[lista.length - 1]}`;
 }
+
+/**
+ * ¿Estos dos nombres de catálogo pueden ser el mismo programa?
+ *
+ * Vive acá, junto al resto de la detección de repetidos, porque el problema es
+ * el mismo con otro disfraz: la base sólo rechaza el nombre idéntico, así que
+ * «Diplomado Cocina» entra al lado de «Diplomado de Cocina» sin protestar, y a
+ * partir de ahí los reportes cuentan dos programas donde hay uno y el
+ * emparejado por nombre de la importación deja de encontrarlos.
+ *
+ * Se comparan palabras y no la cadena entera. Buscar una dentro de la otra no
+ * alcanza: «diplomado cocina» no está contenida en «diplomado de cocina»,
+ * porque estorba el «de». Las palabras de dos letras o menos se descartan por
+ * eso mismo —«de», «y», «la»— y lo que queda se compara como conjunto.
+ */
+export function programasParecidos(a: string, b: string): boolean {
+  const x = normalizarTexto(a);
+  const y = normalizarTexto(b);
+  if (!x || !y) return false;
+
+  // Uno escrito dentro del otro: «Mixología» dentro de «Mixología avanzada».
+  if (x.includes(y) || y.includes(x)) return true;
+
+  const palabras = (s: string) => s.split(" ").filter((p) => p.length > 2);
+  const px = palabras(x);
+  const py = palabras(y);
+  if (px.length === 0 || py.length === 0) return false;
+
+  // El más corto está entero dentro del más largo: eso es el mismo programa
+  // escrito de dos formas, no dos programas que comparten una palabra.
+  const [corto, largo] = px.length <= py.length ? [px, py] : [py, px];
+  return corto.every((p) => largo.includes(p));
+}
