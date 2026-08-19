@@ -109,6 +109,12 @@ export function ClienteDrawer({
   const [pendientes, setPendientes] = useState<Pendientes>(VACIOS);
   /** Lo tecleado en la casilla de Edad ahora mismo. Null si nadie la está tocando. */
   const [borradorEdad, setBorradorEdad] = useState<string | null>(null);
+  /**
+   * Sube cuando un alta o una baja de curso terminó de escribirse, para releer
+   * la lista. Los demás campos ya se ven porque la ficha se repinta con el
+   * valor optimista; la lista de cursos vive en la base y hay que ir a buscarla.
+   */
+  const [refrescoCursos, setRefrescoCursos] = useState(0);
   const [repasando, setRepasando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [avisoSalida, setAvisoSalida] = useState(false);
@@ -663,7 +669,11 @@ export function ClienteDrawer({
         <CursosRealizados
           clienteId={o.clienteId}
           accent={accent}
-          onCambio={() => setRefrescoBitacora((n) => n + 1)}
+          pendientes={pendientes}
+          onAnotar={(c) => setPendientes((p) => anotar(p, c))}
+          onDeshacer={(clave) => setPendientes((p) => quitar(p, clave))}
+          refresco={refrescoCursos}
+          onAplicado={() => setRefrescoCursos((n) => n + 1)}
         />
       </div>
 
