@@ -119,6 +119,14 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
     return e.accion === "creo" ? `Adjuntó un documento${a}` : `Quitó un documento${de}`;
   }
 
+  if (e.entidad === "curso") {
+    // Cuelga del cliente, no de la oportunidad, así que no lleva código de
+    // ficha: decir «en CRM-0597» sugeriría que el curso es de ese trato.
+    return e.accion === "creo"
+      ? "Agregó un curso al historial de un cliente"
+      : "Quitó un curso del historial de un cliente";
+  }
+
   if (e.entidad === "enlace") {
     // «Generó» y no «envió»: el CRM copia el enlace y quien lo manda es la
     // persona. Decir que lo envió sería afirmar algo que el sistema no vio.
@@ -218,6 +226,7 @@ export function redactarGrupo(g: Grupo, catalogo: Catalogo): string {
   if (g.cuantos === 1) return redactar(g.evento, catalogo);
 
   const plural: Record<string, string> = {
+    curso: `Agregó ${g.cuantos} cursos al historial`,
     enlace: `Generó ${g.cuantos} links de registro`,
     oportunidad: `Creó ${g.cuantos} oportunidades`,
     cliente: `Cargó ${g.cuantos} contactos nuevos`,
@@ -266,6 +275,7 @@ export const ENTIDADES: { valor: string; nombre: string }[] = [
   { valor: "nota", nombre: "Notas" },
   { valor: "adjunto", nombre: "Documentos" },
   { valor: "enlace", nombre: "Links de registro" },
+  { valor: "curso", nombre: "Cursos realizados" },
 ];
 
 export const ACCIONES: { valor: string; nombre: string }[] = [

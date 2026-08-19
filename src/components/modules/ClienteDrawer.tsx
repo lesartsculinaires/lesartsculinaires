@@ -7,6 +7,7 @@ import { Adjuntos } from "@/components/modules/Adjuntos";
 import { Bitacora } from "@/components/modules/Bitacora";
 import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
+import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
@@ -656,6 +657,15 @@ export function ClienteDrawer({
           )}
         </div>
       )}
+
+      <div style={{ marginBottom: 18 }}>
+        <SectionLabel>Diplomado / curso realizado</SectionLabel>
+        <CursosRealizados
+          clienteId={o.clienteId}
+          accent={accent}
+          onCambio={() => setRefrescoBitacora((n) => n + 1)}
+        />
+      </div>
 
       {(o.telefono || o.correo) && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
