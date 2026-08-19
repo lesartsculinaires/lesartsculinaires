@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { normalizarTexto, programasParecidos } from "@/lib/duplicados";
+import { CATEGORIAS } from "@/lib/programas";
 import { getServerClient } from "@/lib/supabase/server";
 
 /**
@@ -16,9 +17,6 @@ import { getServerClient } from "@/lib/supabase/server";
  * emparejar. Por eso el trabajo de acá es sobre todo no dejar entrar
  * duplicados disfrazados.
  */
-
-export const CATEGORIAS = ["Diplomado", "Curso corto", "Certificación", "Otro"] as const;
-export type CategoriaPrograma = (typeof CATEGORIAS)[number];
 
 export interface NuevoPrograma {
   nombre: string;

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-import { CATEGORIAS, crearPrograma } from "@/app/programas-actions";
+import { crearPrograma } from "@/app/programas-actions";
+import { CATEGORIAS } from "@/lib/programas";
 import { T } from "@/lib/theme";
 
 interface Props {
