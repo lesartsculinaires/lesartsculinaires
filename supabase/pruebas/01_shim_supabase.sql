@@ -21,8 +21,22 @@ create table auth.users (
   created_at timestamptz default now()
 );
 
+/**
+ * Quién está pidiendo, imitando lo que hace Supabase.
+ *
+ * Se miran los dos lugares donde puede estar el dato. Con `psql` se fija a
+ * mano `request.jwt.claim.sub`, que es lo cómodo para una prueba suelta.
+ * PostgREST, en cambio, deja todas las claims juntas en `request.jwt.claims`
+ * como JSON; mirando sólo la primera forma, `auth.uid()` devuelve nulo con
+ * PostgREST y todo lo que dependa de `es_admin()` da falso sin explicar por
+ * qué —el síntoma es «sólo dirección puede…» para alguien que sí es
+ * dirección.
+ */
 create or replace function auth.uid() returns uuid language sql stable as $$
-  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+  select coalesce(
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
+  )::uuid;
 $$;
 
 grant usage on schema public to anon, authenticated, service_role;

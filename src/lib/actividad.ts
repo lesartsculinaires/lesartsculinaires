@@ -121,6 +121,14 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
     return e.accion === "creo" ? `Adjuntó un documento${a}` : `Quitó un documento${de}`;
   }
 
+  if (e.entidad === "vendedor") {
+    // La lista de vendedores no cuelga de una ficha: nombrar una acá sería
+    // inventarla.
+    if (e.accion === "creo") return "Agregó un vendedor";
+    if (e.accion === "borro") return "Quitó un vendedor";
+    return `Cambió ${listarCambios(e, catalogo)} de un vendedor`;
+  }
+
   if (e.entidad === "programa") {
     // El catálogo no cuelga de una ficha: nombrar una acá sería inventarla.
     if (e.accion === "creo") return "Creó un programa en el catálogo";
@@ -235,6 +243,7 @@ export function redactarGrupo(g: Grupo, catalogo: Catalogo): string {
   if (g.cuantos === 1) return redactar(g.evento, catalogo);
 
   const plural: Record<string, string> = {
+    vendedor: `Agregó ${g.cuantos} vendedores`,
     programa: `Creó ${g.cuantos} programas`,
     curso: `Agregó ${g.cuantos} cursos al historial`,
     enlace: `Generó ${g.cuantos} links de registro`,
@@ -287,6 +296,7 @@ export const ENTIDADES: { valor: string; nombre: string }[] = [
   { valor: "enlace", nombre: "Links de registro" },
   { valor: "curso", nombre: "Cursos realizados" },
   { valor: "programa", nombre: "Catálogo de programas" },
+  { valor: "vendedor", nombre: "Vendedores" },
 ];
 
 export const ACCIONES: { valor: string; nombre: string }[] = [

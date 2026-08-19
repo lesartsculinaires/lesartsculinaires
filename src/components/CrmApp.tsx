@@ -305,6 +305,8 @@ export default function CrmApp({
               onSelectVend={actions.setVend}
               onOpen={(id) => actions.verEnClientes({}, id)}
               onVerTodos={(vendedorId) => actions.verEnClientes({ vendedor: vendedorId })}
+              esAdmin={accesos.esAdmin}
+              onRefrescar={() => router.refresh()}
             />
           )}
 
