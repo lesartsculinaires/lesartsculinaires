@@ -122,11 +122,23 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
   }
 
   if (e.entidad === "vendedor") {
-    // La lista de vendedores no cuelga de una ficha: nombrar una acá sería
-    // inventarla.
-    if (e.accion === "creo") return "Agregó un vendedor";
-    if (e.accion === "borro") return "Quitó un vendedor";
-    return `Cambió ${listarCambios(e, catalogo)} de un vendedor`;
+    // La lista de vendedores no cuelga de una ficha, pero sí se puede nombrar
+    // a la persona: el catálogo llega entero, dados de baja incluidos, así que
+    // el renglón sigue diciendo de quién se trata después de darlo de baja.
+    const quien = catalogo.vendedores.find((v) => v.id === e.entidadId)?.nombre;
+    const nombrado = quien ? ` a ${quien}` : " a un vendedor";
+
+    if (e.accion === "creo") return `Agregó${nombrado}`;
+    if (e.accion === "borro") return "Eliminó un vendedor del catálogo";
+
+    // La baja y la reactivación son las dos acciones que importa distinguir de
+    // un vistazo; decir «cambió si está activo» obligaría a abrir el detalle.
+    const activo = e.campos?.activo;
+    if (activo) {
+      return activo.despues === false ? `Dio de baja${nombrado}` : `Reactivó${nombrado}`;
+    }
+
+    return `Cambió ${listarCambios(e, catalogo)}${quien ? ` de ${quien}` : " de un vendedor"}`;
   }
 
   if (e.entidad === "programa") {

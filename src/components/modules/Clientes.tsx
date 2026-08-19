@@ -9,6 +9,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
+import { activos as soloActivos } from "@/lib/types";
 import type { CatalogItem, Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -59,7 +60,9 @@ export function Clientes({
   const q = query.trim().toLowerCase();
 
   const filtros_def: { key: string; label: string; items: CatalogItem[] }[] = [
-    { key: "vendedor", label: "Vendedor", items: cat.vendedores },
+    // Filtrar por alguien dado de baja no lleva a ninguna parte: sus fichas
+    // ya no le pertenecen en el sentido de «a quién le toca».
+    { key: "vendedor", label: "Vendedor", items: soloActivos(cat.vendedores) },
     { key: "etapa", label: "Etapa", items: cat.etapas },
     { key: "estado", label: "Estado", items: cat.estados },
     { key: "producto", label: "Programa", items: cat.productos },

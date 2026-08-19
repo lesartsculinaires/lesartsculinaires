@@ -131,6 +131,145 @@ export async function crearVendedor(v: NuevoVendedor): Promise<ResultadoVendedor
 }
 
 /**
+ * De qué trabajo cuelga un vendedor.
+ *
+ * Es lo que hay que ver antes de sacarlo: las tres referencias son
+ * `on delete set null`, así que borrarlo no borra nada, pero deja huérfano
+ * todo esto y no hay forma de saber después quién lo atendía.
+ */
+export interface Dependencias {
+  oportunidades: number;
+  eventos: number;
+  conversaciones: number;
+  /** Suma de las tres: si es cero, borrarlo de verdad no pierde nada. */
+  total: number;
+}
+
+export async function dependenciasVendedor(id: number): Promise<Dependencias> {
+  const supabase = await getServerClient();
+  const vacio = { oportunidades: 0, eventos: 0, conversaciones: 0, total: 0 };
+  if (!supabase) return vacio;
+
+  const contar = async (tabla: string): Promise<number> => {
+    const { count, error } = await supabase
+      .from(tabla)
+      .select("id", { count: "exact", head: true })
+      .eq("vendedor_id", id);
+    // Si la tabla todavía no existe —`conversaciones` llega con la migración
+    // de WhatsApp— se cuenta como cero en vez de tumbar el diálogo entero.
+    return error ? 0 : (count ?? 0);
+  };
+
+  const [oportunidades, eventos, conversaciones] = await Promise.all([
+    contar("oportunidades"),
+    contar("eventos"),
+    contar("conversaciones"),
+  ]);
+
+  return {
+    oportunidades,
+    eventos,
+    conversaciones,
+    total: oportunidades + eventos + conversaciones,
+  };
+}
+
+/**
+ * Sacar a un vendedor de circulación sin perder su historia.
+ *
+ * Es la forma correcta de «quitar» a alguien que ya trabajó acá: deja de
+ * aparecer en los desplegables, en Equipos y en el reparto de leads de n8n,
+ * pero las oportunidades que atendió siguen diciendo su nombre —eso sale de
+ * `vw_pipeline`, no del catálogo— y sus números del mes pasado no cambian.
+ *
+ * Se puede deshacer con `reactivarVendedor`.
+ */
+export async function desactivarVendedor(id: number): Promise<ResultadoVendedor> {
+  return cambiarActivo(id, false);
+}
+
+export async function reactivarVendedor(id: number): Promise<ResultadoVendedor> {
+  return cambiarActivo(id, true);
+}
+
+async function cambiarActivo(id: number, activo: boolean): Promise<ResultadoVendedor> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede dar de baja a un vendedor." };
+  }
+
+  const { error } = await supabase.from("vendedores").update({ activo }).eq("id", id);
+
+  if (error) {
+    if (error.code === "42501") {
+      return { ok: false, error: "Sólo dirección puede dar de baja a un vendedor." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Borrarlo de la tabla, y sólo cuando no cuelga nada de él.
+ *
+ * Existe para el caso real de un nombre mal escrito o cargado por error, que
+ * no tiene sentido dejar dado de baja para siempre. Se vuelve a contar acá y
+ * no se confía en lo que vio la pantalla: entre que se abrió el diálogo y se
+ * confirmó, alguien pudo haberle asignado un lead desde otra sesión, y ese
+ * lead quedaría sin vendedor sin que nadie se entere.
+ */
+export async function eliminarVendedor(id: number): Promise<ResultadoVendedor> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede eliminar un vendedor." };
+  }
+
+  const dep = await dependenciasVendedor(id);
+  if (dep.total > 0) {
+    return {
+      ok: false,
+      error:
+        `No se puede eliminar: tiene ${enumerar(dep)} a su nombre. ` +
+        "Dalo de baja en vez de borrarlo, así su historial no queda sin dueño.",
+    };
+  }
+
+  const { error } = await supabase.from("vendedores").delete().eq("id", id);
+
+  if (error) {
+    if (error.code === "42501") {
+      return { ok: false, error: "Sólo dirección puede eliminar un vendedor." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** «3 oportunidades, 1 evento» — sólo lo que tiene algo. */
+function enumerar(d: Dependencias): string {
+  const partes = [
+    [d.oportunidades, "oportunidad", "oportunidades"],
+    [d.eventos, "evento", "eventos"],
+    [d.conversaciones, "conversación", "conversaciones"],
+  ] as const;
+
+  return partes
+    .filter(([n]) => n > 0)
+    .map(([n, uno, varios]) => `${n} ${n === 1 ? uno : varios}`)
+    .join(", ");
+}
+
+/**
  * ¿Esta persona ya puede entrar al CRM?
  *
  * Se pregunta por el correo porque es lo único que comparten las dos tablas.

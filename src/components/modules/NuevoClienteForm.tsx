@@ -14,7 +14,7 @@ import {
 } from "@/lib/duplicados";
 import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
 import { promocionesUsadas } from "@/lib/promociones";
-import { esMenor } from "@/lib/types";
+import { activos, esMenor } from "@/lib/types";
 import { T } from "@/lib/theme";
 import {
   OBLIGATORIOS,
@@ -454,7 +454,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
               <Select valor={d.producto_id} items={cat.productos} onPick={(v) => set("producto_id", v)} />
             </Etiqueta>
             <Etiqueta texto="Vendedor">
-              <Select valor={d.vendedor_id} items={cat.vendedores} onPick={(v) => set("vendedor_id", v)} />
+              <Select valor={d.vendedor_id} items={activos(cat.vendedores)} onPick={(v) => set("vendedor_id", v)} />
             </Etiqueta>
             <Etiqueta texto="Etapa">
               <Select valor={d.etapa_id} items={cat.etapas} onPick={(v) => set("etapa_id", v)} />

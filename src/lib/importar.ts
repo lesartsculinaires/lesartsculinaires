@@ -393,6 +393,9 @@ export function construirFilas({
       telefono,
       correo,
       producto_id: cat("producto", catalogo.productos, "Programa"),
+      // A propósito contra la lista entera, dados de baja incluidos: lo que se
+      // importa suele ser historia, y una planilla vieja nombra a quien
+      // atendía entonces. Mandarla a «sin asignar» perdería ese dato.
       vendedor_id: cat("vendedor", catalogo.vendedores, "Vendedor"),
       etapa_id: cat("etapa", catalogo.etapas, "Etapa"),
       estado_id: cat("estado", catalogo.estados, "Estado"),

@@ -17,6 +17,40 @@ export interface Etapa extends CatalogItem {
   orden: number;
 }
 
+/**
+ * Un vendedor del catálogo.
+ *
+ * A diferencia del resto de los catálogos, éste se carga entero —dados de baja
+ * incluidos— porque hace falta para dos cosas distintas y opuestas:
+ *
+ *  - **elegir**: ahí sólo van los activos, y para eso está `activos()`;
+ *  - **nombrar lo que ya pasó**: un evento del calendario de hace tres meses
+ *    tiene que seguir diciendo quién lo atendió aunque esa persona ya no esté.
+ *
+ * Si se filtrara al traerlo, lo segundo quedaría en blanco y parecería que el
+ * dato se perdió. Los totales del tablero no dependen de esto: salen del
+ * nombre que ya trae `vw_pipeline`, no del catálogo.
+ */
+export interface Vendedor extends CatalogItem {
+  activo: boolean;
+}
+
+/** Los que todavía atienden: es lo que va en cualquier desplegable. */
+export const activos = (lista: readonly Vendedor[]): Vendedor[] =>
+  lista.filter((v) => v.activo);
+
+/**
+ * Igual que `activos`, pero sin esconder al que ya está elegido.
+ *
+ * Si a una oportunidad vieja la atendió alguien que después se dio de baja, su
+ * nombre tiene que seguir en la lista: sacarlo haría que el desplegable se
+ * viera vacío justo donde hay un dato.
+ */
+export const activosCon = (
+  lista: readonly Vendedor[],
+  actual: number | null | undefined,
+): Vendedor[] => lista.filter((v) => v.activo || v.id === actual);
+
 export interface Estado extends CatalogItem {
   /** Closes the opportunity: Ganado or Perdido. */
   esFinal: boolean;
@@ -43,7 +77,7 @@ export interface TipoEvento extends CatalogItem {
 
 /** Everything the screens need that does not change during a session. */
 export interface Catalogo {
-  vendedores: CatalogItem[];
+  vendedores: Vendedor[];
   productos: Producto[];
   territorios: CatalogItem[];
   canales: CatalogItem[];

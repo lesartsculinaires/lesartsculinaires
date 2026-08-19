@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 
+import { reactivarVendedor } from "@/app/vendedores-actions";
 import { NuevoVendedor } from "@/components/modules/NuevoVendedor";
+import { QuitarVendedor } from "@/components/modules/QuitarVendedor";
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
 import { porMes, variacion } from "@/lib/periodos";
@@ -14,7 +16,8 @@ import {
   valorPipeline,
 } from "@/lib/selectors";
 import { T, openTone, softer } from "@/lib/theme";
-import type { Oportunidad } from "@/lib/types";
+import { activos } from "@/lib/types";
+import type { Oportunidad, Vendedor } from "@/lib/types";
 
 /** Clave del selector para ver todo junto, sin recortar por mes. */
 const ACUMULADO = "acumulado";
@@ -59,10 +62,18 @@ export function Equipos({
   esAdmin,
   onRefrescar,
 }: Props) {
-  const { vendedores, etapas } = useCatalogo();
+  const { vendedores: todos, etapas } = useCatalogo();
   const soft = softer(accent);
   const open = openTone(accent);
   const [creando, setCreando] = useState(false);
+  const [quitando, setQuitando] = useState<Vendedor | null>(null);
+
+  // El catálogo llega entero para que el resto del CRM pueda seguir poniéndole
+  // nombre a lo que atendió alguien que ya no está. Acá se trabaja sólo con los
+  // que siguen: los dados de baja tienen su propia lista al final, y esa la ve
+  // dirección nada más.
+  const vendedores = activos(todos);
+  const bajas = todos.filter((x) => !x.activo);
 
   /** El botón, arriba a la derecha. Se dibuja igual con la lista vacía. */
   const boton = esAdmin ? (
@@ -86,13 +97,26 @@ export function Equipos({
     </div>
   ) : null;
 
-  const dialogo = creando ? (
-    <NuevoVendedor
-      accent={accent}
-      onCerrar={() => setCreando(false)}
-      onCreado={onRefrescar}
-    />
-  ) : null;
+  const dialogo = (
+    <>
+      {creando && (
+        <NuevoVendedor
+          accent={accent}
+          onCerrar={() => setCreando(false)}
+          onCreado={onRefrescar}
+        />
+      )}
+      {quitando && (
+        <QuitarVendedor
+          id={quitando.id}
+          nombre={quitando.nombre}
+          accent={accent}
+          onCerrar={() => setQuitando(null)}
+          onHecho={onRefrescar}
+        />
+      )}
+    </>
+  );
 
   // Sin vendedores el módulo no tiene nada que graficar, pero es justo cuando
   // más falta hace poder agregar el primero: el botón va antes del aviso y no
@@ -254,6 +278,8 @@ export function Equipos({
             );
           })}
 
+          {esAdmin && bajas.length > 0 && <Bajas bajas={bajas} onHecho={onRefrescar} />}
+
           {sinAsignar.length > 0 && (
             <div
               style={{
@@ -302,13 +328,24 @@ export function Equipos({
               <h2 className="dsp" style={{ margin: 0, fontSize: 21, fontWeight: 700 }}>
                 {v.nombre}
               </h2>
-              <button
-                type="button"
-                onClick={() => onVerTodos(v.id)}
-                style={{ fontSize: 12.5, color: accent }}
-              >
-                Ver en Clientes ›
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {esAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setQuitando(v)}
+                    style={{ fontSize: 12.5, color: T.muted }}
+                  >
+                    Quitar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onVerTodos(v.id)}
+                  style={{ fontSize: 12.5, color: accent }}
+                >
+                  Ver en Clientes ›
+                </button>
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
@@ -656,6 +693,88 @@ export function Equipos({
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Los que están dados de baja.
+ *
+ * Va escondido detrás de un renglón, y sólo para dirección, porque no es
+ * información del día a día. Existe por una razón concreta: sin esta lista, dar
+ * de baja sería una puerta de una sola dirección —la persona desaparece de
+ * todos lados y no queda ningún lugar donde volver a activarla—. También sirve
+ * para entender por qué alguien «ya no aparece» sin tener que preguntar.
+ */
+function Bajas({ bajas, onHecho }: { bajas: Vendedor[]; onHecho: () => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const [trabajando, setTrabajando] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reactivar = async (id: number) => {
+    setTrabajando(id);
+    setError(null);
+    const r = await reactivarVendedor(id);
+    setTrabajando(null);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    onHecho();
+  };
+
+  return (
+    <div style={{ borderTop: `1px solid ${T.border}` }}>
+      <button
+        type="button"
+        onClick={() => setAbierto((x) => !x)}
+        style={{
+          display: "block",
+          width: "100%",
+          textAlign: "left",
+          padding: "11px 14px",
+          fontSize: 11.5,
+          color: T.faint,
+        }}
+      >
+        {abierto ? "▾" : "▸"} {bajas.length} dado{bajas.length === 1 ? "" : "s"} de baja
+      </button>
+
+      {abierto && (
+        <div style={{ padding: "0 14px 12px" }}>
+          {bajas.map((x) => (
+            <div
+              key={x.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+                padding: "5px 0",
+              }}
+            >
+              <span style={{ fontSize: 12.5, color: T.muted }}>{x.nombre}</span>
+              <button
+                type="button"
+                onClick={() => void reactivar(x.id)}
+                disabled={trabajando != null}
+                style={{
+                  fontSize: 11.5,
+                  color: trabajando === x.id ? T.faint : T.ink,
+                  cursor: trabajando != null ? "wait" : "pointer",
+                }}
+              >
+                {trabajando === x.id ? "…" : "Reactivar"}
+              </button>
+            </div>
+          ))}
+          {error && (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
+              {error}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

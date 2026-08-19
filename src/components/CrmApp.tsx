@@ -23,6 +23,7 @@ import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
+import { activos } from "@/lib/types";
 import type {
   Accesos,
   Catalogo,
@@ -187,7 +188,10 @@ export default function CrmApp({
               }}
             >
               <p className="mono" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
-                {oportunidades.length} oportunidades · {catalogo.vendedores.length}{" "}
+                {/* Los dados de baja no se cuentan: el pie dice con qué se está
+                    trabajando ahora, no cuánta gente pasó por acá. */}
+                {oportunidades.length} oportunidades ·{" "}
+                {activos(catalogo.vendedores).length}{" "}
                 vendedores · {catalogo.productos.length} programas
               </p>
               <Actualizado

@@ -28,6 +28,7 @@ import { promocionesUsadas } from "@/lib/promociones";
 import { estadoTone } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
 import {
+  activosCon,
   esMenor,
   type CatalogItem,
   type ClientePatch,
@@ -161,7 +162,9 @@ export function ClienteDrawer({
     { key: "etapa", label: "Etapa", items: cat.etapas, current: o.etapaId, columna: "etapa_id", display: "etapa", displayId: "etapaId" },
     { key: "estado", label: "Estado", items: cat.estados, current: o.estadoId, columna: "estado_id", display: "estado", displayId: "estadoId" },
     { key: "producto", label: "Programa", items: cat.productos, current: o.productoId, columna: "producto_id", display: "producto", displayId: "productoId" },
-    { key: "vendedor", label: "Vendedor", items: cat.vendedores, current: o.vendedorId, columna: "vendedor_id", display: "vendedor", displayId: "vendedorId" },
+    // Los dados de baja no se ofrecen, salvo el que ya tiene esta ficha: si lo
+    // atendió alguien que después se fue, su nombre tiene que seguir estando.
+    { key: "vendedor", label: "Vendedor", items: activosCon(cat.vendedores, o.vendedorId), current: o.vendedorId, columna: "vendedor_id", display: "vendedor", displayId: "vendedorId" },
     { key: "canal", label: "Canal", items: cat.canales, current: o.canalId, columna: "canal_id", display: "canal", displayId: "canalId" },
     { key: "territorio", label: "Territorio", items: cat.territorios, current: o.territorioId, columna: "territorio_id", display: "territorio", displayId: "territorioId" },
   ];

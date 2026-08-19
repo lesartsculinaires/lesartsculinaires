@@ -6,6 +6,7 @@ import { archivar, marcarLeida } from "@/app/whatsapp-actions";
 import { asignar, noEraLead, responderConversacion } from "@/app/inbox-actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
+import { activosCon } from "@/lib/types";
 import type { Conversacion, Mensaje } from "@/lib/types";
 
 interface Props {
@@ -331,7 +332,9 @@ export function Inbox({
                   }}
                 >
                   <option value="">Sin asignar</option>
-                  {cat.vendedores.map((v) => (
+                  {/* Igual que en la ficha: no se ofrece a quien está de baja,
+                      pero si el hilo ya es suyo su nombre no desaparece. */}
+                  {activosCon(cat.vendedores, actual.vendedorId).map((v) => (
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
                 </select>

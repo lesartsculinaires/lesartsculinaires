@@ -135,7 +135,11 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
   if (!supabase) return { data: EMPTY_CATALOGO, error: null };
 
   const [vend, prod, terr, can, eta, est, tipos] = await Promise.all([
-    supabase.from("vendedores").select("id, nombre").eq("activo", true).order("nombre"),
+    // Sin filtrar por `activo`: se traen todos y cada pantalla decide. Los
+    // desplegables usan `activos()`; los que sólo tienen que poner un nombre a
+    // algo que ya pasó —un evento del calendario, una ficha vieja— necesitan
+    // también a los dados de baja, o mostrarían un hueco donde hay un dato.
+    supabase.from("vendedores").select("id, nombre, activo").order("nombre"),
     supabase.from("productos").select("id, nombre, categoria, precio").order("nombre"),
     supabase.from("territorios").select("id, nombre").order("nombre"),
     supabase.from("canales").select("id, nombre").order("nombre"),
@@ -154,7 +158,11 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
     Array.isArray(r.data) ? (r.data as Row[]) : [];
 
   const catalogo: Catalogo = {
-    vendedores: rows(vend).map((r) => ({ id: num(r.id), nombre: str(r.nombre) })),
+    vendedores: rows(vend).map((r) => ({
+      id: num(r.id),
+      nombre: str(r.nombre),
+      activo: r.activo !== false,
+    })),
     productos: rows(prod).map(
       (r): Producto => ({
         id: num(r.id),
