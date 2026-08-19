@@ -50,6 +50,8 @@ interface Props {
   esAdmin: boolean;
   /** Para volver a pedir el catálogo cuando se agrega uno. */
   onRefrescar: () => void;
+  /** Lleva a Clientes con las que no tienen vendedor, para repartirlas. */
+  onVerSinAsignar: () => void;
 }
 
 export function Equipos({
@@ -61,6 +63,7 @@ export function Equipos({
   onVerTodos,
   esAdmin,
   onRefrescar,
+  onVerSinAsignar,
 }: Props) {
   const { vendedores: todos, etapas } = useCatalogo();
   const soft = softer(accent);
@@ -280,13 +283,23 @@ export function Equipos({
 
           {esAdmin && bajas.length > 0 && <Bajas bajas={bajas} onHecho={onRefrescar} />}
 
+          {/* El aviso lleva a donde se arregla. Decir que nadie les da
+              seguimiento y dejar a quien lo lee buscándolas a mano era la
+              mitad del trabajo: el clic abre Clientes ya filtrado por las que
+              no tienen vendedor, que es la pantalla donde se reparten. */}
           {sinAsignar.length > 0 && (
-            <div
+            <button
+              type="button"
+              onClick={onVerSinAsignar}
               style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
                 padding: "13px 14px",
                 borderTop: `1px solid ${T.border}`,
                 background: "#F6EEDC",
                 color: "#7A5A12",
+                cursor: "pointer",
               }}
             >
               <p style={{ margin: 0, fontSize: 12, lineHeight: 1.45 }}>
@@ -294,7 +307,10 @@ export function Equipos({
                 {sinAsignar.length === 1 ? "oportunidad" : "oportunidades"} sin
                 vendedor asignado. Nadie les da seguimiento.
               </p>
-            </div>
+              <p style={{ margin: "5px 0 0", fontSize: 11.5, fontWeight: 600 }}>
+                Repartirlas ›
+              </p>
+            </button>
           )}
         </div>
 

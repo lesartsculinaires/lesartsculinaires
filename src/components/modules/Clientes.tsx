@@ -9,7 +9,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import { activos as soloActivos } from "@/lib/types";
+import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { CatalogItem, Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -74,7 +74,11 @@ export function Clientes({
     (o) =>
       filtros_def.every(({ key }) => {
         const want = filtros[key];
-        return want == null || o[CAMPO[key]] === want;
+        if (want == null) return true;
+        // `SIN_DUENO` pide lo contrario que un id: las fichas con el campo
+        // vacío. Es a donde lleva el aviso de «sin vendedor asignado».
+        if (want === SIN_DUENO) return o[CAMPO[key]] == null;
+        return o[CAMPO[key]] === want;
       }) &&
       (!q ||
         [o.cliente, o.codigo, o.telefono ?? "", o.correo ?? ""]
@@ -183,13 +187,20 @@ export function Clientes({
                 label={f.label}
                 options={[
                   { label: "Todos", value: null },
+                  // Sólo para vendedor: es el único campo donde estar vacío es
+                  // un problema que alguien tiene que ir a resolver.
+                  ...(f.key === "vendedor"
+                    ? [{ label: SIN_ASIGNAR, value: SIN_DUENO }]
+                    : []),
                   ...f.items.map((i) => ({ label: i.nombre, value: i.id })),
                 ]}
                 current={filtros[f.key] ?? null}
                 valueText={
                   filtros[f.key] == null
                     ? "Todos"
-                    : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
+                    : filtros[f.key] === SIN_DUENO
+                      ? SIN_ASIGNAR
+                      : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
                 }
                 open={menu === key}
                 accent={accent}

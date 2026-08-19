@@ -88,6 +88,16 @@ export interface Catalogo {
 
 /** Placeholder shown wherever an opportunity has no salesperson assigned. */
 export const SIN_ASIGNAR = "Sin asignar";
+
+/**
+ * Valor de filtro para «los que no tienen a nadie».
+ *
+ * Los filtros de Clientes guardan un id, y `null` ya quiere decir «sin filtrar»,
+ * así que hace falta un tercer valor para pedir justo lo contrario: las fichas
+ * cuyo campo está vacío. Es negativo a propósito —las claves de la base son
+ * identidades que arrancan en 1— para que nunca choque con una de verdad.
+ */
+export const SIN_DUENO = -1;
 /** Shown for any catalogued field left empty in the source data. */
 export const SIN_DATO = "—";
 

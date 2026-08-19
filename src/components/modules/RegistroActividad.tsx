@@ -22,6 +22,12 @@ interface Props {
   /** Para poder filtrar por persona. */
   usuarios: readonly Usuario[];
   esAdmin: boolean;
+  /**
+   * Abre la ficha de la que habla el renglón. Sin esto el módulo cuenta lo que
+   * pasó y deja a quien lo lee buscando la ficha a mano, que es justo lo que
+   * viene a hacer después de leerlo.
+   */
+  onAbrirFicha?: (oportunidadId: number) => void;
 }
 
 /**
@@ -39,7 +45,13 @@ interface Props {
  * deja a ventas ver lo suyo y a dirección ver todo. Este módulo muestra lo que
  * le devuelvan.
  */
-export function RegistroActividad({ accent, catalogo, usuarios, esAdmin }: Props) {
+export function RegistroActividad({
+  accent,
+  catalogo,
+  usuarios,
+  esAdmin,
+  onAbrirFicha,
+}: Props) {
   const [filtros, setFiltros] = useState<FiltrosActividad>({});
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [total, setTotal] = useState(0);
@@ -209,7 +221,14 @@ export function RegistroActividad({ accent, catalogo, usuarios, esAdmin }: Props
       {eventos.length > 0 && (
         <div style={{ border: `1px solid ${T.border}`, borderRadius: 9, overflow: "hidden" }}>
           {eventos.map((e, i) => (
-            <Fila key={e.id} evento={e} catalogo={catalogo} primera={i === 0} accent={accent} />
+            <Fila
+              key={e.id}
+              evento={e}
+              catalogo={catalogo}
+              primera={i === 0}
+              accent={accent}
+              onAbrir={onAbrirFicha}
+            />
           ))}
         </div>
       )}
@@ -265,24 +284,35 @@ function Fila({
   catalogo,
   primera,
   accent,
+  onAbrir,
 }: {
   evento: Evento;
   catalogo: Catalogo;
   primera: boolean;
   accent: string;
+  onAbrir?: (oportunidadId: number) => void;
 }) {
   const cambios = detallar(e, catalogo);
 
+  // No todo renglón lleva a algún lado: un vendedor o un programa del catálogo
+  // no cuelgan de ninguna ficha. Los que sí, se abren con un clic.
+  const abrible = e.oportunidadId != null && onAbrir != null;
+
   return (
     <div
+      onClick={abrible ? () => onAbrir(e.oportunidadId as number) : undefined}
       style={{
         padding: "10px 13px",
         borderTop: primera ? "none" : `1px solid ${T.border}`,
         background: T.surface,
+        cursor: abrible ? "pointer" : "default",
       }}
     >
       <div style={{ fontSize: 13, color: T.ink, lineHeight: 1.45 }}>
         {redactar(e, catalogo)}
+        {abrible && (
+          <span style={{ marginLeft: 6, fontSize: 11.5, color: accent }}>Ver ficha ›</span>
+        )}
       </div>
       <div style={{ marginTop: 2, fontSize: 11.5, color: T.faint }}>
         {quien(e.actor)} · {cuandoConHora(e.creadoEn)}

@@ -23,7 +23,7 @@ import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
-import { activos } from "@/lib/types";
+import { SIN_DUENO, activos } from "@/lib/types";
 import type {
   Accesos,
   Catalogo,
@@ -80,6 +80,18 @@ export default function CrmApp({
 }: Props) {
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
+
+  /**
+   * A donde lleva un aviso o una notificación: la ficha de la que habla.
+   *
+   * Si la oportunidad ya no está —se borró después de que quedara anotada en el
+   * registro— se abre Clientes igual, sin selección, en vez de dejar el clic
+   * sin efecto y que parezca que la pantalla no responde.
+   */
+  const abrirFicha = (oportunidadId: number) => {
+    const existe = oportunidades.some((o) => o.id === oportunidadId);
+    actions.verEnClientes({}, existe ? oportunidadId : null);
+  };
   const accent = ACCENT;
 
   // Los cambios de otras personas llegan por websocket y se ven al momento.
@@ -200,7 +212,7 @@ export default function CrmApp({
                 enVivo={enVivo}
                 onRefrescar={() => router.refresh()}
               />
-              <Notificaciones accent={accent} catalogo={catalogo} />
+              <Notificaciones accent={accent} catalogo={catalogo} onAbrirFicha={abrirFicha} />
             </div>
           </header>
 
@@ -311,6 +323,7 @@ export default function CrmApp({
               onVerTodos={(vendedorId) => actions.verEnClientes({ vendedor: vendedorId })}
               esAdmin={accesos.esAdmin}
               onRefrescar={() => router.refresh()}
+              onVerSinAsignar={() => actions.verEnClientes({ vendedor: SIN_DUENO })}
             />
           )}
 
@@ -334,6 +347,7 @@ export default function CrmApp({
               catalogo={catalogo}
               usuarios={accesos.usuarios}
               esAdmin={accesos.esAdmin}
+              onAbrirFicha={abrirFicha}
             />
           )}
 
