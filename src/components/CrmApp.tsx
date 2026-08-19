@@ -14,6 +14,7 @@ import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Notificaciones } from "@/components/Notificaciones";
+import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
@@ -320,6 +321,15 @@ export default function CrmApp({
                 Esta sección es solo para administradores.
               </p>
             ))}
+
+          {mod === "Notificaciones" && (
+            <RegistroActividad
+              accent={accent}
+              catalogo={catalogo}
+              usuarios={accesos.usuarios}
+              esAdmin={accesos.esAdmin}
+            />
+          )}
 
           {mod === "Programas" && (
             <Programas

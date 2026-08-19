@@ -227,3 +227,49 @@ export function redactarGrupo(g: Grupo, catalogo: Catalogo): string {
 
   return plural[g.evento.entidad] ?? `${g.cuantos} acciones`;
 }
+
+/**
+ * Cada campo que cambió, con su antes y su después.
+ *
+ * La campana resume —«cambió la etapa y el valor»— porque ahí lo que importa
+ * es enterarse. El módulo existe para lo contrario: poder decir exactamente de
+ * qué a qué, que es lo que hace falta cuando alguien pregunta por qué un
+ * negocio quedó en un monto que no era.
+ */
+export interface CambioLegible {
+  campo: string;
+  antes: string;
+  despues: string;
+}
+
+export function detallar(e: Evento, catalogo: Catalogo): CambioLegible[] {
+  return Object.entries(e.campos ?? {}).map(([columna, c]) => ({
+    campo: ETIQUETAS[columna] ?? columna,
+    antes: valorLegible(columna, c.antes, catalogo),
+    despues: valorLegible(columna, c.despues, catalogo),
+  }));
+}
+
+/**
+ * De a cuántas acciones se traen en el módulo.
+ *
+ * Vive acá y no junto a la consulta porque un archivo `"use server"` sólo
+ * puede exportar funciones asíncronas, y la pantalla necesita este número para
+ * decir «ver 60 más».
+ */
+export const POR_TANDA = 60;
+
+/** Los tipos de acción que se pueden filtrar, con su nombre en pantalla. */
+export const ENTIDADES: { valor: string; nombre: string }[] = [
+  { valor: "oportunidad", nombre: "Oportunidades" },
+  { valor: "cliente", nombre: "Contactos" },
+  { valor: "nota", nombre: "Notas" },
+  { valor: "adjunto", nombre: "Documentos" },
+  { valor: "enlace", nombre: "Links de registro" },
+];
+
+export const ACCIONES: { valor: string; nombre: string }[] = [
+  { valor: "creo", nombre: "Creaciones" },
+  { valor: "edito", nombre: "Modificaciones" },
+  { valor: "borro", nombre: "Eliminaciones" },
+];

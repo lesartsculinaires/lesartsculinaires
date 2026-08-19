@@ -15,6 +15,7 @@ export const MODULOS = [
   "Calendario",
   "Equipos",
   "Programas",
+  "Notificaciones",
 ] as const;
 
 interface Props {

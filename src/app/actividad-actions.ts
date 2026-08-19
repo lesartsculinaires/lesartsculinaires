@@ -1,7 +1,7 @@
 "use server";
 
 import { getServerClient } from "@/lib/supabase/server";
-import type { Evento } from "@/lib/actividad";
+import { POR_TANDA, type Evento } from "@/lib/actividad";
 
 /**
  * El registro de actividad, para el panel de la campana.
@@ -53,9 +53,28 @@ export async function listarActividad(): Promise<ResultadoActividad> {
   const filas = data ?? [];
   if (filas.length === 0) return VACIO;
 
-  // Los nombres y las fichas se resuelven en dos consultas y no con joins: la
-  // actividad apunta a `auth.users`, que PostgREST no puede unir con la tabla
-  // `usuarios` del CRM, y son unas pocas decenas de filas.
+  return {
+    ...VACIO,
+    eventos: await enriquecer(supabase, filas),
+    sinVer: await contarSinVer(supabase),
+  };
+}
+
+/**
+ * Le pone nombres a lo que la tabla guarda como identificadores.
+ *
+ * Los nombres y las fichas se resuelven en dos consultas y no con joins: la
+ * actividad apunta a `auth.users`, que PostgREST no puede unir con la tabla
+ * `usuarios` del CRM. Van dos viajes por tanda, no uno por fila.
+ *
+ * Lo usan la campana y el módulo, que tienen que contar lo mismo de la misma
+ * manera: si cada uno resolviera los nombres por su cuenta, tarde o temprano
+ * uno diría «Ana Pérez» donde el otro dice un correo.
+ */
+async function enriquecer(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  filas: readonly Record<string, unknown>[],
+): Promise<Evento[]> {
   const actores = [...new Set(filas.map((f) => f.actor_id).filter(Boolean))] as string[];
   const fichas = [...new Set(filas.map((f) => f.oportunidad_id).filter(Boolean))] as number[];
 
@@ -83,7 +102,7 @@ export async function listarActividad(): Promise<ResultadoActividad> {
     });
   }
 
-  const eventos: Evento[] = filas.map((f) => {
+  return filas.map((f) => {
     const ficha = f.oportunidad_id ? porFicha.get(Number(f.oportunidad_id)) : undefined;
     return {
       id: Number(f.id),
@@ -98,8 +117,6 @@ export async function listarActividad(): Promise<ResultadoActividad> {
       cliente: ficha?.cliente ?? null,
     };
   });
-
-  return { ...VACIO, eventos, sinVer: await contarSinVer(supabase) };
 }
 
 /** Cuando nadie miró nunca el panel, desde cuándo contar. */
@@ -161,4 +178,89 @@ export async function marcarVisto(): Promise<{ ok: boolean; error: string | null
 
   if (error) return { ok: false, error: error.message };
   return { ok: true, error: null };
+}
+
+// ------------------------------------------------------ el módulo con filtros
+
+export interface FiltrosActividad {
+  /** Id de la persona. Vacío = cualquiera. */
+  actor?: string;
+  /** 'oportunidad' | 'cliente' | 'nota' | 'adjunto' | 'enlace'. Vacío = todo. */
+  entidad?: string;
+  /** 'creo' | 'edito' | 'borro'. Vacío = todo. */
+  accion?: string;
+  /** Fechas ISO, inclusive. */
+  desde?: string;
+  hasta?: string;
+  /** Cuántas saltarse, para ir trayendo de a tandas. */
+  saltar?: number;
+}
+
+export interface ResultadoBusqueda {
+  ok: boolean;
+  error: string | null;
+  eventos: Evento[];
+  /** Cuántas hay en total con esos filtros, para saber si quedan más. */
+  total: number;
+  faltaMigracion: boolean;
+}
+
+/**
+ * La actividad con filtros, para el módulo.
+ *
+ * Lo mismo que alimenta la campana pero pudiendo acotar, y trayendo de a
+ * tandas en vez de las últimas 120 sueltas.
+ *
+ * Acá tampoco hay un `if` sobre el rol: quién ve qué lo decide la política de
+ * la base. Un filtro por persona que devolviera lo ajeno a quien no debe
+ * verlo sería un agujero, y poner la regla en dos lugares es la forma de que
+ * uno de los dos se quede viejo.
+ */
+export async function buscarActividad(
+  f: FiltrosActividad = {},
+): Promise<ResultadoBusqueda> {
+  const supabase = await getServerClient();
+  if (!supabase) {
+    return {
+      ok: false,
+      error: "Sesión no válida. Volvé a iniciar sesión.",
+      eventos: [],
+      total: 0,
+      faltaMigracion: false,
+    };
+  }
+
+  const saltar = Math.max(f.saltar ?? 0, 0);
+
+  let consulta = supabase
+    .from("actividad")
+    .select("id, entidad, accion, entidad_id, oportunidad_id, campos, actor_id, creado_en", {
+      count: "exact",
+    })
+    .order("creado_en", { ascending: false });
+
+  if (f.actor) consulta = consulta.eq("actor_id", f.actor);
+  if (f.entidad) consulta = consulta.eq("entidad", f.entidad);
+  if (f.accion) consulta = consulta.eq("accion", f.accion);
+  if (f.desde) consulta = consulta.gte("creado_en", f.desde);
+  // `hasta` es un día, no un instante: se toma hasta el final de esa jornada o
+  // un filtro «hasta hoy» dejaría fuera todo lo de hoy.
+  if (f.hasta) consulta = consulta.lte("creado_en", `${f.hasta}T23:59:59.999Z`);
+
+  const { data, error, count } = await consulta.range(saltar, saltar + POR_TANDA - 1);
+
+  if (error) {
+    if (error.code === "PGRST205") {
+      return { ok: true, error: null, eventos: [], total: 0, faltaMigracion: true };
+    }
+    return { ok: false, error: error.message, eventos: [], total: 0, faltaMigracion: false };
+  }
+
+  return {
+    ok: true,
+    error: null,
+    eventos: await enriquecer(supabase, data ?? []),
+    total: count ?? 0,
+    faltaMigracion: false,
+  };
 }
