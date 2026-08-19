@@ -40,6 +40,19 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
 
+  // Sólo dirección, comprobado acá además de en la base.
+  //
+  // No es redundante por dos motivos. Mientras la migración del catálogo no se
+  // corra, la política vieja deja escribir a cualquiera con sesión y lo único
+  // que separa es el botón escondido, que no separa nada: una acción de
+  // servidor se puede invocar sin pasar por la pantalla. Y una vez corrida,
+  // esto sigue dando un mensaje que se entiende en vez del error crudo de una
+  // política.
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede crear programas." };
+  }
+
   const nombre = p.nombre.trim();
   if (!nombre) return { ok: false, error: "Poné un nombre para el programa." };
   if (nombre.length > 120) return { ok: false, error: "El nombre es demasiado largo." };
