@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
+import { bajarMedia, rutaMedia } from "@/lib/whatsapp/media";
 import { leerWebhook, resumen, type MensajeEntrante } from "@/lib/whatsapp/mensajes";
 
 /** Nunca cachear: cada llamada trae mensajes distintos. */
@@ -114,6 +115,11 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   const conversacion = await conversacionDe(supabase, m);
   if (!conversacion) return;
 
+  // El archivo se trae antes de guardar el mensaje, no después: si Meta ya lo
+  // borró o el token no alcanza, el mensaje queda guardado diciendo por qué
+  // falta, que es lo que después permite entender un comprobante que no está.
+  const archivo = m.media ? await guardarArchivo(supabase, conversacion, m) : null;
+
   const { error } = await supabase.from("mensajes").insert({
     conversacion_id: conversacion,
     wa_id: m.waId,
@@ -122,6 +128,10 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
     texto: m.texto,
     payload: m.crudo,
     creado_en: m.enviadoEn.toISOString(),
+    media_ruta: archivo?.ruta ?? null,
+    media_mime: archivo?.mime ?? null,
+    media_nombre: m.media?.nombre ?? null,
+    media_error: archivo?.error ?? null,
   });
 
   // 23505 es la restricción de unicidad sobre `wa_id`: este mensaje ya estaba
@@ -213,3 +223,54 @@ async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number 
   }
   return Number(creado.id);
 }
+
+/**
+ * Baja el archivo de un mensaje y lo deja en el bucket.
+ *
+ * Nunca lanza y nunca demora de más: Meta espera un 200 y, si tarda, reintenta
+ * el webhook entero —lo que traería el mismo mensaje otra vez—. Por eso hay un
+ * límite de tiempo y por eso un fallo se devuelve como texto en vez de cortar
+ * el guardado: el mensaje vale aunque su foto no haya llegado.
+ */
+async function guardarArchivo(
+  supabase: Cliente,
+  conversacionId: number,
+  m: MensajeEntrante,
+): Promise<{ ruta: string | null; mime: string | null; error: string | null }> {
+  if (!m.media) return { ruta: null, mime: null, error: null };
+
+  const corte = AbortSignal.timeout(SEGUNDOS_PARA_BAJAR * 1000);
+  const bajado = await bajarMedia(m.media.id, corte);
+
+  if (!bajado.ok) {
+    console.error("[whatsapp] no se pudo bajar el archivo", m.waId, bajado.error);
+    return { ruta: null, mime: m.media.mime, error: bajado.error };
+  }
+
+  const ruta = rutaMedia(conversacionId, m.media.id, bajado.archivo.mime);
+
+  const { error } = await supabase.storage
+    .from("whatsapp")
+    .upload(ruta, bajado.archivo.bytes, {
+      contentType: bajado.archivo.mime,
+      // Si el webhook se reintenta, el archivo ya está: sobrescribirlo con el
+      // mismo contenido es más simple que preguntar antes.
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("[whatsapp] no se pudo guardar el archivo", m.waId, error.message);
+    return { ruta: null, mime: bajado.archivo.mime, error: error.message };
+  }
+
+  return { ruta, mime: bajado.archivo.mime, error: null };
+}
+
+/**
+ * Cuánto se espera por un archivo antes de soltarlo.
+ *
+ * Meta corta el webhook a los 20 segundos y reintenta. Un mensaje puede traer
+ * más de un archivo, así que el techo por archivo tiene que dejar lugar para
+ * eso y para lo demás que hace la función.
+ */
+const SEGUNDOS_PARA_BAJAR = 8;

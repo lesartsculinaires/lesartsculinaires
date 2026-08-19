@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
-import { asignar, noEraLead, responderConversacion } from "@/app/inbox-actions";
+import { asignar, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
+import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { activosCon } from "@/lib/types";
 import type { Conversacion, Mensaje } from "@/lib/types";
 
@@ -31,8 +32,19 @@ const ETIQUETA: Record<string, string> = {
   contacts: "Contacto compartido",
 };
 
-const contenido = (m: Mensaje): string =>
-  m.texto ?? ETIQUETA[m.tipo] ?? "Mensaje";
+/**
+ * El texto de la burbuja.
+ *
+ * Cuando el archivo se ve —la foto, el audio— la etiqueta «📷 Foto» sobra y
+ * además confunde: parecería el mensaje. Se muestra sólo el pie de foto, si lo
+ * hay. La etiqueta queda para cuando no hay nada que mostrar, que es el caso
+ * de una ubicación, un sticker o un archivo que no se pudo bajar.
+ */
+const contenido = (m: Mensaje): string => {
+  if (m.texto) return m.texto;
+  if (m.mediaRuta) return "";
+  return ETIQUETA[m.tipo] ?? "Mensaje";
+};
 
 const hora = (iso: string) =>
   new Date(iso).toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit" });
@@ -98,6 +110,35 @@ export function Inbox({
     () => (abierta == null ? [] : mensajes.filter((m) => m.conversacionId === abierta)),
     [mensajes, abierta],
   );
+
+  /**
+   * Las direcciones firmadas de los archivos del hilo abierto.
+   *
+   * Se piden al abrir la conversación y no al cargar la bandeja: firmar
+   * cientos de archivos que nadie va a mirar es trabajo tirado, y para cuando
+   * alguien llegara a ese hilo las firmas ya habrían caducado.
+   */
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const rutas = delHilo
+      .map((m) => m.mediaRuta)
+      .filter((r): r is string => r != null);
+
+    if (rutas.length === 0) {
+      setUrls({});
+      return;
+    }
+
+    let vigente = true;
+    void urlsDeMedia(rutas).then((r) => {
+      if (vigente) setUrls(r);
+    });
+    return () => {
+      vigente = false;
+    };
+    // Se rehace cuando cambia el hilo o le llega un mensaje nuevo con archivo.
+  }, [delHilo]);
 
   // Al abrir un hilo se baja al último mensaje: nadie quiere empezar a leer
   // por arriba una conversación de tres semanas.
@@ -402,6 +443,11 @@ export function Inbox({
                         </span>
                       )}
                       {contenido(m)}
+                      <MediaMensaje
+                        mensaje={m}
+                        url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
+                        mio={mio}
+                      />
                       <span
                         className="mono"
                         style={{

@@ -3,6 +3,9 @@ import "server-only";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Conversacion, Mensaje } from "@/lib/types";
 
+/** El `select` se arma como texto, así que las filas llegan sin tipar. */
+type Fila = Record<string, unknown>;
+
 export interface ResultadoInbox {
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
@@ -46,16 +49,27 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   let mensajes: Mensaje[] = [];
 
   if (ids.length) {
-    const { data: msgs, error: errMsg } = await supabase
-      .from("mensajes")
-      .select("id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado")
-      .in("conversacion_id", ids)
-      .order("creado_en", { ascending: true })
-      .limit(4000);
+    const traer = (conMedia: boolean) =>
+      supabase
+        .from("mensajes")
+        .select(
+          "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado" +
+            (conMedia ? ", media_ruta, media_mime, media_nombre, media_error" : ""),
+        )
+        .in("conversacion_id", ids)
+        .order("creado_en", { ascending: true })
+        .limit(4000);
+
+    let { data: msgs, error: errMsg } = await traer(true);
+
+    // 42703: faltan las columnas de archivos, de la migración de media. Se
+    // vuelve a pedir sin ellas para que la bandeja siga funcionando entera
+    // menos las fotos, en vez de quedarse en blanco.
+    if (errMsg?.code === "42703") ({ data: msgs, error: errMsg } = await traer(false));
 
     if (errMsg) return { ...VACIO, error: errMsg.message };
 
-    mensajes = (msgs ?? []).map((m) => ({
+    mensajes = ((msgs ?? []) as unknown as Fila[]).map((m) => ({
       id: Number(m.id),
       conversacionId: Number(m.conversacion_id),
       direccion: m.direccion === "saliente" ? "saliente" : "entrante",
@@ -65,6 +79,10 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       error: m.error ? String(m.error) : null,
       creadoEn: String(m.creado_en),
       privado: Boolean(m.privado),
+      mediaRuta: m.media_ruta ? String(m.media_ruta) : null,
+      mediaMime: m.media_mime ? String(m.media_mime) : null,
+      mediaNombre: m.media_nombre ? String(m.media_nombre) : null,
+      mediaError: m.media_error ? String(m.media_error) : null,
     }));
   }
 

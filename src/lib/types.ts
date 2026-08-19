@@ -343,4 +343,15 @@ export interface Mensaje {
   creadoEn: string;
   /** Nota interna: la ve el equipo, no el cliente. */
   privado: boolean;
+  /**
+   * El archivo que trajo el mensaje, ya guardado en el bucket «whatsapp».
+   * Nulo cuando el mensaje no traía o cuando no se pudo bajar —en ese caso
+   * `mediaError` dice por qué, que es lo que hace falta saber si después
+   * falta un comprobante.
+   */
+  mediaRuta: string | null;
+  mediaMime: string | null;
+  /** Nombre original; sólo lo traen los documentos. */
+  mediaNombre: string | null;
+  mediaError: string | null;
 }

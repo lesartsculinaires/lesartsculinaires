@@ -234,3 +234,38 @@ export async function noEraLead(conversacionId: number): Promise<ActionResult> {
   revalidatePath("/");
   return { ok: true, error: null };
 }
+
+/**
+ * Los enlaces para ver las fotos y documentos de un hilo.
+ *
+ * El bucket es privado, así que cada archivo se sirve con una dirección
+ * firmada que caduca. Se piden todas juntas al abrir la conversación: firmar
+ * de a una sería un viaje por cada foto, y un hilo con diez comprobantes
+ * tardaría en abrirse.
+ *
+ * No se firman al cargar la bandeja entera porque serían cientos de firmas
+ * para archivos que nadie va a mirar, y caducarían antes de que alguien
+ * llegue a ese hilo.
+ */
+export async function urlsDeMedia(rutas: string[]): Promise<Record<string, string>> {
+  if (rutas.length === 0) return {};
+
+  const supabase = await getServerClient();
+  if (!supabase) return {};
+
+  const { data } = await supabase.storage
+    .from("whatsapp")
+    .createSignedUrls(rutas, VIGENCIA_MEDIA_S);
+
+  const porRuta: Record<string, string> = {};
+  for (const f of data ?? []) {
+    if (f.path && f.signedUrl) porRuta[f.path] = f.signedUrl;
+  }
+  return porRuta;
+}
+
+/**
+ * Una hora. Alcanza de sobra para mirar un hilo y no deja una dirección viva
+ * dando vueltas si alguien la copia de la barra del navegador.
+ */
+const VIGENCIA_MEDIA_S = 60 * 60;

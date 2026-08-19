@@ -16,8 +16,28 @@ export interface MensajeEntrante {
   /** Texto plano. Nulo cuando el mensaje es una foto, un audio o similar. */
   texto: string | null;
   enviadoEn: Date;
+  /**
+   * El archivo adjunto, cuando el mensaje es una foto, un audio o un
+   * documento. Nulo para los de texto.
+   */
+  media: MediaEntrante | null;
   /** El objeto tal cual vino, para no perder lo que hoy no se usa. */
   crudo: unknown;
+}
+
+/**
+ * Lo que hace falta para ir a buscar el archivo.
+ *
+ * Meta no manda el archivo: manda un id con el que hay que pedirlo aparte, y
+ * lo borra a los treinta días. Por eso esto se resuelve apenas llega el
+ * mensaje y no cuando alguien abre el hilo: para entonces la captura de la
+ * transferencia puede haber dejado de existir.
+ */
+export interface MediaEntrante {
+  id: string;
+  mime: string | null;
+  /** Nombre original, sólo lo traen los documentos. */
+  nombre: string | null;
 }
 
 /** Aviso de que un mensaje que mandamos cambió de estado. */
@@ -86,6 +106,7 @@ export function leerWebhook(carga: unknown): {
           nombrePerfil: nombres.get(de) ?? null,
           tipo,
           texto: leerTexto(msg, tipo),
+          media: leerMedia(msg, tipo),
           // Meta manda segundos desde epoch, no milisegundos.
           enviadoEn: marca ? new Date(Number(marca) * 1000) : new Date(),
           crudo: m,
@@ -141,6 +162,29 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
       return null;
   }
 }
+
+/**
+ * El id del archivo, para los tipos que traen uno.
+ *
+ * Los cinco tipos con archivo lo guardan bajo una clave con su propio nombre
+ * —`image.id`, `audio.id`…— y con la misma forma, así que se lee una sola vez.
+ */
+function leerMedia(msg: Record<string, unknown>, tipo: string): MediaEntrante | null {
+  if (!CON_ARCHIVO.has(tipo)) return null;
+
+  const cuerpo = obj(msg[tipo]);
+  const id = texto(cuerpo?.id);
+  if (!id) return null;
+
+  return {
+    id,
+    mime: texto(cuerpo?.mime_type),
+    nombre: texto(cuerpo?.filename),
+  };
+}
+
+/** Los tipos de mensaje que traen un archivo aparte. */
+export const CON_ARCHIVO = new Set(["image", "video", "audio", "document", "sticker"]);
 
 /** Cómo se muestra en la lista un mensaje que no trae texto. */
 export function resumen(tipo: string, texto: string | null): string {
