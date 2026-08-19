@@ -93,7 +93,36 @@ body {
   outline-offset: 2px;
 }
 
-/* Texto seleccionado con el mouse. */
+/*
+ * No se puede seleccionar el contenido del CRM.
+ *
+ * Lo que esto hace: que no se pueda arrastrar el mouse sobre la tabla de
+ * clientes y llevarse la lista de un Ctrl+C. Sube el costo de sacar datos de
+ * casualidad o de apuro, que es el caso común.
+ *
+ * Lo que NO hace, y conviene tenerlo claro: no impide una captura de pantalla,
+ * ni una foto con el celular, ni las herramientas de desarrollo, ni «guardar
+ * página», ni imprimir. Nada que corra en el navegador puede impedir eso,
+ * porque para mostrar el dato hay que entregárselo al navegador.
+ *
+ * Los campos de texto quedan afuera a propósito: sin eso no se podría escribir
+ * una nota, corregir un teléfono ni copiar el link de registro cuando el botón
+ * no logra copiarlo solo.
+ */
+.lac {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lac input,
+.lac textarea,
+.lac select,
+.lac [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Texto seleccionado con el mouse: sólo queda en los campos. */
 .lac ::selection {
   background: #ffce00;
   color: #031b4f;

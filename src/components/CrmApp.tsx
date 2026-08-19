@@ -14,6 +14,7 @@ import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Notificaciones } from "@/components/Notificaciones";
+import { SinCopiar } from "@/components/SinCopiar";
 import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
@@ -129,6 +130,7 @@ export default function CrmApp({
 
   return (
     <CatalogoProvider value={catalogo}>
+      <SinCopiar />
       <div
         className="lac"
         style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
