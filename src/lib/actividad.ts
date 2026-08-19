@@ -119,6 +119,14 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
     return e.accion === "creo" ? `Adjuntó un documento${a}` : `Quitó un documento${de}`;
   }
 
+  if (e.entidad === "enlace") {
+    // «Generó» y no «envió»: el CRM copia el enlace y quien lo manda es la
+    // persona. Decir que lo envió sería afirmar algo que el sistema no vio.
+    if (e.accion === "creo") return `Generó el link de registro${de}`;
+    const anulado = e.campos?.revocado?.despues === true;
+    return anulado ? `Anuló el link de registro${de}` : `Cambió el link de registro${de}`;
+  }
+
   if (e.entidad === "cliente") {
     if (e.accion === "creo") return `Cargó un contacto nuevo`;
     if (e.accion === "borro") return `Borró un contacto`;
@@ -210,6 +218,7 @@ export function redactarGrupo(g: Grupo, catalogo: Catalogo): string {
   if (g.cuantos === 1) return redactar(g.evento, catalogo);
 
   const plural: Record<string, string> = {
+    enlace: `Generó ${g.cuantos} links de registro`,
     oportunidad: `Creó ${g.cuantos} oportunidades`,
     cliente: `Cargó ${g.cuantos} contactos nuevos`,
     nota: `Escribió ${g.cuantos} notas`,

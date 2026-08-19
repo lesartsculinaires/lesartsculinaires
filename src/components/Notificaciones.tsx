@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listarActividad, marcarVisto } from "@/app/actividad-actions";
 import { agrupar, quien, redactarGrupo, type Evento } from "@/lib/actividad";
-import { cuando } from "@/lib/format";
+import { cuandoConHora } from "@/lib/format";
 import { T } from "@/lib/theme";
 import type { Catalogo } from "@/lib/types";
 
@@ -200,7 +200,7 @@ export function Notificaciones({ accent, catalogo, onAbrirFicha }: Props) {
                       {redactarGrupo(g, catalogo)}
                     </div>
                     <div style={{ marginTop: 2, fontSize: 11, color: T.faint }}>
-                      {quien(e.actor)} · {cuando(e.creadoEn)}
+                      {quien(e.actor)} · {cuandoConHora(e.creadoEn)}
                     </div>
                   </div>
                 );

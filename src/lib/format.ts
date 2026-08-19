@@ -111,3 +111,26 @@ export function cuando(iso: string): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${hora}`;
 }
+
+/**
+ * Cuándo pasó algo, con la hora exacta siempre a la vista.
+ *
+ * `cuando()` sola dice «hace 2 h», que se lee de un vistazo pero no sirve para
+ * lo que hay que poder afirmar: a qué hora se generó un link, cuándo se movió
+ * un monto. Acá van las dos cosas mientras el dato es reciente, y sólo la
+ * fecha cuando ya pasó a ser historia, donde el relativo no aporta nada.
+ */
+export function cuandoConHora(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const p = (n: number) => String(n).padStart(2, "0");
+  const exacta = `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+
+  const relativo = cuando(iso);
+  // Pasadas unas horas `cuando()` ya devuelve la fecha; repetirla sería decir
+  // dos veces lo mismo.
+  return relativo.startsWith("hace") || relativo === "recién"
+    ? `${relativo} · ${exacta}`
+    : exacta;
+}
