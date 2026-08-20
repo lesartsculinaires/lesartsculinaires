@@ -344,6 +344,12 @@ export default function CrmApp({
               puedeElegirAsesor={veTodoElEquipo}
               vendedorId={state.pipeVend}
               onVendedor={actions.setPipeVend}
+              importaciones={importaciones}
+              filtros={state.pipeFiltros}
+              onFiltro={actions.setPipeFiltro}
+              onLimpiar={actions.limpiarPipeFiltros}
+              menu={state.menu}
+              onToggleMenu={actions.toggleMenu}
             />
           )}
 

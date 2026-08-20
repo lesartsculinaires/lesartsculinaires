@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 
+import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
+import { cuantosPuestos, definirFiltros, pasa } from "@/lib/filtros";
 import { leadCount, money } from "@/lib/format";
 import { T, soft } from "@/lib/theme";
 import { SIN_DUENO, activos } from "@/lib/types";
-import type { Oportunidad, OportunidadPatch } from "@/lib/types";
+import type { Importacion, Oportunidad, OportunidadPatch } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
+  /** Las bases subidas, para poder filtrar por la tanda que entró junta. */
+  importaciones: Importacion[];
   accent: string;
   drag: number | null;
   over: number | null;
@@ -32,10 +36,18 @@ interface Props {
   /** De quién es el tablero. Null = todo el equipo junto. */
   vendedorId: number | null;
   onVendedor: (id: number | null) => void;
+
+  /** Los filtros de la barra, propios del tablero. */
+  filtros: Record<string, number | null>;
+  onFiltro: (key: string, value: number | null) => void;
+  onLimpiar: () => void;
+  menu: string | null;
+  onToggleMenu: (key: string) => void;
 }
 
 export function Pipeline({
   oportunidades,
+  importaciones,
   accent,
   drag,
   over,
@@ -46,8 +58,14 @@ export function Pipeline({
   puedeElegirAsesor,
   vendedorId,
   onVendedor,
+  filtros,
+  onFiltro,
+  onLimpiar,
+  menu,
+  onToggleMenu,
 }: Props) {
-  const { etapas, vendedores } = useCatalogo();
+  const cat = useCatalogo();
+  const { etapas, vendedores } = cat;
 
   /**
    * Si la lista de personas está desplegada.
@@ -59,6 +77,26 @@ export function Pipeline({
   const [abierto, setAbierto] = useState(false);
 
   /**
+   * La barra de filtros, sin dos de los siete que tiene Clientes.
+   *
+   * **Etapa** no está porque las columnas del tablero YA son las etapas.
+   * Filtrar por una dejaría una columna con fichas y las otras cinco vacías:
+   * la misma información que ver esa columna, pero con el embudo roto.
+   *
+   * **Vendedor** tampoco, porque es el plegable de acá arriba, que además dice
+   * cuántas tiene cada quien. Dos controles para lo mismo terminan
+   * contradiciéndose y hay que adivinar cuál manda.
+   *
+   * Los otros cinco sí: son maneras de mirar el mismo embudo —el de un
+   * programa, el de una feria, el de un territorio— y ésa es justo la pregunta
+   * que el tablero contesta bien y una tabla no.
+   */
+  const defs = definirFiltros(cat, importaciones, ["etapa", "vendedor"]);
+  const puestos = cuantosPuestos(defs, filtros);
+
+  const filtradas = puestos === 0 ? oportunidades : oportunidades.filter((o) => pasa(o, defs, filtros));
+
+  /**
    * El tablero de una sola persona.
    *
    * `SIN_DUENO` pide lo contrario que un id: las que no son de nadie. Están
@@ -66,15 +104,23 @@ export function Pipeline({
    * aislarlas habría que buscarlas de a una entre las de todos.
    */
   const enTablero = !puedeElegirAsesor || vendedorId == null
-    ? oportunidades
-    : oportunidades.filter((o) =>
+    ? filtradas
+    : filtradas.filter((o) =>
         vendedorId === SIN_DUENO ? o.vendedorId == null : o.vendedorId === vendedorId,
       );
 
+  /**
+   * Cuántas tiene cada quien, contadas sobre lo filtrado.
+   *
+   * A propósito: con «Programa: Cocina Profesional» puesto, los números de la
+   * lista contestan quién tiene cuántas de ese programa, que es lo que se está
+   * mirando. Contarlas sobre todo daría un número que no se corresponde con
+   * ninguna pantalla.
+   */
   const cuantas = (id: number | null) =>
     id == null
-      ? oportunidades.length
-      : oportunidades.filter((o) =>
+      ? filtradas.length
+      : filtradas.filter((o) =>
           id === SIN_DUENO ? o.vendedorId == null : o.vendedorId === id,
         ).length;
 
@@ -103,44 +149,105 @@ export function Pipeline({
 
   return (
     <>
-      {puedeElegirAsesor && (
-        <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
           {/*
-            Plegado, la fila es una sola línea que dice de quién es el tablero.
+            Plegado, el elegir persona es una sola línea que dice de quién es
+            el tablero.
 
             Con cuatro o cinco asesores la fila entera cabía, pero crece con el
             equipo y empuja el embudo hacia abajo: en una laptop, las columnas
-            arrancaban ya cortadas. Y la fila se usa de a ratos —se elige a
-            alguien y después se trabaja un rato ahí— así que estar abierta
-            todo el tiempo cuesta espacio casi siempre para servir casi nunca.
+            arrancaban ya cortadas. Y se usa de a ratos —se elige a alguien y
+            después se trabaja un rato ahí— así que estar abierta todo el
+            tiempo cuesta espacio casi siempre para servir casi nunca.
           */}
-          <button
-            type="button"
-            onClick={() => setAbierto((v) => !v)}
-            aria-expanded={abierto}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              height: 32,
-              padding: "0 12px 0 11px",
-              fontSize: 12.5,
-              border: `1px solid ${abierto ? accent : T.border}`,
-              borderRadius: 7,
-              background: T.surface,
-              color: T.ink,
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ color: T.faint }}>Tablero de</span>
-            <strong style={{ fontWeight: 600 }}>{elegido.nombre}</strong>
-            <span className="mono" style={{ fontSize: 11, color: T.muted }}>
-              {vendedorId == null
-                ? oportunidades.length
-                : `${enTablero.length} de ${oportunidades.length}`}
-            </span>
-            <span style={{ color: T.faint, marginLeft: 1 }}>{abierto ? "▴" : "▾"}</span>
-          </button>
+          {puedeElegirAsesor && (
+            <button
+              type="button"
+              onClick={() => setAbierto((v) => !v)}
+              aria-expanded={abierto}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                height: 32,
+                padding: "0 11px",
+                fontSize: 12.5,
+                border: `1px solid ${abierto ? accent : T.border}`,
+                borderRadius: 7,
+                background: T.surface,
+                color: T.ink,
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ color: T.faint }}>Tablero de</span>
+              <strong style={{ fontWeight: 600 }}>{elegido.nombre}</strong>
+              <span className="mono" style={{ fontSize: 11, color: T.muted }}>
+                {cuantas(vendedorId)}
+              </span>
+              <span style={{ color: T.faint, marginLeft: 1 }}>{abierto ? "▴" : "▾"}</span>
+            </button>
+          )}
+
+          {/*
+            Los mismos filtros que Clientes, con el mismo componente y la misma
+            definición. Clasificar acá no es una función nueva: es la de
+            siempre, disponible donde también hace falta.
+          */}
+          {defs.map((f) => {
+            const clave = `pf:${f.key}`;
+            return (
+              <FilterMenu
+                key={clave}
+                menuKey={clave}
+                label={f.label}
+                options={[
+                  { label: "Todos", value: null },
+                  ...f.items.map((i) => ({ label: i.nombre, value: i.id })),
+                ]}
+                current={filtros[f.key] ?? null}
+                valueText={
+                  filtros[f.key] == null
+                    ? "Todos"
+                    : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
+                }
+                open={menu === clave}
+                accent={accent}
+                onToggle={() => onToggleMenu(clave)}
+                onPick={(v) => onFiltro(f.key, v as number | null)}
+              />
+            );
+          })}
+
+          {/*
+            El botón de limpiar y la cuenta aparecen sólo cuando hay algo
+            puesto. Un «Limpiar» permanente sobre una lista sin filtrar es un
+            botón que no hace nada, y la cuenta «639 de 639» tampoco dice nada.
+          */}
+          {(puestos > 0 || vendedorId != null) && (
+            <>
+              <button
+                type="button"
+                onClick={onLimpiar}
+                style={{
+                  height: 32,
+                  padding: "0 11px",
+                  fontSize: 12.5,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 7,
+                  background: T.surface,
+                  color: T.muted,
+                  cursor: "pointer",
+                }}
+              >
+                Limpiar
+              </button>
+              <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
+                {leadCount(enTablero.length)} de {oportunidades.length}
+              </span>
+            </>
+          )}
+        </div>
 
           {abierto && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9 }}>
@@ -186,8 +293,9 @@ export function Pipeline({
 
                       Es la mitad de para qué se abre esta fila: quién tiene
                       mucho y quién no tiene nada se ve sin apretar cada botón
-                      uno por uno. Se cuenta sobre todo lo que llegó, no sobre lo
-                      que se está mirando, así que no cambia al elegir.
+                      uno por uno. Sigue a los filtros de la barra pero no a la
+                      persona elegida, así que se puede comparar carteras sin
+                      que los números se muevan bajo el dedo.
                     */}
                     <span
                       className="mono"
@@ -208,8 +316,7 @@ export function Pipeline({
               })}
             </div>
           )}
-        </div>
-      )}
+      </div>
       <div
         style={{
           display: "grid",

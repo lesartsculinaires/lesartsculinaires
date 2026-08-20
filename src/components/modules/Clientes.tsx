@@ -13,8 +13,9 @@ import { actualizarVarias } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
+import { definirFiltros, pasa } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
-import type { CatalogItem, Importacion, Oportunidad } from "@/lib/types";
+import type { Importacion, Oportunidad } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -33,29 +34,6 @@ interface Props {
   /** Recarga los datos del servidor tras dar de alta un cliente. */
   onRefresh: () => void;
 }
-
-/**
- * Una base subida, como opción de filtro.
- *
- * El nombre del archivo es lo que la persona reconoce —«leads feria marzo.xlsx»—
- * y la fecha desempata cuando el mismo archivo se subió más de una vez, que
- * pasa al corregir una planilla y volver a cargarla.
- */
-const comoOpcion = (b: Importacion): CatalogItem => ({
-  id: b.id,
-  nombre: `${b.archivo || "Sin nombre"} · ${fechaCorta(b.creadoEn)}`,
-});
-
-/** Which `Oportunidad` id field each catalogue filter tests. */
-const CAMPO: Record<string, keyof Oportunidad> = {
-  base: "importacionId",
-  vendedor: "vendedorId",
-  producto: "productoId",
-  etapa: "etapaId",
-  estado: "estadoId",
-  canal: "canalId",
-  territorio: "territorioId",
-};
 
 export function Clientes({
   oportunidades,
@@ -105,32 +83,11 @@ export function Clientes({
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
-  const filtros_def: { key: string; label: string; items: CatalogItem[] }[] = [
-    // Filtrar por alguien dado de baja no lleva a ninguna parte: sus fichas
-    // ya no le pertenecen en el sentido de «a quién le toca».
-    { key: "vendedor", label: "Vendedor", items: soloActivos(cat.vendedores) },
-    { key: "etapa", label: "Etapa", items: cat.etapas },
-    { key: "estado", label: "Estado", items: cat.estados },
-    { key: "producto", label: "Programa", items: cat.productos },
-    { key: "canal", label: "Canal", items: cat.canales },
-    { key: "territorio", label: "Territorio", items: cat.territorios },
-    // Las bases van al final y sólo si hay alguna: en un CRM donde nunca se
-    // importó nada, un filtro vacío es una promesa que no se cumple.
-    ...(importaciones.length > 0
-      ? [{ key: "base", label: "Base", items: importaciones.map(comoOpcion) }]
-      : []),
-  ];
+  const filtros_def = definirFiltros(cat, importaciones);
 
   const filtradas = oportunidades.filter(
     (o) =>
-      filtros_def.every(({ key }) => {
-        const want = filtros[key];
-        if (want == null) return true;
-        // `SIN_DUENO` pide lo contrario que un id: las fichas con el campo
-        // vacío. Es a donde lleva el aviso de «sin vendedor asignado».
-        if (want === SIN_DUENO) return o[CAMPO[key]] == null;
-        return o[CAMPO[key]] === want;
-      }) &&
+      pasa(o, filtros_def, filtros) &&
       (!q ||
         [o.cliente, o.codigo, o.telefono ?? "", o.correo ?? ""]
           .join(" ")

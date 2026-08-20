@@ -38,6 +38,17 @@ export interface CrmState {
    * base no le manda esas fichas.
    */
   pipeVend: number | null;
+  /**
+   * Los filtros del tablero, aparte de los de Clientes.
+   *
+   * Separados a propósito. Compartirlos sonaba práctico —clasificar una vez y
+   * verlo en las dos pantallas— pero `verEnClientes`, que es como se llega
+   * desde Programas o desde un aviso, reemplaza los filtros enteros: entrar
+   * por ahí le borraría en silencio los del tablero a alguien que los había
+   * dejado puestos. Y un filtro que actúa en una pantalla donde no se lo ve es
+   * la mejor manera de que alguien crea que se le perdieron las fichas.
+   */
+  pipeFiltros: Record<string, number | null>;
   categoria: string;
 }
 
@@ -52,6 +63,7 @@ const INITIAL: CrmState = {
   over: null,
   vend: 0,
   pipeVend: null,
+  pipeFiltros: {},
   categoria: "Todos",
 };
 
@@ -168,6 +180,9 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
 
       setVend: (vend: number) => patchState({ vend }),
       setPipeVend: (pipeVend: number | null) => patchState({ pipeVend, menu: null }),
+      setPipeFiltro: (k: string, v: number | null) =>
+        patchState((s) => ({ pipeFiltros: { ...s.pipeFiltros, [k]: v }, menu: null })),
+      limpiarPipeFiltros: () => patchState({ pipeFiltros: {}, pipeVend: null, menu: null }),
       setCategoria: (categoria: string) => patchState({ categoria }),
 
       /** Jump to Clientes with a preset filter, from Programas or Equipos. */
