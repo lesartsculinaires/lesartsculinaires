@@ -259,6 +259,7 @@ export default function CrmApp({
           {mod === "Clientes" && (
             <Clientes
               oportunidades={oportunidades}
+              importaciones={importaciones}
               accent={accent}
               query={state.q}
               filtros={state.filtros}

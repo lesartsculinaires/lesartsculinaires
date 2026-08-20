@@ -13,10 +13,12 @@ import { actualizarVarias } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
-import type { CatalogItem, Oportunidad } from "@/lib/types";
+import type { CatalogItem, Importacion, Oportunidad } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
+  /** Las bases subidas, para poder filtrar por la tanda que entró junta. */
+  importaciones: Importacion[];
   accent: string;
   query: string;
   filtros: Record<string, number | null>;
@@ -31,8 +33,21 @@ interface Props {
   onRefresh: () => void;
 }
 
+/**
+ * Una base subida, como opción de filtro.
+ *
+ * El nombre del archivo es lo que la persona reconoce —«leads feria marzo.xlsx»—
+ * y la fecha desempata cuando el mismo archivo se subió más de una vez, que
+ * pasa al corregir una planilla y volver a cargarla.
+ */
+const comoOpcion = (b: Importacion): CatalogItem => ({
+  id: b.id,
+  nombre: `${b.archivo || "Sin nombre"} · ${fechaCorta(b.creadoEn)}`,
+});
+
 /** Which `Oportunidad` id field each catalogue filter tests. */
 const CAMPO: Record<string, keyof Oportunidad> = {
+  base: "importacionId",
   vendedor: "vendedorId",
   producto: "productoId",
   etapa: "etapaId",
@@ -43,6 +58,7 @@ const CAMPO: Record<string, keyof Oportunidad> = {
 
 export function Clientes({
   oportunidades,
+  importaciones,
   accent,
   query,
   filtros,
@@ -95,6 +111,11 @@ export function Clientes({
     { key: "producto", label: "Programa", items: cat.productos },
     { key: "canal", label: "Canal", items: cat.canales },
     { key: "territorio", label: "Territorio", items: cat.territorios },
+    // Las bases van al final y sólo si hay alguna: en un CRM donde nunca se
+    // importó nada, un filtro vacío es una promesa que no se cumple.
+    ...(importaciones.length > 0
+      ? [{ key: "base", label: "Base", items: importaciones.map(comoOpcion) }]
+      : []),
   ];
 
   const list = oportunidades.filter(
