@@ -9,6 +9,7 @@ import { T, softer } from "@/lib/theme";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
+import { NuevoChat } from "@/components/modules/NuevoChat";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { activosCon } from "@/lib/types";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
@@ -68,6 +69,25 @@ function horasDesdeEntrante(msgs: Mensaje[]): number | null {
 }
 
 /**
+ * ¿Se le puede escribir libremente a esta conversación?
+ *
+ * WhatsApp abre una ventana de 24 horas cada vez que la persona escribe. Hay
+ * dos formas de estar afuera y las dos importan:
+ *
+ *   escribió hace más de 24 horas   la ventana se cerró.
+ *   nunca escribió                  nunca se abrió. Es el caso de un chat que
+ *                                   abrimos nosotros desde «Nuevo chat».
+ *
+ * El segundo es el que se pasaba por alto: sin mensajes entrantes no hay horas
+ * que contar, y tratar eso como «ventana abierta» mostraría el cuadro de texto
+ * para que el mensaje falle recién en Meta, con un error que no explica nada.
+ */
+function ventanaAbierta(msgs: Mensaje[]): boolean {
+  const horas = horasDesdeEntrante(msgs);
+  return horas != null && horas < 24;
+}
+
+/**
  * Bandeja de WhatsApp.
  *
  * Dos columnas: los hilos a la izquierda, la conversación abierta a la
@@ -93,6 +113,7 @@ export function Inbox({
   const [soloSinAsignar, setSoloSinAsignar] = useState(false);
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
+  const [nuevoChat, setNuevoChat] = useState(false);
   const [nota, setNota] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -188,8 +209,9 @@ export function Inbox({
     return suyas.find((o) => o.fechaCierre == null) ?? suyas[0] ?? null;
   }, [oportunidades, actual]);
 
-  const horas = horasDesdeEntrante(delHilo);
-  const ventanaCerrada = horas != null && horas >= 24;
+  const ventanaCerrada = !ventanaAbierta(delHilo);
+  /** Nunca escribió: el aviso tiene que decir otra cosa. */
+  const nuncaEscribio = horasDesdeEntrante(delHilo) == null;
 
   const enviar = async () => {
     if (!actual || !texto.trim()) return;
@@ -296,7 +318,46 @@ export function Inbox({
           >
             Todas
           </button>
+
+          <span style={{ flex: 1 }} />
+
+          <button
+            type="button"
+            onClick={() => setNuevoChat(true)}
+            title="Escribirle a alguien que ya está en el CRM"
+            style={{
+              height: 24,
+              padding: "0 10px",
+              fontSize: 11.5,
+              fontWeight: 600,
+              borderRadius: 12,
+              background: accent,
+              color: "#fff",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + Nuevo chat
+          </button>
         </div>
+
+        {nuevoChat && (
+          <NuevoChat
+            oportunidades={oportunidades}
+            accent={accent}
+            onCerrar={() => setNuevoChat(false)}
+            onAbierta={(id) => {
+              setNuevoChat(false);
+              // Se sale de cualquier filtro: si el hilo estaba archivado o el
+              // filtro de etiqueta lo esconde, abrirlo y no verlo confundiría.
+              setVerArchivadas(false);
+              setVerTodas(true);
+              setSoloSinAsignar(false);
+              setPorEtiqueta(null);
+              setAbierta(id);
+              onRefrescar();
+            }}
+          />
+        )}
 
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
             de controles vacía en una bandeja recién estrenada es ruido. */}
@@ -626,8 +687,9 @@ export function Inbox({
                   borderTop: `1px solid ${T.border}`,
                 }}
               >
-                Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja
-                escribirle libremente hasta que vuelva a escribir.
+                {nuncaEscribio
+                  ? "Esta persona todavía no le escribió al WhatsApp de la escuela. Hasta que lo haga, WhatsApp sólo deja llegarle con una plantilla aprobada."
+                  : "Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja escribirle libremente hasta que vuelva a escribir."}
                 <MandarPlantilla
                   conversacionId={actual.id}
                   plantillas={plantillas}

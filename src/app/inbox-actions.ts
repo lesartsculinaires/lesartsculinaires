@@ -269,3 +269,95 @@ export async function urlsDeMedia(rutas: string[]): Promise<Record<string, strin
  * dando vueltas si alguien la copia de la barra del navegador.
  */
 const VIGENCIA_MEDIA_S = 60 * 60;
+
+/**
+ * Abre un chat con alguien que ya está en la base.
+ *
+ * Es «buscar o crear»: si ese número ya tiene conversación se devuelve la que
+ * hay, y si no se abre una. Nunca dos para la misma persona —eso partiría su
+ * historia en dos hilos y el asesor leería la mitad.
+ *
+ * NO manda ningún mensaje. Sólo deja el hilo abierto y listo. Lo que se pueda
+ * escribir ahí lo decide WhatsApp: si esa persona nunca escribió, la única
+ * salida es una plantilla aprobada, y la bandeja lo dice.
+ *
+ * El número llega ya armado desde la pantalla, no se saca acá del cliente: la
+ * conversión de «7100-2233» a internacional es una suposición, y quien abre el
+ * chat tiene que haberla visto antes de que se escriba a nadie.
+ */
+export async function abrirChat(
+  clienteId: number,
+  telefono: string,
+): Promise<{ ok: boolean; error: string | null; conversacionId?: number; yaExistia?: boolean }> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const numero = telefono.replace(/\D/g, "");
+  if (numero.length < 8 || numero.length > 15) {
+    return { ok: false, error: "El número tiene que tener entre 8 y 15 dígitos, con código de país." };
+  }
+
+  const { data: existente, error: errBuscar } = await supabase
+    .from("conversaciones")
+    .select("id")
+    .eq("telefono", numero)
+    .maybeSingle();
+
+  if (errBuscar) return { ok: false, error: errBuscar.message };
+
+  if (existente) {
+    // Si la conversación estaba archivada o suelta, se la trae de vuelta y se
+    // la vincula: abrir un chat con alguien es querer atenderlo ahora.
+    await supabase
+      .from("conversaciones")
+      .update({ archivada: false, cliente_id: clienteId })
+      .eq("id", Number(existente.id));
+
+    revalidatePath("/");
+    return { ok: true, error: null, conversacionId: Number(existente.id), yaExistia: true };
+  }
+
+  const { data: cliente } = await supabase
+    .from("clientes")
+    .select("nombre")
+    .eq("id", clienteId)
+    .maybeSingle();
+
+  const { data: creada, error } = await supabase
+    .from("conversaciones")
+    .insert({
+      telefono: numero,
+      // El nombre del CRM, no el del perfil de WhatsApp: todavía no lo sabemos
+      // porque esa persona nunca escribió. Cuando escriba, el webhook lo pisa.
+      nombre_perfil: cliente?.nombre ? String(cliente.nombre) : null,
+      cliente_id: clienteId,
+      ultimo_mensaje_en: new Date().toISOString(),
+      sin_leer: 0,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    // 23505: alguien lo abrió al mismo tiempo desde otra sesión.
+    if (error.code === "23505") {
+      const { data: ya } = await supabase
+        .from("conversaciones")
+        .select("id")
+        .eq("telefono", numero)
+        .maybeSingle();
+      if (ya) return { ok: true, error: null, conversacionId: Number(ya.id), yaExistia: true };
+    }
+    // 42501: falta la política que deja abrir chats desde el CRM. Sin esto el
+    // asesor leería el error crudo de Postgres, que no dice qué hacer.
+    if (error.code === "42501") {
+      return {
+        ok: false,
+        error: "Falta correr la migración 20260901120000_abrir_chat.sql en Supabase.",
+      };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null, conversacionId: Number(creada.id), yaExistia: false };
+}
