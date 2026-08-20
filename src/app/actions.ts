@@ -910,3 +910,85 @@ export async function unificarCliente(
 
   return { ok: false, error: ultimoError };
 }
+
+/**
+ * Cambia un mismo dato en varias oportunidades de una vez.
+ *
+ * Es para el trabajo que hoy se hace abriendo una ficha tras otra: repartir
+ * treinta leads entre asesores, mover a «Perdido» los que no contestaron,
+ * corregir el programa de una tanda que se importó mal.
+ *
+ * LO QUE SE PUEDE CAMBIAR, Y POR QUÉ NADA MÁS
+ *
+ * Sólo vendedor, etapa, programa y estado: son los cuatro que tienen sentido
+ * iguales para un grupo. El valor, la fecha de cierre o el descuento son de
+ * cada trato, y ponerlos en masa sería casi siempre un error caro y silencioso.
+ * La lista blanca está acá y no en la pantalla: una acción de servidor la puede
+ * llamar cualquiera con sesión, así que lo que no está permitido tiene que ser
+ * imposible, no sólo estar escondido.
+ *
+ * Se escribe en un solo `update ... in (...)`: es una sola transacción para la
+ * base, así que o quedan todas o no queda ninguna. Media tanda cambiada sería
+ * peor que ninguna, porque no habría forma de saber cuál mitad.
+ */
+export interface CambioEnLote {
+  vendedor_id?: number | null;
+  etapa_id?: number | null;
+  producto_id?: number | null;
+  estado_id?: number | null;
+}
+
+const CAMPOS_EN_LOTE = ["vendedor_id", "etapa_id", "producto_id", "estado_id"] as const;
+
+/** Cuántas se pueden tocar de una vez. */
+const TOPE_LOTE = 300;
+
+export async function actualizarVarias(
+  ids: number[],
+  cambio: CambioEnLote,
+): Promise<ActionResult & { cuantas?: number }> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const limpios = [...new Set(ids.filter((n) => Number.isFinite(n)))];
+  if (limpios.length === 0) return { ok: false, error: "No hay ninguna seleccionada." };
+  if (limpios.length > TOPE_LOTE) {
+    return { ok: false, error: `Son demasiadas de una vez: el tope es ${TOPE_LOTE}.` };
+  }
+
+  // Se copia campo por campo desde la lista blanca en vez de pasar el objeto
+  // entero: así una clave de más que llegue en la llamada no toca nada.
+  const patch: Record<string, number | null> = {};
+  for (const campo of CAMPOS_EN_LOTE) {
+    if (campo in cambio) patch[campo] = cambio[campo] ?? null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, error: "No se pidió ningún cambio." };
+  }
+
+  const { data, error } = await supabase
+    .from("oportunidades")
+    .update(patch)
+    .in("id", limpios)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+
+  const cuantas = (data ?? []).length;
+
+  // Menos de las pedidas quiere decir que a algunas no llegan los permisos de
+  // quien está trabajando. Decirlo es mejor que un «listo» que esconde que la
+  // mitad quedó igual.
+  if (cuantas < limpios.length) {
+    revalidatePath("/");
+    return {
+      ok: true,
+      error: `Se cambiaron ${cuantas} de ${limpios.length}. Al resto no llegan tus permisos.`,
+      cuantas,
+    };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null, cuantas };
+}

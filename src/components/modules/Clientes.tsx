@@ -9,6 +9,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
+import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { CatalogItem, Oportunidad } from "@/lib/types";
 
@@ -56,6 +57,14 @@ export function Clientes({
   const [alta, setAlta] = useState(false);
   const [importando, setImportando] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
+  /**
+   * Las fichas marcadas para cambiarles algo a todas juntas.
+   *
+   * Se guardan por id y no por posición porque la lista cambia sola: al
+   * filtrar, al buscar, o cuando llega un lead nuevo. Con posiciones, cambiar
+   * el filtro movería la selección a otras fichas sin que nadie lo pida.
+   */
+  const [marcadas, setMarcadas] = useState<number[]>([]);
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
@@ -88,6 +97,11 @@ export function Clientes({
   );
 
   const activos = filtros_def.filter((f) => filtros[f.key] != null).length;
+
+  // «Todas» quiere decir todas las que se están viendo, no todas las que hay:
+  // marcar una casilla no puede alcanzar fichas que quien la marca no vio.
+  const algunaMarcada = list.some((o) => marcadas.includes(o.id));
+  const todasMarcadas = list.length > 0 && list.every((o) => marcadas.includes(o.id));
 
   const resumen = [
     { label: "Oportunidades", value: String(list.length) },
@@ -125,6 +139,20 @@ export function Clientes({
 
   return (
     <div>
+      {/* La barra aparece sólo cuando hay algo marcado: una fila de controles
+          siempre presente para una acción que casi nunca se usa es ruido. */}
+      {marcadas.length > 0 && (
+        <AccionesEnLote
+          ids={marcadas}
+          accent={accent}
+          onListo={() => {
+            setMarcadas([]);
+            onRefresh();
+          }}
+          onLimpiar={() => setMarcadas([])}
+        />
+      )}
+
       <div
         style={{
           display: "grid",
@@ -279,6 +307,27 @@ export function Clientes({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
+                <th style={{ ...th, width: 30, paddingRight: 0 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Marcar todas las de esta lista"
+                    checked={todasMarcadas}
+                    ref={(el) => {
+                      // El estado intermedio importa: con 3 de 40 marcadas, una
+                      // casilla vacía haría creer que no hay nada elegido.
+                      if (el) el.indeterminate = algunaMarcada && !todasMarcadas;
+                    }}
+                    onChange={(e) => {
+                      const visibles = list.map((o) => o.id);
+                      setMarcadas((antes) =>
+                        e.target.checked
+                          ? [...new Set([...antes, ...visibles])]
+                          : antes.filter((id) => !visibles.includes(id)),
+                      );
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </th>
                 <th style={th}>Código</th>
                 <th style={th}>Fecha</th>
                 <th style={th}>Cliente</th>
@@ -305,6 +354,25 @@ export function Clientes({
                       background: selected === o.id ? T.paper : "transparent",
                     }}
                   >
+                    <td
+                      style={{ ...td, width: 30, paddingRight: 0 }}
+                      // El clic en la casilla no tiene que abrir la ficha: son
+                      // dos intenciones distintas sobre la misma fila.
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        aria-label={`Marcar ${o.cliente}`}
+                        checked={marcadas.includes(o.id)}
+                        onChange={(e) =>
+                          setMarcadas((antes) =>
+                            e.target.checked
+                              ? [...antes, o.id]
+                              : antes.filter((id) => id !== o.id),
+                          )
+                        }
+                      />
+                    </td>
                     <td className="mono" style={td}>{o.codigo}</td>
                     <td className="mono" style={td}>{fechaCorta(o.fechaRegistro)}</td>
                     <td style={{ ...td, padding: "9px 14px", color: T.ink }}>
