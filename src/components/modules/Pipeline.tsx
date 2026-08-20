@@ -121,12 +121,19 @@ export function Pipeline({
                   draggable
                   onClick={() => onOpen(o.id)}
                   onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = "move";
-                    try {
-                      e.dataTransfer.setData("text/plain", String(o.id));
-                    } catch {
-                      // Some browsers block setData outside a user gesture; the
-                      // drag id held in state covers that case.
+                    // `dataTransfer` está siempre en un arrastre de verdad,
+                    // pero no en un `dragstart` disparado por código —una
+                    // extensión, una prueba—, y ahí esto tiraba una excepción
+                    // que se llevaba puesta la pantalla entera.
+                    if (e.dataTransfer) {
+                      e.dataTransfer.effectAllowed = "move";
+                      try {
+                        e.dataTransfer.setData("text/plain", String(o.id));
+                      } catch {
+                        // Algunos navegadores no dejan `setData` fuera de un
+                        // gesto del usuario; el id que queda en el estado
+                        // cubre ese caso.
+                      }
                     }
                     onSetDrag(o.id);
                   }}

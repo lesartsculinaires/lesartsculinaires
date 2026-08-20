@@ -122,6 +122,16 @@ body {
   user-select: text;
 }
 
+/*
+ * Lo que el CRM hace arrastrable a propósito —las tarjetas del Pipeline— tiene
+ * que poder arrastrarse igual. En WebKit, `user-select: none` sobre el
+ * contenedor alcanza para que el navegador no inicie el arrastre, así que se
+ * lo pide explícitamente.
+ */
+.lac [draggable="true"] {
+  -webkit-user-drag: element;
+}
+
 /* Texto seleccionado con el mouse: sólo queda en los campos. */
 .lac ::selection {
   background: #ffce00;
