@@ -76,7 +76,17 @@ with revisiones as (
      'Abrir un chat desde el CRM',
      exists (select 1 from pg_policies
              where schemaname='public' and tablename='conversaciones'
-               and policyname='conversaciones_abrir'))
+               and policyname='conversaciones_abrir')),
+
+    ('20260902120000_cada_quien_lo_suyo',
+     'Cada asesor ve sus clientes; dirección y coordinación ven todo',
+     exists (select 1 from pg_policies
+             where schemaname='public' and tablename='oportunidades'
+               and policyname='oportunidades_ver')),
+
+    ('20260903120000_etapa_prospectos',
+     'Prospectos, la primera etapa del embudo',
+     exists (select 1 from public.etapas where nombre='Prospectos'))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -114,7 +124,11 @@ with revisiones as (
     ('plantillas',          to_regclass('public.plantillas') is not null),
     ('abrir_chat',          exists (select 1 from pg_policies
                                     where schemaname='public' and tablename='conversaciones'
-                                      and policyname='conversaciones_abrir'))
+                                      and policyname='conversaciones_abrir')),
+    ('cada_quien_lo_suyo',  exists (select 1 from pg_policies
+                                    where schemaname='public' and tablename='oportunidades'
+                                      and policyname='oportunidades_ver')),
+    ('etapa_prospectos',    exists (select 1 from public.etapas where nombre='Prospectos'))
   ) as t(nombre, aplicada)
 )
 select

@@ -37,7 +37,12 @@ export function Pipeline({
       style={{
         display: "grid",
         gridAutoFlow: "column",
-        gridAutoColumns: "minmax(200px, 1fr)",
+        // El mínimo baja de 200 a 164 desde que el embudo tiene seis etapas:
+        // con 200 el tablero se pasaba del ancho de una laptop de 1366 y había
+        // que desplazarlo de costado para ver el cierre, que es justo la
+        // columna que más se mira. El tablero sigue pudiendo desplazarse, pero
+        // ahora sólo en pantallas de verdad chicas.
+        gridAutoColumns: "minmax(164px, 1fr)",
         gap: 10,
         alignItems: "start",
         overflowX: "auto",

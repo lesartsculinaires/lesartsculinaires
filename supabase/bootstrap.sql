@@ -757,12 +757,18 @@ on conflict (id) do nothing;
 select setval(pg_get_serial_sequence('public.productos', 'id'), coalesce((select max(id) from public.productos), 1));
 
 -- etapas
+-- El orden arranca en Prospectos: lo que llega de una base, de una feria o de
+-- una campaña todavía no está contactado, y meterlo en «Primer contacto»
+-- infla esa columna y hace que el pipeline mienta sobre el trabajo hecho.
+-- Los ids quedan como estaban para no mover las fichas ya cargadas; el que
+-- manda en el embudo es `orden`, no el id.
 insert into public.etapas (id, nombre, orden) values
-  (1, 'Primer contacto', 1),
-  (2, 'Propuesta', 2),
-  (3, 'Negociación', 3),
-  (4, 'Pago', 4),
-  (5, 'Cierre', 5)
+  (6, 'Prospectos', 1),
+  (1, 'Primer contacto', 2),
+  (2, 'Propuesta', 3),
+  (3, 'Negociación', 4),
+  (4, 'Pago', 5),
+  (5, 'Cierre', 6)
 on conflict (id) do nothing;
 select setval(pg_get_serial_sequence('public.etapas', 'id'), coalesce((select max(id) from public.etapas), 1));
 
