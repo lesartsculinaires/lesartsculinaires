@@ -216,10 +216,9 @@ export function Clientes({
         <AccionesEnLote
           ids={marcadas}
           accent={accent}
-          onListo={() => {
-            setMarcadas([]);
-            onRefresh();
-          }}
+          // La selección se queda puesta: si el cambio fue un error, se
+          // corrige sobre las mismas fichas sin volver a marcarlas.
+          onListo={onRefresh}
           onLimpiar={() => setMarcadas([])}
         />
       )}
