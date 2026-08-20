@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
 import { T, soft } from "@/lib/theme";
@@ -48,6 +50,15 @@ export function Pipeline({
   const { etapas, vendedores } = useCatalogo();
 
   /**
+   * Si la lista de personas está desplegada.
+   *
+   * Es estado de esta pantalla y no del CRM: al volver a Pipeline se quiere el
+   * tablero, no la lista abierta esperando que la cierren. De quién es el
+   * tablero sí se recuerda, que es lo que importa conservar.
+   */
+  const [abierto, setAbierto] = useState(false);
+
+  /**
    * El tablero de una sola persona.
    *
    * `SIN_DUENO` pide lo contrario que un id: las que no son de nadie. Están
@@ -88,84 +99,114 @@ export function Pipeline({
     ...(cuantas(SIN_DUENO) > 0 ? [{ id: SIN_DUENO, nombre: "Sin asignar" }] : []),
   ];
 
+  const elegido = botones.find((b) => b.id === vendedorId) ?? botones[0];
+
   return (
     <>
       {puedeElegirAsesor && (
         <div style={{ marginBottom: 16 }}>
-          <p
-            className="mono"
+          {/*
+            Plegado, la fila es una sola línea que dice de quién es el tablero.
+
+            Con cuatro o cinco asesores la fila entera cabía, pero crece con el
+            equipo y empuja el embudo hacia abajo: en una laptop, las columnas
+            arrancaban ya cortadas. Y la fila se usa de a ratos —se elige a
+            alguien y después se trabaja un rato ahí— así que estar abierta
+            todo el tiempo cuesta espacio casi siempre para servir casi nunca.
+          */}
+          <button
+            type="button"
+            onClick={() => setAbierto((v) => !v)}
+            aria-expanded={abierto}
             style={{
-              margin: "0 0 7px",
-              fontSize: 10.5,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: T.faint,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              height: 32,
+              padding: "0 12px 0 11px",
+              fontSize: 12.5,
+              border: `1px solid ${abierto ? accent : T.border}`,
+              borderRadius: 7,
+              background: T.surface,
+              color: T.ink,
+              cursor: "pointer",
             }}
           >
-            Tablero de
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {botones.map((b) => {
-              const puesto = vendedorId === b.id;
-              const n = cuantas(b.id);
-              return (
-                <button
-                  key={b.id ?? "todos"}
-                  type="button"
-                  onClick={() => onVendedor(b.id)}
-                  aria-pressed={puesto}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    height: 32,
-                    padding: "0 12px",
-                    fontSize: 12.5,
-                    fontWeight: puesto ? 600 : 400,
-                    border: `1px solid ${puesto ? accent : T.border}`,
-                    borderRadius: 16,
-                    // El elegido va pintado entero y no con un tinte suave.
-                    // Son seis botones parejos y uno es «acá estoy»: con un
-                    // fondo al ocho por ciento hay que buscar cuál está
-                    // puesto, y entonces el botón deja de contestar la
-                    // pregunta que vino a contestar.
-                    background: puesto ? accent : T.surface,
-                    color: puesto ? "#fff" : T.ink,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {b.nombre}
-                  {/*
-                    El número al lado del nombre.
+            <span style={{ color: T.faint }}>Tablero de</span>
+            <strong style={{ fontWeight: 600 }}>{elegido.nombre}</strong>
+            <span className="mono" style={{ fontSize: 11, color: T.muted }}>
+              {vendedorId == null
+                ? oportunidades.length
+                : `${enTablero.length} de ${oportunidades.length}`}
+            </span>
+            <span style={{ color: T.faint, marginLeft: 1 }}>{abierto ? "▴" : "▾"}</span>
+          </button>
 
-                    Es la mitad de para qué se abre esta fila: quién tiene
-                    mucho y quién no tiene nada se ve sin apretar cada botón
-                    uno por uno. Se cuenta sobre todo lo que llegó, no sobre lo
-                    que se está mirando, así que no cambia al elegir.
-                  */}
-                  <span
-                    className="mono"
+          {abierto && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9 }}>
+              {botones.map((b) => {
+                const puesto = vendedorId === b.id;
+                const n = cuantas(b.id);
+                return (
+                  <button
+                    key={b.id ?? "todos"}
+                    type="button"
+                    onClick={() => {
+                      onVendedor(b.id);
+                      // Se pliega sola al elegir: lo que se venía a hacer ya
+                      // está hecho, y dejarla abierta tapando el embudo obliga a
+                      // un segundo clic que nadie pidió.
+                      setAbierto(false);
+                    }}
+                    aria-pressed={puesto}
                     style={{
-                      fontSize: 11,
-                      // En el elegido hereda el color en vez de traer el
-                      // suyo: así el amarillo del hover, que se fuerza sobre
-                      // el botón, también le llega al número. Con un color
-                      // propio quedaría blanco sobre amarillo.
-                      color: puesto ? "inherit" : n === 0 ? T.faint : T.muted,
-                      opacity: puesto ? 0.75 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      height: 32,
+                      padding: "0 12px",
+                      fontSize: 12.5,
+                      fontWeight: puesto ? 600 : 400,
+                      border: `1px solid ${puesto ? accent : T.border}`,
+                      borderRadius: 16,
+                      // El elegido va pintado entero y no con un tinte suave.
+                      // Son seis botones parejos y uno es «acá estoy»: con un
+                      // fondo al ocho por ciento hay que buscar cuál está
+                      // puesto, y entonces el botón deja de contestar la
+                      // pregunta que vino a contestar.
+                      background: puesto ? accent : T.surface,
+                      color: puesto ? "#fff" : T.ink,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    {n}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {vendedorId != null && (
-            <p className="mono" style={{ margin: "8px 0 0", fontSize: 11.5, color: T.faint }}>
-              {leadCount(enTablero.length)} de {oportunidades.length}
-            </p>
+                    {b.nombre}
+                    {/*
+                      El número al lado del nombre.
+
+                      Es la mitad de para qué se abre esta fila: quién tiene
+                      mucho y quién no tiene nada se ve sin apretar cada botón
+                      uno por uno. Se cuenta sobre todo lo que llegó, no sobre lo
+                      que se está mirando, así que no cambia al elegir.
+                    */}
+                    <span
+                      className="mono"
+                      style={{
+                        fontSize: 11,
+                        // En el elegido hereda el color en vez de traer el
+                        // suyo: así el amarillo del hover, que se fuerza sobre
+                        // el botón, también le llega al número. Con un color
+                        // propio quedaría blanco sobre amarillo.
+                        color: puesto ? "inherit" : n === 0 ? T.faint : T.muted,
+                        opacity: puesto ? 0.75 : 1,
+                      }}
+                    >
+                      {n}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
