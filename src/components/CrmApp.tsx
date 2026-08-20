@@ -141,9 +141,20 @@ export default function CrmApp({
    * suponer: `esAdmin` es false en ese caso por precaución, no porque se haya
    * comprobado que la persona no lo es.
    */
+  const rolActual = accesos.roles.find((r) => r.id === accesos.yo?.rolId);
   const rol =
-    accesos.roles.find((r) => r.id === accesos.yo?.rolId)?.nombre ??
+    rolActual?.nombre ??
     (faltaMigracionAccesos ? null : accesos.esAdmin ? "Administrador" : "Ventas");
+
+  /**
+   * Si esta persona ve las oportunidades de todo el equipo.
+   *
+   * Es lo mismo que hace cumplir la base: administrador, o un rol con el
+   * alcance puesto. Acá no decide quién ve qué —eso ya está resuelto antes de
+   * que los datos lleguen— sino si tiene sentido ofrecerle mirar el tablero de
+   * un asesor en particular. A quien sólo ve lo suyo, no.
+   */
+  const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
 
   return (
     <CatalogoProvider value={catalogo}>
@@ -330,6 +341,11 @@ export default function CrmApp({
               onSetOver={actions.setOver}
               onEditar={actions.editar}
               onOpen={(id) => actions.verEnClientes({}, id)}
+              puedeElegirAsesor={veTodoElEquipo}
+              vendedorId={state.pipeVend}
+              onVendedor={actions.setPipeVend}
+              menu={state.menu}
+              onToggleMenu={actions.toggleMenu}
             />
           )}
 

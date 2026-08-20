@@ -25,6 +25,19 @@ export interface CrmState {
   over: number | null;
 
   vend: number;
+  /**
+   * De quién es el tablero que se está mirando. Null = todo el equipo.
+   *
+   * Vive acá y no dentro del Pipeline para que no se pierda al ir a ver una
+   * ficha y volver: mirando el tablero de un asesor uno entra y sale de las
+   * fichas todo el tiempo, y volver siempre a «todo el equipo» obligaría a
+   * elegirlo de nuevo cada vez.
+   *
+   * Sólo lo usa quien ve las oportunidades de todos. A un asesor no se le
+   * ofrece: elegir a un compañero le mostraría un tablero vacío, porque la
+   * base no le manda esas fichas.
+   */
+  pipeVend: number | null;
   categoria: string;
 }
 
@@ -38,6 +51,7 @@ const INITIAL: CrmState = {
   drag: null,
   over: null,
   vend: 0,
+  pipeVend: null,
   categoria: "Todos",
 };
 
@@ -153,6 +167,7 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
       setOver: (over: number | null) => patchState({ over }),
 
       setVend: (vend: number) => patchState({ vend }),
+      setPipeVend: (pipeVend: number | null) => patchState({ pipeVend, menu: null }),
       setCategoria: (categoria: string) => patchState({ categoria }),
 
       /** Jump to Clientes with a preset filter, from Programas or Equipos. */

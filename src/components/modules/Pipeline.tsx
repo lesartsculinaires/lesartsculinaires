@@ -3,6 +3,8 @@
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
 import { T, soft } from "@/lib/theme";
+import { FilterMenu } from "@/components/ui/FilterMenu";
+import { SIN_DUENO, activos } from "@/lib/types";
 import type { Oportunidad, OportunidadPatch } from "@/lib/types";
 
 interface Props {
@@ -18,6 +20,19 @@ interface Props {
     display: Partial<Oportunidad>,
   ) => void;
   onOpen: (id: number) => void;
+
+  /**
+   * Quién ve las oportunidades de todo el equipo: dirección, o un rol con el
+   * alcance puesto. Sólo a esa gente se le ofrece elegir de quién es el
+   * tablero; para un asesor el selector sería una trampa, porque elegir a un
+   * compañero le mostraría un tablero vacío.
+   */
+  puedeElegirAsesor: boolean;
+  /** De quién es el tablero. Null = todo el equipo junto. */
+  vendedorId: number | null;
+  onVendedor: (id: number | null) => void;
+  menu: string | null;
+  onToggleMenu: (k: string) => void;
 }
 
 export function Pipeline({
@@ -29,13 +44,63 @@ export function Pipeline({
   onSetOver,
   onEditar,
   onOpen,
+  puedeElegirAsesor,
+  vendedorId,
+  onVendedor,
+  menu,
+  onToggleMenu,
 }: Props) {
-  const { etapas } = useCatalogo();
+  const { etapas, vendedores } = useCatalogo();
+
+  /**
+   * El tablero de una sola persona.
+   *
+   * `SIN_DUENO` pide lo contrario que un id: las que no son de nadie. Están
+   * ahí a propósito —el reparto se hace desde este tablero— y sin poder
+   * aislarlas habría que buscarlas de a una entre las de todos.
+   */
+  const enTablero = !puedeElegirAsesor || vendedorId == null
+    ? oportunidades
+    : oportunidades.filter((o) =>
+        vendedorId === SIN_DUENO ? o.vendedorId == null : o.vendedorId === vendedorId,
+      );
 
   return (
-    <div
-      style={{
-        display: "grid",
+    <>
+      {puedeElegirAsesor && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <FilterMenu
+            menuKey="pipe-vendedor"
+            label="Tablero de"
+            options={[
+              { label: "Todo el equipo", value: null },
+              // Los dados de baja quedan afuera: sus fichas ya no le tocan a
+              // nadie, y mirar su tablero no lleva a ninguna decisión.
+              ...activos(vendedores).map((v) => ({ label: v.nombre, value: v.id })),
+              { label: "Sin asignar", value: SIN_DUENO },
+            ]}
+            current={vendedorId}
+            valueText={
+              vendedorId == null
+                ? "Todo el equipo"
+                : vendedorId === SIN_DUENO
+                  ? "Sin asignar"
+                  : (vendedores.find((v) => v.id === vendedorId)?.nombre ?? "—")
+            }
+            open={menu === "pipe-vendedor"}
+            accent={accent}
+            onToggle={() => onToggleMenu("pipe-vendedor")}
+            onPick={(v) => onVendedor(v == null ? null : Number(v))}
+          />
+          <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
+            {leadCount(enTablero.length)}
+            {vendedorId != null && ` de ${oportunidades.length}`}
+          </span>
+        </div>
+      )}
+      <div
+        style={{
+          display: "grid",
         gridAutoFlow: "column",
         // El mínimo baja de 200 a 164 desde que el embudo tiene seis etapas:
         // con 200 el tablero se pasaba del ancho de una laptop de 1366 y había
@@ -50,7 +115,7 @@ export function Pipeline({
       }}
     >
       {etapas.map((etapa) => {
-        const enEtapa = oportunidades.filter((o) => o.etapaId === etapa.id);
+        const enEtapa = enTablero.filter((o) => o.etapaId === etapa.id);
         const isOver = over === etapa.id;
         // The last stage in the funnel is the close.
         const esCierre = etapa.orden === Math.max(...etapas.map((e) => e.orden));
@@ -192,6 +257,7 @@ export function Pipeline({
           </div>
         );
       })}
-    </div>
+      </div>
+    </>
   );
 }

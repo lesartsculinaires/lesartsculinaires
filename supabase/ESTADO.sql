@@ -86,7 +86,12 @@ with revisiones as (
 
     ('20260903120000_etapa_prospectos',
      'Prospectos, la primera etapa del embudo',
-     exists (select 1 from public.etapas where nombre='Prospectos'))
+     exists (select 1 from public.etapas where nombre='Prospectos')),
+
+    ('20260904120000_roles_de_ventas',
+     'Los roles de Gerente de ventas y Jefe de ventas',
+     (select count(*) from public.roles
+       where nombre in ('Gerente de ventas','Jefe de ventas')) = 2)
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -128,7 +133,9 @@ with revisiones as (
     ('cada_quien_lo_suyo',  exists (select 1 from pg_policies
                                     where schemaname='public' and tablename='oportunidades'
                                       and policyname='oportunidades_ver')),
-    ('etapa_prospectos',    exists (select 1 from public.etapas where nombre='Prospectos'))
+    ('etapa_prospectos',    exists (select 1 from public.etapas where nombre='Prospectos')),
+    ('roles_de_ventas',     (select count(*) from public.roles
+                              where nombre in ('Gerente de ventas','Jefe de ventas')) = 2)
   ) as t(nombre, aplicada)
 )
 select

@@ -876,6 +876,20 @@ export function UsuariosRoles({
                     Ve las oportunidades de todo el equipo
                     {r.esAdmin && " (por ser administrador)"}
                   </label>
+                  {/*
+                    Qué pasa si no está puesto.
+
+                    La casilla sola sólo dice una de las dos mitades, y la otra
+                    —que sin ella cada quien ve nada más lo suyo— es la que
+                    decide si un rol sirve para un asesor o para un jefe. Sin
+                    decirla, la única forma de averiguarlo es asignarle el rol
+                    a alguien y preguntarle qué ve.
+                  */}
+                  <p style={{ margin: "3px 0 0 21px", fontSize: 11, color: T.faint, lineHeight: 1.45 }}>
+                    {r.esAdmin || r.veTodo
+                      ? "Además puede mirar el tablero de cada asesor por separado en el Pipeline."
+                      : "Sin esto, cada quien ve sólo los clientes que tiene asignados, más los que no son de nadie."}
+                  </p>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span className="pill"
