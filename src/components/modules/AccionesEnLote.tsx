@@ -1,58 +1,46 @@
 "use client";
 
-import { useState } from "react";
-
-import { actualizarVarias, type CambioEnLote } from "@/app/actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T } from "@/lib/theme";
 import { activos } from "@/lib/types";
 
+/** Los cuatro campos que se pueden cambiar de a varios. */
+export type CampoEnLote = "vendedor_id" | "etapa_id" | "producto_id" | "estado_id";
+
 /**
- * Cambiar un dato en varias fichas de una vez.
+ * La barra que resume la selección y deja cambiar los cuatro campos.
  *
- * Es para el trabajo que hoy se hace abriendo una ficha tras otra: repartir
- * treinta leads entre asesores, mover a «Perdido» los que no contestaron,
- * corregir el programa de una tanda importada mal.
+ * Convive con los desplegables que aparecen en las propias celdas y no los
+ * reemplaza: la celda sirve cuando se está mirando una fila concreta, y la
+ * barra cuando la selección es larga o se quiere cambiar algo sin buscar una
+ * fila. Las dos llaman al mismo aplicador, que vive en la tabla: dos copias
+ * terminarían discrepando el día que a una se le agregue una comprobación y a
+ * la otra no.
  *
- * LOS CUATRO A LA VISTA, NO ESCONDIDOS DETRÁS DE UN PASO
- *
- * Antes había que elegir primero qué campo y después el valor. Eran dos clics
- * para llegar a ver los nombres de los vendedores, y el primero no decidía
- * nada: sólo abría el segundo. Ahora los cuatro desplegables están puestos, así
- * que se ve de una qué se puede cambiar y a qué, sin abrir la ficha de nadie.
- *
- * ELEGIR APLICA
- *
- * Antes elegir sólo preparaba el cambio y hacía falta confirmar en un botón
- * aparte. Era un paso de más y, peor, engañaba: al elegir del desplegable
- * parecía que ya estaba hecho, así que quien no veía el botón se iba creyendo
- * que había asignado y no había pasado nada.
- *
- * Ahora elegir escribe. Es recuperable —volver a elegir otro valor sobre la
- * misma selección lo corrige— y el resultado se dice con todas las letras:
- * cuántas fichas cambiaron y a qué. Lo que no se puede es adivinar cuál era el
- * valor anterior de cada una, así que la selección queda puesta después de
- * aplicar: si fue un error, se corrige sobre las mismas sin volver a marcarlas.
+ * No guarda estado propio a propósito. Lo que se está escribiendo y el
+ * resultado los sabe la tabla, porque también los muestran las celdas; tenerlo
+ * en dos lados haría que una diga «Cambiando…» y la otra no.
  */
 export function AccionesEnLote({
   ids,
   accent,
-  onListo,
+  cambiando,
+  aviso,
+  onAplicar,
   onLimpiar,
 }: {
   ids: number[];
   accent: string;
-  /** Para recargar cuando el cambio ya está hecho. */
-  onListo: () => void;
+  /** Qué campo se está escribiendo ahora, o null. */
+  cambiando: string | null;
+  aviso: { texto: string; malo: boolean } | null;
+  onAplicar: (campo: CampoEnLote, valorId: number, etiqueta: string, nombre: string) => void;
   onLimpiar: () => void;
 }) {
   const cat = useCatalogo();
-  /** Qué campo se está escribiendo ahora mismo, para apagar sólo ése. */
-  const [aplicando, setAplicando] = useState<keyof CambioEnLote | null>(null);
-  const [aviso, setAviso] = useState<{ texto: string; malo: boolean } | null>(null);
 
   const campos: {
-    campo: keyof CambioEnLote;
+    campo: CampoEnLote;
     etiqueta: string;
     items: readonly { id: number; nombre: string }[];
   }[] = [
@@ -62,36 +50,6 @@ export function AccionesEnLote({
     { campo: "estado_id", etiqueta: "Cambiar estado", items: cat.estados },
   ];
 
-  const aplicar = async (campo: keyof CambioEnLote, valorId: number, etiqueta: string) => {
-    const nombre =
-      campos.find((c) => c.campo === campo)?.items.find((i) => i.id === valorId)?.nombre ?? "";
-
-    setAplicando(campo);
-    setAviso(null);
-
-    const r = await actualizarVarias(ids, { [campo]: valorId });
-    setAplicando(null);
-
-    if (!r.ok) {
-      setAviso({ texto: r.error ?? "No se pudo cambiar.", malo: true });
-      return;
-    }
-
-    // `error` con `ok` en verdadero es el caso a medias: cambiaron algunas.
-    if (r.error) {
-      setAviso({ texto: r.error, malo: true });
-    } else {
-      setAviso({
-        texto: `${etiqueta}: ${r.cuantas} ${r.cuantas === 1 ? "ficha" : "fichas"} a «${nombre}».`,
-        malo: false,
-      });
-    }
-
-    // La selección NO se limpia: si el cambio fue un error, se corrige sobre
-    // las mismas fichas sin tener que volver a marcarlas una por una.
-    onListo();
-  };
-
   return (
     <div
       style={{
@@ -100,6 +58,9 @@ export function AccionesEnLote({
         borderRadius: 9,
         background: T.paper,
         border: `1px solid ${accent}`,
+        // Opaca y con sombra a propósito: va pegada arriba y las filas pasan
+        // por debajo al desplazar.
+        boxShadow: "0 6px 16px rgba(3, 27, 79, 0.10)",
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
@@ -110,19 +71,20 @@ export function AccionesEnLote({
         {campos.map(({ campo, etiqueta, items }) => (
           <label key={campo} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>
-              {aplicando === campo ? "Cambiando…" : etiqueta}
+              {cambiando === campo ? "Cambiando…" : etiqueta}
             </span>
             <select
               // Vuelve a «—» después de aplicar: el desplegable no muestra en
               // qué están las fichas —cada una puede estar en algo distinto—
               // sino qué se les va a poner, y eso ya pasó.
               value=""
-              disabled={aplicando != null}
+              disabled={cambiando != null}
               onChange={(e) => {
                 if (!e.target.value) return;
-                void aplicar(campo, Number(e.target.value), etiqueta);
+                const id = Number(e.target.value);
+                onAplicar(campo, id, etiqueta, items.find((i) => i.id === id)?.nombre ?? "");
               }}
-              style={{ ...SELECT, cursor: aplicando ? "wait" : "pointer" }}
+              style={{ ...SELECT, cursor: cambiando ? "wait" : "pointer" }}
             >
               <option value="">—</option>
               {items.map((i) => (

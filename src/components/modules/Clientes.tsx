@@ -9,7 +9,9 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
+import { actualizarVarias } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
+import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { CatalogItem, Oportunidad } from "@/lib/types";
 
@@ -171,6 +173,40 @@ export function Clientes({
     }
   };
 
+  /**
+   * El cambio en masa, en un solo lugar.
+   *
+   * Lo llaman la barra de arriba y las celdas de cada fila marcada. Tiene que
+   * ser el mismo camino: dos copias de esto terminarían discrepando el día que
+   * a una se le agregue una comprobación y a la otra no.
+   */
+  const [cambiando, setCambiando] = useState<string | null>(null);
+  const [avisoLote, setAvisoLote] = useState<{ texto: string; malo: boolean } | null>(null);
+
+  const aplicarALasMarcadas = async (
+    campo: "vendedor_id" | "etapa_id" | "producto_id" | "estado_id",
+    valorId: number,
+    etiqueta: string,
+    nombre: string,
+  ) => {
+    setCambiando(campo);
+    setAvisoLote(null);
+
+    const r = await actualizarVarias(marcadas, { [campo]: valorId });
+    setCambiando(null);
+
+    if (!r.ok || r.error) {
+      setAvisoLote({ texto: r.error ?? "No se pudo cambiar.", malo: true });
+      if (!r.ok) return;
+    } else {
+      setAvisoLote({
+        texto: `${etiqueta}: ${r.cuantas} ${r.cuantas === 1 ? "ficha" : "fichas"} a «${nombre}».`,
+        malo: false,
+      });
+    }
+    onRefresh();
+  };
+
   const algunaMarcada = list.some((o) => marcadas.includes(o.id));
   const todasMarcadas = list.length > 0 && list.every((o) => marcadas.includes(o.id));
 
@@ -212,15 +248,28 @@ export function Clientes({
     <div>
       {/* La barra aparece sólo cuando hay algo marcado: una fila de controles
           siempre presente para una acción que casi nunca se usa es ruido. */}
+      {/*
+        Pegada arriba, y esto no es cosmético.
+        
+        Con seiscientas fichas se marca a mitad de la lista. Una barra en el
+        principio del módulo queda fuera de pantalla justo cuando hace falta:
+        se elige un vendedor, no se ve ninguna confirmación, y la conclusión
+        razonable es que la función no anda.
+      */}
       {marcadas.length > 0 && (
-        <AccionesEnLote
-          ids={marcadas}
-          accent={accent}
-          // La selección se queda puesta: si el cambio fue un error, se
-          // corrige sobre las mismas fichas sin volver a marcarlas.
-          onListo={onRefresh}
-          onLimpiar={() => setMarcadas([])}
-        />
+        <div style={{ position: "sticky", top: 0, zIndex: 20 }}>
+          <AccionesEnLote
+            ids={marcadas}
+            accent={accent}
+            cambiando={cambiando}
+            aviso={avisoLote}
+            onAplicar={aplicarALasMarcadas}
+            onLimpiar={() => {
+              setMarcadas([]);
+              setAvisoLote(null);
+            }}
+          />
+        </div>
       )}
 
       <div
@@ -503,35 +552,111 @@ export function Clientes({
                         {o.correo ?? o.telefono ?? "—"}
                       </span>
                     </td>
-                    <td style={td}>{o.producto}</td>
-                    <td style={td}>{o.vendedor}</td>
-                    <td style={{ ...td, padding: "9px 14px" }}>
-                      <span className="pill"
-                        style={{
-                          display: "inline-block",
-                          fontSize: 12,
-                          padding: "3px 10px",
-                          borderRadius: 20,
-                          background: soft,
-                          color: accent,
-                        }}
-                      >
-                        {o.etapa}
-                      </span>
+                    <td style={td}>
+                      {marcadas.includes(o.id) ? (
+                        <CeldaEnLote
+                          valorActual={o.producto}
+                          items={cat.productos}
+                          cuantas={marcadas.length}
+                          campo="el programa"
+                          ocupado={cambiando === "producto_id"}
+                          onElegir={(id) =>
+                            void aplicarALasMarcadas(
+                              "producto_id",
+                              id,
+                              "Cambiar programa",
+                              cat.productos.find((x) => x.id === id)?.nombre ?? "",
+                            )
+                          }
+                        />
+                      ) : (
+                        o.producto
+                      )}
+                    </td>
+                    <td style={td}>
+                      {marcadas.includes(o.id) ? (
+                        <CeldaEnLote
+                          valorActual={o.vendedor}
+                          items={soloActivos(cat.vendedores)}
+                          cuantas={marcadas.length}
+                          campo="el vendedor"
+                          ocupado={cambiando === "vendedor_id"}
+                          onElegir={(id) =>
+                            void aplicarALasMarcadas(
+                              "vendedor_id",
+                              id,
+                              "Asignar vendedor",
+                              cat.vendedores.find((x) => x.id === id)?.nombre ?? "",
+                            )
+                          }
+                        />
+                      ) : (
+                        o.vendedor
+                      )}
                     </td>
                     <td style={{ ...td, padding: "9px 14px" }}>
-                      <span className="pill"
-                        style={{
-                          display: "inline-block",
-                          fontSize: 12,
-                          padding: "3px 10px",
-                          borderRadius: 20,
-                          background: bg,
-                          color: fg,
-                        }}
-                      >
-                        {o.estado}
-                      </span>
+                      {marcadas.includes(o.id) ? (
+                        <CeldaEnLote
+                          valorActual={o.etapa}
+                          items={cat.etapas}
+                          cuantas={marcadas.length}
+                          campo="la etapa"
+                          ocupado={cambiando === "etapa_id"}
+                          onElegir={(id) =>
+                            void aplicarALasMarcadas(
+                              "etapa_id",
+                              id,
+                              "Cambiar etapa",
+                              cat.etapas.find((x) => x.id === id)?.nombre ?? "",
+                            )
+                          }
+                        />
+                      ) : (
+                        <span className="pill"
+                          style={{
+                            display: "inline-block",
+                            fontSize: 12,
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            background: soft,
+                            color: accent,
+                          }}
+                        >
+                          {o.etapa}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ ...td, padding: "9px 14px" }}>
+                      {marcadas.includes(o.id) ? (
+                        <CeldaEnLote
+                          valorActual={o.estado}
+                          items={cat.estados}
+                          cuantas={marcadas.length}
+                          campo="el estado"
+                          ocupado={cambiando === "estado_id"}
+                          onElegir={(id) =>
+                            void aplicarALasMarcadas(
+                              "estado_id",
+                              id,
+                              "Cambiar estado",
+                              cat.estados.find((x) => x.id === id)?.nombre ?? "",
+                            )
+                          }
+                        />
+                      ) : (
+                        <span className="pill"
+                          style={{
+                            display: "inline-block",
+                            fontSize: 12,
+                            padding: "3px 10px",
+                            borderRadius: 20,
+                            background: bg,
+                            color: fg,
+                          }}
+                        >
+                          {o.estado}
+                        </span>
+                      )}
                     </td>
                     <td className="mono" style={{ ...td, textAlign: "right" }}>
                       {money(o.valor)}
