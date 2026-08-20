@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 
-import { abrirChat } from "@/app/inbox-actions";
+import { abrirChat, altaYChat } from "@/app/inbox-actions";
 import { T } from "@/lib/theme";
+import { useCatalogo } from "@/lib/catalog";
+import { activos } from "@/lib/types";
 import { aInternacional, bonito } from "@/lib/whatsapp/numero";
 import type { Oportunidad } from "@/lib/types";
 
@@ -34,11 +36,19 @@ export function NuevoChat({
   /** Recibe la conversación lista, para que la bandeja la muestre abierta. */
   onAbierta: (conversacionId: number) => void;
 }) {
+  const cat = useCatalogo();
   const [busqueda, setBusqueda] = useState("");
   const [elegido, setElegido] = useState<Oportunidad | null>(null);
   const [numero, setNumero] = useState("");
   const [abriendo, setAbriendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Alta de alguien que no está en la base. */
+  const [dandoAlta, setDandoAlta] = useState(false);
+  const [nombreNuevo, setNombreNuevo] = useState("");
+  const [correoNuevo, setCorreoNuevo] = useState("");
+  const [vendedorNuevo, setVendedorNuevo] = useState<number | "">("");
+  const [parecidos, setParecidos] = useState<string[] | null>(null);
 
   /**
    * Un contacto por persona, no una fila por oportunidad.
@@ -91,6 +101,42 @@ export function NuevoChat({
   };
 
   const listo = numero.replace(/\D/g, "").length >= 8;
+
+  /**
+   * Dar de alta y abrir el chat, en un paso.
+   *
+   * Crea la persona Y su oportunidad, no sólo la ficha: el CRM lista
+   * oportunidades, así que un cliente suelto no aparecería en Clientes ni en el
+   * pipeline y existiría nada más que en la bandeja.
+   */
+  const darAlta = async (forzar: boolean) => {
+    setAbriendo(true);
+    setError(null);
+
+    const r = await altaYChat(
+      {
+        nombre: nombreNuevo,
+        telefono: numero,
+        correo: correoNuevo.trim() || null,
+        vendedorId: vendedorNuevo === "" ? null : Number(vendedorNuevo),
+      },
+      forzar,
+    );
+
+    setAbriendo(false);
+
+    if (r.coincidencias?.length) {
+      setParecidos(r.coincidencias.map((c) => c.nombre));
+      return;
+    }
+    if (!r.ok || r.conversacionId == null) {
+      setError(r.error ?? "No se pudo abrir el chat.");
+      return;
+    }
+    onAbierta(r.conversacionId);
+  };
+
+  const listoParaAlta = nombreNuevo.trim() !== "" && listo;
 
   return (
     <div
@@ -153,17 +199,45 @@ export function NuevoChat({
           }}
         />
 
-        {!elegido && (
+        {!elegido && !dandoAlta && (
           <div style={{ flex: 1, overflowY: "auto", marginTop: 10, minHeight: 60 }}>
             {busqueda.trim() === "" ? (
               <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
                 Escribí algo para buscar.
               </p>
             ) : resultados.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
-                Nadie con ese nombre ni ese número. Si es alguien nuevo, primero hay que
-                darlo de alta en Clientes.
-              </p>
+              <div>
+                <p style={{ margin: "0 0 8px", fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
+                  Nadie con ese nombre ni ese número en el CRM.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Lo que se escribió se aprovecha: si son dígitos era el
+                    // número, y si no, el nombre. Volver a tipearlo sería
+                    // trabajo que la pantalla ya vio.
+                    const digitos = busqueda.replace(/\D/g, "");
+                    const parece = digitos.length >= 8 && digitos.length >= busqueda.trim().length - 3;
+                    setNombreNuevo(parece ? "" : busqueda.trim());
+                    setNumero(parece ? (aInternacional(busqueda).numero ?? "") : "");
+                    setDandoAlta(true);
+                    setError(null);
+                    setParecidos(null);
+                  }}
+                  style={{
+                    height: 30,
+                    padding: "0 12px",
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    borderRadius: 7,
+                    border: `1px solid ${accent}`,
+                    color: accent,
+                    background: "transparent",
+                  }}
+                >
+                  + Ingresar un número nuevo
+                </button>
+              </div>
             ) : (
               resultados.map((o) => (
                 <button
@@ -190,7 +264,7 @@ export function NuevoChat({
           </div>
         )}
 
-        {elegido && (
+        {elegido && !dandoAlta && (
           <div style={{ marginTop: 12 }}>
             <p style={{ margin: "0 0 9px", fontSize: 13, color: T.ink }}>
               <strong>{elegido.cliente}</strong>{" "}
@@ -260,6 +334,103 @@ export function NuevoChat({
           </div>
         )}
 
+        {dandoAlta && (
+          <div style={{ marginTop: 12, overflowY: "auto" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
+              Se da de alta el contacto <strong>y su oportunidad</strong>, para que
+              aparezca en Clientes y en el pipeline y no sólo acá. Después se le abre
+              el chat.
+            </p>
+
+            <label style={{ display: "block", marginBottom: 9 }}>
+              <span style={ETIQUETA}>Nombre y apellido</span>
+              <input
+                value={nombreNuevo}
+                onChange={(e) => {
+                  setNombreNuevo(e.target.value);
+                  setParecidos(null);
+                  setError(null);
+                }}
+                placeholder="Marta Rivas"
+                autoFocus
+                style={CAMPO}
+              />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 9 }}>
+              <span style={ETIQUETA}>Número de WhatsApp</span>
+              <input
+                value={numero}
+                onChange={(e) => {
+                  setNumero(e.target.value);
+                  setParecidos(null);
+                  setError(null);
+                }}
+                inputMode="numeric"
+                placeholder="Escribilo con código de país"
+                className="mono"
+                style={{ ...CAMPO, borderColor: listo ? T.border : T.warn }}
+              />
+              <span style={{ fontSize: 10.5, color: T.faint, lineHeight: 1.4 }}>
+                Con código de país: 503 y los ocho dígitos.
+              </span>
+            </label>
+
+            <label style={{ display: "block", marginBottom: 9 }}>
+              <span style={ETIQUETA}>Correo</span>
+              <input
+                value={correoNuevo}
+                onChange={(e) => setCorreoNuevo(e.target.value)}
+                type="email"
+                placeholder="opcional"
+                style={CAMPO}
+              />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 4 }}>
+              <span style={ETIQUETA}>A quién le toca</span>
+              <select
+                value={vendedorNuevo}
+                onChange={(e) => setVendedorNuevo(e.target.value === "" ? "" : Number(e.target.value))}
+                style={CAMPO}
+              >
+                <option value="">Sin asignar</option>
+                {activos(cat.vendedores).map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre}</option>
+                ))}
+              </select>
+            </label>
+
+            {/* Alguien parecido ya en la base. Es el caso que importa: un
+                número nuevo que en realidad ya es de un contacto cargado con
+                otro nombre, que si se fuerza queda como dos personas. */}
+            {parecidos && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 11px",
+                  borderRadius: 8,
+                  border: `1px solid ${T.warn}`,
+                  background: T.paper,
+                }}
+              >
+                <p style={{ margin: "0 0 5px", fontSize: 12.5, color: T.ink, lineHeight: 1.5 }}>
+                  Ya hay {parecidos.length === 1 ? "alguien" : "gente"} con estos datos:
+                </p>
+                <ul style={{ margin: "0 0 6px", paddingLeft: 18, fontSize: 12.5, color: T.ink }}>
+                  {parecidos.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+                <p style={{ margin: 0, fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
+                  Si es la misma persona, cerrá y buscala por su nombre: darla de alta
+                  otra vez la parte en dos fichas.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <p style={{ margin: "10px 0 0", fontSize: 12, color: T.warn, lineHeight: 1.45 }}>
             {error}
@@ -269,7 +440,7 @@ export function NuevoChat({
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 14 }}>
           <button
             type="button"
-            onClick={onCerrar}
+            onClick={() => (dandoAlta ? setDandoAlta(false) : onCerrar())}
             disabled={abriendo}
             style={{
               height: 36,
@@ -281,27 +452,71 @@ export function NuevoChat({
               color: T.ink,
             }}
           >
-            Cancelar
+            {dandoAlta ? "Volver" : "Cancelar"}
           </button>
-          <button
-            type="button"
-            onClick={() => void abrir()}
-            disabled={abriendo || !elegido || !listo}
-            style={{
-              height: 36,
-              padding: "0 18px",
-              fontSize: 13,
-              fontWeight: 600,
-              borderRadius: 7,
-              background: elegido && listo ? accent : T.border,
-              color: elegido && listo ? "#fff" : T.faint,
-              cursor: abriendo ? "wait" : elegido && listo ? "pointer" : "not-allowed",
-            }}
-          >
-            {abriendo ? "Abriendo…" : "Abrir chat"}
-          </button>
+          {dandoAlta ? (
+            <button
+              type="button"
+              onClick={() => void darAlta(parecidos != null)}
+              disabled={abriendo || !listoParaAlta}
+              style={{
+                height: 36,
+                padding: "0 18px",
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 7,
+                background: listoParaAlta ? accent : T.border,
+                color: listoParaAlta ? "#fff" : T.faint,
+                cursor: abriendo ? "wait" : listoParaAlta ? "pointer" : "not-allowed",
+              }}
+            >
+              {abriendo
+                ? "Dando de alta…"
+                : parecidos
+                  ? "Darlo de alta igual"
+                  : "Dar de alta y abrir chat"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void abrir()}
+              disabled={abriendo || !elegido || !listo}
+              style={{
+                height: 36,
+                padding: "0 18px",
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 7,
+                background: elegido && listo ? accent : T.border,
+                color: elegido && listo ? "#fff" : T.faint,
+                cursor: abriendo ? "wait" : elegido && listo ? "pointer" : "not-allowed",
+              }}
+            >
+              {abriendo ? "Abriendo…" : "Abrir chat"}
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+const CAMPO: React.CSSProperties = {
+  width: "100%",
+  height: 32,
+  padding: "0 9px",
+  fontSize: 13,
+  border: `1px solid ${T.border}`,
+  borderRadius: 7,
+  background: T.surface,
+  color: T.ink,
+};
+
+const ETIQUETA: React.CSSProperties = {
+  display: "block",
+  marginBottom: 3,
+  fontSize: 10.5,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: T.faint,
+};

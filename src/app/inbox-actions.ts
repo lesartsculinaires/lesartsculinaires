@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { altaLead } from "@/lib/crm/altaLead";
+import type { Coincidencia } from "@/lib/duplicados";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarTexto, hayWhatsapp } from "@/lib/whatsapp/enviar";
 import type { ActionResult } from "@/app/actions";
@@ -288,10 +290,37 @@ const VIGENCIA_MEDIA_S = 60 * 60;
 export async function abrirChat(
   clienteId: number,
   telefono: string,
-): Promise<{ ok: boolean; error: string | null; conversacionId?: number; yaExistia?: boolean }> {
+): Promise<ResultadoChat> {
   const supabase = await getServerClient();
   if (!supabase) return SIN_SESION;
 
+  const r = await hiloPara(supabase, clienteId, telefono);
+  if (r.ok) revalidatePath("/");
+  return r;
+}
+
+export interface ResultadoChat {
+  ok: boolean;
+  error: string | null;
+  conversacionId?: number;
+  yaExistia?: boolean;
+  /** Contactos que ya tienen ese número o ese nombre, cuando frenan el alta. */
+  coincidencias?: Coincidencia[];
+}
+
+/**
+ * Busca el hilo de ese número o lo abre.
+ *
+ * Está aparte porque lo usan las dos puertas: abrirle el chat a alguien que ya
+ * está en la base, y darlo de alta y abrírselo de una. Si cada una lo hiciera
+ * por su cuenta, una de las dos terminaría creando el segundo hilo de una
+ * persona el día que alguien tocara sólo una.
+ */
+async function hiloPara(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  clienteId: number,
+  telefono: string,
+): Promise<ResultadoChat> {
   const numero = telefono.replace(/\D/g, "");
   if (numero.length < 8 || numero.length > 15) {
     return { ok: false, error: "El número tiene que tener entre 8 y 15 dígitos, con código de país." };
@@ -313,7 +342,6 @@ export async function abrirChat(
       .update({ archivada: false, cliente_id: clienteId })
       .eq("id", Number(existente.id));
 
-    revalidatePath("/");
     return { ok: true, error: null, conversacionId: Number(existente.id), yaExistia: true };
   }
 
@@ -358,6 +386,110 @@ export async function abrirChat(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/");
   return { ok: true, error: null, conversacionId: Number(creada.id), yaExistia: false };
+}
+
+/**
+ * Da de alta a alguien que no está en la base y le abre el chat.
+ *
+ * POR QUÉ NO ES UN `insert` EN `clientes`
+ *
+ * El CRM lista oportunidades, no personas: Clientes, Pipeline, Dashboard y
+ * todas las métricas salen de `vw_pipeline`. Un cliente sin oportunidad no
+ * aparece en ninguna de esas pantallas —existiría sólo en la bandeja—, así que
+ * el alta tiene que crear las dos cosas.
+ *
+ * Por eso se reusa `altaLead`, que es el mismo camino que usan la pantalla de
+ * Clientes, la importación y la API de n8n: son cuatro pasos encadenados —
+ * revisar duplicados, crear la persona, asignarle su código CRM, colgarle la
+ * oportunidad— y hacerlos por separado acá dejaría la base distinta según por
+ * dónde entró el lead. Ese es exactamente el problema que `altaLead` existe
+ * para evitar.
+ */
+export async function altaYChat(
+  datos: { nombre: string; telefono: string; correo: string | null; vendedorId: number | null },
+  /** Dar de alta aunque se parezca a alguien que ya está. */
+  forzar = false,
+): Promise<ResultadoChat> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const numero = datos.telefono.replace(/\D/g, "");
+  if (numero.length < 8 || numero.length > 15) {
+    return { ok: false, error: "El número tiene que tener entre 8 y 15 dígitos, con código de país." };
+  }
+
+  const catalogo = await porDefecto(supabase);
+
+  const alta = await altaLead(
+    supabase,
+    {
+      nombre: datos.nombre,
+      // Se guarda el número ya armado: es el que WhatsApp usa y el que va a
+      // llegar en el webhook cuando esa persona conteste. Guardar el local
+      // haría que su propio mensaje no encontrara su ficha.
+      telefono: numero,
+      correo: datos.correo,
+      vendedor_id: datos.vendedorId,
+      producto_id: null,
+      territorio_id: null,
+      canal_id: catalogo.canalId,
+      etapa_id: catalogo.etapaId,
+      estado_id: catalogo.estadoId,
+      fecha_registro: new Date().toISOString().slice(0, 10),
+      fecha_cierre: null,
+      valor_oportunidad: null,
+      descuento_promocion: null,
+    },
+    forzar,
+  );
+
+  if (!alta.ok || alta.clienteId == null) {
+    return { ok: false, error: alta.error, coincidencias: alta.coincidencias };
+  }
+
+  const hilo = await hiloPara(supabase, alta.clienteId, numero);
+
+  // El alta salió bien aunque el hilo falle: decir que no se creó nada haría
+  // que se intentara otra vez y quedara la persona duplicada.
+  if (!hilo.ok) {
+    return {
+      ok: false,
+      error: `Se dio de alta a ${datos.nombre.trim()}, pero no se pudo abrir el chat: ${hilo.error}`,
+    };
+  }
+
+  revalidatePath("/");
+  return hilo;
+}
+
+/**
+ * Los valores con que nace una oportunidad abierta desde la bandeja.
+ *
+ * Se resuelven por nombre y no por id fijo: los catálogos son datos y sus
+ * números cambian entre instalaciones. Si alguno no está, queda en null, que
+ * la ficha muestra como vacío y se completa después.
+ */
+async function porDefecto(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+): Promise<{ canalId: number | null; etapaId: number | null; estadoId: number | null }> {
+  const [canales, etapas, estados] = await Promise.all([
+    supabase.from("canales").select("id, nombre"),
+    supabase.from("etapas").select("id, nombre, orden").order("orden"),
+    supabase.from("estados").select("id, nombre, es_final").order("id"),
+  ]);
+
+  const porNombre = (filas: { id: unknown; nombre: unknown }[] | null, busca: string) =>
+    filas?.find((f) => String(f.nombre).toLowerCase() === busca)?.id ?? null;
+
+  return {
+    // Entró por WhatsApp: es lo único que se sabe con certeza de este lead.
+    canalId: Number(porNombre(canales.data, "whatsapp")) || null,
+    // La primera etapa del embudo, sea cual sea su nombre.
+    etapaId: etapas.data?.[0] ? Number(etapas.data[0].id) : null,
+    // El primer estado que no cierra la oportunidad.
+    estadoId: estados.data?.find((e) => e.es_final !== true)?.id
+      ? Number(estados.data.find((e) => e.es_final !== true)!.id)
+      : null,
+  };
 }
