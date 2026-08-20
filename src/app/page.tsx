@@ -5,6 +5,7 @@ import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
 import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
+import { listarEtiquetas } from "@/app/etiquetas-actions";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import {
   fetchCatalogo,
@@ -25,7 +26,7 @@ export default async function Page({
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos, accesos, bases, inbox] =
+  const [ops, catalogo, eventos, accesos, bases, inbox, etiquetas] =
     await Promise.all([
       fetchOportunidades(),
       fetchCatalogo(),
@@ -33,6 +34,7 @@ export default async function Page({
       fetchAccesos(user.id),
       fetchImportaciones(),
       fetchInbox(),
+      listarEtiquetas(),
     ]);
 
   const puedeResponder = await salidaDisponible();
@@ -52,6 +54,7 @@ export default async function Page({
       puedeResponderWhatsapp={puedeResponder}
       userEmail={user.email ?? ""}
       accesos={accesos.data}
+      etiquetas={etiquetas.etiquetas}
       faltaMigracionAccesos={accesos.faltaMigracion}
       puedeCrearCuentas={hayServiceRole()}
       // Sólo abre la pantalla de administración si la cuenta realmente lo es;

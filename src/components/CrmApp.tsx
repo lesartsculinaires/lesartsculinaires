@@ -29,6 +29,7 @@ import type {
   Accesos,
   Catalogo,
   Conversacion,
+  Etiqueta,
   Evento,
   Importacion,
   Mensaje,
@@ -50,6 +51,8 @@ interface Props {
   puedeResponderWhatsapp: boolean;
   userEmail: string;
   accesos: Accesos;
+  /** Catálogo de etiquetas de la bandeja. Vacío si falta su migración. */
+  etiquetas: Etiqueta[];
   /** True when the roles tables do not exist yet. */
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
@@ -74,6 +77,7 @@ export default function CrmApp({
   puedeResponderWhatsapp,
   userEmail,
   accesos,
+  etiquetas,
   faltaMigracionAccesos,
   puedeCrearCuentas,
   modInicial,
@@ -268,6 +272,8 @@ export default function CrmApp({
             <Inbox
               conversaciones={conversaciones}
               mensajes={mensajes}
+              oportunidades={oportunidades}
+              etiquetas={etiquetas}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
               accent={accent}

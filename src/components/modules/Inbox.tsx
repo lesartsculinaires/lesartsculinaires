@@ -6,9 +6,11 @@ import { archivar, marcarLeida } from "@/app/whatsapp-actions";
 import { asignar, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
+import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
+import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { activosCon } from "@/lib/types";
-import type { Conversacion, Mensaje } from "@/lib/types";
+import type { Conversacion, Etiqueta, Mensaje, Oportunidad } from "@/lib/types";
 
 interface Props {
   conversaciones: Conversacion[];
@@ -17,6 +19,9 @@ interface Props {
   /** False cuando el servidor no tiene token de WhatsApp: no se puede responder. */
   puedeResponder: boolean;
   accent: string;
+  /** Para mostrar la etapa y el estado reales del lead de cada conversación. */
+  oportunidades: Oportunidad[];
+  etiquetas: Etiqueta[];
   onRefrescar: () => void;
   onVerCliente: (clienteId: number) => void;
 }
@@ -72,13 +77,18 @@ export function Inbox({
   faltaMigracion,
   puedeResponder,
   accent,
+  oportunidades,
+  etiquetas,
   onRefrescar,
   onVerCliente,
 }: Props) {
   const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
   const [verArchivadas, setVerArchivadas] = useState(false);
+  const [verTodas, setVerTodas] = useState(false);
   const [soloSinAsignar, setSoloSinAsignar] = useState(false);
+  /** Null = sin filtrar por etiqueta. */
+  const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   const [nota, setNota] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -90,10 +100,13 @@ export function Inbox({
     () =>
       conversaciones.filter(
         (c) =>
-          c.archivada === verArchivadas &&
-          (!soloSinAsignar || c.vendedorId == null),
+          // `verTodas` ignora el archivado: es «todos los chats», que es
+          // distinto de las activas y de las archivadas por separado.
+          (verTodas || c.archivada === verArchivadas) &&
+          (!soloSinAsignar || c.vendedorId == null) &&
+          (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)),
       ),
-    [conversaciones, verArchivadas, soloSinAsignar],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porEtiqueta],
   );
 
   const sinAsignar = useMemo(
@@ -157,6 +170,19 @@ export function Inbox({
     setAviso(null);
     setNota(false);
   }, [actual]);
+
+  /**
+   * La venta de la que habla esta conversación.
+   *
+   * Se toma la abierta más reciente: si alguien ya cursó un diplomado y ahora
+   * pregunta por otro, lo que importa es en qué anda ahora, no lo que cerró el
+   * año pasado.
+   */
+  const suOportunidad = useMemo(() => {
+    if (!actual?.clienteId) return null;
+    const suyas = oportunidades.filter((o) => o.clienteId === actual.clienteId);
+    return suyas.find((o) => o.fechaCierre == null) ?? suyas[0] ?? null;
+  }, [oportunidades, actual]);
 
   const horas = horasDesdeEntrante(delHilo);
   const ventanaCerrada = horas != null && horas >= 24;
@@ -240,26 +266,72 @@ export function Inbox({
         <div style={{ ...th, display: "flex", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); }}
-            style={pestana(!verArchivadas && !soloSinAsignar, accent)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); }}
+            style={pestana(!verTodas && !verArchivadas && !soloSinAsignar, accent)}
           >
             Activas
           </button>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); }}
-            style={pestana(!verArchivadas && soloSinAsignar, accent)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); }}
+            style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
             Sin asignar{sinAsignar ? ` ${sinAsignar}` : ""}
           </button>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); }}
-            style={pestana(verArchivadas, accent)}
+            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); }}
+            style={pestana(!verTodas && verArchivadas, accent)}
           >
             Archivadas
           </button>
+          <button
+            type="button"
+            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); }}
+            style={pestana(verTodas, accent)}
+          >
+            Todas
+          </button>
         </div>
+
+        {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
+            de controles vacía en una bandeja recién estrenada es ruido. */}
+        {etiquetas.some((e) => e.activa) && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              padding: "8px 12px",
+              borderBottom: `1px solid ${T.border}`,
+            }}
+          >
+            {etiquetas
+              .filter((e) => e.activa)
+              .map((e) => {
+                const puesta = porEtiqueta === e.id;
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => setPorEtiqueta(puesta ? null : e.id)}
+                    style={{
+                      height: 20,
+                      padding: "0 8px",
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      borderRadius: 10,
+                      border: `1px solid ${e.color}`,
+                      background: puesta ? e.color : "transparent",
+                      color: puesta ? "#fff" : e.color,
+                    }}
+                  >
+                    {e.nombre}
+                  </button>
+                );
+              })}
+          </div>
+        )}
 
         <div style={{ overflowY: "auto", flex: 1 }}>
           {lista.length === 0 && (
@@ -310,7 +382,18 @@ export function Inbox({
                   {c.ultimoTexto ?? "—"}
                 </span>
 
-                <span style={{ display: "flex", gap: 6, marginTop: 5, alignItems: "center" }}>
+                <span style={{ display: "flex", gap: 4, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
+                  {/* Las etiquetas van primero: es lo que se busca de un
+                      vistazo cuando se recorre la lista. */}
+                  {c.etiquetaIds.map((id) => {
+                    const e = etiquetas.find((x) => x.id === id);
+                    if (!e) return null;
+                    return (
+                      <span key={id} className="pill" style={chip("#fff", e.color)}>
+                        {e.nombre}
+                      </span>
+                    );
+                  })}
                   {c.vendedorId == null ? (
                     <span className="pill" style={chip("#8A5200", "#FFF6D6")}>sin asignar</span>
                   ) : (
@@ -405,6 +488,43 @@ export function Inbox({
                   {actual.archivada ? "Desarchivar" : "Archivar"}
                 </button>
               </span>
+            </div>
+
+            {/* En qué anda la venta, y las etiquetas de la conversación. Van
+                juntos pero son cosas distintas: lo de arriba es el pipeline de
+                verdad —la misma fila que ve la ficha— y lo de abajo es lo que
+                el pipeline no dice. */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 7,
+                padding: "9px 14px",
+                borderBottom: `1px solid ${T.border}`,
+                background: T.surface,
+              }}
+            >
+              {suOportunidad ? (
+                <EstadoDelLead
+                  oportunidad={suOportunidad}
+                  accent={accent}
+                  onCambio={onRefrescar}
+                  onVerFicha={() => onVerCliente(actual.clienteId!)}
+                />
+              ) : (
+                <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
+                  Todavía no tiene una oportunidad abierta, así que no hay etapa ni
+                  estado que mostrar.
+                </span>
+              )}
+
+              <EtiquetasConversacion
+                conversacionId={actual.id}
+                puestas={actual.etiquetaIds}
+                etiquetas={etiquetas}
+                accent={accent}
+                onCambio={onRefrescar}
+              />
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", background: T.paper }}>

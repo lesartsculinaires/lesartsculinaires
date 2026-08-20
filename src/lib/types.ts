@@ -86,6 +86,21 @@ export interface Catalogo {
   tiposEvento: TipoEvento[];
 }
 
+/**
+ * Una etiqueta de la bandeja.
+ *
+ * Es para lo que el pipeline no dice —«pidió beca», «no contesta»—, no para
+ * repetir la etapa ni el estado de la venta: ésos se muestran de la
+ * oportunidad misma, así que no pueden decir cosas distintas.
+ */
+export interface Etiqueta {
+  id: number;
+  nombre: string;
+  /** Hexadecimal, para distinguirlas de un vistazo. */
+  color: string;
+  activa: boolean;
+}
+
 /** Placeholder shown wherever an opportunity has no salesperson assigned. */
 export const SIN_ASIGNAR = "Sin asignar";
 
@@ -328,6 +343,8 @@ export interface Conversacion {
   estado: string;
   /** Nulo = sin asignar, que es lo que el asesor resuelve. */
   vendedorId: number | null;
+  /** Etiquetas puestas a mano. No incluye la etapa ni el estado de la venta. */
+  etiquetaIds: number[];
 }
 
 export interface Mensaje {

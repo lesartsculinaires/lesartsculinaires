@@ -48,6 +48,23 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   const ids = (convs ?? []).map((c) => Number(c.id));
   let mensajes: Mensaje[] = [];
 
+  // Las etiquetas puestas, agrupadas por conversación. Si falta la migración
+  // se sigue sin ellas: la bandeja funciona igual, sólo que sin etiquetas.
+  const etiquetasPorConv = new Map<number, number[]>();
+  if (ids.length) {
+    const { data: puestas } = await supabase
+      .from("conversacion_etiquetas")
+      .select("conversacion_id, etiqueta_id")
+      .in("conversacion_id", ids);
+
+    for (const p of (puestas ?? []) as Fila[]) {
+      const conv = Number(p.conversacion_id);
+      const lista = etiquetasPorConv.get(conv) ?? [];
+      lista.push(Number(p.etiqueta_id));
+      etiquetasPorConv.set(conv, lista);
+    }
+  }
+
   if (ids.length) {
     const traer = (conMedia: boolean) =>
       supabase
@@ -98,6 +115,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       archivada: Boolean(c.archivada),
       estado: String(c.estado ?? "open"),
       vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
+      etiquetaIds: etiquetasPorConv.get(Number(c.id)) ?? [],
     })),
     mensajes,
     faltaMigracion: false,
