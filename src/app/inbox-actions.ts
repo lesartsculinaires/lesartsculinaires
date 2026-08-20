@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { getServerClient, getUser } from "@/lib/supabase/server";
-import { enviarTexto, hayWhatsapp } from "@/lib/whatsapp/enviar";
+import {
+  TOPE_IMAGEN_BYTES,
+  enviarImagen,
+  enviarTexto,
+  hayWhatsapp,
+} from "@/lib/whatsapp/enviar";
 import type { ActionResult } from "@/app/actions";
 
 /**
@@ -492,4 +497,188 @@ async function porDefecto(
       ? Number(estados.data.find((e) => e.es_final !== true)!.id)
       : null,
   };
+}
+
+/**
+ * Manda una foto por WhatsApp.
+ *
+ * El archivo sí pasa por el servidor, a diferencia de los adjuntos de la ficha
+ * —que el navegador sube directo a Supabase—, y no hay alternativa: Meta pide
+ * el archivo con el token, y el token no puede salir del servidor. Por eso el
+ * tope es el de Meta para imágenes, que además entra en el cuerpo que aceptan
+ * las funciones de Netlify.
+ *
+ * Mismo orden que al responder con texto: primero sale, después se guarda. Al
+ * revés, un fallo de envío dejaría en el hilo una foto que el cliente no
+ * recibió.
+ */
+export async function enviarFoto(datos: FormData): Promise<ActionResult> {
+  const archivo = datos.get("archivo");
+  const conversacionId = Number(datos.get("conversacionId"));
+  const pie = String(datos.get("pie") ?? "");
+
+  if (!(archivo instanceof File)) return { ok: false, error: "No llegó ninguna foto." };
+  if (!Number.isFinite(conversacionId)) return { ok: false, error: "Conversación no válida." };
+
+  if (!archivo.type.startsWith("image/")) {
+    return { ok: false, error: "Sólo se pueden mandar fotos por acá." };
+  }
+  if (archivo.size > TOPE_IMAGEN_BYTES) {
+    return {
+      ok: false,
+      error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  const supabase = await getServerClient();
+  const user = await getUser();
+  if (!supabase || !user) return SIN_SESION;
+
+  if (!hayWhatsapp()) {
+    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
+  }
+
+  const { data: conv } = await supabase
+    .from("conversaciones")
+    .select("id, telefono")
+    .eq("id", conversacionId)
+    .maybeSingle();
+
+  if (!conv) return { ok: false, error: "No se encontró la conversación." };
+
+  const bytes = await archivo.arrayBuffer();
+
+  const envio = await enviarImagen(
+    String(conv.telefono),
+    { bytes, mime: archivo.type, nombre: archivo.name },
+    pie,
+  );
+
+  if (!envio.ok) return { ok: false, error: envio.error };
+
+  // Se guarda una copia en el balde para poder verla en el hilo. Meta no
+  // devuelve la foto que uno mismo mandó, así que sin esta copia el mensaje
+  // saliente quedaría como un hueco.
+  let ruta: string | null = null;
+  const nombreArchivo = `${crypto.randomUUID()}${extensionDeMime(archivo.type)}`;
+  const { error: errSubir } = await supabase.storage
+    .from("whatsapp")
+    .upload(`wa/${conversacionId}/${nombreArchivo}`, bytes, { contentType: archivo.type });
+
+  if (!errSubir) ruta = `wa/${conversacionId}/${nombreArchivo}`;
+
+  const { error: errGuardar } = await supabase.from("mensajes").insert({
+    conversacion_id: conversacionId,
+    wa_id: envio.waId,
+    direccion: "saliente",
+    tipo: "image",
+    texto: pie.trim() || null,
+    estado: "enviado",
+    enviado_por: user.id,
+    media_ruta: ruta,
+    media_mime: archivo.type,
+    media_nombre: archivo.name,
+  });
+
+  if (errGuardar) {
+    return {
+      ok: false,
+      error: `Se envió, pero no se pudo guardar en la ficha: ${errGuardar.message}`,
+    };
+  }
+
+  await supabase
+    .from("conversaciones")
+    .update({
+      ultimo_texto: (pie.trim() || "Foto").slice(0, 200),
+      ultimo_mensaje_en: new Date().toISOString(),
+      sin_leer: 0,
+    })
+    .eq("id", conversacionId);
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Guarda en la ficha del cliente una foto que llegó por WhatsApp.
+ *
+ * Es el paso que faltaba entre las dos mitades: la captura de una
+ * transferencia llega al chat y ahí se queda, mientras la documentación del
+ * cliente vive en los adjuntos de su oportunidad. Sin esto hay que bajar la
+ * foto y volver a subirla a mano.
+ *
+ * Se copia y no se mueve: el hilo tiene que seguir mostrando lo que la persona
+ * mandó, en el orden en que lo mandó. Son dos usos distintos del mismo archivo.
+ */
+export async function guardarEnFicha(
+  mensajeId: number,
+  oportunidadId: number,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  const user = await getUser();
+  if (!supabase || !user) return SIN_SESION;
+
+  const { data: mensaje } = await supabase
+    .from("mensajes")
+    .select("id, media_ruta, media_mime, media_nombre, creado_en")
+    .eq("id", mensajeId)
+    .maybeSingle();
+
+  if (!mensaje?.media_ruta) {
+    return { ok: false, error: "Ese mensaje no tiene ningún archivo guardado." };
+  }
+
+  const { data: archivo, error: errBajar } = await supabase.storage
+    .from("whatsapp")
+    .download(String(mensaje.media_ruta));
+
+  if (errBajar || !archivo) {
+    return { ok: false, error: `No se pudo leer el archivo: ${errBajar?.message ?? "no está"}` };
+  }
+
+  const mime = mensaje.media_mime ? String(mensaje.media_mime) : "application/octet-stream";
+  // Un nombre que diga de dónde salió: en la ficha, al lado de documentos que
+  // alguien eligió y nombró, «foto de WhatsApp del 3 de marzo» ubica.
+  const nombre = mensaje.media_nombre
+    ? String(mensaje.media_nombre)
+    : `WhatsApp ${new Date(String(mensaje.creado_en)).toLocaleDateString("es-SV")}${extensionDeMime(mime)}`;
+
+  const ruta = `${oportunidadId}/${crypto.randomUUID()}${extensionDeMime(mime)}`;
+
+  const { error: errSubir } = await supabase.storage
+    .from("adjuntos")
+    .upload(ruta, archivo, { contentType: mime });
+
+  if (errSubir) return { ok: false, error: `No se pudo guardar en la ficha: ${errSubir.message}` };
+
+  const { error } = await supabase.from("adjuntos").insert({
+    oportunidad_id: oportunidadId,
+    ruta,
+    nombre: nombre.slice(0, 200),
+    tipo_mime: mime,
+    tamano_bytes: archivo.size,
+    subido_por: user.id,
+  });
+
+  if (error) {
+    // La fila no entró: el archivo suelto sería basura que nadie ve ni borra.
+    await supabase.storage.from("adjuntos").remove([ruta]);
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** La extensión que le toca a un tipo, para que el archivo abra bien al bajarlo. */
+function extensionDeMime(mime: string): string {
+  const tabla: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "application/pdf": ".pdf",
+  };
+  return tabla[mime.split(";")[0].trim()] ?? "";
 }

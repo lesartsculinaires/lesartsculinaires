@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
-import { asignar, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
+import { asignar, enviarFoto, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
@@ -114,6 +114,8 @@ export function Inbox({
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   const [nuevoChat, setNuevoChat] = useState(false);
+  const fotoRef = useRef<HTMLInputElement | null>(null);
+  const [mandandoFoto, setMandandoFoto] = useState(false);
   const [nota, setNota] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -212,6 +214,33 @@ export function Inbox({
   const ventanaCerrada = !ventanaAbierta(delHilo);
   /** Nunca escribió: el aviso tiene que decir otra cosa. */
   const nuncaEscribio = horasDesdeEntrante(delHilo) == null;
+
+  /**
+   * Manda una foto.
+   *
+   * El pie de foto es lo que esté escrito en la caja: es lo que uno espera al
+   * escribir algo y después adjuntar, y ahorra mandar dos mensajes.
+   */
+  const mandarFoto = async (archivo: File) => {
+    if (!actual) return;
+    setMandandoFoto(true);
+    setAviso(null);
+
+    const datos = new FormData();
+    datos.set("archivo", archivo);
+    datos.set("conversacionId", String(actual.id));
+    datos.set("pie", texto);
+
+    const r = await enviarFoto(datos);
+    setMandandoFoto(false);
+
+    if (r.ok) {
+      setTexto("");
+      onRefrescar();
+    } else {
+      setAviso(r.error);
+    }
+  };
 
   const enviar = async () => {
     if (!actual || !texto.trim()) return;
@@ -632,6 +661,8 @@ export function Inbox({
                         mensaje={m}
                         url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
                         mio={mio}
+                        oportunidadId={suOportunidad?.id ?? null}
+                        onGuardado={onRefrescar}
                       />
                       <span
                         className="mono"
@@ -715,6 +746,52 @@ export function Inbox({
             </label>
 
             <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
+              {/* El clip. Sólo fotos: los documentos del cliente van a los
+                  adjuntos de su ficha, que es donde después se los busca. */}
+              <input
+                ref={fotoRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  // Se limpia siempre: si no, elegir la misma foto dos veces
+                  // seguidas no dispara nada y parece que el botón se rompió.
+                  e.target.value = "";
+                  if (f) void mandarFoto(f);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fotoRef.current?.click()}
+                disabled={!puedeResponder || nota || mandandoFoto || ventanaCerrada}
+                title={
+                  nota
+                    ? "Una nota interna no lleva foto"
+                    : ventanaCerrada
+                      ? "Pasadas las 24 horas sólo se puede mandar una plantilla"
+                      : "Adjuntar una foto"
+                }
+                style={{
+                  alignSelf: "flex-end",
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  border: `1px solid ${T.border}`,
+                  background: T.surface,
+                  color:
+                    puedeResponder && !nota && !ventanaCerrada ? T.ink : T.faint,
+                  fontSize: 17,
+                  cursor:
+                    mandandoFoto
+                      ? "wait"
+                      : puedeResponder && !nota && !ventanaCerrada
+                        ? "pointer"
+                        : "not-allowed",
+                }}
+              >
+                {mandandoFoto ? "…" : "📎"}
+              </button>
               <textarea
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}

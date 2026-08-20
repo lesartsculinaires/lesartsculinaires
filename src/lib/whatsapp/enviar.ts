@@ -65,6 +65,90 @@ export async function enviarTexto(
 }
 
 /**
+ * Tope de Meta para una imagen. No es el nuestro: es el de ellos, y mandarles
+ * algo más grande falla del otro lado.
+ */
+export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Manda una foto.
+ *
+ * Son dos llamadas y ninguna se puede saltear: Meta no acepta el archivo junto
+ * con el mensaje. Primero se sube y devuelve un id, y recién después se manda
+ * un mensaje que apunta a ese id. (Se puede mandar una URL pública en vez del
+ * id, pero eso obligaría a publicar el archivo en internet para que Meta lo
+ * lea, y estos son comprobantes y documentos.)
+ */
+export async function enviarImagen(
+  telefono: string,
+  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  pie: string,
+): Promise<ResultadoEnvio> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!token || !numero) {
+    return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
+  }
+
+  if (archivo.bytes.byteLength > TOPE_IMAGEN_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  try {
+    // Paso 1: subir el archivo y quedarse con el id.
+    const formulario = new FormData();
+    formulario.append("messaging_product", "whatsapp");
+    formulario.append("type", archivo.mime);
+    formulario.append("file", new Blob([archivo.bytes], { type: archivo.mime }), archivo.nombre);
+
+    const subida = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/media`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: formulario,
+    });
+
+    const datos = (await subida.json().catch(() => null)) as
+      | { id?: string; error?: { message?: string; code?: number } }
+      | null;
+
+    if (!subida.ok || !datos?.id) {
+      return { ok: false, waId: null, error: explicar(datos?.error, subida.status) };
+    }
+
+    // Paso 2: el mensaje que apunta a ese id.
+    const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: telefono,
+        type: "image",
+        image: pie.trim() ? { id: datos.id, caption: pie.trim() } : { id: datos.id },
+      }),
+    });
+
+    const cuerpo = (await r.json().catch(() => null)) as
+      | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
+      | null;
+
+    if (!r.ok) return { ok: false, waId: null, error: explicar(cuerpo?.error, r.status) };
+
+    return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
+  } catch (e) {
+    return {
+      ok: false,
+      waId: null,
+      error: e instanceof Error ? e.message : "No se pudo contactar a WhatsApp.",
+    };
+  }
+}
+
+/**
  * Manda una plantilla aprobada.
  *
  * Es la única forma de escribirle a alguien cuando pasaron 24 horas desde su
