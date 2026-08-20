@@ -15,14 +15,17 @@ import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Notificaciones } from "@/components/Notificaciones";
 import { SinCopiar } from "@/components/SinCopiar";
+import { Sonido } from "@/components/Sonido";
 import { Plantillas } from "@/components/modules/Plantillas";
 import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
+import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
+import { queSuena } from "@/lib/aviso";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
@@ -105,7 +108,12 @@ export default function CrmApp({
   const accent = ACCENT;
 
   // Los cambios de otras personas llegan por websocket y se ven al momento.
-  const enVivo = useEnVivo();
+  // Algunos además suenan: un mensaje de un cliente, o que alguien mueva un
+  // lead. Quién es «yo» se pasa para no sonarle a nadie por lo que acaba de
+  // hacer él mismo.
+  const campanita = useCampanita();
+  const yo = accesos.yo?.id ?? null;
+  const enVivo = useEnVivo((c) => campanita.avisar(queSuena(c, yo)));
 
   // Y por debajo sigue el refresco cada diez minutos. No sobra: un websocket
   // se cae en silencio —wifi de hotel, laptop suspendida, proxy de oficina— y
@@ -222,6 +230,12 @@ export default function CrmApp({
                 accent={accent}
                 enVivo={enVivo}
                 onRefrescar={() => router.refresh()}
+              />
+              <Sonido
+                encendido={campanita.encendido}
+                bloqueado={campanita.bloqueado}
+                accent={accent}
+                onAlternar={campanita.alternar}
               />
               <Notificaciones accent={accent} catalogo={catalogo} onAbrirFicha={abrirFicha} />
             </div>

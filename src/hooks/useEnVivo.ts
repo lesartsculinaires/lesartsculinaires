@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import type { CambioEnVivo } from "@/lib/aviso";
 import { crearRafaga } from "@/lib/rafaga";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getBrowserClient } from "@/lib/supabase/browser";
 
-/** Tablas cuyos cambios le importan a la pantalla. */
+/**
+ * Tablas cuyos cambios le importan a la pantalla.
+ *
+ * `actividad` no aporta datos que se dibujen —lo que muestra la pantalla sale
+ * de las otras—, pero es la única que guarda quién hizo cada cosa, y sin eso
+ * el aviso sonoro no podría callar los movimientos propios. Refrescar de más
+ * por ella no cuesta: la ráfaga junta su aviso con el de la tabla que
+ * realmente cambió.
+ */
 const TABLAS = [
   "oportunidades",
   "clientes",
@@ -15,6 +24,7 @@ const TABLAS = [
   "eventos",
   "conversaciones",
   "mensajes",
+  "actividad",
 ] as const;
 
 /**
@@ -56,10 +66,26 @@ export type EstadoEnVivo =
  *
  * En cualquier caso el refresco cada diez minutos sigue corriendo por debajo:
  * la pantalla se atrasa, no se queda muerta.
+ *
+ * `onCambio` recibe cada aviso suelto, sin juntar y sin esperar. Lo usa el
+ * sonido, que necesita saber qué pasó —un mensaje no suena igual que un lead
+ * movido— y no le sirve la ráfaga, que junta todo en un «algo cambió».
  */
-export function useEnVivo(): EstadoEnVivo {
+export function useEnVivo(onCambio?: (c: CambioEnVivo) => void): EstadoEnVivo {
   const router = useRouter();
   const [estado, setEstado] = useState<EstadoEnVivo>("conectando");
+
+  /**
+   * La función se guarda en una caja y no se pone como dependencia.
+   *
+   * Quien la pasa la arma de nuevo en cada dibujado; usándola de dependencia,
+   * el canal se cerraría y se volvería a abrir todo el tiempo, y en cada corte
+   * se perderían los avisos.
+   */
+  const avisarAfuera = useRef(onCambio);
+  useEffect(() => {
+    avisarAfuera.current = onCambio;
+  });
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -100,7 +126,16 @@ export function useEnVivo(): EstadoEnVivo {
 
     const canal = supabase.channel("crm-en-vivo");
     for (const table of TABLAS) {
-      canal.on("postgres_changes", { event: "*", schema: "public", table }, rafaga.avisar);
+      canal.on("postgres_changes", { event: "*", schema: "public", table }, (p) => {
+        rafaga.avisar();
+        if (!vivo) return;
+        avisarAfuera.current?.({
+          tabla: table,
+          evento: p.eventType,
+          // En los borrados viene vacío; quien escucha ya lo contempla.
+          fila: (p.new ?? null) as Record<string, unknown> | null,
+        });
+      });
     }
 
     canal.subscribe((s) => {
