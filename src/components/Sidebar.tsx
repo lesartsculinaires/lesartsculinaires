@@ -90,6 +90,23 @@ export function Sidebar({
         padding: 16,
         display: "flex",
         flexDirection: "column",
+        /*
+         * La barra se queda quieta mientras la pantalla se desplaza.
+         *
+         * Antes se iba para arriba con el resto: en Clientes, con seiscientas
+         * filas, bajar un poco dejaba fuera de vista los módulos y el botón de
+         * cerrar sesión, y para cambiar de pantalla —o para salir— había que
+         * volver hasta arriba de todo.
+         *
+         * `alignSelf` en «flex-start» es lo que hace falta para que funcione y
+         * es fácil de pasar por alto: el contenedor estira a sus hijos por
+         * omisión, así que sin esto la barra mediría lo mismo que el contenido
+         * —más alta que la ventana— y `sticky` no tendría contra qué pegarse.
+         */
+        position: "sticky",
+        top: 0,
+        alignSelf: "flex-start",
+        height: "100vh",
       }}
     >
       <p
@@ -161,7 +178,15 @@ export function Sidebar({
       >
         Módulos
       </p>
-      <nav style={{ flex: 1 }}>
+      {/*
+        Si los módulos no entran —una laptop de pantalla baja, o el navegador
+        con mucho zoom— se desplaza esta lista y no la barra entera. Así
+        «Cerrar sesión» queda abajo pase lo que pase, que es justamente lo que
+        se busca. `minHeight: 0` hace falta porque un hijo de flex no se deja
+        achicar por debajo de su contenido sin eso, y la lista desbordaría en
+        vez de desplazarse.
+      */}
+      <nav style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         {[...MODULOS, ...extras].map((m) => (
           <button
             type="button"
