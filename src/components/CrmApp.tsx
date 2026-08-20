@@ -344,8 +344,6 @@ export default function CrmApp({
               puedeElegirAsesor={veTodoElEquipo}
               vendedorId={state.pipeVend}
               onVendedor={actions.setPipeVend}
-              menu={state.menu}
-              onToggleMenu={actions.toggleMenu}
             />
           )}
 

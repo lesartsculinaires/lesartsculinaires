@@ -3,7 +3,6 @@
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
 import { T, soft } from "@/lib/theme";
-import { FilterMenu } from "@/components/ui/FilterMenu";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type { Oportunidad, OportunidadPatch } from "@/lib/types";
 
@@ -31,8 +30,6 @@ interface Props {
   /** De quién es el tablero. Null = todo el equipo junto. */
   vendedorId: number | null;
   onVendedor: (id: number | null) => void;
-  menu: string | null;
-  onToggleMenu: (k: string) => void;
 }
 
 export function Pipeline({
@@ -47,8 +44,6 @@ export function Pipeline({
   puedeElegirAsesor,
   vendedorId,
   onVendedor,
-  menu,
-  onToggleMenu,
 }: Props) {
   const { etapas, vendedores } = useCatalogo();
 
@@ -65,55 +60,131 @@ export function Pipeline({
         vendedorId === SIN_DUENO ? o.vendedorId == null : o.vendedorId === vendedorId,
       );
 
+  const cuantas = (id: number | null) =>
+    id == null
+      ? oportunidades.length
+      : oportunidades.filter((o) =>
+          id === SIN_DUENO ? o.vendedorId == null : o.vendedorId === id,
+        ).length;
+
+  /**
+   * Un botón por persona, en fila.
+   *
+   * Sale del catálogo de vendedores, que es la lista de a quién se le pueden
+   * asignar oportunidades: si un gerente o un jefe atiende clientes, tiene su
+   * ficha ahí y aparece con los demás. No hay una lista aparte de «asesores»
+   * porque llevar dos listas de la misma gente termina con una de las dos
+   * desactualizada.
+   *
+   * Los dados de baja quedan afuera: sus fichas ya no le tocan a nadie, y
+   * mirar su tablero no lleva a ninguna decisión.
+   *
+   * «Sin asignar» sólo aparece cuando hay alguna. Un botón que lleva a un
+   * tablero vacío es una promesa que no se cumple.
+   */
+  const botones: { id: number | null; nombre: string }[] = [
+    { id: null, nombre: "Todo el equipo" },
+    ...activos(vendedores).map((v) => ({ id: v.id, nombre: v.nombre })),
+    ...(cuantas(SIN_DUENO) > 0 ? [{ id: SIN_DUENO, nombre: "Sin asignar" }] : []),
+  ];
+
   return (
     <>
       {puedeElegirAsesor && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <FilterMenu
-            menuKey="pipe-vendedor"
-            label="Tablero de"
-            options={[
-              { label: "Todo el equipo", value: null },
-              // Los dados de baja quedan afuera: sus fichas ya no le tocan a
-              // nadie, y mirar su tablero no lleva a ninguna decisión.
-              ...activos(vendedores).map((v) => ({ label: v.nombre, value: v.id })),
-              { label: "Sin asignar", value: SIN_DUENO },
-            ]}
-            current={vendedorId}
-            valueText={
-              vendedorId == null
-                ? "Todo el equipo"
-                : vendedorId === SIN_DUENO
-                  ? "Sin asignar"
-                  : (vendedores.find((v) => v.id === vendedorId)?.nombre ?? "—")
-            }
-            open={menu === "pipe-vendedor"}
-            accent={accent}
-            onToggle={() => onToggleMenu("pipe-vendedor")}
-            onPick={(v) => onVendedor(v == null ? null : Number(v))}
-          />
-          <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
-            {leadCount(enTablero.length)}
-            {vendedorId != null && ` de ${oportunidades.length}`}
-          </span>
+        <div style={{ marginBottom: 16 }}>
+          <p
+            className="mono"
+            style={{
+              margin: "0 0 7px",
+              fontSize: 10.5,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: T.faint,
+            }}
+          >
+            Tablero de
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {botones.map((b) => {
+              const puesto = vendedorId === b.id;
+              const n = cuantas(b.id);
+              return (
+                <button
+                  key={b.id ?? "todos"}
+                  type="button"
+                  onClick={() => onVendedor(b.id)}
+                  aria-pressed={puesto}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    height: 32,
+                    padding: "0 12px",
+                    fontSize: 12.5,
+                    fontWeight: puesto ? 600 : 400,
+                    border: `1px solid ${puesto ? accent : T.border}`,
+                    borderRadius: 16,
+                    // El elegido va pintado entero y no con un tinte suave.
+                    // Son seis botones parejos y uno es «acá estoy»: con un
+                    // fondo al ocho por ciento hay que buscar cuál está
+                    // puesto, y entonces el botón deja de contestar la
+                    // pregunta que vino a contestar.
+                    background: puesto ? accent : T.surface,
+                    color: puesto ? "#fff" : T.ink,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {b.nombre}
+                  {/*
+                    El número al lado del nombre.
+
+                    Es la mitad de para qué se abre esta fila: quién tiene
+                    mucho y quién no tiene nada se ve sin apretar cada botón
+                    uno por uno. Se cuenta sobre todo lo que llegó, no sobre lo
+                    que se está mirando, así que no cambia al elegir.
+                  */}
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 11,
+                      // En el elegido hereda el color en vez de traer el
+                      // suyo: así el amarillo del hover, que se fuerza sobre
+                      // el botón, también le llega al número. Con un color
+                      // propio quedaría blanco sobre amarillo.
+                      color: puesto ? "inherit" : n === 0 ? T.faint : T.muted,
+                      opacity: puesto ? 0.75 : 1,
+                    }}
+                  >
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {vendedorId != null && (
+            <p className="mono" style={{ margin: "8px 0 0", fontSize: 11.5, color: T.faint }}>
+              {leadCount(enTablero.length)} de {oportunidades.length}
+            </p>
+          )}
         </div>
       )}
       <div
         style={{
           display: "grid",
-        gridAutoFlow: "column",
-        // El mínimo baja de 200 a 164 desde que el embudo tiene seis etapas:
-        // con 200 el tablero se pasaba del ancho de una laptop de 1366 y había
-        // que desplazarlo de costado para ver el cierre, que es justo la
-        // columna que más se mira. El tablero sigue pudiendo desplazarse, pero
-        // ahora sólo en pantallas de verdad chicas.
-        gridAutoColumns: "minmax(164px, 1fr)",
-        gap: 10,
-        alignItems: "start",
-        overflowX: "auto",
-        paddingBottom: 6,
-      }}
-    >
+          gridAutoFlow: "column",
+          // El mínimo baja de 200 a 164 desde que el embudo tiene seis etapas:
+          // con 200 el tablero se pasaba del ancho de una laptop de 1366 y
+          // había que desplazarlo de costado para ver el cierre, que es justo
+          // la columna que más se mira. Sigue pudiendo desplazarse, pero ahora
+          // sólo en pantallas de verdad chicas.
+          gridAutoColumns: "minmax(164px, 1fr)",
+          gap: 10,
+          alignItems: "start",
+          overflowX: "auto",
+          paddingBottom: 6,
+        }}
+      >
       {etapas.map((etapa) => {
         const enEtapa = enTablero.filter((o) => o.etapaId === etapa.id);
         const isOver = over === etapa.id;

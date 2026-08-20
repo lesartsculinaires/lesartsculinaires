@@ -817,6 +817,39 @@ export function UsuariosRoles({
               </div>
             )}
 
+            {/*
+              Quiénes ven el pipeline completo, de un vistazo.
+
+              Está repetido más abajo, una casilla por rol, pero repartido en
+              una lista que hay que recorrer entera para contestar «¿quién ve
+              todo?». Y ésa es justo la pregunta que se hace cuando se quiere
+              que el pipeline completo sea cosa de la gerencia: sin esta línea,
+              la única forma de saber si quedó alguien de más es abrir cada rol
+              y mirarle la casilla.
+            */}
+            <p
+              style={{
+                margin: "0 0 12px",
+                padding: "9px 12px",
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: T.muted,
+                background: T.paper,
+                borderRadius: 8,
+                border: `1px solid ${T.border}`,
+              }}
+            >
+              Ven el pipeline completo:{" "}
+              <strong style={{ color: T.ink }}>
+                {accesos.roles
+                  .filter((r) => r.activo && (r.esAdmin || r.veTodo))
+                  .map((r) => r.nombre)
+                  .join(", ") || "nadie"}
+              </strong>
+              . Los demás roles ven sólo los clientes que cada quien tiene
+              asignados. Se cambia con la casilla de cada rol, acá abajo.
+            </p>
+
             {accesos.roles.map((r, i) => (
               <div
                 key={r.id}
