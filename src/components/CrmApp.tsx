@@ -27,7 +27,9 @@ import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { queSuena } from "@/lib/aviso";
 import { CatalogoProvider } from "@/lib/catalog";
+import { MOD_USUARIOS } from "@/lib/modulos";
 import { ACCENT, T } from "@/lib/theme";
+import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type {
@@ -64,13 +66,15 @@ interface Props {
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
   puedeCrearCuentas: boolean;
-  /** Módulo a abrir al entrar; lo fija el modo elegido en el login. */
+  /**
+   * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
+   * estuvo esta persona, o el modo elegido en el login la primera vez.
+   */
   modInicial?: string;
   loadError: string | null;
 }
 
-/** Sidebar entry for the admin-only screen. */
-export const MOD_USUARIOS = "Usuarios y Roles";
+
 
 export default function CrmApp({
   oportunidades: initial,
@@ -119,6 +123,17 @@ export default function CrmApp({
   // se cae en silencio —wifi de hotel, laptop suspendida, proxy de oficina— y
   // sin esto la pantalla se quedaría quieta sin que nadie lo note.
   useAutoRefresco(10 * 60_000);
+
+  /**
+   * Dejar anotado en qué pantalla está, para volver acá la próxima vez.
+   *
+   * Va en un efecto sobre `mod` y no dentro del botón de la barra lateral
+   * porque al módulo se llega por varios caminos: la barra, el salto a
+   * Clientes desde Programas o desde Equipos, y el clic en una notificación.
+   * Anotándolo en cada uno habría que acordarse siempre; acá se anota solo,
+   * venga de donde venga.
+   */
+  useEffect(() => recordarModulo(state.mod), [state.mod]);
 
   // `initial` sólo cambia de identidad cuando el servidor manda datos nuevos;
   // los re-render del navegador reusan el mismo arreglo. Sirve entonces como

@@ -1,6 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import CrmApp, { MOD_USUARIOS } from "@/components/CrmApp";
+import CrmApp from "@/components/CrmApp";
+import { MODULOS, MOD_USUARIOS } from "@/lib/modulos";
+import { COOKIE_MODULO, moduloInicial } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
 import { fetchInbox } from "@/lib/supabase/inbox";
@@ -43,6 +46,25 @@ export default async function Page({
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
 
+  /**
+   * Con qué pantalla abrir: la última donde estuvo esta persona.
+   *
+   * Se resuelve acá, en el servidor, para que lo primero que se pinte ya sea
+   * la pantalla buena y no haya un salto desde Dashboard en cada recarga.
+   *
+   * La pantalla de administración entra en la lista sólo si la cuenta
+   * realmente lo es. Vale para las dos puertas: ni la cookie ni el parámetro
+   * de la URL pueden conceder lo que el rol no concede.
+   */
+  const puedeAdministrar = accesos.data.esAdmin || accesos.faltaMigracion;
+  const permitidos = puedeAdministrar ? [...MODULOS, MOD_USUARIOS] : MODULOS;
+  const modulo = moduloInicial({
+    guardado: (await cookies()).get(COOKIE_MODULO)?.value,
+    pidePanelAdmin: mod === "admin",
+    permitidos,
+    panelAdmin: MOD_USUARIOS,
+  });
+
   return (
     <CrmApp
       oportunidades={ops.data}
@@ -60,13 +82,7 @@ export default async function Page({
       plantillas={plantillas}
       faltaMigracionAccesos={accesos.faltaMigracion}
       puedeCrearCuentas={hayServiceRole()}
-      // Sólo abre la pantalla de administración si la cuenta realmente lo es;
-      // el parámetro de la URL no puede conceder lo que el rol no concede.
-      modInicial={
-        mod === "admin" && (accesos.data.esAdmin || accesos.faltaMigracion)
-          ? MOD_USUARIOS
-          : undefined
-      }
+      modInicial={modulo}
       loadError={loadError}
     />
   );

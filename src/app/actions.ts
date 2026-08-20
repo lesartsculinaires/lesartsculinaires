@@ -12,6 +12,7 @@ import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
 import { getServerClient } from "@/lib/supabase/server";
+import { COOKIE_MODULO } from "@/lib/ultimoModulo";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
 
 export interface ActionResult {
@@ -240,6 +241,11 @@ export async function signOut(): Promise<never> {
       cookieStore.delete(name);
     }
   }
+
+  // Y se olvida en qué pantalla estaba. No es un dato delicado, pero la
+  // siguiente persona que entre en esta computadora no tiene por qué aparecer
+  // donde la dejó la anterior.
+  cookieStore.delete(COOKIE_MODULO);
 
   // Navegar desde el servidor, ya sin cookie: así no depende de que el
   // navegador haga bien su parte.

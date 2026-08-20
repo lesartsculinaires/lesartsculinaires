@@ -4,20 +4,10 @@ import type { CSSProperties } from "react";
 
 import { signOut } from "@/app/actions";
 import { getBrowserClient } from "@/lib/supabase/browser";
+import { MODULOS } from "@/lib/modulos";
 import { T, soft } from "@/lib/theme";
 
-export const MODULOS = [
-  "Dashboard",
-  "Inbox",
-  "Clientes",
-  "Bases",
-  "Pipeline",
-  "Calendario",
-  "Equipos",
-  "Programas",
-  "Plantillas",
-  "Notificaciones",
-] as const;
+
 
 interface Props {
   accent: string;

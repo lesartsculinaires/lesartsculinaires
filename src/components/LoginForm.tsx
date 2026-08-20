@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 
 import { signOut } from "@/app/actions";
 import { getBrowserClient } from "@/lib/supabase/browser";
+import { olvidarModulo } from "@/lib/ultimoModulo";
 import { ACCENT, T, soft } from "@/lib/theme";
 
 interface Props {
@@ -60,6 +61,11 @@ export function LoginForm({
   };
 
   const entrar = (comoAdmin: boolean) => {
+    // Se olvida en qué pantalla estaba el anterior. En una computadora
+    // compartida —la de recepción, la del aula— sin esto el que entra
+    // aparecería en la última pantalla del que salió.
+    olvidarModulo();
+
     const destino =
       comoAdmin && redirectTo === "/" ? "/?mod=admin" : redirectTo;
     // Full refresh so the middleware and Server Components pick up the cookie.
