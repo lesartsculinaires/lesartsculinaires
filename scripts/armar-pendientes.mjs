@@ -58,7 +58,8 @@ const salida = [
   `-- originales están en supabase/migrations/ y este archivo sale de ellos.`,
   `--`,
   `-- Va todo en una sola transacción: si algo falla no queda nada a medias.`,
-  `-- Las cinco se pueden correr dos veces sin romper nada, así que si hay que`,
+  `-- ${partes.length === 1 ? "Se puede correr" : "Las " + partes.length + " se pueden correr"}`
+    + ` dos veces sin romper nada, así que si hay que`,
   `-- arreglar algo y volver a pegarlo, se puede.`,
   `--`,
   `-- Contiene, en orden:`,

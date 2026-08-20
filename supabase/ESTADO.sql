@@ -57,7 +57,26 @@ with revisiones as (
      'Sólo dirección agrega o da de baja vendedores',
      exists (select 1 from pg_policies
              where schemaname='public' and tablename='vendedores'
-               and policyname='vendedores_administrar'))
+               and policyname='vendedores_administrar')),
+
+    ('20260829120000_media_whatsapp',
+     'Las fotos y documentos que llegan por WhatsApp',
+     exists (select 1 from information_schema.columns
+             where table_schema='public' and table_name='mensajes' and column_name='media_ruta')),
+
+    ('20260830120000_etiquetas',
+     'Etiquetas de la bandeja',
+     to_regclass('public.etiquetas') is not null),
+
+    ('20260831120000_plantillas',
+     'Plantillas de WhatsApp',
+     to_regclass('public.plantillas') is not null),
+
+    ('20260901120000_abrir_chat',
+     'Abrir un chat desde el CRM',
+     exists (select 1 from pg_policies
+             where schemaname='public' and tablename='conversaciones'
+               and policyname='conversaciones_abrir'))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -88,7 +107,14 @@ with revisiones as (
                                       and policyname='productos_administrar')),
     ('catalogo_vendedores', exists (select 1 from pg_policies
                                     where schemaname='public' and tablename='vendedores'
-                                      and policyname='vendedores_administrar'))
+                                      and policyname='vendedores_administrar')),
+    ('media_whatsapp',      exists (select 1 from information_schema.columns
+                                    where table_schema='public' and table_name='mensajes' and column_name='media_ruta')),
+    ('etiquetas',           to_regclass('public.etiquetas') is not null),
+    ('plantillas',          to_regclass('public.plantillas') is not null),
+    ('abrir_chat',          exists (select 1 from pg_policies
+                                    where schemaname='public' and tablename='conversaciones'
+                                      and policyname='conversaciones_abrir'))
   ) as t(nombre, aplicada)
 )
 select
