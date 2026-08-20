@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import {
   actualizarRol,
+  enlazarVendedor,
   actualizarUsuario,
   cambiarPassword,
   crearRol,
@@ -14,8 +15,9 @@ import {
   guardarPermisos,
   type Diagnostico,
 } from "@/app/actions";
+import { useCatalogo } from "@/lib/catalog";
 import { T, soft, softer } from "@/lib/theme";
-import { ACCIONES, type Accesos, type Accion, type Permiso } from "@/lib/types";
+import { ACCIONES, activos, type Accesos, type Accion, type Permiso } from "@/lib/types";
 
 interface Props {
   accesos: Accesos;
@@ -58,6 +60,7 @@ export function UsuariosRoles({
   const [nCorreo, setNCorreo] = useState("");
   const [nPass, setNPass] = useState("");
   const [nNombre, setNNombre] = useState("");
+  const cat = useCatalogo();
   const [nRol, setNRol] = useState<string>("");
   const [passDe, setPassDe] = useState<string | null>(null);
   const [passNueva, setPassNueva] = useState("");
@@ -148,6 +151,40 @@ export function UsuariosRoles({
     setBusy(false);
     if (!r.ok) setError(r.error);
     else onRefresh();
+  };
+
+  /**
+   * ¿A esta persona le falta el enlace y lo necesita?
+   *
+   * Sólo a quien no ve todo: dirección y coordinación entran al CRM sin
+   * atender a nadie, y para ellos no tener ficha de vendedor es lo normal.
+   */
+  const faltaFicha = (u: (typeof accesos.usuarios)[number]): boolean => {
+    if (u.vendedorId != null || !u.activo) return false;
+    const rol = accesos.roles.find((r) => r.id === u.rolId);
+    return !(rol?.esAdmin || rol?.veTodo);
+  };
+
+  const cambiarVeTodo = async (id: number, veTodo: boolean) => {
+    setBusy(true);
+    const r = await actualizarRol(id, { ve_todo: veTodo });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
+  };
+
+  const cambiarVendedor = async (userId: string, vendedorId: number | null) => {
+    setBusy(true);
+    const r = await enlazarVendedor(userId, vendedorId);
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
   };
 
   const cambiarRolUsuario = async (userId: string, rolId: number | null) => {
@@ -475,7 +512,7 @@ export function UsuariosRoles({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
-                {["Usuario", "Nombre", "Rol", "Estado", ""].map((h) => (
+                {["Usuario", "Nombre", "Rol", "Ficha de vendedor", "Estado", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -525,6 +562,51 @@ export function UsuariosRoles({
                         </option>
                       ))}
                     </select>
+                  </td>
+                  {/*
+                    El enlace con la ficha de vendedor.
+
+                    Es el dato del que depende que esta persona vea sus
+                    oportunidades: sin él la base no puede saber cuáles son
+                    suyas y no le aparece ninguna. Por eso cuando falta y el
+                    rol no ve todo, se avisa acá mismo en vez de dejar que lo
+                    descubra con un CRM vacío.
+                  */}
+                  <td style={{ padding: "8px 18px" }}>
+                    <select
+                      value={u.vendedorId ?? ""}
+                      disabled={busy}
+                      onChange={(e) =>
+                        void cambiarVendedor(u.id, e.target.value ? Number(e.target.value) : null)
+                      }
+                      style={{
+                        height: 30,
+                        padding: "0 8px",
+                        fontSize: 13,
+                        border: `1px solid ${faltaFicha(u) ? T.warn : T.border}`,
+                        borderRadius: 6,
+                        background: T.surface,
+                      }}
+                    >
+                      <option value="">Sin enlazar</option>
+                      {activos(cat.vendedores).map((v) => (
+                        <option key={v.id} value={v.id}>{v.nombre}</option>
+                      ))}
+                    </select>
+                    {faltaFicha(u) && (
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 3,
+                          fontSize: 10.5,
+                          color: T.warn,
+                          lineHeight: 1.35,
+                          maxWidth: 200,
+                        }}
+                      >
+                        Sin esto no va a ver ninguna oportunidad.
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: "11px 18px" }}>
                     <span className="pill"
@@ -759,6 +841,41 @@ export function UsuariosRoles({
                   <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
                     {r.descripcion ?? "Sin descripción"}
                   </p>
+
+                  {/*
+                    Quién ve todo el pipeline.
+
+                    Va acá y no en la grilla de permisos porque no es un
+                    permiso de pantalla —«puede ver Clientes»— sino de alcance:
+                    cuántas fichas trae esa pantalla. Un asesor con «ver
+                    Clientes» ve la pantalla; lo que cambia esto es si adentro
+                    aparecen las suyas o las de todos.
+
+                    Los administradores lo tienen por ser administradores, así
+                    que ahí se muestra puesto y no se puede quitar: quitarlo no
+                    haría nada y sugeriría lo contrario.
+                  */}
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 7,
+                      fontSize: 11.5,
+                      color: r.esAdmin ? T.faint : T.ink,
+                      cursor: r.esAdmin ? "default" : "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={r.esAdmin || r.veTodo}
+                      disabled={busy || r.esAdmin}
+                      onChange={(e) => void cambiarVeTodo(r.id, e.target.checked)}
+                    />
+                    Ve las oportunidades de todo el equipo
+                    {r.esAdmin && " (por ser administrador)"}
+                  </label>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span className="pill"

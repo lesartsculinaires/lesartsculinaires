@@ -301,7 +301,7 @@ export async function crearRol(
 
 export async function actualizarRol(
   id: number,
-  patch: { nombre?: string; descripcion?: string | null; activo?: boolean },
+  patch: { nombre?: string; descripcion?: string | null; activo?: boolean; ve_todo?: boolean },
 ): Promise<ActionResult> {
   const supabase = await getServerClient();
   if (!supabase) return NO_SESSION;
@@ -991,4 +991,67 @@ export async function actualizarVarias(
 
   revalidatePath("/");
   return { ok: true, error: null, cuantas };
+}
+
+/**
+ * Enlaza una cuenta del CRM con su ficha de vendedor.
+ *
+ * Es el dato del que depende todo el filtrado por asesor: sin él la base no
+ * puede saber que quien entró es el vendedor #1, y esa persona no ve ninguna
+ * oportunidad. Se rellena solo por correo al correr la migración; esto es para
+ * los que no coincidieron —un correo distinto, un vendedor cargado antes de
+ * tener cuenta— y para cambiarlo cuando alguien deja el puesto.
+ *
+ * Se guarda en `vendedores.usuario_id` y no al revés porque un usuario puede no
+ * ser vendedor —dirección entra y no atiende a nadie— mientras que un vendedor
+ * sin cuenta sigue siendo un vendedor válido al que asignarle leads.
+ */
+export async function enlazarVendedor(
+  usuarioId: string,
+  vendedorId: number | null,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede enlazar cuentas con vendedores." };
+  }
+
+  // Primero se suelta el enlace anterior de esta cuenta: la restricción sólo
+  // deja una ficha por usuario, y sin soltarlo el cambio chocaría con ella.
+  const { error: errSoltar } = await supabase
+    .from("vendedores")
+    .update({ usuario_id: null })
+    .eq("usuario_id", usuarioId);
+
+  if (errSoltar) {
+    if (errSoltar.code === "42703") {
+      return {
+        ok: false,
+        error: "Falta correr la migración 20260902120000_cada_quien_lo_suyo.sql en Supabase.",
+      };
+    }
+    return { ok: false, error: errSoltar.message };
+  }
+
+  if (vendedorId == null) {
+    revalidatePath("/");
+    return { ok: true, error: null };
+  }
+
+  const { error } = await supabase
+    .from("vendedores")
+    .update({ usuario_id: usuarioId })
+    .eq("id", vendedorId);
+
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "Esa ficha de vendedor ya está enlazada con otra cuenta." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
 }

@@ -313,6 +313,13 @@ export interface Rol {
   activo: boolean;
   /** Always allowed everything, and protected from deletion. */
   esAdmin: boolean;
+  /**
+   * Ve todas las oportunidades, no sólo las suyas.
+   *
+   * Aparte de `esAdmin` a propósito: sirve para coordinación —alguien que
+   * supervisa al equipo— sin darle además la administración del sistema.
+   */
+  veTodo: boolean;
 }
 
 /** One row of the permissions grid. */
@@ -331,6 +338,14 @@ export interface Usuario {
   correo: string;
   rolId: number | null;
   activo: boolean;
+  /**
+   * Qué ficha de vendedor es esta persona. Null si no está enlazada.
+   *
+   * Sin esto la base no puede saber qué oportunidades son suyas, así que
+   * alguien de ventas sin enlazar no ve ninguna. Es el dato que hace funcionar
+   * todo el filtrado por asesor.
+   */
+  vendedorId: number | null;
 }
 
 /** Everything the access screens and the sidebar gate need. */
