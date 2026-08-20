@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { NuevoClienteForm } from "@/components/modules/NuevoClienteForm";
@@ -12,6 +12,7 @@ import { T, softer } from "@/lib/theme";
 import { actualizarVarias } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
+import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { CatalogItem, Importacion, Oportunidad } from "@/lib/types";
 
@@ -97,6 +98,8 @@ export function Clientes({
    * que significan es «la fila de arriba» y «la de abajo», y eso depende de
    * cómo esté ordenada la lista en este momento.
    */
+  /** Por qué columna está ordenada la tabla. Null = como viene del servidor. */
+  const [orden, setOrden] = useState<Orden | null>(null);
   const [foco, setFoco] = useState<number | null>(null);
   const [ancla, setAncla] = useState<number | null>(null);
   const soft = softer(accent);
@@ -118,7 +121,7 @@ export function Clientes({
       : []),
   ];
 
-  const list = oportunidades.filter(
+  const filtradas = oportunidades.filter(
     (o) =>
       filtros_def.every(({ key }) => {
         const want = filtros[key];
@@ -134,6 +137,25 @@ export function Clientes({
           .toLowerCase()
           .includes(q)),
   );
+
+
+  /**
+   * Se ordena después de filtrar, no antes.
+   *
+   * Ordenar la lista entera y filtrar encima daría lo mismo, pero cuesta más:
+   * con seiscientas fichas y un filtro que deja cinco, ordenar primero es
+   * ordenar quinientas noventa y cinco que nadie va a ver.
+   */
+  const list = useMemo(() => ordenar(filtradas, orden), [filtradas, orden]);
+
+  const cambiarOrden = (columna: Columna) => {
+    setOrden((antes) => siguienteOrden(antes, columna));
+    // El cursor del teclado apunta a una posición, y al reordenar esa posición
+    // pasa a ser otra ficha. Se suelta en vez de dejarlo señalando a alguien
+    // que nadie eligió. Las marcas se quedan: van por id, no por lugar.
+    setFoco(null);
+    setAncla(null);
+  };
 
   const activos = filtros_def.filter((f) => filtros[f.key] != null).length;
 
@@ -475,15 +497,15 @@ export function Clientes({
                     onClick={(e) => e.stopPropagation()}
                   />
                 </th>
-                <th style={th}>Código</th>
-                <th style={th}>Fecha</th>
-                <th style={th}>Cliente</th>
-                <th style={th}>Programa</th>
-                <th style={th}>Vendedor</th>
-                <th style={th}>Etapa</th>
-                <th style={th}>Estado</th>
-                <th style={{ ...th, textAlign: "right" }}>Valor</th>
-                <th style={{ ...th, textAlign: "right" }}>Cerrada</th>
+                <Encabezado columna="codigo" orden={orden} onOrdenar={cambiarOrden}>Código</Encabezado>
+                <Encabezado columna="fechaRegistro" orden={orden} onOrdenar={cambiarOrden}>Fecha</Encabezado>
+                <Encabezado columna="cliente" orden={orden} onOrdenar={cambiarOrden}>Cliente</Encabezado>
+                <Encabezado columna="producto" orden={orden} onOrdenar={cambiarOrden}>Programa</Encabezado>
+                <Encabezado columna="vendedor" orden={orden} onOrdenar={cambiarOrden}>Vendedor</Encabezado>
+                <Encabezado columna="etapa" orden={orden} onOrdenar={cambiarOrden}>Etapa</Encabezado>
+                <Encabezado columna="estado" orden={orden} onOrdenar={cambiarOrden}>Estado</Encabezado>
+                <Encabezado columna="valor" orden={orden} onOrdenar={cambiarOrden} derecha>Valor</Encabezado>
+                <Encabezado columna="cerrada" orden={orden} onOrdenar={cambiarOrden} derecha>Cerrada</Encabezado>
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>
@@ -744,5 +766,65 @@ export function Clientes({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Un encabezado por el que se puede ordenar.
+ *
+ * La flecha se muestra sólo en la columna activa. Ponerla en las nueve
+ * llenaría la fila de símbolos y ninguno diría nada; en la que está ordenando
+ * dice además hacia dónde. Las demás se descubren al pasar el mouse, que es
+ * cuando importa saber que se puede.
+ */
+function Encabezado({
+  columna,
+  orden,
+  onOrdenar,
+  derecha,
+  children,
+}: {
+  columna: Columna;
+  orden: Orden | null;
+  onOrdenar: (c: Columna) => void;
+  derecha?: boolean;
+  children: React.ReactNode;
+}) {
+  const activa = orden?.columna === columna;
+
+  return (
+    <th
+      style={{
+        textAlign: derecha ? "right" : "left",
+        padding: 0,
+        fontWeight: 500,
+        fontSize: 11.5,
+        color: T.muted,
+        borderBottom: `1px solid ${T.border}`,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => onOrdenar(columna)}
+        title="Ordenar por esta columna"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          justifyContent: derecha ? "flex-end" : "flex-start",
+          width: "100%",
+          padding: "9px 14px",
+          fontSize: 11.5,
+          fontWeight: activa ? 700 : 500,
+          color: activa ? T.ink : T.muted,
+        }}
+      >
+        {children}
+        <span aria-hidden style={{ fontSize: 9, opacity: activa ? 1 : 0.3 }}>
+          {activa ? (orden.asc ? "▲" : "▼") : "▲"}
+        </span>
+      </button>
+    </th>
   );
 }
