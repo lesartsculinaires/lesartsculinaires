@@ -8,9 +8,10 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
+import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { activosCon } from "@/lib/types";
-import type { Conversacion, Etiqueta, Mensaje, Oportunidad } from "@/lib/types";
+import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
 interface Props {
   conversaciones: Conversacion[];
@@ -22,6 +23,8 @@ interface Props {
   /** Para mostrar la etapa y el estado reales del lead de cada conversación. */
   oportunidades: Oportunidad[];
   etiquetas: Etiqueta[];
+  /** Para poder reabrir un hilo dormido. Sólo se ofrecen las aprobadas. */
+  plantillas: Plantilla[];
   onRefrescar: () => void;
   onVerCliente: (clienteId: number) => void;
 }
@@ -79,6 +82,7 @@ export function Inbox({
   accent,
   oportunidades,
   etiquetas,
+  plantillas,
   onRefrescar,
   onVerCliente,
 }: Props) {
@@ -624,6 +628,12 @@ export function Inbox({
               >
                 Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja
                 escribirle libremente hasta que vuelva a escribir.
+                <MandarPlantilla
+                  conversacionId={actual.id}
+                  plantillas={plantillas}
+                  accent={accent}
+                  onEnviado={onRefrescar}
+                />
               </p>
             )}
 

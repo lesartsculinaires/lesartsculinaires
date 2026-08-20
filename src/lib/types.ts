@@ -101,6 +101,25 @@ export interface Etiqueta {
   activa: boolean;
 }
 
+/**
+ * Una plantilla de WhatsApp, copiada de Meta.
+ *
+ * `estado` es el dato que decide todo: sólo las APPROVED se pueden mandar. Una
+ * en PENDING existe y figura en la lista, pero mandarla falla.
+ */
+export interface Plantilla {
+  id: string;
+  nombre: string;
+  /** es, en_US… Cada idioma es una plantilla distinta para Meta. */
+  idioma: string;
+  estado: string;
+  categoria: string | null;
+  /** El texto con sus {{1}} sin reemplazar. */
+  cuerpo: string | null;
+  /** Cuántos huecos hay que llenar antes de mandarla. */
+  variables: number;
+}
+
 /** Placeholder shown wherever an opportunity has no salesperson assigned. */
 export const SIN_ASIGNAR = "Sin asignar";
 

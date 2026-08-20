@@ -34,6 +34,7 @@ Cuatro variables, y hacen cosas distintas aunque dos suenen parecido.
 | `WHATSAPP_APP_SECRET` | Con esto se comprueba la firma de **cada** mensaje que llega. Es lo que impide que alguien que descubra la URL invente conversaciones enteras. | Meta → tu app → Configuración → Básica → «Clave secreta de la app». |
 | `WHATSAPP_TOKEN` | Permiso para **mandar** mensajes desde el número de la escuela. | Meta → tu app → WhatsApp → Configuración de la API. |
 | `WHATSAPP_PHONE_NUMBER_ID` | Desde qué número sale el mensaje. Es un número de identificación, no el teléfono. | Mismo lugar que el anterior. |
+| `WHATSAPP_WABA_ID` | Para leer las plantillas. Es el identificador de la **cuenta** de WhatsApp Business, **no** el del número: son dos cosas distintas y se confunden fácil porque los dos son números largos que salen de la misma pantalla. | Meta → tu app → WhatsApp → Configuración de la API → «Identificador de la cuenta de WhatsApp Business». |
 
 **La diferencia entre las dos primeras**, que es donde todo el mundo se
 confunde: `WHATSAPP_VERIFY_TOKEN` se usa **una vez**, el día que conectás el
@@ -44,6 +45,10 @@ cambiar la URL sin volver a ponerla.
 
 Sin `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` la bandeja recibe mensajes
 pero no puede contestar: el cuadro de respuesta avisa que falta configurar.
+
+Sin `WHATSAPP_WABA_ID` el módulo Plantillas funciona igual —se ve la lista
+guardada y el botón para ir a crear una en Meta— pero el botón de sincronizar
+queda apagado, porque no hay a qué cuenta preguntarle.
 
 ## La API para n8n y el asistente
 

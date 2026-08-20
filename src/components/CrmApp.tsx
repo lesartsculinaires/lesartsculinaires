@@ -15,6 +15,7 @@ import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { Notificaciones } from "@/components/Notificaciones";
 import { SinCopiar } from "@/components/SinCopiar";
+import { Plantillas } from "@/components/modules/Plantillas";
 import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
@@ -24,6 +25,7 @@ import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { CatalogoProvider } from "@/lib/catalog";
 import { ACCENT, T } from "@/lib/theme";
+import type { EstadoPlantillas } from "@/app/plantillas-actions";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type {
   Accesos,
@@ -53,6 +55,8 @@ interface Props {
   accesos: Accesos;
   /** Catálogo de etiquetas de la bandeja. Vacío si falta su migración. */
   etiquetas: Etiqueta[];
+  /** Plantillas de WhatsApp y cuándo se sincronizaron. */
+  plantillas: EstadoPlantillas;
   /** True when the roles tables do not exist yet. */
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
@@ -78,6 +82,7 @@ export default function CrmApp({
   userEmail,
   accesos,
   etiquetas,
+  plantillas,
   faltaMigracionAccesos,
   puedeCrearCuentas,
   modInicial,
@@ -274,6 +279,7 @@ export default function CrmApp({
               mensajes={mensajes}
               oportunidades={oportunidades}
               etiquetas={etiquetas}
+              plantillas={plantillas.plantillas}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
               accent={accent}
@@ -348,6 +354,14 @@ export default function CrmApp({
                 Esta sección es solo para administradores.
               </p>
             ))}
+
+          {mod === "Plantillas" && (
+            <Plantillas
+              estado={plantillas}
+              accent={accent}
+              onRefrescar={() => router.refresh()}
+            />
+          )}
 
           {mod === "Notificaciones" && (
             <RegistroActividad
