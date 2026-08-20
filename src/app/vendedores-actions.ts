@@ -290,3 +290,89 @@ async function tieneCuentaCrm(
 
   return data != null;
 }
+
+/**
+ * Cambiar los datos de un vendedor.
+ *
+ * Las mismas comprobaciones que al crearlo, con una diferencia que importa: al
+ * buscar repetidos hay que dejarse a uno mismo afuera. Sin eso, guardar sin
+ * tocar el nombre daría «ya está Katya en la lista» —chocando consigo misma— y
+ * no habría manera de corregirle el teléfono.
+ *
+ * Puede cualquiera del equipo corregir un teléfono mal escrito, pero no: esto
+ * cambia el nombre con el que esa persona aparece en toda la historia del CRM,
+ * así que es de dirección, igual que crear y dar de baja.
+ */
+export async function editarVendedor(
+  id: number,
+  v: { nombre: string; correo: string | null; telefono: string | null; forzar?: boolean },
+): Promise<ResultadoVendedor> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede editar un vendedor." };
+  }
+
+  const nombre = v.nombre.trim();
+  if (!nombre) return { ok: false, error: "Poné el nombre del vendedor." };
+  if (nombre.length > 120) return { ok: false, error: "El nombre es demasiado largo." };
+
+  const correo = (v.correo ?? "").trim().toLowerCase() || null;
+  if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return { ok: false, error: "El correo no tiene una forma válida." };
+  }
+
+  const telefono = (v.telefono ?? "").replace(/\D/g, "") || null;
+  if (telefono && !/^[0-9]{8,15}$/.test(telefono)) {
+    return { ok: false, error: "El teléfono tiene que tener entre 8 y 15 dígitos." };
+  }
+
+  const { data: existentes, error: errLeer } = await supabase
+    .from("vendedores")
+    .select("id, nombre, correo")
+    .limit(500);
+
+  if (errLeer) return { ok: false, error: errLeer.message };
+
+  // Todos menos éste: compararse contra uno mismo daría siempre un choque.
+  const otros = (existentes ?? []).filter((x) => Number(x.id) !== id);
+  const nombres = otros.map((x) => String(x.nombre ?? ""));
+  const buscado = normalizarTexto(nombre);
+
+  const mismo = nombres.find((n) => normalizarTexto(n) === buscado);
+  if (mismo) return { ok: false, error: `Ya está «${mismo}» en la lista.` };
+
+  if (correo) {
+    const conEseCorreo = otros.find((x) => String(x.correo ?? "").toLowerCase() === correo);
+    if (conEseCorreo) {
+      return { ok: false, error: `Ese correo ya es de «${String(conEseCorreo.nombre)}».` };
+    }
+  }
+
+  if (!v.forzar) {
+    const parecidos = nombres.filter((n) => programasParecidos(n, nombre));
+    if (parecidos.length > 0) return { ok: false, error: null, parecidos };
+  }
+
+  const { error } = await supabase
+    .from("vendedores")
+    .update({ nombre, correo, telefono })
+    .eq("id", id);
+
+  if (error) {
+    if (error.code === "23505") {
+      return { ok: false, error: "Ya existe un vendedor con ese nombre o correo." };
+    }
+    if (error.code === "42501") {
+      return { ok: false, error: "Sólo dirección puede editar un vendedor." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  // El nombre viaja a los desplegables, al calendario, a la bandeja y a la API.
+  revalidatePath("/");
+
+  return { ok: true, error: null, tieneCuenta: await tieneCuentaCrm(supabase, correo) };
+}

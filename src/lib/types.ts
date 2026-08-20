@@ -33,6 +33,12 @@ export interface Etapa extends CatalogItem {
  */
 export interface Vendedor extends CatalogItem {
   activo: boolean;
+  /**
+   * Para poder corregirlos sin ir a buscarlos aparte. El teléfono además es a
+   * donde n8n le avisa de un lead nuevo.
+   */
+  correo: string | null;
+  telefono: string | null;
 }
 
 /** Los que todavía atienden: es lo que va en cualquier desplegable. */

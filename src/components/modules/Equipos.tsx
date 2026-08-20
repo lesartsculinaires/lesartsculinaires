@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { reactivarVendedor } from "@/app/vendedores-actions";
 import { NuevoVendedor } from "@/components/modules/NuevoVendedor";
+import { EditarVendedor } from "@/components/modules/EditarVendedor";
 import { QuitarVendedor } from "@/components/modules/QuitarVendedor";
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
@@ -70,6 +71,7 @@ export function Equipos({
   const open = openTone(accent);
   const [creando, setCreando] = useState(false);
   const [quitando, setQuitando] = useState<Vendedor | null>(null);
+  const [editando, setEditando] = useState<Vendedor | null>(null);
 
   // El catálogo llega entero para que el resto del CRM pueda seguir poniéndole
   // nombre a lo que atendió alguien que ya no está. Acá se trabaja sólo con los
@@ -107,6 +109,14 @@ export function Equipos({
           accent={accent}
           onCerrar={() => setCreando(false)}
           onCreado={onRefrescar}
+        />
+      )}
+      {editando && (
+        <EditarVendedor
+          vendedor={editando}
+          accent={accent}
+          onCerrar={() => setEditando(null)}
+          onGuardado={onRefrescar}
         />
       )}
       {quitando && (
@@ -345,14 +355,26 @@ export function Equipos({
                 {v.nombre}
               </h2>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {/* Las dos acciones sobre esta persona, donde está su nombre.
+                    Sólo dirección: cambiarle el nombre a un vendedor reescribe
+                    cómo aparece en toda la historia del CRM. */}
                 {esAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => setQuitando(v)}
-                    style={{ fontSize: 12.5, color: T.muted }}
-                  >
-                    Quitar
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditando(v)}
+                      style={{ fontSize: 12.5, color: T.muted }}
+                    >
+                      Editar perfil
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuitando(v)}
+                      style={{ fontSize: 12.5, color: T.muted }}
+                    >
+                      Quitar
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"
