@@ -18,6 +18,7 @@ export const MODULOS = [
   "Equipos",
   "Programas",
   "Plantillas",
+  "Recordatorios",
   "Notificaciones",
 ] as const;
 

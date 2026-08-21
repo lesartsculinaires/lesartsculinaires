@@ -91,7 +91,13 @@ with revisiones as (
     ('20260904120000_roles_de_ventas',
      'Los roles de Gerente de ventas y Jefe de ventas',
      (select count(*) from public.roles
-       where nombre in ('Gerente de ventas','Jefe de ventas')) = 2)
+       where nombre in ('Gerente de ventas','Jefe de ventas')) = 2),
+
+    ('20260905120000_recordatorio_reserva',
+     'Recordatorio de reserva: 15 días para completar el pago',
+     exists (select 1 from information_schema.columns
+             where table_schema='public' and table_name='oportunidades'
+               and column_name='reserva_en'))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -135,7 +141,10 @@ with revisiones as (
                                       and policyname='oportunidades_ver')),
     ('etapa_prospectos',    exists (select 1 from public.etapas where nombre='Prospectos')),
     ('roles_de_ventas',     (select count(*) from public.roles
-                              where nombre in ('Gerente de ventas','Jefe de ventas')) = 2)
+                              where nombre in ('Gerente de ventas','Jefe de ventas')) = 2),
+    ('recordatorio_reserva', exists (select 1 from information_schema.columns
+                              where table_schema='public' and table_name='oportunidades'
+                                and column_name='reserva_en'))
   ) as t(nombre, aplicada)
 )
 select

@@ -188,6 +188,14 @@ export interface Oportunidad {
    * métrica: ver `selectors.ts`.
    */
   reserva: number | null;
+  /**
+   * Cuándo se registró el anticipo. La pone sola la base.
+   *
+   * De acá salen los quince días para completar el pago. Nula en las reservas
+   * viejas, cargadas antes de que existiera la columna: ahí hay anticipo pero
+   * no se sabe de cuándo, y el recordatorio lo dice en vez de inventarlo.
+   */
+  reservaEn: string | null;
   descuento: string | null;
 
   /**

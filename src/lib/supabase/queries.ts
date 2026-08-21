@@ -70,6 +70,9 @@ function toOportunidad(r: Row): Oportunidad {
     valor: numOrNull(r.valor_oportunidad),
     cerrada: numOrNull(r.venta_cerrada),
     reserva: numOrNull(r.reserva),
+    // Nula mientras no se haya corrido la migración del recordatorio: la vista
+    // vieja no la trae y la aplicación tiene que seguir andando igual.
+    reservaEn: r.reserva_en ? str(r.reserva_en) : null,
     descuento: r.descuento_promocion ? str(r.descuento_promocion) : null,
 
     // Vienen en null mientras no se haya corrido la migración de bases: la

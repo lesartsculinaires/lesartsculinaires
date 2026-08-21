@@ -13,7 +13,10 @@ import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
+import { AvisoReservas } from "@/components/AvisoReservas";
 import { Notificaciones } from "@/components/Notificaciones";
+import { Recordatorios as RelojRecordatorios } from "@/components/Recordatorios";
+import { Recordatorios } from "@/components/modules/Recordatorios";
 import { SinCopiar } from "@/components/SinCopiar";
 import { Sonido } from "@/components/Sonido";
 import { Plantillas } from "@/components/modules/Plantillas";
@@ -22,10 +25,12 @@ import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
+import { useAvisoDiario } from "@/hooks/useAvisoDiario";
 import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { queSuena } from "@/lib/aviso";
+import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS } from "@/lib/modulos";
 import { ACCENT, T } from "@/lib/theme";
@@ -66,6 +71,10 @@ interface Props {
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
   puedeCrearCuentas: boolean;
+  /** Recordatorios que esta persona pidió no ver: id → hasta cuándo. */
+  pospuestos: Record<number, string>;
+  /** La tabla de pospuestos todavía no existe. */
+  faltaMigracionRecordatorios: boolean;
   /**
    * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
    * estuvo esta persona, o el modo elegido en el login la primera vez.
@@ -92,6 +101,8 @@ export default function CrmApp({
   plantillas,
   faltaMigracionAccesos,
   puedeCrearCuentas,
+  pospuestos,
+  faltaMigracionRecordatorios,
   modInicial,
   loadError,
 }: Props) {
@@ -170,6 +181,26 @@ export default function CrmApp({
    * un asesor en particular. A quien sólo ve lo suyo, no.
    */
   const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
+
+  /**
+   * Las reservas con el plazo corriendo.
+   *
+   * Se calculan de las mismas oportunidades que ya están en pantalla: no hay
+   * una consulta aparte de recordatorios. Eso, además de ahorrar un viaje,
+   * hace que cada quien vea recordatorios sólo de sus fichas sin una línea
+   * escrita para conseguirlo —la base ya le manda nada más las suyas—.
+   *
+   * `hoy` se fija una vez y no se recalcula en cada dibujado: el número de
+   * días es información que se lee, y que cambie sola mientras alguien la mira
+   * es peor que quede un rato vieja. El refresco de cada diez minutos la pone
+   * al día.
+   */
+  const [hoy] = useState(() => new Date());
+  const recordatorios = recordatoriosDe(oportunidades, hoy, pospuestos);
+  const urgentes = paraInterrumpir(recordatorios);
+
+  // La ventana emergente: sólo por lo de hoy y lo vencido, y una vez por día.
+  const aviso = useAvisoDiario("lac.reservas.visto", urgentes.length > 0);
 
   return (
     <CatalogoProvider value={catalogo}>
@@ -262,6 +293,12 @@ export default function CrmApp({
                 bloqueado={campanita.bloqueado}
                 accent={accent}
                 onAlternar={campanita.alternar}
+              />
+              <RelojRecordatorios
+                lista={recordatorios}
+                accent={accent}
+                onAbrirFicha={abrirFicha}
+                onVerTodos={() => actions.setMod("Recordatorios")}
               />
               <Notificaciones accent={accent} catalogo={catalogo} onAbrirFicha={abrirFicha} />
             </div>
@@ -413,6 +450,17 @@ export default function CrmApp({
             />
           )}
 
+          {mod === "Recordatorios" && (
+            <Recordatorios
+              lista={recordatorios}
+              faltaMigracion={faltaMigracionRecordatorios}
+              puedeElegirAsesor={veTodoElEquipo}
+              accent={accent}
+              onAbrirFicha={abrirFicha}
+              onRefrescar={() => router.refresh()}
+            />
+          )}
+
           {mod === "Notificaciones" && (
             <RegistroActividad
               accent={accent}
@@ -445,6 +493,18 @@ export default function CrmApp({
               onEditar={actions.editar}
               onEditarCliente={actions.editarCliente}
               onClose={() => actions.select(null)}
+            />
+          )}
+
+          {aviso.mostrar && (
+            <AvisoReservas
+              lista={urgentes}
+              accent={accent}
+              onAbrirFicha={(id) => {
+                abrirFicha(id);
+                aviso.cerrar();
+              }}
+              onCerrar={aviso.cerrar}
             />
           )}
 
