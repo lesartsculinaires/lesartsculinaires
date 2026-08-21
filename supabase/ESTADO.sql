@@ -97,7 +97,11 @@ with revisiones as (
      'Recordatorio de reserva: 15 días para completar el pago',
      exists (select 1 from information_schema.columns
              where table_schema='public' and table_name='oportunidades'
-               and column_name='reserva_en'))
+               and column_name='reserva_en')),
+
+    ('20260906120000_formularios',
+     'Formularios de feria: un lead que entra ya cargado',
+     to_regclass('public.formularios') is not null)
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -144,7 +148,8 @@ with revisiones as (
                               where nombre in ('Gerente de ventas','Jefe de ventas')) = 2),
     ('recordatorio_reserva', exists (select 1 from information_schema.columns
                               where table_schema='public' and table_name='oportunidades'
-                                and column_name='reserva_en'))
+                                and column_name='reserva_en')),
+    ('formularios',        to_regclass('public.formularios') is not null)
   ) as t(nombre, aplicada)
 )
 select

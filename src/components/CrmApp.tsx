@@ -9,6 +9,7 @@ import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
 import { Clientes } from "@/components/modules/Clientes";
 import { Dashboard } from "@/components/modules/Dashboard";
 import { Equipos } from "@/components/modules/Equipos";
+import { Formularios } from "@/components/modules/Formularios";
 import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
@@ -30,6 +31,7 @@ import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
 import { queSuena } from "@/lib/aviso";
+import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS } from "@/lib/modulos";
@@ -75,6 +77,10 @@ interface Props {
   pospuestos: Record<number, string>;
   /** La tabla de pospuestos todavía no existe. */
   faltaMigracionRecordatorios: boolean;
+  /** Los formularios de feria, con sus preguntas. */
+  formularios: FormularioDeFeria[];
+  /** Las tablas de formularios todavía no existen. */
+  faltaMigracionFormularios: boolean;
   /**
    * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
    * estuvo esta persona, o el modo elegido en el login la primera vez.
@@ -103,6 +109,8 @@ export default function CrmApp({
   puedeCrearCuentas,
   pospuestos,
   faltaMigracionRecordatorios,
+  formularios,
+  faltaMigracionFormularios,
   modInicial,
   loadError,
 }: Props) {
@@ -453,6 +461,17 @@ export default function CrmApp({
             <Plantillas
               estado={plantillas}
               accent={accent}
+              onRefrescar={() => router.refresh()}
+            />
+          )}
+
+          {mod === "Formularios" && (
+            <Formularios
+              formularios={formularios}
+              faltaMigracion={faltaMigracionFormularios}
+              esAdmin={accesos.esAdmin}
+              accent={accent}
+              onVerFicha={abrirFicha}
               onRefrescar={() => router.refresh()}
             />
           )}

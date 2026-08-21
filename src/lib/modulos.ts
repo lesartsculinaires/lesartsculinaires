@@ -17,6 +17,7 @@ export const MODULOS = [
   "Calendario",
   "Equipos",
   "Programas",
+  "Formularios",
   "Plantillas",
   "Recordatorios",
   "Notificaciones",

@@ -12,6 +12,7 @@ import { listarEtiquetas } from "@/app/etiquetas-actions";
 import { estadoPlantillas } from "@/app/plantillas-actions";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import { fetchPospuestos } from "@/lib/supabase/recordatorios";
+import { fetchFormularios } from "@/lib/supabase/formularios";
 import {
   fetchCatalogo,
   fetchEventos,
@@ -31,7 +32,7 @@ export default async function Page({
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos, accesos, bases, inbox, etiquetas, plantillas, pospuestos] =
+  const [ops, catalogo, eventos, accesos, bases, inbox, etiquetas, plantillas, pospuestos, formularios] =
     await Promise.all([
       fetchOportunidades(),
       fetchCatalogo(),
@@ -42,6 +43,7 @@ export default async function Page({
       listarEtiquetas(),
       estadoPlantillas(),
       fetchPospuestos(),
+      fetchFormularios(),
     ]);
 
   const puedeResponder = await salidaDisponible();
@@ -85,6 +87,8 @@ export default async function Page({
       faltaMigracionAccesos={accesos.faltaMigracion}
       pospuestos={pospuestos.data}
       faltaMigracionRecordatorios={pospuestos.faltaMigracion}
+      formularios={formularios.data}
+      faltaMigracionFormularios={formularios.faltaMigracion}
       puedeCrearCuentas={hayServiceRole()}
       modInicial={modulo}
       loadError={loadError}
