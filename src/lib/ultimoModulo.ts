@@ -2,7 +2,7 @@
  * Volver a donde uno estaba.
  *
  * Antes, cualquier recarga —la del navegador, la de un despliegue nuevo, la
- * que hace el CRM solo cada diez minutos— devolvía a Dashboard. Quien estaba
+ * que hace el CRM solo cada minuto— devolvía a Dashboard. Quien estaba
  * revisando la tabla de Clientes tenía que volver a entrar a Clientes, y si
  * había entrado en modo administrador aparecía otra vez en Usuarios y Roles,
  * que es todavía más lejos de donde estaba trabajando.

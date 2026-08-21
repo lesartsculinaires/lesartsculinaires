@@ -64,8 +64,8 @@ export type EstadoEnVivo =
  * nada. Por eso además se le pregunta a la base, con
  * `cambios_en_vivo_activos()`, si los avisos van a salir de verdad.
  *
- * En cualquier caso el refresco cada diez minutos sigue corriendo por debajo:
- * la pantalla se atrasa, no se queda muerta.
+ * En cualquier caso el refresco automático sigue corriendo por debajo: la
+ * pantalla se atrasa como mucho un minuto, no se queda muerta.
  *
  * `onCambio` recibe cada aviso suelto, sin juntar y sin esperar. Lo usa el
  * sonido, que necesita saber qué pasó —un mensaje no suena igual que un lead
@@ -147,7 +147,7 @@ export function useEnVivo(onCambio?: (c: CambioEnVivo) => void): EstadoEnVivo {
         void revisarPublicacion();
       } else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") {
         // Sesión vencida, red caída, proxy de oficina. Para quien mira son lo
-        // mismo: no hay avisos, y manda el refresco cada diez minutos.
+        // mismo: no hay avisos, y manda el refresco automático.
         canalListo = false;
       }
       asentarEstado();

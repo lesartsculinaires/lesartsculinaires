@@ -130,10 +130,17 @@ export default function CrmApp({
   const yo = accesos.yo?.id ?? null;
   const enVivo = useEnVivo((c) => campanita.avisar(queSuena(c, yo)));
 
-  // Y por debajo sigue el refresco cada diez minutos. No sobra: un websocket
-  // se cae en silencio —wifi de hotel, laptop suspendida, proxy de oficina— y
-  // sin esto la pantalla se quedaría quieta sin que nadie lo note.
-  useAutoRefresco(10 * 60_000);
+  // Y por debajo sigue el refresco solo. No sobra: un websocket se cae en
+  // silencio —wifi de hotel, laptop suspendida, proxy de oficina— y sin esto
+  // la pantalla se quedaría quieta sin que nadie lo note.
+  //
+  // Un minuto es el peor caso que se acordó, no el ritmo esperado: con el
+  // websocket andando los cambios llegan en menos de un segundo y esto no
+  // llega a usarse nunca. Cada vuelta son veinte consultas a Supabase por
+  // pestaña abierta, así que el número no es gratis: bajarlo a diez segundos
+  // multiplicaría esa cuenta por seis sin adelantar nada mientras el
+  // websocket funcione.
+  useAutoRefresco(60_000);
 
   /**
    * Dejar anotado en qué pantalla está, para volver acá la próxima vez.
@@ -192,7 +199,7 @@ export default function CrmApp({
    *
    * `hoy` se fija una vez y no se recalcula en cada dibujado: el número de
    * días es información que se lee, y que cambie sola mientras alguien la mira
-   * es peor que quede un rato vieja. El refresco de cada diez minutos la pone
+   * es peor que quede un rato vieja. El refresco automático la pone
    * al día.
    */
   const [hoy] = useState(() => new Date());

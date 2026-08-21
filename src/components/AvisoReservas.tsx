@@ -18,8 +18,8 @@ import { T } from "@/lib/theme";
  *
  * 1. Sólo por lo de hoy y lo vencido. Que algo venza en tres días se ve en el
  *    reloj de la cabecera, que no tapa nada.
- * 2. Una vez por día y por navegador. El CRM se refresca solo cada diez
- *    minutos y eso volvería a abrirla seis veces por hora.
+ * 2. Una vez por día y por navegador. El CRM se refresca solo cada minuto y
+ *    eso volvería a abrirla sin parar.
  * 3. Cada aviso se puede posponer, y eso sí queda guardado en la base: vale
  *    para la computadora de la casa igual que para la de la oficina.
  *

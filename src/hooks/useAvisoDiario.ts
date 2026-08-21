@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 /**
  * Una ventana que interrumpe como mucho una vez por día.
  *
- * El CRM se refresca solo cada diez minutos y la gente deja la pestaña abierta
- * todo el día. Sin este freno, el aviso de reservas saltaría seis veces por
- * hora, y a la tercera se cierra sin leer —que es lo mismo que no tenerlo,
- * pero molestando—.
+ * El CRM se refresca solo cada minuto y la gente deja la pestaña abierta todo
+ * el día. Sin este freno, el aviso de reservas saltaría una y otra vez, y a la
+ * tercera se cierra sin leer —que es lo mismo que no tenerlo, pero
+ * molestando—.
  *
  * Se recuerda el día, no un «ya lo vi»: al día siguiente vuelve a aparecer,
  * porque al día siguiente la reserva está un día más vencida.

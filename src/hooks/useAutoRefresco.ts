@@ -13,11 +13,17 @@ import { useRouter } from "next/navigation";
  *
  * Dos detalles que no son obvios:
  *
- * - El reloj se consulta cada medio minuto en vez de programar un solo
- *   temporizador a diez. Cuando una laptop se suspende, los temporizadores se
- *   congelan con ella: al despertar, uno de diez minutos todavía tendría ocho
- *   por delante aunque la máquina haya pasado la noche cerrada. Mirando la hora
- *   real, al volver ya está vencido y refresca de una.
+ * - Se mira la hora real en cada vuelta en vez de programar un solo
+ *   temporizador al plazo entero. Cuando una laptop se suspende, los
+ *   temporizadores se congelan con ella: al despertar, uno de diez minutos
+ *   todavía tendría ocho por delante aunque la máquina haya pasado la noche
+ *   cerrada. Mirando la hora real, al volver ya está vencido y refresca de una.
+ *
+ * - Cada cuánto se mira sale del propio plazo, a un cuarto de él. Con un
+ *   número fijo, un plazo de un minuto y un reloj de medio se cumpliría entre
+ *   los sesenta y los noventa segundos, según dónde cayera el tic: el plazo
+ *   diría una cosa y la pantalla haría otra. A un cuarto, el retraso nunca
+ *   pasa del veinticinco por ciento.
  *
  * - Con la pestaña escondida no se refresca. Nadie está viendo, y cada vuelta
  *   son consultas contra Supabase que se gastan sin que nadie las lea.
@@ -34,7 +40,11 @@ export function useAutoRefresco(cadaMs: number) {
       router.refresh();
     };
 
-    const id = window.setInterval(tic, 30_000);
+    // Entre cinco segundos y medio minuto: más seguido no aporta —el tic no
+    // hace nada si no venció el plazo— y más espaciado desdibujaría plazos
+    // cortos.
+    const cadaTic = Math.max(5_000, Math.min(30_000, Math.round(cadaMs / 4)));
+    const id = window.setInterval(tic, cadaTic);
     document.addEventListener("visibilitychange", tic);
 
     return () => {
