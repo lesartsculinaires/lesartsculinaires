@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { responderFormulario } from "@/app/formularios-actions";
+import { Aviso } from "@/components/ui/Aviso";
 import { revisar, type Formulario, type Respuestas } from "@/lib/formularios";
 import { T } from "@/lib/theme";
 import type { Coincidencia } from "@/lib/duplicados";
@@ -40,6 +41,17 @@ export function LlenarFormulario({
   const [error, setError] = useState<string | null>(null);
   const [parecidos, setParecidos] = useState<Coincidencia[] | null>(null);
   const [listo, setListo] = useState<{ codigo?: string; oportunidadId?: number } | null>(null);
+  /**
+   * El aviso flotante de «se guardó».
+   *
+   * Es un estado aparte del de «listo» a propósito: `listo` se apaga al
+   * apretar «Cargar el siguiente», y el aviso tiene que sobrevivir a eso. En
+   * una feria se cargan veinte seguidos, y la duda de si el anterior entró
+   * aparece justo cuando ya se está tecleando el que sigue.
+   */
+  const [guardado, setGuardado] = useState<{ codigo?: string; oportunidadId?: number } | null>(null);
+  /** Cuántos van en esta sesión. Es lo que se cuenta al final de la feria. */
+  const [cuantos, setCuantos] = useState(0);
 
   const poner = (id: number, valor: string | string[]) => {
     setRespuestas((r) => ({ ...r, [id]: valor }));
@@ -80,12 +92,33 @@ export function LlenarFormulario({
     // como un fallo, porque el lead sí está.
     setError(r.error);
     setListo({ codigo: r.codigo, oportunidadId: r.oportunidadId });
+    setGuardado({ codigo: r.codigo, oportunidadId: r.oportunidadId });
+    setCuantos((n) => n + 1);
   };
+
+  /** El aviso, igual en las dos pantallas de acá abajo. */
+  const aviso = guardado && (
+    <Aviso
+      texto={guardado.codigo ? `Guardado en la base · ${guardado.codigo}` : "Guardado en la base"}
+      detalle={
+        cuantos > 1
+          ? `Ya podés buscarlo en Clientes. Van ${cuantos} con este formulario.`
+          : "Ya podés buscarlo en Clientes."
+      }
+      accion={
+        guardado.oportunidadId != null
+          ? { texto: "Ver su ficha", onClick: () => onVerFicha(guardado.oportunidadId as number) }
+          : undefined
+      }
+      onCerrar={() => setGuardado(null)}
+    />
+  );
 
   // ------------------------------------------------------------- ya entró
   if (listo) {
     return (
       <div style={{ maxWidth: 620 }}>
+        {aviso}
         <div style={CAJA}>
           <h2 className="dsp" style={{ margin: "0 0 6px", fontSize: 21, fontWeight: 700 }}>
             Listo, quedó cargado
@@ -99,6 +132,7 @@ export function LlenarFormulario({
             ) : (
               "El lead quedó cargado con todo lo que contestó anotado en su ficha."
             )}
+            {cuantos > 1 && ` Van ${cuantos} con este formulario.`}
           </p>
           {error && (
             <p
@@ -151,6 +185,7 @@ export function LlenarFormulario({
 
   return (
     <div style={{ maxWidth: 620 }}>
+      {aviso}
       {/*
         La portada: el nombre del formulario y su descripción, con una barra de
         color arriba. Es lo que hace que se lea como un formulario y no como
