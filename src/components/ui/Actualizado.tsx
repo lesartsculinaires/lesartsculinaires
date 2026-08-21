@@ -65,26 +65,31 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
           En vivo
         </span>
       ) : (
-        <span
-          className="mono"
-          title={
-            sinPublicar
-              ? "Los cambios en vivo no están activados en la base de datos. La pantalla se actualiza sola cada 10 minutos."
-              : undefined
-          }
-          style={{ fontSize: 11.5, color: T.faint }}
-        >
+        <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
           Actualizado {hace(Math.max(0, ahora - en))}
         </span>
       )}
 
-      {caido && (
+      {/*
+        Cuando los avisos no llegan, el cartel dice además QUÉ REVISAR.
+
+        Antes decía sólo «sin conexión en vivo», y con eso no se puede hacer
+        nada: no distingue la red de la oficina de una base sin configurar, que
+        se arreglan en lugares distintos. Y el caso de «falta la migración» ni
+        siquiera se veía —vivía en el título de un texto que nadie sobrevuela—,
+        así que un CRM sin cambios en vivo se veía igual que uno al día.
+      */}
+      {(caido || sinPublicar) && (
         <span
           className="mono"
-          title="Se perdió la conexión en vivo. La pantalla se actualiza sola cada 10 minutos."
-          style={{ fontSize: 11.5, color: T.warn }}
+          title={
+            sinPublicar
+              ? "Las tablas no están publicadas para cambios en vivo. Corré la migración 20260813213000_cambios_en_vivo.sql en Supabase. Mientras tanto la pantalla se actualiza sola cada minuto."
+              : "No llega la conexión en vivo: puede ser la red de acá, o que Realtime esté apagado en el proyecto de Supabase. Mientras tanto la pantalla se actualiza sola cada minuto."
+          }
+          style={{ fontSize: 11.5, color: T.warn, cursor: "help" }}
         >
-          sin conexión en vivo
+          {sinPublicar ? "en vivo sin activar" : "sin conexión en vivo"}
         </span>
       )}
       <button
