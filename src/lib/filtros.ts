@@ -19,6 +19,7 @@ export const CAMPO: Record<string, keyof Oportunidad> = {
   producto: "productoId",
   etapa: "etapaId",
   estado: "estadoId",
+  motivo: "motivoPerdidaId",
   canal: "canalId",
   territorio: "territorioId",
 };
@@ -59,6 +60,12 @@ export function definirFiltros(
     { key: "vendedor", label: "Vendedor", items: activos(cat.vendedores) },
     { key: "etapa", label: "Etapa", items: cat.etapas },
     { key: "estado", label: "Estado", items: cat.estados },
+    // El motivo sólo se ofrece si hay motivos cargados: sin la migración
+    // corrida, un filtro vacío no lleva a ninguna parte. Va pegado a Estado
+    // porque es su continuación —«perdidos, y de esos, los caros»—.
+    ...(cat.motivosPerdida.length > 0
+      ? [{ key: "motivo", label: "Motivo", items: cat.motivosPerdida }]
+      : []),
     { key: "producto", label: "Programa", items: cat.productos },
     { key: "canal", label: "Canal", items: cat.canales },
     { key: "territorio", label: "Territorio", items: cat.territorios },

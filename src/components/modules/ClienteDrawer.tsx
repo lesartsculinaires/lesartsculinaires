@@ -172,6 +172,22 @@ export function ClienteDrawer({
   const etapaIdx = cat.etapas.findIndex((e) => e.id === o.etapaId);
   const perdida = o.estado === "Perdido";
 
+  /**
+   * El estado que se está viendo: el del borrador si ya se tocó el desplegable.
+   *
+   * De acá sale si se muestra el bloque del motivo. Con `o.estado` habría que
+   * guardar primero para poder decir por qué.
+   */
+  const estadoEsPerdido =
+    (pendientes.get("clas_estado")?.despues ?? o.estado) === "Perdido";
+
+  /** El motivo elegido, contando lo que todavía no se guardó. */
+  const motivoVisible = (() => {
+    const anotado = pendientes.get("motivo_perdida")?.despues;
+    if (anotado == null) return o.motivoPerdidaId;
+    return cat.motivosPerdida.find((m) => m.nombre === anotado)?.id ?? null;
+  })();
+
   /** Fields stored on the opportunity itself. */
   const editables = [
     {
@@ -531,6 +547,91 @@ export function ClienteDrawer({
           );
         })}
       </div>
+
+      {/*
+        Por qué se perdió: aparece sólo cuando el estado es «Perdido».
+
+        Se mira el BORRADOR y no lo guardado. La ficha junta los cambios y los
+        confirma al final, así que si mirara `o.estado` habría que marcar
+        «Perdido», guardar, y recién entonces volver a entrar para decir el
+        motivo. Nadie hace ese segundo viaje: el motivo quedaría vacío casi
+        siempre, y la métrica del tablero, en blanco.
+
+        El motivo no se pide obligatorio. A veces el asesor no lo sabe todavía
+        —«dejó de contestar» se confirma con los días—, y forzarlo llevaría a
+        elegir cualquiera con tal de cerrar la ficha. Un número que sale de
+        respuestas apuradas es peor que uno con huecos declarados: el tablero
+        muestra los sin motivo aparte, así que el hueco se ve.
+      */}
+      {estadoEsPerdido && (
+        <div
+          style={{
+            marginTop: -12,
+            marginBottom: 20,
+            padding: "12px 14px",
+            borderRadius: 9,
+            border: `1px solid #E7C9C4`,
+            background: "#FBEDEB",
+          }}
+        >
+          <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 600, color: "#B85042" }}>
+            ¿Por qué se perdió?
+          </p>
+
+          {cat.motivosPerdida.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+              Falta correr la migración <code>20260907120000_motivo_perdida.sql</code> en
+              Supabase para poder anotar el motivo.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {cat.motivosPerdida.map((m) => {
+                const puesto = motivoVisible === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    aria-pressed={puesto}
+                    onClick={() => {
+                      // Volver a tocar el elegido lo suelta: no era obligatorio,
+                      // y un toque sin querer no puede dejarlo puesto para
+                      // siempre.
+                      const id = puesto ? null : m.id;
+                      const nombreDe = (x: number | null) =>
+                        x == null ? "—" : (cat.motivosPerdida.find((y) => y.id === x)?.nombre ?? "—");
+                      anotarCambio(
+                        "motivo_perdida",
+                        "Motivo de pérdida",
+                        nombreDe(o.motivoPerdidaId),
+                        nombreDe(id),
+                        () =>
+                          onEditar(
+                            o.id,
+                            { motivo_perdida_id: id },
+                            { motivoPerdidaId: id, motivoPerdida: id == null ? null : m.nombre },
+                          ),
+                      );
+                    }}
+                    style={{
+                      height: 30,
+                      padding: "0 12px",
+                      fontSize: 12.5,
+                      fontWeight: puesto ? 600 : 400,
+                      borderRadius: 15,
+                      border: `1px solid ${puesto ? "#B85042" : "#E7C9C4"}`,
+                      background: puesto ? "#B85042" : T.surface,
+                      color: puesto ? "#fff" : T.ink,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {m.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <SectionLabel>Registro</SectionLabel>
       <div style={{ border: `1px solid ${T.border}`, borderRadius: 9, marginBottom: 8 }}>

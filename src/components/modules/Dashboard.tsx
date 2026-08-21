@@ -2,7 +2,7 @@
 
 import { Evolucion } from "@/components/modules/Evolucion";
 import { money } from "@/lib/format";
-import { estaAbierta, esGanada, groupBars, totalCerrado } from "@/lib/selectors";
+import { estaAbierta, esGanada, groupBars, motivosDePerdida, totalCerrado } from "@/lib/selectors";
 import { T, openTone } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
 
@@ -57,6 +57,8 @@ export function Dashboard({ oportunidades, accent }: Props) {
       </div>
 
       <Evolucion oportunidades={oportunidades} accent={accent} />
+
+      <PorQueSePierden oportunidades={oportunidades} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
@@ -140,5 +142,81 @@ export function Dashboard({ oportunidades, accent }: Props) {
         ))}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Por qué se pierden los leads.
+ *
+ * Va en su propio bloque y no como una barra más porque contesta otra cosa. El
+ * resto del tablero mide dinero en movimiento; esto mide una causa, y de una
+ * causa lo que se quiere saber es cuánta gente se va por ahí —no cuánto valían
+ * esas fichas—. Por eso ordena por cantidad y muestra el porcentaje adelante.
+ *
+ * Si no hay ninguna perdida, no se dibuja: un bloque vacío que dice «0» ocupa
+ * el lugar de algo que sí tiene qué decir.
+ */
+function PorQueSePierden({ oportunidades }: { oportunidades: Oportunidad[] }) {
+  const motivos = motivosDePerdida(oportunidades);
+  if (motivos.length === 0) return null;
+
+  const perdidas = oportunidades.filter((o) => o.estado === "Perdido").length;
+  const anotados = motivos.filter((m) => !m.sinDecir).reduce((s, m) => s + m.leads, 0);
+
+  return (
+    <section
+      style={{
+        background: T.surface,
+        border: `1px solid ${T.border}`,
+        borderRadius: 10,
+        padding: 18,
+        marginBottom: 20,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+        <h3 className="dsp" style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+          Por qué se pierden
+        </h3>
+        <span style={{ fontSize: 11.5, color: T.faint }}>
+          {perdidas} {perdidas === 1 ? "oportunidad perdida" : "oportunidades perdidas"}
+          {anotados < perdidas && ` · ${anotados} con motivo anotado`}
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gap: 9 }}>
+        {motivos.map((m) => (
+          <div key={m.nombre}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 10,
+                marginBottom: 4,
+                fontSize: 12.5,
+              }}
+            >
+              <span style={{ color: m.sinDecir ? T.faint : T.ink }}>{m.nombre}</span>
+              <span className="mono" style={{ fontSize: 11.5, color: T.muted, flexShrink: 0 }}>
+                {m.leads} {m.leads === 1 ? "lead" : "leads"} · {m.porcentaje}%
+                {m.valor > 0 && ` · ${money(m.valor)}`}
+              </span>
+            </div>
+            <div style={{ height: 8, borderRadius: 4, background: T.paper, overflow: "hidden" }}>
+              <div
+                style={{
+                  width: `${m.porcentaje}%`,
+                  height: "100%",
+                  // Los sin motivo en gris: no son una causa, son un hueco, y
+                  // pintarlos del mismo rojo los haría leer como una razón más.
+                  background: m.sinDecir ? T.border : "#B85042",
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

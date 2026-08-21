@@ -103,3 +103,58 @@ export const etapaTone = (nombre: string, accent: string): string =>
 /** True when this state means the deal was lost. */
 export const esPerdida = (e: Estado): boolean =>
   e.esFinal && e.nombre === "Perdido";
+
+// ------------------------------------------------------ por qué se pierden
+
+export interface MotivoPerdida {
+  nombre: string;
+  leads: number;
+  /** Qué porcentaje de las perdidas se fue por acá. */
+  porcentaje: number;
+  /** Lo que valían esas oportunidades, si estaba cargado. */
+  valor: number;
+  /** Las que se perdieron sin decir por qué. */
+  sinDecir: boolean;
+}
+
+/**
+ * Cuántos leads se perdieron por cada motivo.
+ *
+ * Se cuenta por cantidad de leads y no por dinero, que es lo que hace el resto
+ * del tablero. Es a propósito: la pregunta acá es «¿qué nos está costando
+ * gente?», y una sola oportunidad grande perdida por falta de documentación no
+ * significa que el papeleo sea el problema. El monto igual se muestra al lado,
+ * porque a veces cambia la conversación.
+ *
+ * Las que se perdieron sin motivo anotado se muestran, y van últimas. Es la
+ * decisión que hace que el número sea confiable: escondiéndolas, un tablero
+ * con tres motivos cargados de treinta pérdidas se leería como si esos tres
+ * explicaran todo.
+ */
+export function motivosDePerdida(list: readonly Oportunidad[]): MotivoPerdida[] {
+  const perdidas = list.filter((o) => o.estado === "Perdido");
+  if (perdidas.length === 0) return [];
+
+  const mapa = new Map<string, { n: number; valor: number }>();
+  for (const o of perdidas) {
+    const k = o.motivoPerdida ?? "";
+    const g = mapa.get(k) ?? { n: 0, valor: 0 };
+    g.n += 1;
+    g.valor += o.valor ?? 0;
+    mapa.set(k, g);
+  }
+
+  return [...mapa.entries()]
+    .map(([nombre, g]) => ({
+      nombre: nombre || "Sin motivo anotado",
+      leads: g.n,
+      porcentaje: Math.round((g.n / perdidas.length) * 100),
+      valor: g.valor,
+      sinDecir: nombre === "",
+    }))
+    .sort((a, b) => {
+      // Los sin motivo al final: no son una razón, son un hueco.
+      if (a.sinDecir !== b.sinDecir) return a.sinDecir ? 1 : -1;
+      return b.leads - a.leads || b.valor - a.valor;
+    });
+}

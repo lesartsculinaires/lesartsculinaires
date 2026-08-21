@@ -101,7 +101,11 @@ with revisiones as (
 
     ('20260906120000_formularios',
      'Formularios de feria: un lead que entra ya cargado',
-     to_regclass('public.formularios') is not null)
+     to_regclass('public.formularios') is not null),
+
+    ('20260907120000_motivo_perdida',
+     'Por qué se pierde un lead, y la métrica en el tablero',
+     to_regclass('public.motivos_perdida') is not null)
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -149,7 +153,8 @@ with revisiones as (
     ('recordatorio_reserva', exists (select 1 from information_schema.columns
                               where table_schema='public' and table_name='oportunidades'
                                 and column_name='reserva_en')),
-    ('formularios',        to_regclass('public.formularios') is not null)
+    ('formularios',        to_regclass('public.formularios') is not null),
+    ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null)
   ) as t(nombre, aplicada)
 )
 select

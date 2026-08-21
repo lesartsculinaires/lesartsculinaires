@@ -11,6 +11,7 @@ const EMPTY: Catalogo = {
   canales: [],
   etapas: [],
   estados: [],
+  motivosPerdida: [],
   tiposEvento: [],
 };
 

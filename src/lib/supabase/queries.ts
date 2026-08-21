@@ -66,6 +66,10 @@ function toOportunidad(r: Row): Oportunidad {
     estadoId: numOrNull(r.estado_id),
     estado: str(r.estado, SIN_DATO),
     esFinal: r.es_final === true,
+    // Nulos mientras no se haya corrido la migración del motivo: la vista
+    // vieja no los trae y la aplicación tiene que seguir andando igual.
+    motivoPerdidaId: numOrNull(r.motivo_perdida_id),
+    motivoPerdida: r.motivo_perdida ? str(r.motivo_perdida) : null,
 
     valor: numOrNull(r.valor_oportunidad),
     cerrada: numOrNull(r.venta_cerrada),
@@ -129,6 +133,7 @@ const EMPTY_CATALOGO: Catalogo = {
   canales: [],
   etapas: [],
   estados: [],
+  motivosPerdida: [],
   tiposEvento: [],
 };
 
@@ -137,7 +142,7 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
   const supabase = await getServerClient();
   if (!supabase) return { data: EMPTY_CATALOGO, error: null };
 
-  const [vend, prod, terr, can, eta, est, tipos] = await Promise.all([
+  const [vend, prod, terr, can, eta, est, motivos, tipos] = await Promise.all([
     // Sin filtrar por `activo`: se traen todos y cada pantalla decide. Los
     // desplegables usan `activos()`; los que sólo tienen que poner un nombre a
     // algo que ya pasó —un evento del calendario, una ficha vieja— necesitan
@@ -148,12 +153,16 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
     supabase.from("canales").select("id, nombre").order("nombre"),
     supabase.from("etapas").select("id, nombre, orden").order("orden"),
     supabase.from("estados").select("id, nombre, es_final").order("id"),
+    supabase.from("motivos_perdida").select("id, nombre").eq("activo", true).order("orden"),
     supabase
       .from("tipos_evento")
       .select("id, nombre, codigo, color, duracion_min")
       .order("orden"),
   ]);
 
+  // `motivos` queda afuera del control de errores a propósito: su tabla puede
+  // no existir todavía, y eso no puede tumbar el catálogo entero. Sin ella el
+  // desplegable de motivos sale vacío y el resto del CRM anda igual.
   const firstError =
     [vend, prod, terr, can, eta, est, tipos].find((r) => r.error)?.error ?? null;
 
@@ -181,6 +190,7 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
     etapas: rows(eta).map(
       (r): Etapa => ({ id: num(r.id), nombre: str(r.nombre), orden: num(r.orden) }),
     ),
+    motivosPerdida: rows(motivos).map((r) => ({ id: num(r.id), nombre: str(r.nombre) })),
     estados: rows(est).map(
       (r): Estado => ({
         id: num(r.id),

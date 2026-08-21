@@ -89,6 +89,8 @@ export interface Catalogo {
   canales: CatalogItem[];
   etapas: Etapa[];
   estados: Estado[];
+  /** Por qué se pierden los leads. Vacío si falta su migración. */
+  motivosPerdida: CatalogItem[];
   tiposEvento: TipoEvento[];
 }
 
@@ -177,6 +179,15 @@ export interface Oportunidad {
   etapaOrden: number | null;
   estadoId: number | null;
   estado: string;
+  /**
+   * Por qué se perdió. Sólo tiene valor mientras el estado sea «Perdido».
+   *
+   * Lo hace cumplir la base con un trigger, no la pantalla: sin eso, una ficha
+   * que se marca perdida y a la semana vuelve a «Activo» seguiría contando en
+   * la métrica de pérdidas para siempre.
+   */
+  motivoPerdidaId: number | null;
+  motivoPerdida: string | null;
   esFinal: boolean;
 
   valor: number | null;
@@ -225,6 +236,7 @@ export interface OportunidadPatch {
   canal_id?: number | null;
   etapa_id?: number | null;
   estado_id?: number | null;
+  motivo_perdida_id?: number | null;
   /** ISO date; the column is `not null`, so never send null. */
   fecha_registro?: string;
   fecha_cierre?: string | null;
