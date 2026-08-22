@@ -113,8 +113,15 @@ with revisiones as (
        or not exists (select 1 from public.formulario_campos where requerido)),
 
     ('20260909120000_supreme_diplome',
-     'SUPRÊME DIPLÔME como área de interés en el formulario',
-     exists (select 1 from public.productos where nombre = 'Suprême Diplôme'))
+     'Suprême Diplôme como área de interés en el formulario',
+     exists (select 1 from public.productos where nombre = 'Suprême Diplôme')),
+
+    ('20260910120000_supreme_diplome_minuscula',
+     'La opción se lee «Suprême Diplôme», no en mayúsculas',
+     to_regclass('public.formulario_campos') is null
+       or not exists (select 1 from public.formulario_campos c,
+                             jsonb_array_elements(c.opciones) as o
+                       where o ->> 'texto' = 'SUPRÊME DIPLÔME'))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -166,7 +173,11 @@ with revisiones as (
     ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null),
     ('formulario_suelto',  to_regclass('public.formulario_campos') is null
                             or not exists (select 1 from public.formulario_campos where requerido)),
-    ('supreme_diplome',    exists (select 1 from public.productos where nombre = 'Suprême Diplôme'))
+    ('supreme_diplome',    exists (select 1 from public.productos where nombre = 'Suprême Diplôme')),
+    ('supreme_minuscula',  to_regclass('public.formulario_campos') is null
+                            or not exists (select 1 from public.formulario_campos c,
+                                                  jsonb_array_elements(c.opciones) as o
+                                            where o ->> 'texto' = 'SUPRÊME DIPLÔME'))
   ) as t(nombre, aplicada)
 )
 select
