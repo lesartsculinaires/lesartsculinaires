@@ -110,7 +110,11 @@ with revisiones as (
     ('20260908120000_formulario_sin_obligatorios',
      'Ninguna pregunta del formulario frena el guardado',
      to_regclass('public.formulario_campos') is null
-       or not exists (select 1 from public.formulario_campos where requerido))
+       or not exists (select 1 from public.formulario_campos where requerido)),
+
+    ('20260909120000_supreme_diplome',
+     'SUPRÊME DIPLÔME como área de interés en el formulario',
+     exists (select 1 from public.productos where nombre = 'Suprême Diplôme'))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -161,7 +165,8 @@ with revisiones as (
     ('formularios',        to_regclass('public.formularios') is not null),
     ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null),
     ('formulario_suelto',  to_regclass('public.formulario_campos') is null
-                            or not exists (select 1 from public.formulario_campos where requerido))
+                            or not exists (select 1 from public.formulario_campos where requerido)),
+    ('supreme_diplome',    exists (select 1 from public.productos where nombre = 'Suprême Diplôme'))
   ) as t(nombre, aplicada)
 )
 select
