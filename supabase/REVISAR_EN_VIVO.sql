@@ -40,6 +40,7 @@ from (
     ('oportunidades',     'Los leads: Pipeline, Clientes, Dashboard'),
     ('clientes',          'Los datos de contacto'),
     ('oportunidad_notas', 'La bitácora de cada ficha'),
+    ('seguimientos',      'Los recordatorios que salen de las notas'),
     ('eventos',           'El Calendario'),
     ('conversaciones',    'La bandeja de WhatsApp'),
     ('mensajes',          'Los mensajes que entran'),

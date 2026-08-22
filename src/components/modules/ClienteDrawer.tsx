@@ -96,6 +96,8 @@ export function ClienteDrawer({
   const soft = softer(accent);
   const [nota, setNota] = useState("");
   const [notaEstado, setNotaEstado] = useState<"idle" | "guardando" | "listo">("idle");
+  /** Qué recordatorio dejó la nota, si dejó alguno. */
+  const [avisoSeguimiento, setAvisoSeguimiento] = useState<string | null>(null);
   /**
    * Se le suma uno cada vez que se guarda algo que deja rastro. La bitácora lo
    * mira para volver a pedir la lista, sin que esta ficha tenga que saber cómo
@@ -391,7 +393,11 @@ export function ClienteDrawer({
     setNotaEstado(r.ok ? "listo" : "idle");
     if (r.ok) {
       setNota("");
+      setAvisoSeguimiento(r.seguimiento);
       setRefrescoBitacora((n) => n + 1);
+      // El reloj de la cabecera y el módulo se enteran solos: `seguimientos`
+      // está publicada para cambios en vivo, así que el alta llega por el
+      // websocket sin que esta pantalla tenga que avisarle a nadie.
     }
   };
 
@@ -813,6 +819,7 @@ export function ClienteDrawer({
         onChange={(e) => {
           setNota(e.target.value);
           setNotaEstado("idle");
+          setAvisoSeguimiento(null);
         }}
         placeholder="Qué pasó en el contacto, objeciones, acuerdos…"
         style={{
@@ -835,6 +842,7 @@ export function ClienteDrawer({
           onCambio={(v: string) => {
             setNota(v);
             setNotaEstado("idle");
+            setAvisoSeguimiento(null);
           }}
           accent={accent}
         />
@@ -861,6 +869,40 @@ export function ClienteDrawer({
           <span style={{ fontSize: 12, color: "#2F6B4F" }}>Nota guardada.</span>
         )}
       </div>
+
+      {/*
+        Lo que el CRM entendió de la nota.
+
+        Es la pieza que hace confiable todo lo demás. Un lector automático que
+        acierta casi siempre sólo sirve si el asesor puede ver la vez que no,
+        justo cuando se acuerda de qué quiso decir y corregirlo le cuesta
+        volver a escribir una línea. Sin esto, el error se descubre el día que
+        el cliente no recibió la llamada.
+      */}
+      {avisoSeguimiento && (
+        <p
+          style={{
+            margin: "10px 0 0",
+            padding: "10px 12px",
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            borderRadius: 8,
+            border: `1px solid ${softer(accent)}`,
+            background: T.paper,
+            color: T.ink,
+          }}
+        >
+          <strong style={{ fontWeight: 700 }}>Recordatorio anotado.</strong>{" "}
+          {avisoSeguimiento} Está en Recordatorios y en el reloj de arriba; si
+          no es lo que querías, se borra desde ahí.
+        </p>
+      )}
+
+      <p style={{ margin: "8px 0 0", fontSize: 11, color: T.faint, lineHeight: 1.5 }}>
+        Si escribís «seguimiento de pago» o «seguimiento de cierre», el CRM saca
+        la fecha de la nota —«el 15 de cada mes», «el jueves», «en 3 días»— y
+        arma el recordatorio solo.
+      </p>
 
       <div style={{ marginTop: 16 }}>
         <SectionLabel>Historial de seguimiento</SectionLabel>

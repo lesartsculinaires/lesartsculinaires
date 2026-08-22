@@ -121,7 +121,11 @@ with revisiones as (
      to_regclass('public.formulario_campos') is null
        or not exists (select 1 from public.formulario_campos c,
                              jsonb_array_elements(c.opciones) as o
-                       where o ->> 'texto' = 'SUPRÊME DIPLÔME'))
+                       where o ->> 'texto' = 'SUPRÊME DIPLÔME')),
+
+    ('20260911120000_seguimientos',
+     'Las notas que dicen «seguimiento de pago» crean el recordatorio',
+     to_regclass('public.seguimientos') is not null)
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -177,7 +181,8 @@ with revisiones as (
     ('supreme_minuscula',  to_regclass('public.formulario_campos') is null
                             or not exists (select 1 from public.formulario_campos c,
                                                   jsonb_array_elements(c.opciones) as o
-                                            where o ->> 'texto' = 'SUPRÊME DIPLÔME'))
+                                            where o ->> 'texto' = 'SUPRÊME DIPLÔME')),
+    ('seguimientos',       to_regclass('public.seguimientos') is not null)
   ) as t(nombre, aplicada)
 )
 select

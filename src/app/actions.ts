@@ -10,7 +10,14 @@ import { SUPABASE_URL } from "@/lib/supabase/config";
 import { altaLead, contactosConocidos, numeroDeCodigo, type DatosLead } from "@/lib/crm/altaLead";
 import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
+import { fechaLarga } from "@/lib/format";
 import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
+import {
+  detalleDe,
+  detectarSeguimiento,
+  hoyEnSalvador,
+  loQueSeEntendio,
+} from "@/lib/seguimientos";
 import { getServerClient } from "@/lib/supabase/server";
 import { COOKIE_MODULO } from "@/lib/ultimoModulo";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
@@ -80,33 +87,104 @@ export async function updateCliente(
   return { ok: true, error: null };
 }
 
+/**
+ * Lo que hay que contarle al asesor después de guardar una nota.
+ *
+ * Casi siempre es nada. Cuando la nota pedía un seguimiento, es la frase que
+ * dice qué se entendió: para qué día quedó anotado y cada cuánto se repite.
+ */
+export interface ResultadoNota extends ActionResult {
+  /** «Seguimiento de pago el 15 de cada mes. El próximo, el 15 de septiembre.» */
+  seguimiento: string | null;
+}
+
 /** Add a note to an opportunity's log. */
 export async function addNota(
   oportunidadId: number,
   nota: string,
-): Promise<ActionResult> {
+): Promise<ResultadoNota> {
   const texto = nota.trim();
-  if (!texto) return { ok: true, error: null };
+  if (!texto) return { ok: true, error: null, seguimiento: null };
 
   const supabase = await getServerClient();
-  if (!supabase) return NO_SESSION;
+  if (!supabase) return { ...NO_SESSION, seguimiento: null };
 
   // Queda firmada. Una bitácora sin autor sirve para acordarse de qué pasó,
   // pero no para preguntarle a alguien; y cuando un cliente se pasa de asesor,
   // saber quién escribió cada cosa es la mitad del valor.
   const { data: { user } = { user: null } } = await supabase.auth.getUser();
 
-  const { error } = await supabase.from("oportunidad_notas").insert({
-    oportunidad_id: oportunidadId,
-    nota: texto,
-    origen: "comentario",
-    autor_id: user?.id ?? null,
-  });
+  const { data: guardada, error } = await supabase
+    .from("oportunidad_notas")
+    .insert({
+      oportunidad_id: oportunidadId,
+      nota: texto,
+      origen: "comentario",
+      autor_id: user?.id ?? null,
+    })
+    .select("id")
+    .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: error.message, seguimiento: null };
+
+  const seguimiento = await anotarSeguimiento(
+    supabase,
+    oportunidadId,
+    texto,
+    guardada?.id == null ? null : Number(guardada.id),
+    user?.id ?? null,
+  );
 
   revalidatePath("/");
-  return { ok: true, error: null };
+  return { ok: true, error: null, seguimiento };
+}
+
+/**
+ * Si la nota pedía un seguimiento, dejarlo anotado.
+ *
+ * Va acá y no en un trigger de la base por una razón: leer «el 15 de cada
+ * mes» o «pasado mañana» es trabajo de texto en español, con tildes, plurales
+ * y meses cortos, y eso se escribe y se prueba mucho mejor en TypeScript. La
+ * lógica entera vive en `@/lib/seguimientos`, probada línea por línea, y acá
+ * queda nada más el viaje a la base.
+ *
+ * Si falla, no se cae la nota. La nota es lo que la persona vino a hacer y ya
+ * está guardada; perderla porque el recordatorio no se pudo crear sería
+ * cambiar un problema chico por uno grande.
+ */
+async function anotarSeguimiento(
+  supabase: SupabaseClient,
+  oportunidadId: number,
+  texto: string,
+  notaId: number | null,
+  autorId: string | null,
+): Promise<string | null> {
+  const visto = detectarSeguimiento(texto, hoyEnSalvador());
+  if (!visto) return null;
+
+  const mensual = visto.cuando?.clase === "mensual" ? visto.cuando : null;
+
+  const { error } = await supabase.from("seguimientos").insert({
+    oportunidad_id: oportunidadId,
+    nota_id: notaId,
+    tipo: visto.tipo,
+    detalle: detalleDe(texto),
+    proxima: visto.proxima,
+    dia_del_mes: mensual?.dia ?? null,
+    dia_hasta: mensual?.hasta ?? null,
+    creado_por: autorId,
+  });
+
+  if (error) {
+    // Decirlo, y no callarlo: el asesor escribió la frase creyendo que quedaba
+    // agendado, y enterarse hoy de que no vale mucho más que descubrirlo el
+    // día que el cliente no recibió la llamada.
+    return error.code === "PGRST205" || error.code === "42P01" || !error.message
+      ? "La nota quedó guardada, pero el recordatorio no: falta correr la migración 20260911120000_seguimientos.sql."
+      : "La nota quedó guardada, pero el recordatorio no se pudo crear: " + error.message;
+  }
+
+  return loQueSeEntendio(visto, fechaLarga);
 }
 
 /** Una línea de la bitácora, lista para mostrar. */

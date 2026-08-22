@@ -21,6 +21,7 @@ const TABLAS = [
   "oportunidades",
   "clientes",
   "oportunidad_notas",
+  "seguimientos",
   "eventos",
   "conversaciones",
   "mensajes",

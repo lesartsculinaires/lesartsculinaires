@@ -50,6 +50,22 @@ export const fechaCorta = (iso: string): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`;
 };
 
+/**
+ * ISO date → "15 de septiembre", con el año sólo cuando no es el corriente.
+ *
+ * Se usa para leer una fecha adentro de una frase —«anotado para el 15 de
+ * septiembre»—, y ahí «15/09/26» obliga a descifrar en vez de leer. El año se
+ * calla cuando es el de ahora porque nadie dice «el 15 de septiembre de este
+ * año» hablando, y ponerlo hace pensar que la fecha tiene algo raro.
+ */
+export const fechaLarga = (iso: string, hoy: Date = new Date()): string => {
+  const d = parseISO(iso);
+  if (!d) return "—";
+  const mes = MESES[d.getMonth()].toLowerCase();
+  const anio = d.getFullYear() === hoy.getFullYear() ? "" : ` de ${d.getFullYear()}`;
+  return `${d.getDate()} de ${mes}${anio}`;
+};
+
 /** ISO date → "Julio 2026". */
 export const mesLargo = (iso: string): string => {
   const d = parseISO(iso);

@@ -3,9 +3,11 @@
 import { useState } from "react";
 
 import { posponerRecordatorio, retomarRecordatorio } from "@/app/recordatorios-actions";
+import { ListaSeguimientos } from "@/components/modules/ListaSeguimientos";
 import { TONO } from "@/components/ui/tonoRecordatorio";
 import { cuando, money } from "@/lib/format";
 import { PLAZO_DIAS, comoSeLee, porAtender, type Recordatorio, type Urgencia } from "@/lib/recordatorios";
+import { seguimientosPorAtender, type SeguimientoPendiente } from "@/lib/seguimientos";
 import { T } from "@/lib/theme";
 import { SIN_DUENO, activos } from "@/lib/types";
 import { useCatalogo } from "@/lib/catalog";
@@ -19,6 +21,14 @@ import { useCatalogo } from "@/lib/catalog";
  * que todavía tienen plazo y las que alguien pospuso, y repasar la cartera de
  * un asesor. Un panel desplegable con cuarenta filas no sirve para eso.
  *
+ * DOS LISTAS Y NO UNA
+ *
+ * Arriba, las reservas con plazo corriendo. Abajo, los seguimientos que
+ * salieron de lo que se escribió en las fichas. Las dos son «cosas que hay que
+ * hacer», pero se miran distinto: una reserva se atiende para no perder el
+ * cupo y tiene monto y cuenta regresiva; un seguimiento es una llamada que se
+ * prometió y lo que importa es qué se había quedado con el cliente.
+ *
  * QUÉ VE CADA QUIEN
  *
  * Un asesor, las suyas. La gerencia, las de todos, con el filtro por persona.
@@ -27,15 +37,21 @@ import { useCatalogo } from "@/lib/catalog";
  */
 export function Recordatorios({
   lista,
+  seguimientos,
   faltaMigracion,
+  faltaMigracionSeguimientos,
   puedeElegirAsesor,
   accent,
   onAbrirFicha,
   onRefrescar,
 }: {
   lista: readonly Recordatorio[];
+  /** Los que salieron de las notas, ya ordenados. */
+  seguimientos: readonly SeguimientoPendiente[];
   /** La tabla de pospuestos no existe todavía. */
   faltaMigracion: boolean;
+  /** La tabla de seguimientos no existe todavía. */
+  faltaMigracionSeguimientos: boolean;
   puedeElegirAsesor: boolean;
   accent: string;
   onAbrirFicha: (oportunidadId: number) => void;
@@ -54,6 +70,16 @@ export function Recordatorios({
 
   const visibles = lista.filter(suyas);
   const urgentes = porAtender(visibles);
+
+  // El mismo filtro de persona vale para las dos listas: el botón dice «lo de
+  // Ale», y lo de Ale son sus reservas y sus llamadas prometidas.
+  const misSeguimientos = seguimientos.filter(
+    (p) =>
+      vendedorId == null ||
+      (vendedorId === SIN_DUENO
+        ? p.seguimiento.vendedorId == null
+        : p.seguimiento.vendedorId === vendedorId),
+  );
   const totalReservado = visibles.reduce((s, r) => s + (r.oportunidad.reserva ?? 0), 0);
 
   const mover = async (id: number, accion: "posponer" | "retomar") => {
@@ -71,10 +97,9 @@ export function Recordatorios({
   return (
     <div>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: T.muted, lineHeight: 1.55, maxWidth: 640 }}>
-        Quien deja un anticipo tiene {PLAZO_DIAS} días para completar el pago;
-        pasado eso el cupo se libera. Acá están todas las reservas con el plazo
-        corriendo, las más urgentes primero. El aviso se apaga solo cuando la
-        venta queda registrada.
+        Dos cosas que hay que hacer: cobrar las reservas antes de que se libere
+        el cupo, y devolver las llamadas que quedaron prometidas en las notas.
+        Las más urgentes primero.
       </p>
 
       {faltaMigracion && (
@@ -99,7 +124,9 @@ export function Recordatorios({
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <Resumen lista={visibles} />
         <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
-          {money(totalReservado)} en anticipos · {urgentes.length} por atender
+          {money(totalReservado)} en anticipos ·{" "}
+          {urgentes.length + seguimientosPorAtender(misSeguimientos).length} por
+          atender
         </span>
       </div>
 
@@ -144,6 +171,11 @@ export function Recordatorios({
           {error}
         </p>
       )}
+
+      <Titulo
+        texto="Reservas por cobrar"
+        aclara={`Quien deja un anticipo tiene ${PLAZO_DIAS} días para completar el pago; pasado eso el cupo se libera. El aviso se apaga solo cuando la venta queda registrada.`}
+      />
 
       {visibles.length === 0 ? (
         <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.55 }}>
@@ -254,6 +286,39 @@ export function Recordatorios({
           })}
         </div>
       )}
+
+      <Titulo
+        texto="Seguimientos anotados en las fichas"
+        aclara="Salen solos de la bitácora: cuando una nota dice «seguimiento de pago» o «seguimiento de cierre», el CRM saca la fecha del propio texto y lo deja acá."
+      />
+
+      <ListaSeguimientos
+        lista={misSeguimientos}
+        faltaMigracion={faltaMigracionSeguimientos}
+        accent={accent}
+        onAbrirFicha={onAbrirFicha}
+        onRefrescar={onRefrescar}
+      />
+    </div>
+  );
+}
+
+/**
+ * El encabezado de cada lista.
+ *
+ * La aclaración va acá abajo y no en un párrafo suelto arriba de la pantalla:
+ * la regla de las reservas y la de los seguimientos son distintas, y leídas
+ * juntas al principio se mezclan. Cada una al lado de lo que explica.
+ */
+function Titulo({ texto, aclara }: { texto: string; aclara: string }) {
+  return (
+    <div style={{ margin: "22px 0 12px" }}>
+      <h3 className="dsp" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.ink }}>
+        {texto}
+      </h3>
+      <p style={{ margin: "3px 0 0", fontSize: 12, color: T.muted, lineHeight: 1.5, maxWidth: 640 }}>
+        {aclara}
+      </p>
     </div>
   );
 }

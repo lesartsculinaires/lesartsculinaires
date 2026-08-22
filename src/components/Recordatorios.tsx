@@ -5,6 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import { TONO } from "@/components/ui/tonoRecordatorio";
 import { money } from "@/lib/format";
 import { comoSeLee, porAtender, type Recordatorio } from "@/lib/recordatorios";
+import {
+  comoSeLeeSeguimiento,
+  seguimientosPorAtender,
+  type SeguimientoPendiente,
+} from "@/lib/seguimientos";
 import { T } from "@/lib/theme";
 
 /**
@@ -18,14 +23,22 @@ import { T } from "@/lib/theme";
  * El número cuenta los vencidos, los de hoy y los que vencen pronto. Los que
  * todavía tienen plazo no: si contara todos, un asesor con veinte reservas
  * sanas vería un veinte permanente y el número dejaría de significar nada.
+ *
+ * Suma las dos cosas que hay que hacer: las reservas por cobrar y los
+ * seguimientos que salieron de las notas. Es a propósito que sean un solo
+ * número: la pregunta del asesor a las nueve de la mañana no es «¿cuántas
+ * reservas?» sino «¿a quién llamo hoy?», y dos globitos al lado le harían
+ * sumar de cabeza para contestársela.
  */
 export function Recordatorios({
   lista,
+  seguimientos,
   accent,
   onAbrirFicha,
   onVerTodos,
 }: {
   lista: readonly Recordatorio[];
+  seguimientos: readonly SeguimientoPendiente[];
   accent: string;
   onAbrirFicha: (oportunidadId: number) => void;
   onVerTodos: () => void;
@@ -34,6 +47,8 @@ export function Recordatorios({
   const caja = useRef<HTMLDivElement | null>(null);
 
   const urgentes = porAtender(lista);
+  const llamadas = seguimientosPorAtender(seguimientos);
+  const cuantos = urgentes.length + llamadas.length;
 
   /** Cerrar al hacer clic afuera y con Escape, como el panel de la campana. */
   useEffect(() => {
@@ -56,7 +71,9 @@ export function Recordatorios({
 
   // El punto rojo sólo por lo que ya se pasó o vence hoy. Que haya algo para
   // la semana que viene no amerita una alarma en la cabecera.
-  const apura = urgentes.some((r) => r.urgencia === "vencido" || r.urgencia === "hoy");
+  const deHoy = (u: string) => u === "vencido" || u === "hoy";
+  const apura =
+    urgentes.some((r) => deHoy(r.urgencia)) || llamadas.some((p) => deHoy(p.urgencia));
 
   return (
     <div ref={caja} style={{ position: "relative" }}>
@@ -64,9 +81,7 @@ export function Recordatorios({
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={
-          urgentes.length > 0
-            ? `Recordatorios de reserva, ${urgentes.length} por atender`
-            : "Recordatorios de reserva"
+          cuantos > 0 ? `Recordatorios, ${cuantos} por atender` : "Recordatorios"
         }
         aria-expanded={abierto}
         style={{
@@ -82,7 +97,7 @@ export function Recordatorios({
         }}
       >
         <Reloj color={abierto ? accent : T.muted} />
-        {urgentes.length > 0 && (
+        {cuantos > 0 && (
           <span
             style={{
               position: "absolute",
@@ -101,7 +116,7 @@ export function Recordatorios({
               lineHeight: 1,
             }}
           >
-            {urgentes.length > 99 ? "99+" : urgentes.length}
+            {cuantos > 99 ? "99+" : cuantos}
           </span>
         )}
       </button>
@@ -109,7 +124,7 @@ export function Recordatorios({
       {abierto && (
         <div
           role="dialog"
-          aria-label="Recordatorios de reserva"
+          aria-label="Recordatorios"
           style={{
             position: "absolute",
             top: 42,
@@ -128,15 +143,15 @@ export function Recordatorios({
         >
           <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${T.border}` }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.ink }}>
-              Reservas por cobrar
+              A quién llamar
             </p>
             <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.45 }}>
-              Quince días desde el anticipo para completar el pago.
+              Reservas por cobrar y seguimientos anotados en las fichas.
             </p>
           </div>
 
           <div style={{ overflowY: "auto" }}>
-            {urgentes.length === 0 ? (
+            {cuantos === 0 ? (
               <p
                 style={{
                   margin: 0,
@@ -146,7 +161,7 @@ export function Recordatorios({
                   lineHeight: 1.5,
                 }}
               >
-                Nada por cobrar en los próximos días.
+                Nada por cobrar ni por llamar en los próximos días.
               </p>
             ) : (
               urgentes.map((r, i) => {
@@ -186,6 +201,52 @@ export function Recordatorios({
                 );
               })
             )}
+
+            {/*
+              Las llamadas prometidas, debajo de las reservas y con la misma
+              forma. Se distinguen por lo que dice cada fila —una lleva monto,
+              la otra lleva lo que quedó anotado— y no por un separador: en un
+              panel de 380 píxeles, un título en el medio se come el lugar de
+              dos recordatorios.
+            */}
+            {llamadas.map((p, i) => {
+              const s = p.seguimiento;
+              const tono = TONO[p.urgencia];
+              return (
+                <div
+                  key={`s${s.id}`}
+                  className="row"
+                  onClick={() => {
+                    onAbrirFicha(s.oportunidadId);
+                    setAbierto(false);
+                  }}
+                  style={{
+                    padding: "9px 14px",
+                    borderTop: i || urgentes.length ? `1px solid ${T.border}` : "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      fontSize: 12.5,
+                      color: T.ink,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>{s.cliente}</span>
+                    <span style={{ fontSize: 11, color: T.muted, flexShrink: 0 }}>
+                      {s.tipo === "pago" ? "Pago" : "Cierre"}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 2, fontSize: 11, color: tono.fuerte }}>
+                    {comoSeLeeSeguimiento(p)}
+                    {s.vendedor && ` · ${s.vendedor}`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <button

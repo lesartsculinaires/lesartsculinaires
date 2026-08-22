@@ -33,6 +33,12 @@ import { useEnVivo } from "@/hooks/useEnVivo";
 import { queSuena } from "@/lib/aviso";
 import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
+import {
+  hoyEnSalvador,
+  pendientesDe,
+  seguimientosParaInterrumpir,
+  type Seguimiento,
+} from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS } from "@/lib/modulos";
 import { ACCENT, T } from "@/lib/theme";
@@ -77,6 +83,10 @@ interface Props {
   pospuestos: Record<number, string>;
   /** La tabla de pospuestos todavía no existe. */
   faltaMigracionRecordatorios: boolean;
+  /** Los seguimientos que salieron de las notas, todavía pendientes. */
+  seguimientos: Seguimiento[];
+  /** La tabla de seguimientos todavía no existe. */
+  faltaMigracionSeguimientos: boolean;
   /** Los formularios de feria, con sus preguntas. */
   formularios: FormularioDeFeria[];
   /** Las tablas de formularios todavía no existen. */
@@ -109,6 +119,8 @@ export default function CrmApp({
   puedeCrearCuentas,
   pospuestos,
   faltaMigracionRecordatorios,
+  seguimientos,
+  faltaMigracionSeguimientos,
   formularios,
   faltaMigracionFormularios,
   modInicial,
@@ -214,8 +226,25 @@ export default function CrmApp({
   const recordatorios = recordatoriosDe(oportunidades, hoy, pospuestos);
   const urgentes = paraInterrumpir(recordatorios);
 
+  /**
+   * Los seguimientos que salieron de las notas.
+   *
+   * Estos sí vienen de una consulta aparte —son filas propias, no una lectura
+   * de las oportunidades—, pero el reparto funciona igual: la vista respeta la
+   * política de la ficha, así que a cada quien le llegan nada más los suyos.
+   *
+   * El día se toma en la hora de El Salvador y no en la del servidor: Netlify
+   * trabaja en UTC, y a las siete de la tarde allá ya es mañana. Sin esto,
+   * media tarde de cada día los recordatorios de hoy se leerían como vencidos.
+   */
+  const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
+  const llamadasDeHoy = seguimientosParaInterrumpir(pendientes);
+
   // La ventana emergente: sólo por lo de hoy y lo vencido, y una vez por día.
-  const aviso = useAvisoDiario("lac.reservas.visto", urgentes.length > 0);
+  const aviso = useAvisoDiario(
+    "lac.reservas.visto",
+    urgentes.length > 0 || llamadasDeHoy.length > 0,
+  );
 
   return (
     <CatalogoProvider value={catalogo}>
@@ -311,6 +340,7 @@ export default function CrmApp({
               />
               <RelojRecordatorios
                 lista={recordatorios}
+                seguimientos={pendientes}
                 accent={accent}
                 onAbrirFicha={abrirFicha}
                 onVerTodos={() => actions.setMod("Recordatorios")}
@@ -479,7 +509,9 @@ export default function CrmApp({
           {mod === "Recordatorios" && (
             <Recordatorios
               lista={recordatorios}
+              seguimientos={pendientes}
               faltaMigracion={faltaMigracionRecordatorios}
+              faltaMigracionSeguimientos={faltaMigracionSeguimientos}
               puedeElegirAsesor={veTodoElEquipo}
               accent={accent}
               onAbrirFicha={abrirFicha}
@@ -525,6 +557,7 @@ export default function CrmApp({
           {aviso.mostrar && (
             <AvisoReservas
               lista={urgentes}
+              seguimientos={llamadasDeHoy}
               accent={accent}
               onAbrirFicha={(id) => {
                 abrirFicha(id);
