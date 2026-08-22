@@ -105,7 +105,12 @@ with revisiones as (
 
     ('20260907120000_motivo_perdida',
      'Por qué se pierde un lead, y la métrica en el tablero',
-     to_regclass('public.motivos_perdida') is not null)
+     to_regclass('public.motivos_perdida') is not null),
+
+    ('20260908120000_formulario_sin_obligatorios',
+     'Ninguna pregunta del formulario frena el guardado',
+     to_regclass('public.formulario_campos') is null
+       or not exists (select 1 from public.formulario_campos where requerido))
 
   ) as t(archivo, para_que, aplicada)
 )
@@ -154,7 +159,9 @@ with revisiones as (
                               where table_schema='public' and table_name='oportunidades'
                                 and column_name='reserva_en')),
     ('formularios',        to_regclass('public.formularios') is not null),
-    ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null)
+    ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null),
+    ('formulario_suelto',  to_regclass('public.formulario_campos') is null
+                            or not exists (select 1 from public.formulario_campos where requerido))
   ) as t(nombre, aplicada)
 )
 select

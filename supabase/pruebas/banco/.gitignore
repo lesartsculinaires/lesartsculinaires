@@ -1,0 +1,10 @@
+# Lo que el script se baja o genera. No va al repositorio: el binario pesa y
+# los JWT se firman de nuevo en cada armado.
+postgrest
+pgrst.tar.xz
+*.log
+v.conf
+jwt-*.txt
+anon.txt
+node_modules/
+package-lock.json

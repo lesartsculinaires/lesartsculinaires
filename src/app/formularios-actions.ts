@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { altaLead } from "@/lib/crm/altaLead";
 import {
   armarLead,
+  nombreParaElLead,
   redactarNota,
   revisar,
   type Campo,
@@ -77,13 +78,26 @@ export async function responderFormulario(
   }
 
   const lead = armarLead(campos, respuestas);
-  if (!lead.nombre.trim()) {
+
+  /*
+   * El nombre, que es lo único que la base exige sí o sí.
+   *
+   * Ninguna pregunta es obligatoria, así que puede llegar vacío. Cuando pasa,
+   * se arma con el teléfono o el correo en vez de frenar: en una feria, con la
+   * persona enfrente, perder el contacto entero por un campo en blanco es peor
+   * que una ficha que hay que renombrar después.
+   */
+  const nombre = nombreParaElLead(lead);
+  if (!nombre) {
     return {
       ok: false,
       faltaMigracion: false,
       error:
-        "Este formulario no tiene ninguna pregunta que dé el nombre del lead. " +
-        "Editalo y marcá cuál de las preguntas es el nombre.",
+        campos.some((c) => c.mapeaA === "nombre")
+          ? "Poné al menos el nombre, el teléfono o el correo. Con el formulario " +
+            "en blanco no hay a quién guardar."
+          : "Este formulario no tiene ninguna pregunta que dé el nombre del lead. " +
+            "Editalo y marcá cuál de las preguntas es el nombre.",
     };
   }
 
@@ -100,7 +114,7 @@ export async function responderFormulario(
   const alta = await altaLead(
     supabase,
     {
-      nombre: lead.nombre,
+      nombre,
       telefono: lead.telefono,
       correo: lead.correo,
       edad: lead.edad,

@@ -319,8 +319,21 @@ export function LlenarFormulario({
         <button type="button" onClick={onCerrar} disabled={guardando} style={BOTON}>
           Cancelar
         </button>
+        {/*
+          La leyenda de los obligatorios sólo si hay alguno.
+
+          Con todas las preguntas sueltas —que es como quedó el formulario de
+          feria— esta línea diría algo que no pasa, y una aclaración que no se
+          cumple enseña a no leer las demás.
+        */}
         <span style={{ fontSize: 11.5, color: T.faint }}>
-          Los campos con <span style={{ color: T.warn }}>*</span> son obligatorios.
+          {formulario.campos.some((c) => c.requerido) ? (
+            <>
+              Los campos con <span style={{ color: T.warn }}>*</span> son obligatorios.
+            </>
+          ) : (
+            "Guardá con lo que tengas; lo que falte se completa después en la ficha."
+          )}
         </span>
       </div>
     </div>

@@ -214,6 +214,42 @@ export function armarLead(campos: readonly Campo[], respuestas: Respuestas): Dat
 }
 
 /**
+ * Con qué nombre entra el lead cuando nadie escribió uno.
+ *
+ * Ninguna pregunta del formulario es obligatoria: en una feria se llena de
+ * pie, con la persona enfrente, y bloquear el guardado por un campo vacío
+ * significa perder el contacto entero. Pero `clientes.nombre` es `not null` en
+ * la base, así que un lead sin ninguna palabra en el nombre no se puede
+ * guardar aunque quisiéramos.
+ *
+ * La salida es armarlo con lo que sí haya. «Contacto 7100-4455» no es un
+ * nombre, y no pretende serlo: es una etiqueta con la que la ficha se puede
+ * encontrar y renombrar después. Lo importante es que el teléfono queda
+ * guardado, que es lo que hace falta para volver a llamar.
+ *
+ * Devuelve null sólo si no hay absolutamente nada con qué identificar a nadie.
+ * Ahí sí conviene frenar: una ficha vacía no es un lead, es una fila que
+ * alguien va a tener que borrar.
+ */
+export function nombreParaElLead(lead: DatosDelLead): string | null {
+  const propio = lead.nombre.trim();
+  if (propio) return propio;
+
+  const tel = lead.telefono?.trim();
+  if (tel) return `Contacto ${tel}`;
+
+  const correo = lead.correo?.trim();
+  if (correo) return `Contacto ${correo}`;
+
+  // El teléfono del responsable es lo último a lo que agarrarse: es de otra
+  // persona, pero por ahí se llega igual a ésta.
+  const resp = lead.responsable_telefono?.trim();
+  if (resp) return `Contacto ${resp}`;
+
+  return null;
+}
+
+/**
  * La nota que queda en la ficha con todo lo contestado.
  *
  * Van TODAS las preguntas, también las que ya se guardaron en un campo. Es a

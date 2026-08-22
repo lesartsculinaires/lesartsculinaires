@@ -1,0 +1,10 @@
+{
+  "name": "banco-de-pruebas",
+  "private": true,
+  "type": "module",
+  "description": "Dependencias del banco de pruebas. Van acá y no en el package.json de la aplicación: son herramientas para probar, no cosas que el CRM necesite para andar; puestas allá viajarían a producción.",
+  "dependencies": {
+    "playwright": "^1.62.1",
+    "ws": "^8.21.3"
+  }
+}
