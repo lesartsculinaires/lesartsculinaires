@@ -1,12 +1,25 @@
 -- ¿Qué migraciones están puestas y cuáles faltan?
 --
 -- Pegá esto en el editor SQL de Supabase y dale correr. No cambia nada: sólo
--- mira y contesta. Devuelve una fila por migración con «puesta» o «FALTA».
+-- mira y contesta. La primera fila es el resumen, y abajo va una línea por
+-- migración con «puesta» o «FALTA».
 --
 -- No se fija en un registro de migraciones —Supabase no lleva uno cuando se
 -- pegan a mano— sino en lo que cada una deja hecho: una columna, una tabla,
 -- una política, un trigger. Eso es lo que la aplicación necesita de verdad,
 -- así que es lo correcto para preguntar.
+--
+-- ------------------------------------------------------------------------
+-- POR QUÉ EL RESUMEN NOMBRA LOS ARCHIVOS
+-- ------------------------------------------------------------------------
+--
+-- Antes decía «corré supabase/PENDIENTES.sql», que era un combinado armado a
+-- mano en su momento. Envejeció sin avisar: seguía nombrando cuatro
+-- migraciones viejas mientras la que faltaba de verdad era otra. Quien lo
+-- corriera no habría arreglado nada y no habría tenido cómo darse cuenta.
+--
+-- Ahora el resumen sale de esta misma lista y nombra el archivo que falta. No
+-- puede quedar desactualizado: es el mismo dato que la fila de arriba.
 
 with revisiones as (
   select * from (values
@@ -128,69 +141,38 @@ with revisiones as (
      to_regclass('public.seguimientos') is not null)
 
   ) as t(archivo, para_que, aplicada)
-)
-select
-  case when aplicada then '✓ puesta' else '✗ FALTA' end as estado,
-  archivo,
-  para_que
-from revisiones
-order by aplicada, archivo;
+),
 
--- Y el resumen en una línea, para no tener que leer la tabla entera.
-with revisiones as (
-  select * from (values
-    ('adjuntos',            to_regclass('public.adjuntos') is not null),
-    ('edad',                exists (select 1 from information_schema.columns
-                                    where table_schema='public' and table_name='clientes' and column_name='edad')),
-    ('responsable_17',      exists (select 1 from pg_indexes
-                                    where schemaname='public' and indexname like '%responsable%')),
-    ('enlaces_pago',        to_regclass('public.enlaces_pago') is not null),
-    ('actividad',           to_regclass('public.actividad') is not null),
-    ('reserva',             exists (select 1 from information_schema.columns
-                                    where table_schema='public' and table_name='oportunidades' and column_name='reserva')),
-    ('actividad_enlaces',   exists (select 1 from pg_trigger
-                                    where tgname='trg_actividad_enlaces' and not tgisinternal)),
-    ('cursos_realizados',   to_regclass('public.cursos_realizados') is not null),
-    ('catalogo_programas',  exists (select 1 from pg_policies
-                                    where schemaname='public' and tablename='productos'
-                                      and policyname='productos_administrar')),
-    ('catalogo_vendedores', exists (select 1 from pg_policies
-                                    where schemaname='public' and tablename='vendedores'
-                                      and policyname='vendedores_administrar')),
-    ('media_whatsapp',      exists (select 1 from information_schema.columns
-                                    where table_schema='public' and table_name='mensajes' and column_name='media_ruta')),
-    ('etiquetas',           to_regclass('public.etiquetas') is not null),
-    ('plantillas',          to_regclass('public.plantillas') is not null),
-    ('abrir_chat',          exists (select 1 from pg_policies
-                                    where schemaname='public' and tablename='conversaciones'
-                                      and policyname='conversaciones_abrir')),
-    ('cada_quien_lo_suyo',  exists (select 1 from pg_policies
-                                    where schemaname='public' and tablename='oportunidades'
-                                      and policyname='oportunidades_ver')),
-    ('etapa_prospectos',    exists (select 1 from public.etapas where nombre='Prospectos')),
-    ('roles_de_ventas',     (select count(*) from public.roles
-                              where nombre in ('Gerente de ventas','Jefe de ventas')) = 2),
-    ('recordatorio_reserva', exists (select 1 from information_schema.columns
-                              where table_schema='public' and table_name='oportunidades'
-                                and column_name='reserva_en')),
-    ('formularios',        to_regclass('public.formularios') is not null),
-    ('motivo_perdida',     to_regclass('public.motivos_perdida') is not null),
-    ('formulario_suelto',  to_regclass('public.formulario_campos') is null
-                            or not exists (select 1 from public.formulario_campos where requerido)),
-    ('supreme_diplome',    exists (select 1 from public.productos where nombre = 'Suprême Diplôme')),
-    ('supreme_minuscula',  to_regclass('public.formulario_campos') is null
-                            or not exists (select 1 from public.formulario_campos c,
-                                                  jsonb_array_elements(c.opciones) as o
-                                            where o ->> 'texto' = 'SUPRÊME DIPLÔME')),
-    ('seguimientos',       to_regclass('public.seguimientos') is not null)
-  ) as t(nombre, aplicada)
+/*
+ * El detalle y el resumen salen de la misma lista.
+ *
+ * Antes eran dos consultas con la lista escrita dos veces, y agregar una
+ * migración a una sola de las dos era cuestión de tiempo: el detalle decía una
+ * cosa y el resumen otra. Con `union all` hay una sola verdad.
+ */
+todo as (
+  select case when aplicada then 2 else 1 end as orden,
+         case when aplicada then '✓ puesta' else '✗ FALTA' end as estado,
+         archivo,
+         para_que
+    from revisiones
+
+  union all
+
+  select 0,
+         case when count(*) filter (where not aplicada) = 0
+              then '✓ TODO PUESTO'
+              else '✗ FALTA ' || count(*) filter (where not aplicada) end,
+         coalesce(
+           string_agg(archivo || '.sql', ' · ' order by archivo)
+             filter (where not aplicada),
+           '—'),
+         case when count(*) filter (where not aplicada) = 0
+              then 'Las ' || count(*) || ' migraciones están aplicadas.'
+              else 'Corré ese archivo desde supabase/migrations/, en el editor '
+                   || 'SQL de Supabase. Se puede con gente trabajando.' end
+    from revisiones
 )
-select
-  case
-    when count(*) filter (where not aplicada) = 0
-      then 'Todo puesto: las ' || count(*) || ' están aplicadas.'
-    else 'Faltan ' || count(*) filter (where not aplicada) || ': '
-         || string_agg(nombre, ', ') filter (where not aplicada)
-         || '. Corré supabase/PENDIENTES.sql.'
-  end as resumen
-from revisiones;
+select estado, archivo, para_que
+  from todo
+ order by orden, archivo;
