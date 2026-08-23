@@ -63,11 +63,14 @@ psql_ "-c \"do \\\$\\\$ begin
   if not exists (select 1 from pg_roles where rolname='authenticator') then create role authenticator login noinherit; end if;
   if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
   if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+  -- El del webhook de WhatsApp. \`bypassrls\` es lo que lo hace equivalente al
+  -- de Supabase: escribe sin sesión y sin que las políticas lo filtren.
+  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
 end \\\$\\\$;
-grant anon, authenticated to authenticator;
-grant usage on schema public to anon, authenticated;
-grant all on all tables in schema public to anon, authenticated;
-grant all on all sequences in schema public to anon, authenticated;\"" >/dev/null
+grant anon, authenticated, service_role to authenticator;
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;\"" >/dev/null
 echo "   ok"
 
 echo "── 4. gente y fichas inventadas ──"
@@ -96,7 +99,7 @@ echo "   $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' \
 
 echo "── 6. sesiones de prueba ──"
 node -e '
-import("./jwt.mjs").then(async ({firmar}) => {
+import("./jwt.mjs").then(async ({firmar, firmarServicio}) => {
   const fs = await import("node:fs");
   for (const [n, id, mail] of [
     ["ale",  "11111111-0000-0000-0000-000000000001", "ale@lac.test"],
@@ -104,6 +107,8 @@ import("./jwt.mjs").then(async ({firmar}) => {
     ["jefa", "cccccccc-0000-0000-0000-000000000003", "jefa@lac.test"],
   ]) fs.writeFileSync(`jwt-${n}.txt`, firmar(id, mail));
   fs.writeFileSync("anon.txt", firmar("", "", "anon"));
+  // La del webhook de WhatsApp, que escribe sin nadie con sesión detrás.
+  fs.writeFileSync("jwt-servicio.txt", firmarServicio());
 });
 ' && echo "   ok"
 
