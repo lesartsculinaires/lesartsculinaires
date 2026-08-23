@@ -400,6 +400,7 @@ export function Inbox({
         {nuevoChat && (
           <NuevoChat
             oportunidades={oportunidades}
+            plantillas={plantillas}
             accent={accent}
             onCerrar={() => setNuevoChat(false)}
             onAbierta={(id) => {

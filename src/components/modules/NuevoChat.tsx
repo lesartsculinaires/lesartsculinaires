@@ -3,11 +3,17 @@
 import { useMemo, useState } from "react";
 
 import { abrirChat, altaYChat } from "@/app/inbox-actions";
+import { enviarPlantillaAConversacion } from "@/app/plantillas-actions";
+import {
+  SelectorPlantilla,
+  aprobadas,
+  listaParaMandar,
+} from "@/components/ui/SelectorPlantilla";
 import { T } from "@/lib/theme";
 import { useCatalogo } from "@/lib/catalog";
 import { activos } from "@/lib/types";
 import { aInternacional, bonito } from "@/lib/whatsapp/numero";
-import type { Oportunidad } from "@/lib/types";
+import type { Oportunidad, Plantilla } from "@/lib/types";
 
 /**
  * Abrir un chat con alguien que ya está en la base.
@@ -26,11 +32,14 @@ import type { Oportunidad } from "@/lib/types";
  */
 export function NuevoChat({
   oportunidades,
+  plantillas,
   accent,
   onCerrar,
   onAbierta,
 }: {
   oportunidades: Oportunidad[];
+  /** Las de Meta. Se ofrecen sólo las aprobadas. */
+  plantillas: Plantilla[];
   accent: string;
   onCerrar: () => void;
   /** Recibe la conversación lista, para que la bandeja la muestre abierta. */
@@ -49,6 +58,21 @@ export function NuevoChat({
   const [correoNuevo, setCorreoNuevo] = useState("");
   const [vendedorNuevo, setVendedorNuevo] = useState<number | "">("");
   const [parecidos, setParecidos] = useState<string[] | null>(null);
+
+  /** La plantilla con que se rompe el hielo, y sus huecos. */
+  const [plantillaId, setPlantillaId] = useState("");
+  const [valores, setValores] = useState<string[]>([]);
+  /**
+   * El hilo que ya quedó abierto cuando la plantilla no salió.
+   *
+   * Se guarda para no perderlo: el chat existe aunque el envío haya fallado, y
+   * cerrar la ventana con un error dejaría al asesor sin saber que la
+   * conversación está creada. Con esto puede entrar igual y ver qué pasó.
+   */
+  const [abiertaConError, setAbiertaConError] = useState<number | null>(null);
+
+  const plantilla = aprobadas(plantillas).find((p) => p.id === plantillaId) ?? null;
+  const plantillaLista = listaParaMandar(plantilla, valores);
 
   /**
    * Un contacto por persona, no una fila por oportunidad.
@@ -87,17 +111,40 @@ export function NuevoChat({
 
   const propuesta = elegido ? aInternacional(elegido.telefono) : null;
 
+  /**
+   * Manda la plantilla en el hilo recién abierto y entra a la conversación.
+   *
+   * Si el envío falla no se cierra la ventana. El hilo ya existe —eso salió
+   * bien— y lo que falló fue Meta: una plantilla rechazada, un número que no
+   * tiene WhatsApp. Cerrar y saltar a la conversación mostraría un chat vacío
+   * sin decir por qué, y el asesor creería que el mensaje salió.
+   */
+  const abrirYMandar = async (conversacionId: number) => {
+    if (!plantilla) {
+      onAbierta(conversacionId);
+      return;
+    }
+    const envio = await enviarPlantillaAConversacion(conversacionId, plantilla.id, valores);
+    if (!envio.ok) {
+      setAbiertaConError(conversacionId);
+      setError(envio.error ?? "No se pudo mandar la plantilla.");
+      return;
+    }
+    onAbierta(conversacionId);
+  };
+
   const abrir = async () => {
     if (!elegido) return;
     setAbriendo(true);
     setError(null);
     const r = await abrirChat(elegido.clienteId, numero);
-    setAbriendo(false);
     if (!r.ok || r.conversacionId == null) {
+      setAbriendo(false);
       setError(r.error ?? "No se pudo abrir el chat.");
       return;
     }
-    onAbierta(r.conversacionId);
+    await abrirYMandar(r.conversacionId);
+    setAbriendo(false);
   };
 
   const listo = numero.replace(/\D/g, "").length >= 8;
@@ -133,7 +180,7 @@ export function NuevoChat({
       setError(r.error ?? "No se pudo abrir el chat.");
       return;
     }
-    onAbierta(r.conversacionId);
+    await abrirYMandar(r.conversacionId);
   };
 
   const listoParaAlta = nombreNuevo.trim() !== "" && listo;
@@ -326,11 +373,6 @@ export function NuevoChat({
               </p>
             )}
 
-            <p style={{ margin: "9px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.55 }}>
-              Se abre el hilo, no se manda nada. Si esta persona nunca escribió al
-              WhatsApp de la escuela, WhatsApp sólo deja llegarle con una plantilla
-              aprobada, y la bandeja te la va a ofrecer.
-            </p>
           </div>
         )}
 
@@ -437,6 +479,61 @@ export function NuevoChat({
           </p>
         )}
 
+        {/*
+          Con qué se rompe el hielo.
+
+          Va después de elegir a la persona y antes de los botones, en el orden
+          en que se piensa: a quién, qué le mando, mandar.
+        */}
+        {(elegido || dandoAlta) && (
+          <div
+            style={{
+              marginTop: 14,
+              padding: "11px 12px",
+              borderRadius: 9,
+              border: `1px solid ${T.border}`,
+              background: T.paper,
+            }}
+          >
+            <p style={{ margin: "0 0 3px", fontSize: 12.5, fontWeight: 600, color: T.ink }}>
+              Con qué le escribimos
+            </p>
+            <p style={{ margin: "0 0 8px", fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
+              A quien no escribió primero, WhatsApp sólo deja mandarle una
+              plantilla aprobada por Meta. Cualquier otro texto rebota.
+            </p>
+
+            <SelectorPlantilla
+              plantillas={plantillas}
+              elegida={plantillaId}
+              valores={valores}
+              rotulo="Elegí una plantilla…"
+              onElegir={(id) => {
+                setPlantillaId(id);
+                setError(null);
+              }}
+              onValores={(v) => {
+                setValores(v);
+                setError(null);
+              }}
+            />
+
+            {/*
+              Se puede abrir sin mandar nada, pero se dice qué significa.
+
+              Hace falta para el caso en que la persona escribió hace un rato:
+              ahí la ventana de 24 horas está abierta, se le puede escribir
+              normal, y gastar una plantilla sería pagar de más por nada.
+            */}
+            {!plantilla && (
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: T.faint, lineHeight: 1.5 }}>
+                Sin plantilla el hilo se abre igual, pero sólo vas a poder
+                escribirle si esa persona te escribió en las últimas 24 horas.
+              </p>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 14 }}>
           <button
             type="button"
@@ -452,13 +549,30 @@ export function NuevoChat({
               color: T.ink,
             }}
           >
-            {dandoAlta ? "Volver" : "Cancelar"}
+            {abiertaConError != null ? "Cerrar" : dandoAlta ? "Volver" : "Cancelar"}
           </button>
-          {dandoAlta ? (
+          {abiertaConError != null ? (
+            <button
+              type="button"
+              onClick={() => onAbierta(abiertaConError)}
+              style={{
+                height: 36,
+                padding: "0 18px",
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: 7,
+                background: accent,
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Entrar al chat igual
+            </button>
+          ) : dandoAlta ? (
             <button
               type="button"
               onClick={() => void darAlta(parecidos != null)}
-              disabled={abriendo || !listoParaAlta}
+              disabled={abriendo || !listoParaAlta || (plantilla != null && !plantillaLista)}
               style={{
                 height: 36,
                 padding: "0 18px",
@@ -474,13 +588,18 @@ export function NuevoChat({
                 ? "Dando de alta…"
                 : parecidos
                   ? "Darlo de alta igual"
-                  : "Dar de alta y abrir chat"}
+                  : plantilla
+                    ? "Dar de alta y enviar"
+                    : "Dar de alta y abrir chat"}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => void abrir()}
-              disabled={abriendo || !elegido || !listo}
+              // Con una plantilla elegida y huecos sin llenar el botón se
+              // apaga: Meta rechaza el envío y el error que devuelve no dice
+              // cuál faltó.
+              disabled={abriendo || !elegido || !listo || (plantilla != null && !plantillaLista)}
               style={{
                 height: 36,
                 padding: "0 18px",
@@ -492,7 +611,13 @@ export function NuevoChat({
                 cursor: abriendo ? "wait" : elegido && listo ? "pointer" : "not-allowed",
               }}
             >
-              {abriendo ? "Abriendo…" : "Abrir chat"}
+              {abriendo
+                ? plantilla
+                  ? "Enviando…"
+                  : "Abriendo…"
+                : plantilla
+                  ? "Abrir y enviar la plantilla"
+                  : "Abrir chat sin enviar"}
             </button>
           )}
         </div>
