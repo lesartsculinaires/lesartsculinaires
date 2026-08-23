@@ -47,7 +47,7 @@ const casilla = () => p.locator(
 const abrirFicha = async () => {
   await p.goto("http://127.0.0.1:3142/?mod=x",{waitUntil:"networkidle"});
   await p.waitForTimeout(2200);
-  await p.locator('aside button:text-is("Clientes")').click();
+  await p.locator('aside button[data-mod="Clientes"]').click();
   await p.waitForTimeout(1600);
   // La fila de ESTA oportunidad: el orden de la tabla no es el de la base.
   await p.locator(`main table tbody tr`).filter({hasText: CODIGO}).first().click();
@@ -104,7 +104,7 @@ console.log("\n── se ve en Recordatorios ──");
 {
   await p.goto("http://127.0.0.1:3142/?mod=x",{waitUntil:"networkidle"});
   await p.waitForTimeout(2000);
-  await p.locator('aside button:text-is("Recordatorios")').click();
+  await p.locator('aside button[data-mod="Recordatorios"]').click();
   await p.waitForTimeout(1800);
   const t = await enPantalla();
   es("con el rótulo de reactivación", /Reactivación/.test(t), true);

@@ -318,7 +318,15 @@ export function Inbox({
           overflow: "hidden",
         }}
       >
-        <div style={{ ...th, display: "flex", gap: 8, alignItems: "center" }}>
+        {/*
+          Las pastillas se acomodan en dos renglones antes que salirse.
+
+          La columna de los hilos es angosta y se angosta más en una laptop:
+          sin `flexWrap`, la última —«Todas»— se salía del panel y quedaba
+          cortada por la mitad, con la mitad del filtro invisible y sin manera
+          de saber que estaba ahí.
+        */}
+        <div style={{ ...th, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
             onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); }}
@@ -331,7 +339,27 @@ export function Inbox({
             onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); }}
             style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
-            Sin asignar{sinAsignar ? ` ${sinAsignar}` : ""}
+            Sin asignar
+            {sinAsignar > 0 && (
+              /* El número, en su propia pastilla. Suelto al lado del texto se
+                 lee como parte del nombre —«sin asignar 2»— en vez de como una
+                 cantidad. */
+              <span
+                style={{
+                  minWidth: 17,
+                  padding: "0 5px",
+                  borderRadius: 9,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  lineHeight: "16px",
+                  textAlign: "center",
+                  background: soloSinAsignar ? "rgba(255,255,255,0.25)" : T.paper,
+                  color: soloSinAsignar ? "#fff" : T.muted,
+                }}
+              >
+                {sinAsignar}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -840,12 +868,25 @@ export function Inbox({
 }
 
 const pestana = (activa: boolean, accent: string): CSSProperties => ({
+  // En una línea. Sin esto, «Sin asignar 2» se parte en dos renglones apenas
+  // aparece el número y esa pastilla queda el doble de alta que las otras
+  // tres, con la fila entera descolocada.
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
+  // Alto fijo y borde siempre presente —transparente en la activa— para que
+  // las cuatro midan exactamente igual. Sin esto la activa queda 2px más baja
+  // que las otras, porque no tiene borde, y la de «Sin asignar» 1px más alta
+  // por el número de adentro: tres alturas distintas en una misma fila.
+  height: 26,
+  boxSizing: "border-box",
+  padding: "0 10px",
   fontSize: 12,
-  padding: "4px 10px",
   borderRadius: 20,
   background: activa ? accent : "transparent",
   color: activa ? "#fff" : T.muted,
-  border: activa ? "none" : `1px solid ${T.border}`,
+  border: `1px solid ${activa ? "transparent" : T.border}`,
 });
 
 const chip = (color: string, fondo: string): CSSProperties => ({

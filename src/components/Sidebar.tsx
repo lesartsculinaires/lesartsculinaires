@@ -3,11 +3,10 @@
 import type { CSSProperties } from "react";
 
 import { signOut } from "@/app/actions";
+import { IconoModulo } from "@/components/ui/IconoModulo";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { MODULOS } from "@/lib/modulos";
 import { T, soft } from "@/lib/theme";
-
-
 
 interface Props {
   accent: string;
@@ -26,6 +25,14 @@ interface Props {
   nombre: string | null;
   /** Extra entries the signed-in user is allowed to open, e.g. admin-only. */
   extras?: readonly string[];
+  /**
+   * Cuántas cosas sin atender tiene cada módulo: «Inbox» → 3.
+   *
+   * Va como un mapa y no como una propiedad suelta —`mensajesSinLeer`— porque
+   * mañana Recordatorios va a querer el suyo, y con el mapa eso es una clave
+   * más en quien lo arma, sin tocar nada de acá.
+   */
+  avisos?: Readonly<Record<string, number>>;
   onSelect: (mod: string) => void;
 }
 
@@ -36,6 +43,7 @@ export function Sidebar({
   rol,
   nombre,
   extras = [],
+  avisos = {},
   onSelect,
 }: Props) {
 
@@ -45,7 +53,12 @@ export function Sidebar({
     principal === userEmail ? null : rol && nombre ? `${nombre} · ${userEmail}` : userEmail;
 
   const navStyle = (label: string): CSSProperties => ({
-    display: "block",
+    // De bloque a fila: el icono a la izquierda, el nombre al medio y el
+    // número a la derecha, con el nombre ocupando lo que sobre para que todos
+    // los números queden alineados en la misma columna.
+    display: "flex",
+    alignItems: "center",
+    gap: 9,
     width: "100%",
     textAlign: "left",
     padding: "8px 10px",
@@ -177,17 +190,53 @@ export function Sidebar({
         vez de desplazarse.
       */}
       <nav style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        {[...MODULOS, ...extras].map((m) => (
-          <button
-            type="button"
-            key={m}
-            className="nav"
-            onClick={() => onSelect(m)}
-            style={navStyle(m)}
-          >
-            {m}
-          </button>
-        ))}
+        {[...MODULOS, ...extras].map((m) => {
+          const puesto = mod === m;
+          const cuantos = avisos[m] ?? 0;
+
+          return (
+            <button
+              type="button"
+              key={m}
+              className="nav"
+              // Una marca estable para poder señalar este botón. El texto ya
+              // no alcanza: con el icono y el número al lado, el contenido del
+              // botón es «Inbox4» y cualquier búsqueda por texto exacto falla.
+              data-mod={m}
+              onClick={() => onSelect(m)}
+              // El número también en el rótulo hablado: quien navega con
+              // lector de pantalla no ve el globito rojo.
+              aria-label={cuantos > 0 ? `${m}, ${cuantos} sin leer` : undefined}
+              style={navStyle(m)}
+            >
+              <IconoModulo nombre={m} color={puesto ? accent : T.faint} />
+              <span style={{ flex: 1, minWidth: 0 }}>{m}</span>
+              {cuantos > 0 && (
+                <span
+                  style={{
+                    flexShrink: 0,
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 5px",
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 9,
+                    // El mismo rojo de la campana de la cabecera: dos avisos
+                    // de «hay algo sin atender» de distinto color se leen como
+                    // dos cosas distintas.
+                    background: "#B85042",
+                    color: "#fff",
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  {cuantos > 99 ? "99+" : cuantos}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       <div

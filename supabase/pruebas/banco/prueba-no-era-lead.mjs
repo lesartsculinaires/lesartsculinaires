@@ -60,7 +60,7 @@ const errores = [];
 p.on("pageerror", e=>errores.push(e.message));
 await p.goto("http://127.0.0.1:3142/", {waitUntil:"networkidle"});
 await p.waitForTimeout(3000);
-await p.locator('aside button:text-is("Inbox")').click();
+await p.locator('aside button[data-mod="Inbox"]').click();
 await p.waitForTimeout(2000);
 
 const abrirHilo = async (nombre) => {
@@ -82,7 +82,7 @@ console.log("\n── «No era lead» sobre uno donde alguien trabajó ──");
 {
   await p.reload({waitUntil:"networkidle"});
   await p.waitForTimeout(2500);
-  await p.locator('aside button:text-is("Inbox")').click();
+  await p.locator('aside button[data-mod="Inbox"]').click();
   await p.waitForTimeout(1800);
   await abrirHilo("Lead De Verdad");
   await p.locator('button:text-is("No era lead")').click();

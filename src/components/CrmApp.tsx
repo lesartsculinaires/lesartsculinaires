@@ -237,6 +237,23 @@ export default function CrmApp({
    * trabaja en UTC, y a las siete de la tarde allá ya es mañana. Sin esto,
    * media tarde de cada día los recordatorios de hoy se leerían como vencidos.
    */
+  /**
+   * Los números rojos de la barra lateral.
+   *
+   * Se cuentan los mensajes sin leer, no los hilos: dos hilos con cinco
+   * mensajes cada uno son diez cosas por leer, y un «2» ahí haría creer que
+   * son dos. Es el mismo criterio que ya usa cada fila de la bandeja.
+   *
+   * Las archivadas no cuentan. Archivar es decir «esto ya no me ocupa», y un
+   * número que sigue contando lo archivado obliga a archivar y además entrar a
+   * marcar leído para que baje.
+   */
+  const sinLeer = conversaciones
+    .filter((c) => !c.archivada)
+    .reduce((s, c) => s + (c.sinLeer ?? 0), 0);
+
+  const avisosDeLaBarra: Record<string, number> = sinLeer > 0 ? { Inbox: sinLeer } : {};
+
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
   const llamadasDeHoy = seguimientosParaInterrumpir(pendientes);
 
@@ -263,6 +280,7 @@ export default function CrmApp({
           // se muestra igual: si no, no habría forma de leer el aviso que dice
           // cómo crearlas.
           extras={accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : []}
+          avisos={avisosDeLaBarra}
           onSelect={actions.setMod}
         />
 
