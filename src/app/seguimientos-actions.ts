@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador, siguienteMes, sumarDias } from "@/lib/seguimientos";
 import { getServerClient } from "@/lib/supabase/server";
 
@@ -136,6 +137,64 @@ export async function borrarSeguimiento(id: number): Promise<ResultadoSeguimient
   if (!supabase) return sinSesion;
 
   const { error } = await supabase.from("seguimientos").delete().eq("id", id);
+  if (error) return explicar(error.code, error.message);
+
+  revalidatePath("/");
+  return bien;
+}
+
+/**
+ * Volver a escribirle dentro de tres meses a quien dijo que no le interesa.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ EXISTE
+ * ------------------------------------------------------------------------
+ *
+ * «No me interesa» casi nunca significa «nunca»: significa «no ahora». Quien
+ * dijo que no en marzo porque no le daban los tiempos puede estar buscando
+ * curso en junio, y hoy ese lead se archiva y no vuelve a mirarlo nadie. Tres
+ * meses después es una llamada que empieza con algo que ya se habló, no en
+ * frío.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ NO SE PONE SOLO
+ * ------------------------------------------------------------------------
+ *
+ * Lo pide el asesor con una casilla, no lo decide el CRM al ver el motivo. Hay
+ * gente que dice que no de una manera que no admite volver a llamar, y el que
+ * estuvo en esa conversación es el único que lo sabe. Un recordatorio
+ * automático para todos convertiría la lista en algo que se saltea.
+ */
+export async function programarReactivacion(
+  oportunidadId: number,
+  detalle: string,
+): Promise<ResultadoSeguimiento> {
+  const supabase = await getServerClient();
+  if (!supabase) return sinSesion;
+
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+
+  // Uno solo por ficha: marcar «perdido» dos veces —algo que pasa cuando se
+  // corrige el motivo— no tiene que dejar dos avisos para el mismo día.
+  const { data: ya } = await supabase
+    .from("seguimientos")
+    .select("id")
+    .eq("oportunidad_id", oportunidadId)
+    .eq("tipo", "reactivacion")
+    .is("hecho_en", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (ya) return bien;
+
+  const { error } = await supabase.from("seguimientos").insert({
+    oportunidad_id: oportunidadId,
+    tipo: "reactivacion",
+    detalle: detalle.trim() || `Dijo que no le interesa. Volver a escribirle a los ${MESES_PARA_REACTIVAR} meses.`,
+    proxima: fechaDeReactivacion(hoyEnSalvador()),
+    creado_por: user?.id ?? null,
+  });
+
   if (error) return explicar(error.code, error.message);
 
   revalidatePath("/");

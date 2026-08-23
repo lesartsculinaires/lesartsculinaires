@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { addNota } from "@/app/actions";
+import { programarReactivacion } from "@/app/seguimientos-actions";
 import { Adjuntos } from "@/components/modules/Adjuntos";
 import { Bitacora } from "@/components/modules/Bitacora";
 import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
@@ -23,7 +24,9 @@ import {
   type Pendientes,
 } from "@/lib/cambios";
 import { useCatalogo } from "@/lib/catalog";
-import { fechaCorta, mesLargo, money } from "@/lib/format";
+import { fechaCorta, fechaLarga, mesLargo, money } from "@/lib/format";
+import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
+import { hoyEnSalvador } from "@/lib/seguimientos";
 import { promocionesUsadas } from "@/lib/promociones";
 import { estadoTone } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
@@ -121,6 +124,8 @@ export function ClienteDrawer({
   const [repasando, setRepasando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [avisoSalida, setAvisoSalida] = useState(false);
+  /** Marcada, deja el recordatorio de volver a escribirle a los tres meses. */
+  const [reactivar, setReactivar] = useState(false);
 
   const anotarCambio = (
     clave: string,
@@ -135,6 +140,16 @@ export function ClienteDrawer({
     // Se aplican en el orden en que se hicieron. Cada uno ya es una escritura
     // optimista con su propio reintento, así que no hace falta esperarlos acá.
     for (const c of listar(pendientes)) c.aplicar();
+
+    // El recordatorio se deja al confirmar, no al marcar la casilla: hasta que
+    // la persona no acepta los cambios, el lead no está perdido y agendar una
+    // llamada para dentro de tres meses sería adelantarse a una decisión que
+    // todavía puede deshacer.
+    if (reactivar) {
+      void programarReactivacion(o.id, `${o.cliente}: dijo que no le interesa.`);
+      setReactivar(false);
+    }
+
     setPendientes(VACIOS);
     setGuardando(false);
     setRepasando(false);
@@ -182,6 +197,14 @@ export function ClienteDrawer({
    */
   const estadoEsPerdido =
     (pendientes.get("clas_estado")?.despues ?? o.estado) === "Perdido";
+
+  /** ¿El motivo elegido es «no interesado»? Es el único que admite reintento. */
+  const esNoInteresado = (() => {
+    const anotado = pendientes.get("motivo_perdida")?.despues;
+    const nombre =
+      anotado ?? cat.motivosPerdida.find((m) => m.id === o.motivoPerdidaId)?.nombre ?? "";
+    return /no\s*interesad/i.test(nombre);
+  })();
 
   /** El motivo elegido, contando lo que todavía no se guardó. */
   const motivoVisible = (() => {
@@ -635,6 +658,69 @@ export function ClienteDrawer({
                 );
               })}
             </div>
+          )}
+
+          {/*
+            Volver a escribirle más adelante.
+
+            Aparece sólo con «No interesado» porque es el único motivo que el
+            tiempo puede cambiar: quien no tiene plata o se quedó sin cupo de
+            horario no se resuelve solo, pero quien dijo «ahora no» en marzo
+            puede estar buscando curso en junio.
+
+            Y es una casilla y no algo automático: el que estuvo en esa
+            conversación es el único que sabe si el «no» admite volver a
+            llamar. Ponérselo a todos convertiría la lista en algo que se
+            saltea.
+          */}
+          {esNoInteresado && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                marginTop: 10,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: T.ink,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={reactivar}
+                onChange={(e) => {
+                  const puesta = e.target.checked;
+                  setReactivar(puesta);
+                  // Entra a la lista de cambios pendientes como uno más. Es lo
+                  // que hace que el botón de guardar se encienda cuando la
+                  // ficha ya estaba perdida y lo único que se agrega es el
+                  // recordatorio; sin esto la casilla sería un control muerto
+                  // en ese caso, que es justo cuando más se va a usar.
+                  if (puesta) {
+                    anotarCambio(
+                      "reactivar",
+                      "Recordatorio",
+                      "—",
+                      `Escribirle en ${MESES_PARA_REACTIVAR} meses`,
+                      () => {},
+                    );
+                  } else {
+                    setPendientes((x) => quitar(x, "reactivar"));
+                  }
+                }}
+                style={{ marginTop: 2, cursor: "pointer" }}
+              />
+              <span>
+                Recordarme escribirle de nuevo en {MESES_PARA_REACTIVAR} meses
+                {reactivar && (
+                  <em style={{ display: "block", fontStyle: "normal", color: T.muted, fontSize: 11.5 }}>
+                    Queda para el {fechaLarga(fechaDeReactivacion(hoyEnSalvador()))}, en
+                    Recordatorios.
+                  </em>
+                )}
+              </span>
+            </label>
           )}
         </div>
       )}

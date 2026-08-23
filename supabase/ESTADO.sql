@@ -138,7 +138,13 @@ with revisiones as (
 
     ('20260911120000_seguimientos',
      'Las notas que dicen «seguimiento de pago» crean el recordatorio',
-     to_regclass('public.seguimientos') is not null)
+     to_regclass('public.seguimientos') is not null),
+
+    ('20260912120000_reparto_automatico',
+     'El lead de WhatsApp entra solo y se sortea entre los que reciben',
+     exists (select 1 from information_schema.columns
+             where table_schema='public' and table_name='roles'
+               and column_name='recibe_leads'))
 
   ) as t(archivo, para_que, aplicada)
 ),

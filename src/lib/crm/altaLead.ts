@@ -132,6 +132,46 @@ export async function altaLead(
   if (errCliente) return { ok: false, error: errCliente.message };
   const clienteId = (cliente as { id: number }).id;
 
+  const abierta = await abrirOportunidad(supabase, clienteId, datos);
+
+  if (abierta.ok) {
+    return { ok: true, error: null, codigo: abierta.codigo, clienteId, oportunidadId: abierta.oportunidadId };
+  }
+
+  // Sin oportunidad el cliente no se vería en ninguna pantalla, así que se
+  // deshace el alta en vez de dejar una fila huérfana.
+  await supabase.from("clientes").delete().eq("id", clienteId);
+  return { ok: false, error: abierta.error };
+}
+
+/** Los campos de la oportunidad, sin nada del cliente. */
+export type DatosOportunidad = Pick<
+  DatosLead,
+  | "vendedor_id" | "producto_id" | "territorio_id" | "canal_id"
+  | "etapa_id" | "estado_id" | "fecha_registro" | "fecha_cierre"
+  | "valor_oportunidad" | "descuento_promocion"
+>;
+
+export interface ResultadoOportunidad {
+  ok: boolean;
+  error: string | null;
+  codigo?: string;
+  oportunidadId?: number;
+}
+
+/**
+ * Abrirle una oportunidad a un cliente que ya existe.
+ *
+ * Sale de `altaLead` para que la comparta el webhook de WhatsApp, donde el
+ * cliente ya está creado —lo crea el propio webhook al guardar el mensaje— y
+ * lo único que falta es el lead. Sin esto habría dos maneras de asignar
+ * códigos, y la de WhatsApp sería la que nadie prueba.
+ */
+export async function abrirOportunidad(
+  supabase: SupabaseClient,
+  clienteId: number,
+  datos: DatosOportunidad,
+): Promise<ResultadoOportunidad> {
   // El código se calcula leyendo el último y sumando uno. Dos altas
   // simultáneas pueden pedir el mismo número; la columna es `unique`, así que
   // la segunda choca y se reintenta con el siguiente en vez de fallar.
@@ -170,13 +210,7 @@ export async function altaLead(
       .single();
 
     if (!errOp) {
-      return {
-        ok: true,
-        error: null,
-        codigo,
-        clienteId,
-        oportunidadId: (op as { id: number }).id,
-      };
+      return { ok: true, error: null, codigo, oportunidadId: (op as { id: number }).id };
     }
 
     ultimoError = errOp.message;
@@ -184,8 +218,5 @@ export async function altaLead(
     if (!errOp.message.includes("duplicate key") && errOp.code !== "23505") break;
   }
 
-  // Sin oportunidad el cliente no se vería en ninguna pantalla, así que se
-  // deshace el alta en vez de dejar una fila huérfana.
-  await supabase.from("clientes").delete().eq("id", clienteId);
   return { ok: false, error: ultimoError };
 }

@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { abrirOportunidad } from "@/lib/crm/altaLead";
+import { sortear, yaEsLead } from "@/lib/reparto";
+import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 import { bajarMedia, rutaMedia } from "@/lib/whatsapp/media";
@@ -146,6 +149,128 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
     p_texto: resumen(m.tipo, m.texto).slice(0, 200),
     p_cuando: m.enviadoEn.toISOString(),
   });
+
+  await abrirLeadSiEsNuevo(supabase, conversacion);
+}
+
+/**
+ * Si quien escribe todavía no es un lead, abrirle uno y sortearle asesor.
+ *
+ * ------------------------------------------------------------------------
+ * CUÁNDO SÍ Y CUÁNDO NO
+ * ------------------------------------------------------------------------
+ *
+ * Sólo cuando el cliente no tiene ninguna oportunidad. Las dos reglas de la
+ * escuela caen de esa única condición:
+ *
+ *   Vuelve a escribir           ya tiene una abierta, no se abre otra, y sigue
+ *                               siendo de quien lo venía atendiendo.
+ *   Ex-alumno que vuelve        tiene las suyas cerradas, tampoco se abre otra.
+ *                               Se lo atiende sobre su ficha, donde está lo que
+ *                               ya cursó, y si hay venta nueva la abre una
+ *                               persona mirando.
+ *
+ * ------------------------------------------------------------------------
+ * SI ALGO FALLA, EL MENSAJE NO SE PIERDE
+ * ------------------------------------------------------------------------
+ *
+ * Nada de acá lanza. El mensaje ya está guardado y la conversación abierta;
+ * que no se haya podido crear el lead es un problema menor que se arregla con
+ * un clic desde la bandeja, y tumbar el webhook por eso haría que Meta
+ * reintentara y terminara desactivándolo.
+ */
+async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
+  try {
+    const { data: conv } = await supabase
+      .from("conversaciones")
+      .select("cliente_id")
+      .eq("id", conversacionId)
+      .maybeSingle();
+
+    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
+    if (clienteId == null) return;
+
+    const { count } = await supabase
+      .from("oportunidades")
+      .select("id", { count: "exact", head: true })
+      .eq("cliente_id", clienteId);
+
+    if (yaEsLead(count ?? 0)) return;
+
+    const { data: gente } = await supabase.rpc("vendedores_para_reparto");
+    const candidatos = ((gente ?? []) as { id: number; nombre: string }[]).map((v) => ({
+      id: Number(v.id),
+      nombre: String(v.nombre),
+    }));
+
+    // Sin nadie habilitado el lead entra igual, sin dueño. Un lead sin asignar
+    // lo ve todo el equipo —así está escrita la política— y alguien lo agarra;
+    // un lead que no se creó no lo ve nadie nunca.
+    const quien = sortear(candidatos);
+
+    const r = await abrirOportunidad(supabase, clienteId, {
+      vendedor_id: quien?.id ?? null,
+      producto_id: null,
+      territorio_id: null,
+      canal_id: await idDeCanalWhatsapp(supabase),
+      etapa_id: await idDeEtapaProspectos(supabase),
+      estado_id: null,
+      fecha_registro: hoyEnSalvador(),
+      fecha_cierre: null,
+      valor_oportunidad: null,
+      descuento_promocion: null,
+    });
+
+    if (!r.ok) {
+      console.error("[whatsapp] no se pudo abrir el lead", r.error);
+      return;
+    }
+
+    console.info(
+      `[whatsapp] lead ${r.codigo} abierto para ${quien?.nombre ?? "nadie (sin asignar)"}`,
+    );
+  } catch (e) {
+    console.error("[whatsapp] no se pudo abrir el lead", e);
+  }
+}
+
+/**
+ * El canal «Whatsapp» del catálogo.
+ *
+ * Se busca por nombre en vez de guardar el número: los catálogos se editan
+ * desde Programas y Equipos, y un id escrito fijo en el código apuntaría a
+ * otra cosa el día que alguien reordene la tabla. Si no está, el lead entra
+ * sin canal en vez de no entrar.
+ */
+async function idDeCanalWhatsapp(supabase: Cliente): Promise<number | null> {
+  const { data } = await supabase
+    .from("canales")
+    .select("id")
+    .ilike("nombre", "whatsapp")
+    .limit(1)
+    .maybeSingle();
+  return data ? Number(data.id) : null;
+}
+
+/** La primera etapa del embudo. Igual que arriba: por nombre, no por id. */
+async function idDeEtapaProspectos(supabase: Cliente): Promise<number | null> {
+  const { data } = await supabase
+    .from("etapas")
+    .select("id")
+    .ilike("nombre", "prospectos")
+    .limit(1)
+    .maybeSingle();
+  if (data) return Number(data.id);
+
+  // Sin la etapa Prospectos —si no se corrió esa migración— se usa la primera
+  // que haya, que es lo que un asesor esperaría ver.
+  const { data: primera } = await supabase
+    .from("etapas")
+    .select("id")
+    .order("orden", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return primera ? Number(primera.id) : null;
 }
 
 /** La conversación de este número, creándola si es la primera vez. */

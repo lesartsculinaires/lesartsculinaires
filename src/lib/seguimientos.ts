@@ -32,8 +32,14 @@
 
 import type { Urgencia } from "@/lib/recordatorios";
 
-/** De qué es el seguimiento. Lo dice la frase que escribió el asesor. */
-export type TipoSeguimiento = "pago" | "cierre";
+/**
+ * De qué es el seguimiento.
+ *
+ * Los dos primeros los pone el asesor escribiendo la frase en una nota. El
+ * tercero no sale de ninguna nota: lo deja el CRM cuando alguien marca un lead
+ * como perdido por falta de interés, para volver a escribirle más adelante.
+ */
+export type TipoSeguimiento = "pago" | "cierre" | "reactivacion";
 
 /** Cuándo hay que volver: una vez, o el mismo día de cada mes. */
 export type Cuando =
@@ -327,7 +333,15 @@ export function detectarSeguimiento(nota: string, hoy: string): Detectado | null
 
 /** El nombre del recordatorio. */
 export const tituloDe = (tipo: TipoSeguimiento): string =>
-  tipo === "pago" ? "Seguimiento de pago" : "Seguimiento de cierre";
+  tipo === "pago"
+    ? "Seguimiento de pago"
+    : tipo === "cierre"
+      ? "Seguimiento de cierre"
+      : "Volver a escribirle";
+
+/** El rótulo corto, el de la pastilla en la lista. */
+export const rotuloDe = (tipo: TipoSeguimiento): string =>
+  tipo === "pago" ? "Pago" : tipo === "cierre" ? "Cierre" : "Reactivación";
 
 /**
  * Lo que la nota decía, recortado.

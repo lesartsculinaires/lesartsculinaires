@@ -7,6 +7,7 @@ import { money } from "@/lib/format";
 import { comoSeLee, porAtender, type Recordatorio } from "@/lib/recordatorios";
 import {
   comoSeLeeSeguimiento,
+  rotuloDe,
   seguimientosPorAtender,
   type SeguimientoPendiente,
 } from "@/lib/seguimientos";
@@ -237,7 +238,7 @@ export function Recordatorios({
                   >
                     <span style={{ fontWeight: 600 }}>{s.cliente}</span>
                     <span style={{ fontSize: 11, color: T.muted, flexShrink: 0 }}>
-                      {s.tipo === "pago" ? "Pago" : "Cierre"}
+                      {rotuloDe(s.tipo)}
                     </span>
                   </div>
                   <div style={{ marginTop: 2, fontSize: 11, color: tono.fuerte }}>

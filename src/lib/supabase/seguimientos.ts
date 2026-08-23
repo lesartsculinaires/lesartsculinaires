@@ -57,7 +57,7 @@ export async function fetchSeguimientos(): Promise<Seguimientos> {
     data: ((data ?? []) as unknown as Row[]).map((r) => ({
       id: Number(r.id),
       oportunidadId: Number(r.oportunidad_id),
-      tipo: r.tipo === "cierre" ? "cierre" : "pago",
+      tipo: r.tipo === "cierre" || r.tipo === "reactivacion" ? r.tipo : "pago",
       detalle: String(r.detalle ?? ""),
       proxima: String(r.proxima),
       diaDelMes: r.dia_del_mes == null ? null : Number(r.dia_del_mes),

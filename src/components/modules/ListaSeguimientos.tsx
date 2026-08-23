@@ -12,6 +12,7 @@ import { fechaLarga } from "@/lib/format";
 import {
   comoSeLeeSeguimiento,
   repeticionDe,
+  rotuloDe,
   type SeguimientoPendiente,
 } from "@/lib/seguimientos";
 import { T } from "@/lib/theme";
@@ -142,7 +143,7 @@ export function ListaSeguimientos({
                       color: T.muted,
                     }}
                   >
-                    {s.tipo === "pago" ? "Pago" : "Cierre"}
+                    {rotuloDe(s.tipo)}
                   </span>
                 </div>
 

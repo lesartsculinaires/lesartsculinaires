@@ -1,5 +1,6 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 
 import { altaLead } from "@/lib/crm/altaLead";
@@ -220,6 +221,8 @@ export async function noEraLead(conversacionId: number): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
 
   if (conv?.cliente_id != null) {
+    await borrarLeadIntacto(supabase, Number(conv.cliente_id));
+
     const { count } = await supabase
       .from("oportunidades")
       .select("id", { count: "exact", head: true })
@@ -240,6 +243,55 @@ export async function noEraLead(conversacionId: number): Promise<ActionResult> {
 
   revalidatePath("/");
   return { ok: true, error: null };
+}
+
+/**
+ * Borra el lead que abrió el robot, si nadie lo tocó todavía.
+ *
+ * Hace falta desde que los leads de WhatsApp se crean solos: sin esto, cada
+ * proveedor y cada número equivocado dejaría un lead en Prospectos para
+ * siempre, y «No era lead» limpiaría la mitad del desorden que vino a limpiar.
+ *
+ * «Intacto» es la parte importante, y por eso son cinco condiciones y no una.
+ * Si alguien ya lo movió de etapa, le anotó algo, le puso monto o cobró una
+ * reserva, entonces no es un número equivocado: es trabajo de una persona, y
+ * este botón no puede borrarlo. En la duda no se borra nada y queda el lead,
+ * que se arregla mirando; lo contrario se arregla llamando a alguien para
+ * preguntarle qué había escrito.
+ */
+async function borrarLeadIntacto(
+  supabase: SupabaseClient,
+  clienteId: number,
+): Promise<void> {
+  const { data: ops } = await supabase
+    .from("oportunidades")
+    .select("id, etapa_id, valor_oportunidad, venta_cerrada, reserva, estado_id")
+    .eq("cliente_id", clienteId);
+
+  if (!ops || ops.length !== 1) return;
+  const o = ops[0] as Record<string, unknown>;
+
+  const { data: prospectos } = await supabase
+    .from("etapas")
+    .select("id")
+    .ilike("nombre", "prospectos")
+    .limit(1)
+    .maybeSingle();
+
+  const enProspectos =
+    prospectos != null && Number(o.etapa_id) === Number((prospectos as { id: number }).id);
+  const sinPlata =
+    !Number(o.valor_oportunidad) && !Number(o.venta_cerrada) && !Number(o.reserva);
+  const sinEstado = o.estado_id == null;
+
+  const { count: notas } = await supabase
+    .from("oportunidad_notas")
+    .select("id", { count: "exact", head: true })
+    .eq("oportunidad_id", o.id);
+
+  if (enProspectos && sinPlata && sinEstado && !notas) {
+    await supabase.from("oportunidades").delete().eq("id", o.id);
+  }
 }
 
 /**
