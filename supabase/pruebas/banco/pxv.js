@@ -52,8 +52,56 @@ const servidor = http.createServer((req, res) => {
     return;
   }
 
-  // El almacenamiento no hace falta para estas pruebas: se contesta vacío en
-  // vez de dejar la petición colgada.
+  /*
+   * El almacenamiento, de mentira pero completo.
+   *
+   * Hacen falta las dos mitades para poder probar las fotos y las notas de voz
+   * del chat: la aplicación primero pide direcciones firmadas —una por
+   * archivo— y recién después las carga en la pantalla. Contestando `[]` a lo
+   * primero, la segunda no llega nunca y el visor se queda en «abriendo el
+   * archivo…» para siempre.
+   */
+  if (url.pathname.startsWith("/storage/v1/object/sign/")) {
+    let cuerpo = "";
+    req.on("data", (t) => (cuerpo += t));
+    req.on("end", () => {
+      let rutas = [];
+      try {
+        rutas = JSON.parse(cuerpo).paths ?? [];
+      } catch {
+        // Un cuerpo ilegible se contesta como «ninguna ruta».
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          rutas.map((ruta) => ({
+            error: null,
+            path: ruta,
+            signedURL: `/storage/v1/object/inventado/${encodeURIComponent(ruta)}`,
+          })),
+        ),
+      );
+    });
+    return;
+  }
+
+  // El archivo en sí: un píxel, con el tipo que pida el nombre. Alcanza para
+  // que la pantalla dibuje una foto o arme un reproductor.
+  if (url.pathname.startsWith("/storage/v1/object/inventado/")) {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const tipo = /\.(ogg|mp3|m4a)$/.test(url.pathname)
+      ? "audio/ogg"
+      : /\.pdf$/.test(url.pathname)
+        ? "application/pdf"
+        : "image/png";
+    res.writeHead(200, { "content-type": tipo, "content-length": png.length });
+    res.end(png);
+    return;
+  }
+
   if (url.pathname.startsWith("/storage/v1/")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end("[]");

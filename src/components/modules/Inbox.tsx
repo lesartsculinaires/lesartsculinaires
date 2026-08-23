@@ -11,6 +11,7 @@ import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacio
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { NuevoChat } from "@/components/modules/NuevoChat";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
+import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { activosCon } from "@/lib/types";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
@@ -116,6 +117,14 @@ export function Inbox({
   const [nuevoChat, setNuevoChat] = useState(false);
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
+  /**
+   * La foto elegida, esperando confirmación.
+   *
+   * Antes se mandaba en el mismo instante en que se elegía del disco. Elegir
+   * la equivocada era mandársela al cliente sin ninguna pantalla de por medio,
+   * y eso no se puede deshacer: del otro lado ya la vio.
+   */
+  const [porEnviar, setPorEnviar] = useState<{ archivo: File; url: string } | null>(null);
   const [nota, setNota] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -236,10 +245,25 @@ export function Inbox({
 
     if (r.ok) {
       setTexto("");
+      cerrarVisor();
       onRefrescar();
     } else {
       setAviso(r.error);
     }
+  };
+
+  /**
+   * Suelta la dirección temporal del navegador.
+   *
+   * `createObjectURL` reserva memoria hasta que se la libera. En una jornada
+   * con muchas fotos, no soltarlas deja el navegador cada vez más pesado sin
+   * ninguna señal de por qué.
+   */
+  const cerrarVisor = () => {
+    setPorEnviar((p) => {
+      if (p) URL.revokeObjectURL(p.url);
+      return null;
+    });
   };
 
   const enviar = async () => {
@@ -416,6 +440,76 @@ export function Inbox({
             }}
           />
         )}
+
+      {/*
+        Lo que se está por mandar, antes de mandarlo.
+
+        Se ve la foto entera —no la miniatura que quedaría en el hilo— y el pie
+        se puede escribir acá mismo. Es la única pantalla entre elegir un
+        archivo del disco y que lo tenga el cliente.
+      */}
+      {porEnviar && (
+        <VisorArchivo
+          url={porEnviar.url}
+          mime={porEnviar.archivo.type}
+          nombre={porEnviar.archivo.name}
+          titulo={`Se va a enviar: ${porEnviar.archivo.name}`}
+          onCerrar={mandandoFoto ? () => {} : cerrarVisor}
+          pie={
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                value={texto}
+                onChange={(e) => setTexto(e.target.value)}
+                placeholder="Pie de foto (opcional)"
+                style={{
+                  flex: 1,
+                  minWidth: 180,
+                  height: 34,
+                  padding: "0 10px",
+                  fontSize: 13,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 7,
+                  background: T.surface,
+                  color: T.ink,
+                }}
+              />
+              <button
+                type="button"
+                onClick={cerrarVisor}
+                disabled={mandandoFoto}
+                style={{
+                  height: 34,
+                  padding: "0 14px",
+                  fontSize: 13,
+                  borderRadius: 7,
+                  border: `1px solid ${T.border}`,
+                  background: T.surface,
+                  color: T.ink,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void mandarFoto(porEnviar.archivo)}
+                disabled={mandandoFoto}
+                style={{
+                  height: 34,
+                  padding: "0 18px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  borderRadius: 7,
+                  background: accent,
+                  color: "#fff",
+                  cursor: mandandoFoto ? "wait" : "pointer",
+                }}
+              >
+                {mandandoFoto ? "Enviando…" : "Enviar"}
+              </button>
+            </div>
+          }
+        />
+      )}
 
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
             de controles vacía en una bandeja recién estrenada es ruido. */}
@@ -787,7 +881,9 @@ export function Inbox({
                   // Se limpia siempre: si no, elegir la misma foto dos veces
                   // seguidas no dispara nada y parece que el botón se rompió.
                   e.target.value = "";
-                  if (f) void mandarFoto(f);
+                  // `createObjectURL` la muestra desde el disco, sin subirla:
+                  // si la persona cancela, la foto no salió a ningún lado.
+                  if (f) setPorEnviar({ archivo: f, url: URL.createObjectURL(f) });
                 }}
               />
               <button

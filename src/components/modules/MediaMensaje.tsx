@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { guardarEnFicha } from "@/app/inbox-actions";
+import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { T } from "@/lib/theme";
 import type { Mensaje } from "@/lib/types";
 
@@ -11,7 +12,10 @@ import type { Mensaje } from "@/lib/types";
  *
  * Tres casos, y los tres importan:
  *
- *   la foto llegó    se ve en el hilo, y se abre en grande al hacer clic.
+ *   la foto llegó    se ve chica en el hilo, y en grande al hacer clic, en una
+ *                    ventana sobre el CRM. Antes se abría en una pestaña
+ *                    nueva: volver al hilo era cerrarla y buscar dónde había
+ *                    quedado la conversación.
  *   no llegó         se dice por qué. Esto no es un adorno: cuando alguien
  *                    busca el comprobante de un pago, «no se pudo bajar» y
  *                    «no había foto» llevan a hacer cosas distintas.
@@ -36,6 +40,9 @@ export function MediaMensaje({
   oportunidadId: number | null;
   onGuardado: () => void;
 }) {
+  /** Si el visor está abierto. Vale para fotos y para documentos. */
+  const [abierto, setAbierto] = useState(false);
+
   if (m.mediaError) {
     return (
       <span
@@ -67,23 +74,37 @@ export function MediaMensaje({
   if (mime.startsWith("image/")) {
     return (
       <>
-      <a href={url} target="_blank" rel="noreferrer" style={{ display: "block", marginTop: 5 }}>
-        {/* Sin next/image a propósito: la dirección viene firmada y caduca, así
-            que el optimizador no puede cachearla ni conoce el dominio. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt={m.texto ?? "Foto enviada por WhatsApp"}
-          style={{
-            display: "block",
-            maxWidth: "100%",
-            maxHeight: 260,
-            borderRadius: 8,
-            border: `1px solid ${mio ? "rgba(255,255,255,0.3)" : T.border}`,
-          }}
-        />
-      </a>
-      <AFicha mensaje={m} oportunidadId={oportunidadId} mio={mio} onGuardado={onGuardado} />
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          title="Ver en grande"
+          style={{ display: "block", marginTop: 5, padding: 0, cursor: "zoom-in" }}
+        >
+          {/* Sin next/image a propósito: la dirección viene firmada y caduca, así
+              que el optimizador no puede cachearla ni conoce el dominio. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={m.texto ?? "Foto enviada por WhatsApp"}
+            style={{
+              display: "block",
+              maxWidth: "100%",
+              maxHeight: 260,
+              borderRadius: 8,
+              border: `1px solid ${mio ? "rgba(255,255,255,0.3)" : T.border}`,
+            }}
+          />
+        </button>
+        <AFicha mensaje={m} oportunidadId={oportunidadId} mio={mio} onGuardado={onGuardado} />
+        {abierto && (
+          <VisorArchivo
+            url={url}
+            mime={mime}
+            nombre={m.mediaNombre}
+            titulo={m.mediaNombre ?? "Foto"}
+            onCerrar={() => setAbierto(false)}
+          />
+        )}
       </>
     );
   }
@@ -106,10 +127,9 @@ export function MediaMensaje({
 
   return (
     <>
-      <a
-        href={url}
-        target="_blank"
-        rel="noreferrer"
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
         style={{
           display: "inline-block",
           marginTop: 5,
@@ -117,11 +137,21 @@ export function MediaMensaje({
           fontWeight: 600,
           textDecoration: "underline",
           color: "inherit",
+          cursor: "pointer",
         }}
       >
-        {m.mediaNombre ?? "Abrir el archivo"}
-      </a>
+        {m.mediaNombre ?? "Ver el archivo"}
+      </button>
       <AFicha mensaje={m} oportunidadId={oportunidadId} mio={mio} onGuardado={onGuardado} />
+      {abierto && (
+        <VisorArchivo
+          url={url}
+          mime={mime}
+          nombre={m.mediaNombre}
+          titulo={m.mediaNombre ?? "Documento"}
+          onCerrar={() => setAbierto(false)}
+        />
+      )}
     </>
   );
 }
