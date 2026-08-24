@@ -20,6 +20,18 @@
 --
 -- Ahora el resumen sale de esta misma lista y nombra el archivo que falta. No
 -- puede quedar desactualizado: es el mismo dato que la fila de arriba.
+--
+-- ------------------------------------------------------------------------
+-- LO QUE NO ESTÁ EN LA LISTA
+-- ------------------------------------------------------------------------
+--
+-- Las migraciones que sólo arreglan datos de una vez —`dueno_del_hilo`,
+-- `leads_de_hilos_viejos`— no figuran acá. No dejan nada que mirar: lo único
+-- comprobable sería «no queda ninguna fila en el estado malo», y eso lo puede
+-- volver a romper cualquier dato nuevo. Un hilo que entra hoy sin asesor
+-- porque nadie estaba habilitado haría decir que la migración falta, y quien
+-- la corriera otra vez no cambiaría nada. Una alarma falsa hace que se deje de
+-- leer el resto de la lista, que es lo que esta consulta vino a evitar.
 
 with revisiones as (
   select * from (values
@@ -158,24 +170,11 @@ with revisiones as (
            and not exists (select 1 from public.motivos_perdida
                             where nombre = 'Problema económico' and activo))),
 
-    ('20260915120000_dueno_del_hilo',
-     'El chat de la bandeja muestra al mismo asesor que el lead',
-     to_regclass('public.conversaciones') is null
-       or not exists (
-            select 1 from public.conversaciones c
-             where c.vendedor_id is null and c.cliente_id is not null
-               and exists (select 1 from public.oportunidades o
-                            where o.cliente_id = c.cliente_id
-                              and o.vendedor_id is not null))),
-
-    ('20260916120000_leads_de_hilos_viejos',
-     'Los hilos que entraron antes del reparto también tienen su lead',
-     to_regclass('public.conversaciones') is null
-       or not exists (
-            select 1 from public.conversaciones c
-             where c.cliente_id is not null and not c.archivada
-               and not exists (select 1 from public.oportunidades o
-                                where o.cliente_id = c.cliente_id)))
+    ('20260917120000_etapa_ganado',
+     'Ganado entre Pago y Cierre, y mover ahí pone el Estado',
+     exists (select 1 from public.etapas where nombre = 'Ganado')
+       and exists (select 1 from pg_trigger
+                    where tgname = 'trg_ganado_por_la_etapa' and not tgisinternal))
 
   ) as t(archivo, para_que, aplicada)
 ),
