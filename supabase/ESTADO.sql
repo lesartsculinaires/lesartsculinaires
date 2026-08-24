@@ -144,7 +144,13 @@ with revisiones as (
      'El lead de WhatsApp entra solo y se sortea entre los que reciben',
      exists (select 1 from information_schema.columns
              where table_schema='public' and table_name='roles'
-               and column_name='recibe_leads'))
+               and column_name='recibe_leads')),
+
+    ('20260913120000_objeciones_por_cercania',
+     '«Muy caro» pasa a ser «Objeciones por cercanía»',
+     to_regclass('public.motivos_perdida') is null
+       or exists (select 1 from public.motivos_perdida
+                   where nombre = 'Objeciones por cercanía' and activo))
 
   ) as t(archivo, para_que, aplicada)
 ),
