@@ -354,7 +354,9 @@ export default function CrmApp({
                 encendido={campanita.encendido}
                 bloqueado={campanita.bloqueado}
                 accent={accent}
+                ajustes={campanita.ajustes}
                 onAlternar={campanita.alternar}
+                onAjustar={campanita.cambiarAjuste}
               />
               <RelojRecordatorios
                 lista={recordatorios}

@@ -3,10 +3,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { JUNTAR_MS, PAUSA_MS, PRIORIDAD, type Aviso } from "@/lib/aviso";
-import { crearCampanita } from "@/lib/campanita";
+import {
+  crearCampanita,
+  SONIDOS,
+  TIMBRE_POR_OMISION,
+  VOLUMEN_POR_OMISION,
+  VOLUMENES,
+  type Ajustes,
+  type Timbre,
+  type Volumen,
+} from "@/lib/campanita";
 
-/** Dónde queda guardado si el sonido está prendido, por navegador. */
+/**
+ * Dónde queda guardado, por navegador.
+ *
+ * Va en el navegador y no en la base a propósito: el sonido que necesita
+ * alguien depende de dónde está sentado, no de quién es. La misma persona
+ * quiere «Alerta» en el mostrador y «Marimba» en la computadora de su casa, y
+ * guardándolo en su cuenta tendría que cambiarlo cada vez que se mueve.
+ */
 const LLAVE = "lac.sonido";
+const LLAVE_TIMBRE = "lac.sonido.timbre";
+const LLAVE_VOLUMEN = "lac.sonido.volumen";
+
+/** Lee lo guardado, cayendo en lo de fábrica si dice cualquier cosa. */
+function leerAjustes(): Ajustes {
+  const t = window.localStorage.getItem(LLAVE_TIMBRE);
+  const v = window.localStorage.getItem(LLAVE_VOLUMEN);
+  return {
+    timbre: t != null && t in SONIDOS ? (t as Timbre) : TIMBRE_POR_OMISION,
+    volumen: VOLUMENES.some((x) => x.id === v) ? (v as Volumen) : VOLUMEN_POR_OMISION,
+  };
+}
 
 export interface Campanita {
   encendido: boolean;
@@ -20,6 +48,10 @@ export interface Campanita {
   bloqueado: boolean;
   /** Toca el aviso, si corresponde. Acepta null para no obligar a preguntar afuera. */
   avisar: (aviso: Aviso | null) => void;
+  /** Qué sonido y a qué volumen, para que la pantalla lo muestre elegido. */
+  ajustes: Ajustes;
+  /** Cambia uno de los dos, lo guarda y lo hace sonar para escucharlo. */
+  cambiarAjuste: (cambios: Partial<Ajustes>) => void;
 }
 
 /**
@@ -41,6 +73,10 @@ export interface Campanita {
 export function useCampanita(): Campanita {
   const [encendido, setEncendido] = useState(true);
   const [bloqueado, setBloqueado] = useState(true);
+  const [ajustes, setAjustes] = useState<Ajustes>({
+    timbre: TIMBRE_POR_OMISION,
+    volumen: VOLUMEN_POR_OMISION,
+  });
 
   // La campanita sobrevive a los redibujados: si se creara en cada uno, cada
   // uno abriría un contexto de audio nuevo.
@@ -57,6 +93,10 @@ export function useCampanita(): Campanita {
     const v = guardado !== "no";
     setEncendido(v);
     prendidoRef.current = v;
+
+    const elegidos = leerAjustes();
+    setAjustes(elegidos);
+    campana.current?.ajustar(elegidos);
   }, []);
 
   /** El permiso del navegador, que se consigue con el primer gesto. */
@@ -145,5 +185,29 @@ export function useCampanita(): Campanita {
     }, JUNTAR_MS);
   }, []);
 
-  return { encendido, alternar, bloqueado, avisar };
+  /**
+   * Cambiar el sonido o el volumen, y escucharlo en el momento.
+   *
+   * Suena siempre al elegir, aunque el sonido esté apagado: quien entra a
+   * elegir un tono está eligiendo, no trabajando, y comparar cinco sonidos sin
+   * escucharlos no se puede. El clic además sirve de gesto para despertar el
+   * audio, así que probar desde acá funciona incluso recién entrado al CRM.
+   */
+  const cambiarAjuste = useCallback((cambios: Partial<Ajustes>) => {
+    setAjustes((antes) => {
+      const nuevos = { ...antes, ...cambios };
+      window.localStorage.setItem(LLAVE_TIMBRE, nuevos.timbre);
+      window.localStorage.setItem(LLAVE_VOLUMEN, nuevos.volumen);
+      campana.current?.ajustar(nuevos);
+
+      void campana.current?.despertar().then((ok) => {
+        setBloqueado(!ok);
+        if (ok) campana.current?.probar(nuevos);
+      });
+
+      return nuevos;
+    });
+  }, []);
+
+  return { encendido, alternar, bloqueado, avisar, ajustes, cambiarAjuste };
 }
