@@ -166,7 +166,16 @@ with revisiones as (
              where c.vendedor_id is null and c.cliente_id is not null
                and exists (select 1 from public.oportunidades o
                             where o.cliente_id = c.cliente_id
-                              and o.vendedor_id is not null)))
+                              and o.vendedor_id is not null))),
+
+    ('20260916120000_leads_de_hilos_viejos',
+     'Los hilos que entraron antes del reparto también tienen su lead',
+     to_regclass('public.conversaciones') is null
+       or not exists (
+            select 1 from public.conversaciones c
+             where c.cliente_id is not null and not c.archivada
+               and not exists (select 1 from public.oportunidades o
+                                where o.cliente_id = c.cliente_id)))
 
   ) as t(archivo, para_que, aplicada)
 ),
