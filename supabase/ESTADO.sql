@@ -146,11 +146,17 @@ with revisiones as (
              where table_schema='public' and table_name='roles'
                and column_name='recibe_leads')),
 
-    ('20260913120000_objeciones_por_cercania',
-     '«Muy caro» pasa a ser «Objeciones por cercanía»',
+    -- El de la corrección: el 20260913 cambiaba el motivo equivocado y este
+    -- lo deshace, así que lo que hay que comprobar es el estado final.
+    ('20260914120000_cercania_en_vez_de_economico',
+     '«Objeciones por cercanía» en lugar de «Problema económico», y «Muy caro» se queda',
      to_regclass('public.motivos_perdida') is null
-       or exists (select 1 from public.motivos_perdida
-                   where nombre = 'Objeciones por cercanía' and activo))
+       or (exists (select 1 from public.motivos_perdida
+                    where nombre = 'Objeciones por cercanía' and activo)
+           and exists (select 1 from public.motivos_perdida
+                        where nombre = 'Muy caro' and activo)
+           and not exists (select 1 from public.motivos_perdida
+                            where nombre = 'Problema económico' and activo)))
 
   ) as t(archivo, para_que, aplicada)
 ),
