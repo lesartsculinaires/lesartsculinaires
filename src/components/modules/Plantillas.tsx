@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Buscador } from "@/components/ui/Buscador";
 
 import { sincronizarPlantillas, type EstadoPlantillas } from "@/app/plantillas-actions";
 import { cuandoConHora } from "@/lib/format";
@@ -81,20 +82,11 @@ export function Plantillas({
           marginBottom: 14,
         }}
       >
-        <input
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+        <Buscador
+          valor={busqueda}
+          onCambio={setBusqueda}
           placeholder="Buscar por nombre o contenido…"
-          style={{
-            height: 32,
-            minWidth: 230,
-            padding: "0 10px",
-            fontSize: 12.5,
-            border: `1px solid ${T.border}`,
-            borderRadius: 7,
-            background: T.surface,
-            color: T.ink,
-          }}
+          style={{ minWidth: 230 }}
         />
 
         {idiomas.length > 1 && (

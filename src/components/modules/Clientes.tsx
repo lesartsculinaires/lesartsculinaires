@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { NuevoClienteForm } from "@/components/modules/NuevoClienteForm";
+import { Buscador } from "@/components/ui/Buscador";
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
@@ -309,20 +310,11 @@ export function Clientes({
             borderBottom: `1px solid ${T.border}`,
           }}
         >
-          <input
-            value={query}
-            onChange={(e) => onQuery(e.target.value)}
+          <Buscador
+            valor={query}
+            onCambio={onQuery}
             placeholder="Buscar nombre, código, teléfono o correo"
-            style={{
-              flex: 1,
-              minWidth: 220,
-              height: 32,
-              padding: "0 12px",
-              fontSize: 13,
-              border: `1px solid ${T.border}`,
-              borderRadius: 6,
-              background: T.paper,
-            }}
+            style={{ flex: 1, minWidth: 220 }}
           />
 
           {filtros_def.map((f) => {

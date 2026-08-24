@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { abrirChat, altaYChat } from "@/app/inbox-actions";
 import { enviarPlantillaAConversacion } from "@/app/plantillas-actions";
+import { Buscador } from "@/components/ui/Buscador";
 import {
   SelectorPlantilla,
   aprobadas,
@@ -225,25 +226,15 @@ export function NuevoChat({
           Buscá a quién le querés escribir entre los contactos que ya están en el CRM.
         </p>
 
-        <input
-          value={busqueda}
-          onChange={(e) => {
-            setBusqueda(e.target.value);
+        <Buscador
+          valor={busqueda}
+          onCambio={(v) => {
+            setBusqueda(v);
             setElegido(null);
             setError(null);
           }}
           placeholder="Nombre, código o teléfono…"
           autoFocus
-          style={{
-            width: "100%",
-            height: 34,
-            padding: "0 10px",
-            fontSize: 13,
-            border: `1px solid ${T.border}`,
-            borderRadius: 7,
-            background: T.surface,
-            color: T.ink,
-          }}
         />
 
         {!elegido && !dandoAlta && (
