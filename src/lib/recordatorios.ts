@@ -71,24 +71,41 @@ export function diasHasta(vence: Date, hoy: Date): number {
 const urgenciaDe = (dias: number): Urgencia =>
   dias < 0 ? "vencido" : dias === 0 ? "hoy" : dias <= APURA ? "pronto" : "en curso";
 
+/** El único estado que termina un recordatorio sin que entre plata. */
+const PERDIDO = "Perdido";
+
 /**
  * ¿Esta ficha necesita recordatorio?
  *
  * Sólo las que tienen anticipo, y sólo mientras el pago siga pendiente. Se
- * excluyen dos cosas:
+ * excluyen dos casos, y ninguno es «el estado dice que está cerrada»:
  *
- * - Las cerradas —ganadas o perdidas—: en las primeras ya se pagó, en las
- *   segundas no hay a quién llamar.
- * - Las que ya tienen venta cerrada anotada, aunque el estado se haya quedado
- *   sin actualizar. Recordarle a un asesor que cobre algo que ya cobró es la
- *   manera más rápida de que deje de leer los recordatorios.
+ * - Las perdidas: no hay a quién llamar.
+ * - Las que ya tienen la venta anotada. Ese es el hecho que de verdad termina
+ *   el recordatorio: entró la plata. Recordarle a un asesor que cobre algo que
+ *   ya cobró es la manera más rápida de que deje de leer los recordatorios.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ «GANADO» NO ALCANZA PARA APAGARLO
+ * ------------------------------------------------------------------------
+ *
+ * Antes bastaba con que el estado fuera final. Sonaba razonable —ganado es
+ * ganado— pero en la escuela «ganado» se marca cuando el cliente dijo que sí,
+ * no cuando terminó de pagar: queda el anticipo puesto y el resto por cobrar.
+ * Con la regla vieja, mover la ficha a Ganado apagaba el aviso de cobrar
+ * justamente la parte que falta, y ese cobro se quedaba sin quien lo recuerde.
+ *
+ * Ahora lo que lo apaga es `cerrada`, que es la plata anotada. El estado puede
+ * decir lo que quiera: mientras haya un anticipo y no haya venta registrada,
+ * hay algo que cobrar.
  */
 export function necesitaRecordatorio(o: Oportunidad): boolean {
   if ((o.reserva ?? 0) <= 0) return false;
-  if (o.esFinal) return false;
   if ((o.cerrada ?? 0) > 0) return false;
+  if (o.estado === PERDIDO) return false;
   return true;
 }
+
 
 /** El orden en que se muestran: primero lo que ya se pasó. */
 const PESO: Record<Urgencia, number> = {

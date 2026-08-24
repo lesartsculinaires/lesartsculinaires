@@ -1,5 +1,5 @@
 /**
- * ¿La etapa Ganado está en su lugar y le pone el Estado a la ficha?
+ * ¿La etapa Ganado está al final y le pone el Estado a la ficha?
  *
  *     node supabase/pruebas/banco/prueba-etapa-ganado.mjs
  *
@@ -29,7 +29,8 @@ console.log("── dónde quedó la etapa ──");
 {
   const orden = sql("select string_agg(nombre, ' · ' order by orden) from etapas");
   console.log(`   (${orden})`);
-  es("ENTRE PAGO Y CIERRE", /Pago · Ganado · Cierre/.test(orden), true);
+  es("AL FINAL DEL TABLERO", orden.endsWith("Ganado"), true);
+  es("y Cierre sigue antes", /Cierre · Ganado$/.test(orden), true);
 }
 
 console.log("\n── mover la tarjeta pone el estado ──");
@@ -66,6 +67,21 @@ console.log("\n── un alta que nace en Ganado ──");
   sql(`insert into oportunidades (codigo, cliente_id, etapa_id, fecha_registro) values ('CRM-8888', (select min(id) from clientes), (select id from etapas where nombre='Ganado'), current_date)`);
   es("también entra ganada", sql("select estado from vw_pipeline where codigo='CRM-8888'"), "Ganado");
   sql("delete from oportunidades where codigo='CRM-8888'");
+}
+
+console.log("\n── ganar no apaga el recordatorio de la reserva ──");
+{
+  poner("Pago", "Activo");
+  sql(`update oportunidades set reserva=100, venta_cerrada=0 where id=${OP}`);
+  poner("Ganado", null);
+  const fila = sql(`select estado||' / reserva '||coalesce(reserva::int::text,'0')||' / cerrada '||coalesce(venta_cerrada::int::text,'0') from vw_pipeline where id=${OP}`);
+  console.log(`   (${fila})`);
+  es("queda ganada con el anticipo puesto y sin venta anotada",
+     fila, "Ganado / reserva 100 / cerrada 0");
+  // Que siga en la lista de recordatorios es cosa de la aplicación; la regla
+  // está probada en supabase/pruebas/recordatorios.test.mjs. Acá se comprueba
+  // el dato del que esa regla depende: anticipo puesto y venta sin registrar.
+  sql(`update oportunidades set reserva=0 where id=${OP}`);
 }
 
 console.log("\n── y la columna se ve en el tablero ──");

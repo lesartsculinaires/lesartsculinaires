@@ -171,10 +171,15 @@ with revisiones as (
                             where nombre = 'Problema económico' and activo))),
 
     ('20260917120000_etapa_ganado',
-     'Ganado entre Pago y Cierre, y mover ahí pone el Estado',
+     'La etapa Ganado, y mover ahí pone el Estado',
      exists (select 1 from public.etapas where nombre = 'Ganado')
        and exists (select 1 from pg_trigger
-                    where tgname = 'trg_ganado_por_la_etapa' and not tgisinternal))
+                    where tgname = 'trg_ganado_por_la_etapa' and not tgisinternal)),
+
+    ('20260918120000_ganado_al_final',
+     'Ganado va al final del tablero, después de Cierre',
+     (select orden from public.etapas where nombre = 'Ganado')
+       = (select max(orden) from public.etapas))
 
   ) as t(archivo, para_que, aplicada)
 ),
