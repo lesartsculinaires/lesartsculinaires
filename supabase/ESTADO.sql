@@ -184,7 +184,17 @@ with revisiones as (
     ('20260919120000_numerar_oportunidades',
      'La base numera los leads, así dos altas a la vez no chocan',
      exists (select 1 from pg_trigger
-              where tgname = 'numerar_oportunidad' and not tgisinternal))
+              where tgname = 'numerar_oportunidad' and not tgisinternal)),
+
+    ('20260920120000_diplomados_superiores',
+     'Los cinco diplomados se llaman «Diplomado Superior de …»',
+     (select count(*) from public.productos
+       where nombre in (
+         'Diplomado Superior de Cocina Internacional',
+         'Diplomado Superior de Pastelería Internacional',
+         'Diplomado Superior de Mixología Internacional',
+         'Diplomado Superior de Barismo y Extracción de Café',
+         'Diplomado Superior de Management Gastronómico')) = 5)
 
   ) as t(archivo, para_que, aplicada)
 ),
