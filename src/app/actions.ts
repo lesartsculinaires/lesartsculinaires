@@ -962,7 +962,7 @@ export async function unificarCliente(
 
     const codigo = `CRM-${String(numeroDeCodigo(previo?.codigo ?? null) + 1 + intento).padStart(4, "0")}`;
 
-    const { error: errOp } = await supabase.from("oportunidades").insert({
+    const { data: op, error: errOp } = await supabase.from("oportunidades").insert({
       codigo,
       cliente_id: clienteId,
       vendedor_id: datos.vendedor_id,
@@ -975,14 +975,18 @@ export async function unificarCliente(
       fecha_cierre: datos.fecha_cierre,
       valor_oportunidad: datos.valor_oportunidad,
       descuento_promocion: datos.descuento_promocion,
-    });
+    })
+      // El que vale es el que quedó guardado: si el propuesto ya lo tenía
+      // otro, el disparador de la base le puso el siguiente libre.
+      .select("codigo")
+      .single();
 
     if (!errOp) {
       revalidatePath("/");
       return {
         ok: true,
         error: null,
-        codigo,
+        codigo: (op as { codigo: string | null } | null)?.codigo ?? codigo,
         completados: listarCampos(plan.completados),
         choques: plan.choques,
       };

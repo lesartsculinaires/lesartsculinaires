@@ -179,7 +179,12 @@ with revisiones as (
     ('20260918120000_ganado_al_final',
      'Ganado va al final del tablero, después de Cierre',
      (select orden from public.etapas where nombre = 'Ganado')
-       = (select max(orden) from public.etapas))
+       = (select max(orden) from public.etapas)),
+
+    ('20260919120000_numerar_oportunidades',
+     'La base numera los leads, así dos altas a la vez no chocan',
+     exists (select 1 from pg_trigger
+              where tgname = 'numerar_oportunidad' and not tgisinternal))
 
   ) as t(archivo, para_que, aplicada)
 ),

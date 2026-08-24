@@ -172,9 +172,23 @@ export async function abrirOportunidad(
   clienteId: number,
   datos: DatosOportunidad,
 ): Promise<ResultadoOportunidad> {
-  // El código se calcula leyendo el último y sumando uno. Dos altas
-  // simultáneas pueden pedir el mismo número; la columna es `unique`, así que
-  // la segunda choca y se reintenta con el siguiente en vez de fallar.
+  /*
+   * El código lo pone la base, no esto.
+   *
+   * Acá se calcula uno igual —leer el último y sumarle uno— pero como
+   * propuesta, no como decisión: el disparador `numerar_oportunidad` lo
+   * respeta si está libre y lo reemplaza si ya lo tiene otro. Eso es lo que
+   * hace que dos altas simultáneas no puedan chocar, que es exactamente lo
+   * que pasaba cuando entraban varios mensajes de WhatsApp en el mismo
+   * segundo: todos leían el mismo último código, todos pedían el mismo
+   * número, y los que perdían se quedaban sin lead.
+   *
+   * El cálculo de acá se conserva por si la base todavía no tiene el
+   * disparador —una copia vieja, alguien probando en local—: sin él esto
+   * sigue funcionando como antes, con su reintento y todo. Y por eso mismo el
+   * código que se devuelve es el que quedó guardado, no el propuesto: son el
+   * mismo salvo cuando hubo choque, y ahí el que vale es el de la base.
+   */
   let ultimoError = "No se pudo asignar un código.";
 
   for (let intento = 0; intento < 5; intento += 1) {
@@ -206,11 +220,17 @@ export async function abrirOportunidad(
         valor_oportunidad: datos.valor_oportunidad,
         descuento_promocion: datos.descuento_promocion,
       })
-      .select("id")
+      .select("id, codigo")
       .single();
 
     if (!errOp) {
-      return { ok: true, error: null, codigo, oportunidadId: (op as { id: number }).id };
+      const guardada = op as { id: number; codigo: string | null };
+      return {
+        ok: true,
+        error: null,
+        codigo: guardada.codigo ?? codigo,
+        oportunidadId: guardada.id,
+      };
     }
 
     ultimoError = errOp.message;
