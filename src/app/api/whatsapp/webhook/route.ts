@@ -154,6 +154,38 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
 }
 
 /**
+ * Le pone dueño al hilo, el mismo que tiene el lead.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ HAY QUE COPIARLO
+ * ------------------------------------------------------------------------
+ *
+ * Son dos campos distintos y las dos pantallas leen el suyo:
+ * `oportunidades.vendedor_id` dice de quién es el lead y sale en el Pipeline;
+ * `conversaciones.vendedor_id` dice de quién es el chat y sale en la bandeja.
+ *
+ * Sortear sólo el primero dejaba el lead con dueño y el hilo diciendo «sin
+ * asignar» —la misma persona, dos respuestas distintas—, y el asesor al que le
+ * tocó no tenía cómo saber que era suyo mirando la bandeja, que es donde
+ * primero se entera de que alguien escribió.
+ *
+ * Sólo se pone si el hilo no tenía dueño. Si alguien ya lo reasignó a mano,
+ * esa decisión es de una persona y vale más que la del sorteo.
+ */
+async function ponerDuenoAlHilo(
+  supabase: Cliente,
+  conversacionId: number,
+  vendedorId: number | null,
+) {
+  if (vendedorId == null) return;
+  await supabase
+    .from("conversaciones")
+    .update({ vendedor_id: vendedorId })
+    .eq("id", conversacionId)
+    .is("vendedor_id", null);
+}
+
+/**
  * Si quien escribe todavía no es un lead, abrirle uno y sortearle asesor.
  *
  * ------------------------------------------------------------------------
@@ -195,7 +227,32 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
       .select("id", { count: "exact", head: true })
       .eq("cliente_id", clienteId);
 
-    if (yaEsLead(count ?? 0)) return;
+    if (yaEsLead(count ?? 0)) {
+      /*
+       * Ya es lead: no se abre otro, pero el hilo igual necesita dueño.
+       *
+       * Pasa con quien vuelve a escribir después de que alguien archivó su
+       * conversación, y con los clientes que ya estaban en la base antes de
+       * que existiera todo esto. Se hereda del lead abierto más reciente:
+       * es de quien lo viene atendiendo, y contestarle desde la bandeja
+       * tiene que caerle a esa misma persona.
+       */
+      const { data: suya } = await supabase
+        .from("oportunidades")
+        .select("vendedor_id")
+        .eq("cliente_id", clienteId)
+        .not("vendedor_id", "is", null)
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      await ponerDuenoAlHilo(
+        supabase,
+        conversacionId,
+        suya?.vendedor_id == null ? null : Number(suya.vendedor_id),
+      );
+      return;
+    }
 
     const { data: gente } = await supabase.rpc("vendedores_para_reparto");
     const candidatos = ((gente ?? []) as { id: number; nombre: string }[]).map((v) => ({
@@ -225,6 +282,10 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
       console.error("[whatsapp] no se pudo abrir el lead", r.error);
       return;
     }
+
+    // El hilo queda del mismo asesor que el lead. Si no, la bandeja diría
+    // «sin asignar» sobre un lead que sí tiene dueño.
+    await ponerDuenoAlHilo(supabase, conversacionId, quien?.id ?? null);
 
     console.info(
       `[whatsapp] lead ${r.codigo} abierto para ${quien?.nombre ?? "nadie (sin asignar)"}`,

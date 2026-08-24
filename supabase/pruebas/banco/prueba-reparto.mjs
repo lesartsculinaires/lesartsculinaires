@@ -85,12 +85,22 @@ const t1 = tel();
   es("Y CON ASESOR ASIGNADO", vendedor !== "SIN ASIGNAR", true);
   es("el asesor es uno de los habilitados", reparto.includes(vendedor), true);
   es("y aparece en el pipeline", sql(`select count(*) from vw_pipeline where telefono='${t1}'`), "1");
+
+  // El hilo de la bandeja tiene su propio dueño, y tiene que ser el mismo:
+  // son dos campos distintos y cada pantalla lee el suyo.
+  const delHilo = sql(
+    `select coalesce(v.nombre,'SIN ASIGNAR') from conversaciones c ` +
+    `left join vendedores v on v.id = c.vendedor_id where c.telefono='${t1}'`);
+  console.log(`   (dueño del chat: ${delHilo})`);
+  es("EL CHAT QUEDÓ DEL MISMO ASESOR QUE EL LEAD", delHilo, vendedor);
 }
 
 console.log("\n── si vuelve a escribir, no se abre otro ──");
 {
   await escribe(t1, "Nueva Persona", "¿Y cuánto cuesta?");
   es("sigue habiendo un solo lead", sql(`select count(*) from vw_pipeline where telefono='${t1}'`), "1");
+  es("y el chat sigue con dueño",
+     sql(`select vendedor_id is not null from conversaciones where telefono='${t1}'`), "t");
   es("y sigue siendo del mismo asesor",
      sql(`select count(distinct vendedor) from vw_pipeline where telefono='${t1}'`), "1");
 }
@@ -103,7 +113,12 @@ const t2 = tel();
   sql(`update oportunidades set estado_id=${idFinal} where cliente_id in (select id from clientes where telefono='${t2}')`);
   es("quedó cerrado", sql(`select es_final from vw_pipeline where telefono='${t2}'`), "t");
 
+  // Se le saca el dueño al hilo para comprobar que se hereda al volver a
+  // escribir: es lo que pasa con los clientes que ya estaban antes de esto.
+  sql(`update conversaciones set vendedor_id = null where telefono='${t2}'`);
   await escribe(t2, "Ex Alumno", "Hola, ¿tienen otro diplomado?");
+  es("EL HILO HEREDA EL DUEÑO DEL LEAD",
+     sql(`select vendedor_id is not null from conversaciones where telefono='${t2}'`), "t");
   es("NO SE ABRIÓ UNO NUEVO", sql(`select count(*) from oportunidades o join clientes c on c.id=o.cliente_id where c.telefono='${t2}'`), "1");
   es("pero el mensaje sí entró",
      sql(`select count(*) from mensajes m join conversaciones c on c.id=m.conversacion_id where c.telefono='${t2}'`), "2");

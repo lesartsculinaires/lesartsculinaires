@@ -156,7 +156,17 @@ with revisiones as (
            and exists (select 1 from public.motivos_perdida
                         where nombre = 'Muy caro' and activo)
            and not exists (select 1 from public.motivos_perdida
-                            where nombre = 'Problema económico' and activo)))
+                            where nombre = 'Problema económico' and activo))),
+
+    ('20260915120000_dueno_del_hilo',
+     'El chat de la bandeja muestra al mismo asesor que el lead',
+     to_regclass('public.conversaciones') is null
+       or not exists (
+            select 1 from public.conversaciones c
+             where c.vendedor_id is null and c.cliente_id is not null
+               and exists (select 1 from public.oportunidades o
+                            where o.cliente_id = c.cliente_id
+                              and o.vendedor_id is not null)))
 
   ) as t(archivo, para_que, aplicada)
 ),
