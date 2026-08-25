@@ -76,6 +76,38 @@ echo "   ok"
 echo "── 4. gente y fichas inventadas ──"
 cp "$AQUI/datos.sql" /tmp/banco-datos.sql && chmod a+r /tmp/banco-datos.sql
 psql_ "-v ON_ERROR_STOP=1 -f /tmp/banco-datos.sql" | grep -i "ERROR" | head -3
+
+# Poner al día los contadores de id.
+#
+# `datos.sql` inserta con ids escritos a mano —clientes 2001, 2002…— y eso no
+# mueve la secuencia, que queda en 1. El primer `insert` sin id que haga
+# cualquiera —una prueba, o la propia aplicación al dar de alta un cliente—
+# pide el id 1, después el 2, y en algún momento choca contra uno que ya
+# existe: «duplicate key value violates unique constraint clientes_pkey».
+#
+# Sin esto el banco se porta distinto de una base de verdad justo en el camino
+# más común, y el error aparece lejos de su causa: una prueba que no puede
+# sembrar, o un alta que falla sin motivo aparente.
+cat > /tmp/banco-secuencias.sql <<'SQL'
+do $$
+declare c record;
+begin
+  for c in
+    select table_name, column_name,
+           pg_get_serial_sequence('public.' || table_name, column_name) as sec
+      from information_schema.columns
+     where table_schema = 'public' and is_identity = 'YES'
+  loop
+    if c.sec is not null then
+      execute format(
+        'select setval(%L, coalesce((select max(%I) from public.%I), 0) + 1, false)',
+        c.sec, c.column_name, c.table_name);
+    end if;
+  end loop;
+end $$;
+SQL
+chmod a+r /tmp/banco-secuencias.sql
+psql_ "-v ON_ERROR_STOP=1 -q -f /tmp/banco-secuencias.sql" | grep -i "ERROR" | head -3
 echo "   $(su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c 'select count(*) from oportunidades'") oportunidades"
 
 echo "── 5. PostgREST ──"
@@ -92,10 +124,40 @@ jwt-secret = "una-clave-de-pruebas-larguisima-para-firmar-jwt-0123456789"
 server-port = 3140
 CONF
 pkill -f "postgrest v.conf" 2>/dev/null
-nohup ./postgrest v.conf > pgrst.log 2>&1 &
-sleep 7
-echo "   $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' \
-  'http://127.0.0.1:3140/vendedores?select=id&limit=1')"
+
+# Arrancar PostgREST, esperando a que el anterior suelte el puerto.
+#
+# El proceso viejo tarda un momento en cerrar el socket. Si el nuevo intenta
+# atarse al 3140 antes de eso, muere con «Address in use» y el banco queda sin
+# PostgREST: todas las pruebas que tocan datos fallan a la vez, lo que parece
+# un problema del código y no lo es.
+#
+# Se reintenta en vez de esperar un rato fijo, y se comprueba que quedó
+# contestando. Una espera fija se queda corta el día que la máquina esté
+# ocupada, y encima habría que creerle sin mirar: acá la única prueba de que
+# levantó es que conteste.
+levanto=""
+for intento in 1 2 3 4 5; do
+  nohup ./postgrest v.conf > pgrst.log 2>&1 &
+  for _ in $(seq 1 16); do
+    if [ "$(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' \
+            'http://127.0.0.1:3140/vendedores?select=id&limit=1')" = "200" ]; then
+      levanto="si"
+      break
+    fi
+    sleep 0.5
+  done
+  [ -n "$levanto" ] && break
+  pkill -f "postgrest v.conf" 2>/dev/null
+  sleep 2
+done
+
+if [ -n "$levanto" ]; then
+  echo "   200"
+else
+  echo "   ✗ PostgREST no levantó tras 5 intentos. Últimas líneas de pgrst.log:"
+  tail -3 pgrst.log
+fi
 
 echo "── 6. sesiones de prueba ──"
 node -e '

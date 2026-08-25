@@ -19,6 +19,8 @@ import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { NuevoChat } from "@/components/modules/NuevoChat";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { VisorArchivo } from "@/components/ui/VisorArchivo";
+import { AcuseDeMensaje } from "@/components/ui/AcuseDeMensaje";
+import { COMO_SE_DICE, acuseDe } from "@/lib/acuses";
 import { activosCon } from "@/lib/types";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
@@ -920,6 +922,9 @@ export function Inbox({
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", background: T.paper }}>
               {delHilo.map((m) => {
                 const mio = m.direccion === "saliente";
+                // Sólo los propios llevan acuse: de un mensaje que mandó el
+                // cliente no hay nada que informar sobre su entrega.
+                const acuse = mio ? acuseDe(m.estado) : null;
                 return (
                   <div
                     key={m.id}
@@ -971,7 +976,20 @@ export function Inbox({
                         }}
                       >
                         {hora(m.creadoEn)}
-                        {mio && m.estado ? ` · ${m.estado}` : ""}
+                        {/*
+                          La palabra sigue estando, y en castellano: el estado
+                          se guarda como lo manda Meta —«delivered», «read»— y
+                          leer inglés en medio de una pantalla en español hace
+                          dudar de si dice lo que uno cree. Si el valor no se
+                          reconoce se muestra crudo, que es mejor que callarlo.
+                        */}
+                        {mio && m.estado ? ` · ${acuse ? COMO_SE_DICE[acuse] : m.estado}` : ""}
+                        {acuse && (
+                          <AcuseDeMensaje
+                            acuse={acuse}
+                            color={m.privado ? "#8A5200" : mio ? "#fff" : T.ink}
+                          />
+                        )}
                       </span>
                       {m.error && (
                         <span style={{ display: "block", marginTop: 3, fontSize: 10.5, color: "#FFD9D4" }}>
