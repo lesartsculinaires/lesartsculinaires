@@ -74,7 +74,10 @@ const limpiar = `
     (select id from conversaciones where telefono in ('50399111111','50399222222'));
   delete from conversaciones where telefono in ('50399111111','50399222222');
   delete from oportunidades where cliente_id in (select id from clientes where nombre like 'FUSION %');
+  delete from contactos_canal where cliente_id in (select id from clientes where nombre like 'FUSION %');
   delete from clientes where nombre like 'FUSION %';
+  delete from contactos_canal where cliente_id in (select id from clientes where nombre like 'PERMISO %');
+  delete from clientes where nombre like 'PERMISO %';
 `;
 sql(limpiar);
 
@@ -164,6 +167,43 @@ console.log("\n── lo que no tiene que poder ──");
   es("fusionar una ficha consigo misma no hace nada", /No había nada que fusionar/.test(salida), true);
   es("y la ficha sigue ahí", sql(`select count(*) from clientes where id=${idViejo};`), "1");
   es("con sus leads", sql(`select count(*) from oportunidades where cliente_id=${idViejo};`), "2");
+}
+
+console.log("\n── quién puede fusionar ──");
+{
+  /*
+   * La guarda tuvo que cambiar y esto vigila que no se haya aflojado de más.
+   *
+   * Pedía `es_admin()` a secas, y eso la volvía inservible justo donde hacía
+   * falta: el editor de SQL de Supabase corre sin usuario, así que `es_admin()`
+   * daba falso y se cortaba en la cara de la dirección. Ahora la regla es «si
+   * hay alguien con sesión, tiene que ser dirección», y lo que hay que
+   * comprobar es que la segunda mitad siga en pie.
+   */
+  sql(`
+    delete from clientes where nombre like 'PERMISO %';
+    insert into clientes (nombre, telefono) values ('PERMISO a','70900001');
+    insert into clientes (nombre, telefono) values ('PERMISO b','70900001');
+  `);
+  const a = sql("select id from clientes where nombre='PERMISO a';");
+  const b = sql("select id from clientes where nombre='PERMISO b';");
+
+  // Ale es asesora, no dirección.
+  const ALE = "cccccccc-0000-0000-0000-000000000001";
+  const comoAle = sql(`
+    begin;
+    set local role authenticated;
+    set local request.jwt.claims = '{"sub":"${ALE}","role":"authenticated"}';
+    select fusionar_contactos(${a}, array[${b}]::bigint[]);
+    commit;
+  `);
+  es("UNA ASESORA CON SESIÓN NO PUEDE", /Sólo dirección/.test(comoAle), true);
+  es("y las dos fichas siguen ahí", sql("select count(*) from clientes where nombre like 'PERMISO %';"), "2");
+
+  // Sin sesión: el editor de SQL, que sí puede.
+  const sinSesion = sql(`select fusionar_contactos(${a}, array[${b}]::bigint[]);`);
+  es("SIN SESIÓN (EL EDITOR) SÍ PUEDE", /Se unieron/.test(sinSesion), true);
+  es("y quedó una", sql("select count(*) from clientes where nombre like 'PERMISO %';"), "1");
 }
 
 sql(limpiar);
