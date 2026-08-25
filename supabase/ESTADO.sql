@@ -179,7 +179,30 @@ with revisiones as (
     ('20260918120000_ganado_al_final',
      'Ganado va al final del tablero, después de Cierre',
      (select orden from public.etapas where nombre = 'Ganado')
-       = (select max(orden) from public.etapas))
+       = (select max(orden) from public.etapas)),
+
+    ('20260919120000_numerar_oportunidades',
+     'La base numera los leads, así dos altas a la vez no chocan',
+     exists (select 1 from pg_trigger
+              where tgname = 'numerar_oportunidad' and not tgisinternal)),
+
+    ('20260920120000_diplomados_superiores',
+     'Los cinco diplomados se llaman «Diplomado Superior de …»',
+     (select count(*) from public.productos
+       where nombre in (
+         'Diplomado Superior de Cocina Internacional',
+         'Diplomado Superior de Pastelería Internacional',
+         'Diplomado Superior de Mixología Internacional',
+         'Diplomado Superior de Barismo y Extracción de Café',
+         'Diplomado Superior de Management Gastronómico')) = 5),
+
+    ('20260921120000_adjuntos_grandes',
+     'Documentos de hasta 20 MB por el chat, subidos desde el navegador',
+     (select file_size_limit = 20 * 1024 * 1024
+        from storage.buckets where id = 'whatsapp')
+       and exists (select 1 from pg_policies
+                    where schemaname = 'storage' and tablename = 'objects'
+                      and policyname = 'whatsapp_subir_saliente'))
 
   ) as t(archivo, para_que, aplicada)
 ),

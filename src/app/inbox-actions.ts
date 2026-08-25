@@ -7,7 +7,13 @@ import { altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import {
-  TOPE_IMAGEN_BYTES,
+  BALDE_WHATSAPP,
+  CARPETA_SALIENTE,
+  esDocumentoAceptado,
+  tiposQueSePueden,
+} from "@/lib/whatsapp/adjuntos";
+import {
+  enviarDocumento,
   enviarImagen,
   enviarTexto,
   hayWhatsapp,
@@ -551,87 +557,136 @@ async function porDefecto(
   };
 }
 
+/** Lo que hace falta saber de un archivo ya subido al bucket. */
+export interface ArchivoSubido {
+  conversacionId: number;
+  /** Ruta dentro del bucket, bajo «saliente/». La devolvió la subida. */
+  ruta: string;
+  nombre: string;
+  mime: string;
+  bytes: number;
+  /** El mensaje que lo acompaña. Puede ir vacío. */
+  pie: string;
+}
+
 /**
- * Manda una foto por WhatsApp.
+ * Manda por WhatsApp un archivo que el navegador ya subió al bucket.
  *
- * El archivo sí pasa por el servidor, a diferencia de los adjuntos de la ficha
- * —que el navegador sube directo a Supabase—, y no hay alternativa: Meta pide
- * el archivo con el token, y el token no puede salir del servidor. Por eso el
- * tope es el de Meta para imágenes, que además entra en el cuerpo que aceptan
- * las funciones de Netlify.
+ * ------------------------------------------------------------------------
+ * POR QUÉ LLEGA UNA RUTA Y NO EL ARCHIVO
+ * ------------------------------------------------------------------------
  *
- * Mismo orden que al responder con texto: primero sale, después se guarda. Al
- * revés, un fallo de envío dejaría en el hilo una foto que el cliente no
- * recibió.
+ * Porque el archivo no cabía. Antes venía adentro del formulario, y el cuerpo
+ * de una petición a Netlify se corta en 6 MB: con eso el tope real eran 4, muy
+ * por debajo de los 100 que acepta WhatsApp. Ahora el navegador sube derecho a
+ * Supabase —que no pasa por Netlify— y acá llega nada más la ruta.
+ *
+ * De acá para adelante el servidor tampoco mueve los bytes: le firma a Meta
+ * una dirección que caduca y Meta va a buscar el archivo solo. Por eso mandar
+ * un archivo grande tarda lo mismo que uno chico, y por eso no hay riesgo de que la
+ * función se pase de los diez segundos que tiene para contestar.
+ *
+ * ------------------------------------------------------------------------
+ * SI ALGO FALLA, NO QUEDA BASURA
+ * ------------------------------------------------------------------------
+ *
+ * El archivo ya está subido cuando esto empieza, así que cualquier salida por
+ * error tiene que borrarlo. Son archivos de decenas de megas: los que se
+ * dejaran tirados no los ve nadie y no los borra nadie.
  */
-export async function enviarFoto(datos: FormData): Promise<ActionResult> {
-  const archivo = datos.get("archivo");
-  const conversacionId = Number(datos.get("conversacionId"));
-  const pie = String(datos.get("pie") ?? "");
-
-  if (!(archivo instanceof File)) return { ok: false, error: "No llegó ninguna foto." };
-  if (!Number.isFinite(conversacionId)) return { ok: false, error: "Conversación no válida." };
-
-  if (!archivo.type.startsWith("image/")) {
-    return { ok: false, error: "Sólo se pueden mandar fotos por acá." };
-  }
-  if (archivo.size > TOPE_IMAGEN_BYTES) {
-    return {
-      ok: false,
-      error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
-    };
-  }
-
+export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult> {
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return SIN_SESION;
 
+  const limpiar = async () => {
+    await supabase.storage.from(BALDE_WHATSAPP).remove([datos.ruta]);
+  };
+
+  // La ruta la manda el navegador, así que no se le cree. La política de
+  // Supabase ya impide escribir fuera de «saliente/», pero acá se comprueba
+  // igual: esta ruta termina guardada en `mensajes.media_ruta`, y desde ahí se
+  // firman enlaces. Sin esto, una ruta armada a mano serviría para hacer que
+  // el CRM firme cualquier archivo del bucket, incluido lo que mandó un
+  // cliente a otra conversación.
+  if (!datos.ruta.startsWith(`${CARPETA_SALIENTE}/`)) {
+    return { ok: false, error: "Ruta de archivo no válida." };
+  }
+
+  const esImagen = datos.mime.startsWith("image/");
+  const esDocumento = esDocumentoAceptado(datos.mime);
+
+  if (!esImagen && !esDocumento) {
+    await limpiar();
+    return {
+      ok: false,
+      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar fotos, ${tiposQueSePueden()}.`,
+    };
+  }
+
   if (!hayWhatsapp()) {
+    await limpiar();
     return { ok: false, error: "WhatsApp no está configurado en el servidor." };
   }
 
   const { data: conv } = await supabase
     .from("conversaciones")
     .select("id, telefono")
-    .eq("id", conversacionId)
+    .eq("id", datos.conversacionId)
     .maybeSingle();
 
-  if (!conv) return { ok: false, error: "No se encontró la conversación." };
+  if (!conv) {
+    await limpiar();
+    return { ok: false, error: "No se encontró la conversación." };
+  }
 
-  const bytes = await archivo.arrayBuffer();
+  /*
+   * Cinco minutos, que es mucho más de lo que Meta tarda y mucho menos de lo
+   * que dura un descuido. Meta busca el archivo mientras contesta la llamada
+   * —un par de segundos—, así que la firma está viva apenas el rato necesario
+   * y después la dirección no sirve más para nadie.
+   */
+  const { data: firmado, error: errFirma } = await supabase.storage
+    .from(BALDE_WHATSAPP)
+    .createSignedUrl(datos.ruta, 300);
 
-  const envio = await enviarImagen(
+  if (errFirma || !firmado?.signedUrl) {
+    await limpiar();
+    return { ok: false, error: `No se pudo preparar el archivo: ${errFirma?.message ?? "sin firma"}` };
+  }
+
+  const mandar = esImagen ? enviarImagen : enviarDocumento;
+  const envio = await mandar(
     String(conv.telefono),
-    { bytes, mime: archivo.type, nombre: archivo.name },
-    pie,
+    { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
+    datos.pie,
   );
 
-  if (!envio.ok) return { ok: false, error: envio.error };
+  if (!envio.ok) {
+    await limpiar();
+    return { ok: false, error: envio.error };
+  }
 
-  // Se guarda una copia en el balde para poder verla en el hilo. Meta no
-  // devuelve la foto que uno mismo mandó, así que sin esta copia el mensaje
-  // saliente quedaría como un hueco.
-  let ruta: string | null = null;
-  const nombreArchivo = `${crypto.randomUUID()}${extensionDeMime(archivo.type)}`;
-  const { error: errSubir } = await supabase.storage
-    .from("whatsapp")
-    .upload(`wa/${conversacionId}/${nombreArchivo}`, bytes, { contentType: archivo.type });
-
-  if (!errSubir) ruta = `wa/${conversacionId}/${nombreArchivo}`;
-
+  // El archivo se queda donde está: es la copia que el hilo muestra. Meta no
+  // devuelve lo que uno mismo mandó, así que sin ella el mensaje saliente
+  // quedaría como un hueco.
   const { error: errGuardar } = await supabase.from("mensajes").insert({
-    conversacion_id: conversacionId,
+    conversacion_id: datos.conversacionId,
     wa_id: envio.waId,
     direccion: "saliente",
-    tipo: "image",
-    texto: pie.trim() || null,
+    // El mismo vocabulario que usa Meta en lo que entra, para que el hilo no
+    // tenga que distinguir si el mensaje lo mandamos nosotros o el cliente.
+    tipo: esImagen ? "image" : "document",
+    texto: datos.pie.trim() || null,
     estado: "enviado",
     enviado_por: user.id,
-    media_ruta: ruta,
-    media_mime: archivo.type,
-    media_nombre: archivo.name,
+    media_ruta: datos.ruta,
+    media_mime: datos.mime,
+    media_nombre: datos.nombre,
   });
 
+  // Acá el mensaje ya lo tiene el cliente. El archivo no se borra aunque la
+  // fila haya fallado: es lo único que queda de lo que se mandó.
   if (errGuardar) {
     return {
       ok: false,
@@ -642,11 +697,14 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
   await supabase
     .from("conversaciones")
     .update({
-      ultimo_texto: (pie.trim() || "Foto").slice(0, 200),
+      // Sin pie, en la lista de chats se lee el nombre del archivo y no un
+      // «Documento» a secas: entre cinco hilos, «Lista de precios.pdf» dice
+      // cuál es cuál y la palabra sola no dice nada.
+      ultimo_texto: (datos.pie.trim() || (esImagen ? "Foto" : datos.nombre)).slice(0, 200),
       ultimo_mensaje_en: new Date().toISOString(),
       sin_leer: 0,
     })
-    .eq("id", conversacionId);
+    .eq("id", datos.conversacionId);
 
   revalidatePath("/");
   return { ok: true, error: null };
@@ -731,6 +789,13 @@ function extensionDeMime(mime: string): string {
     "image/webp": ".webp",
     "image/gif": ".gif",
     "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "text/plain": ".txt",
   };
   return tabla[mime.split(";")[0].trim()] ?? "";
 }

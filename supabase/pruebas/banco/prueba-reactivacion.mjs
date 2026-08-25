@@ -25,6 +25,10 @@ const perdido = sql("select id from estados where nombre='Perdido'");
 /** El bloque rojo del motivo, y la casilla que vive adentro. */
 const ponerMotivo = (nombre) => {
   const m = sql(`select id from motivos_perdida where nombre='${nombre}'`);
+  // Si el motivo cambió de nombre, decirlo acá. Sin esto el id sale vacío y
+  // el error que se ve es un «syntax error at or near where» del update, que
+  // no se parece en nada al problema real.
+  if (!m) throw new Error(`no existe el motivo «${nombre}» en motivos_perdida`);
   sql(`update oportunidades set estado_id=${perdido}, motivo_perdida_id=${m} where id=${OP}`);
 };
 
@@ -56,7 +60,7 @@ const abrirFicha = async () => {
 
 console.log("── la casilla sólo sale con «No Interesado» ──");
 {
-  ponerMotivo("Problema económico");
+  ponerMotivo("Muy caro");
   await abrirFicha();
   const t = await enPantalla();
   es("el bloque del motivo está", /Por qué se perdió/.test(t), true);

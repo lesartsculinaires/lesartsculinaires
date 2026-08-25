@@ -1,5 +1,11 @@
 import "server-only";
 
+import {
+  TOPE_DOCUMENTO_BYTES,
+  esDocumentoAceptado,
+  tiposQueSePueden,
+} from "@/lib/whatsapp/adjuntos";
+
 /**
  * Envío por la API de Meta.
  *
@@ -71,18 +77,107 @@ export async function enviarTexto(
 export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Manda un documento: un PDF, una planilla, una presentación.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ UN ENLACE Y NO EL ARCHIVO
+ * ------------------------------------------------------------------------
+ *
+ * Meta acepta las dos formas: subirle los bytes y quedarse con un id, o darle
+ * una dirección y que él la busque. Antes se le subían los bytes, y eso
+ * obligaba a que el archivo entero pasara por el servidor: entraba por la
+ * petición, se guardaba en memoria y salía otra vez para Meta. Con 4 MB
+ * andaba; con veinte o más no, porque la función tiene diez segundos para
+ * contestar y decenas de megas de ida y vuelta no entran siempre en diez.
+ *
+ * Con el enlace el servidor no toca los bytes ni una vez. Le pasa a Meta una
+ * dirección firmada del bucket y Meta la busca por su cuenta, así que mandar
+ * veinte megas le cuesta lo mismo que mandar veinte kilos.
+ *
+ * Lo que se paga: durante los minutos que dura la firma, cualquiera que tenga
+ * esa dirección puede bajar el archivo. Es una cadena larga e imposible de
+ * adivinar, caduca sola y esto es lo que nosotros le mandamos al cliente —una
+ * lista de precios, un temario—, no lo que el cliente nos manda a nosotros.
+ * Los comprobantes que llegan siguen sin ser accesibles desde afuera.
+ *
+ * ------------------------------------------------------------------------
+ *
+ * `filename` es lo que distingue esto de una foto: sin eso el cliente recibe
+ * la lista de precios llamada «document.pdf», que en su teléfono no se
+ * distingue de nada.
+ */
+export async function enviarDocumento(
+  telefono: string,
+  archivo: { enlace: string; mime: string; nombre: string; bytes: number },
+  pie: string,
+): Promise<ResultadoEnvio> {
+  if (!esDocumentoAceptado(archivo.mime)) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar ${tiposQueSePueden()}.`,
+    };
+  }
+
+  if (archivo.bytes > TOPE_DOCUMENTO_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error:
+        `El archivo pesa más de ${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB, que es el tope. ` +
+        "Mandá una versión más liviana o pasale un enlace de descarga.",
+    };
+  }
+
+  return mandar(telefono, {
+    type: "document",
+    document: {
+      link: archivo.enlace,
+      filename: archivo.nombre,
+      ...(pie.trim() ? { caption: pie.trim() } : {}),
+    },
+  });
+}
+
+/**
  * Manda una foto.
  *
- * Son dos llamadas y ninguna se puede saltear: Meta no acepta el archivo junto
- * con el mensaje. Primero se sube y devuelve un id, y recién después se manda
- * un mensaje que apunta a ese id. (Se puede mandar una URL pública en vez del
- * id, pero eso obligaría a publicar el archivo en internet para que Meta lo
- * lea, y estos son comprobantes y documentos.)
+ * Mismo camino que el documento —un enlace firmado, no los bytes— con dos
+ * diferencias: el tope es el de Meta para imágenes, más bajo que el de
+ * documentos, y no lleva `filename`, que en una foto Meta rechaza.
  */
 export async function enviarImagen(
   telefono: string,
-  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  archivo: { enlace: string; mime: string; nombre: string; bytes: number },
   pie: string,
+): Promise<ResultadoEnvio> {
+  if (archivo.bytes > TOPE_IMAGEN_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  return mandar(telefono, {
+    type: "image",
+    image: pie.trim()
+      ? { link: archivo.enlace, caption: pie.trim() }
+      : { link: archivo.enlace },
+  });
+}
+
+/**
+ * Le pasa a Meta un mensaje ya armado.
+ *
+ * Una sola llamada: antes eran dos —subir y después mandar— y el paso de subir
+ * se fue con el cambio al enlace. Lo comparten la foto, el documento y
+ * cualquier cosa que se agregue mañana; lo único que cada uno pone es su
+ * pedazo del cuerpo.
+ */
+async function mandar(
+  telefono: string,
+  cuerpoDelMensaje: Record<string, unknown>,
 ): Promise<ResultadoEnvio> {
   const token = process.env.WHATSAPP_TOKEN;
   const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -91,44 +186,14 @@ export async function enviarImagen(
     return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
   }
 
-  if (archivo.bytes.byteLength > TOPE_IMAGEN_BYTES) {
-    return {
-      ok: false,
-      waId: null,
-      error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
-    };
-  }
-
   try {
-    // Paso 1: subir el archivo y quedarse con el id.
-    const formulario = new FormData();
-    formulario.append("messaging_product", "whatsapp");
-    formulario.append("type", archivo.mime);
-    formulario.append("file", new Blob([archivo.bytes], { type: archivo.mime }), archivo.nombre);
-
-    const subida = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/media`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: formulario,
-    });
-
-    const datos = (await subida.json().catch(() => null)) as
-      | { id?: string; error?: { message?: string; code?: number } }
-      | null;
-
-    if (!subida.ok || !datos?.id) {
-      return { ok: false, waId: null, error: explicar(datos?.error, subida.status) };
-    }
-
-    // Paso 2: el mensaje que apunta a ese id.
     const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: telefono,
-        type: "image",
-        image: pie.trim() ? { id: datos.id, caption: pie.trim() } : { id: datos.id },
+        ...cuerpoDelMensaje,
       }),
     });
 
