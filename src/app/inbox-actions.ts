@@ -210,9 +210,22 @@ export async function resolver(
 /**
  * Marca que el contacto no era un lead.
  *
- * Con el alta automática van a entrar números equivocados y proveedores.
- * Borra el cliente creado —sólo si no tiene oportunidades, para no llevarse
- * por delante trabajo real— y archiva la conversación.
+ * Con el alta automática van a entrar números equivocados y proveedores. Para
+ * dirección, borra el cliente creado —sólo si no tiene oportunidades, para no
+ * llevarse por delante trabajo real— y archiva la conversación.
+ *
+ * ------------------------------------------------------------------------
+ * PARA QUIEN NO ES DIRECCIÓN, ARCHIVA Y LO DICE
+ * ------------------------------------------------------------------------
+ *
+ * Borrar es de dirección, y la base lo hace cumplir. El problema era cómo se
+ * veía desde acá: el borrado no falla, simplemente no toca ninguna fila, así
+ * que sin esta comprobación la asesora apretaba el botón, recibía un «listo» y
+ * el lead seguía en Prospectos. Un permiso que se niega en silencio se lee
+ * como un error del sistema, y lo que hace la gente es apretar otra vez.
+ *
+ * Lo útil se hace igual: la conversación se archiva, que es lo que saca el
+ * ruido de la bandeja. Lo que queda pendiente se nombra.
  */
 export async function noEraLead(conversacionId: number): Promise<ActionResult> {
   const supabase = await getServerClient();
@@ -226,7 +239,10 @@ export async function noEraLead(conversacionId: number): Promise<ActionResult> {
 
   if (error) return { ok: false, error: error.message };
 
-  if (conv?.cliente_id != null) {
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  const puedeBorrar = esAdmin === true;
+
+  if (puedeBorrar && conv?.cliente_id != null) {
     await borrarLeadIntacto(supabase, Number(conv.cliente_id));
 
     const { count } = await supabase
@@ -248,6 +264,19 @@ export async function noEraLead(conversacionId: number): Promise<ActionResult> {
   if (errArch) return { ok: false, error: errArch.message };
 
   revalidatePath("/");
+
+  if (!puedeBorrar && conv?.cliente_id != null) {
+    // `ok` en falso porque hay algo que la persona quería y no pasó. El texto
+    // dice qué sí se hizo, para que no vuelva a intentarlo creyendo que falló
+    // todo.
+    return {
+      ok: false,
+      error:
+        "La conversación quedó archivada, pero el lead sigue en el tablero: " +
+        "borrarlo es de dirección. Pedile a dirección que lo elimine.",
+    };
+  }
+
   return { ok: true, error: null };
 }
 
