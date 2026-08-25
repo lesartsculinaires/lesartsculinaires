@@ -55,18 +55,25 @@ export const ACEPTA_ADJUNTOS = [
 /**
  * Tope para documentos.
  *
- * Los 50 MB son los del bucket, que es hoy el eslabón más bajo: Meta acepta
- * 100 y el camino ya no tiene otro techo. Antes eran 4 MB y no porque WhatsApp
- * lo pidiera, sino porque el archivo pasaba por la función de Netlify y ese
- * cuerpo se corta en 6; ahora el navegador sube derecho al bucket y el
- * servidor sólo maneja la ruta.
+ * No es un techo técnico: WhatsApp acepta 100 MB y el camino nuevo no tiene
+ * otro límite. Es una decisión sobre el espacio total, porque lo que sale por
+ * el chat se guarda para siempre —es la única copia de lo que se le mandó al
+ * cliente—, y en el plan gratuito de Supabase hay 1 GB para todo. Veinte megas
+ * está muy por encima de lo que pesa de verdad una lista de precios o un
+ * temario, que andan entre uno y diez.
  *
- * Si algún día hicieran falta más, hay que subir dos cosas a la vez: el tope
- * del bucket —en la migración— y el límite global de subida del proyecto, que
- * se toca en Supabase, en Storage → Settings. El del bucket no puede pasar al
- * global, así que cambiar uno solo no hace nada.
+ * Antes eran 4 MB y eso sí era un techo: el archivo pasaba por la función de
+ * Netlify y ese cuerpo se corta en 6. Ahora el navegador sube derecho al
+ * bucket y el servidor sólo maneja la ruta.
+ *
+ * ESTE NÚMERO TIENE UN GEMELO: `file_size_limit` en la migración
+ * `20260921120000_adjuntos_grandes.sql`. Se cambian juntos o no se cambia
+ * ninguno; si sólo se toca éste, el archivo se elige en la pantalla y después
+ * rebota al subir, con el error del bucket y no con el nuestro. Y hay un
+ * tercero afuera: el límite global del proyecto, en Supabase → Storage →
+ * Settings, que el del bucket no puede pasar.
  */
-export const TOPE_DOCUMENTO_BYTES = 50 * 1024 * 1024;
+export const TOPE_DOCUMENTO_BYTES = 20 * 1024 * 1024;
 
 /** El bucket donde vive todo lo del chat, en las dos direcciones. */
 export const BALDE_WHATSAPP = "whatsapp";

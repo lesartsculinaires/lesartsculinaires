@@ -87,12 +87,12 @@ export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
  * una dirección y que él la busque. Antes se le subían los bytes, y eso
  * obligaba a que el archivo entero pasara por el servidor: entraba por la
  * petición, se guardaba en memoria y salía otra vez para Meta. Con 4 MB
- * andaba; con 50 no, porque la función tiene diez segundos para contestar y
- * cien megas de ida y vuelta no entran siempre en diez segundos.
+ * andaba; con veinte o más no, porque la función tiene diez segundos para
+ * contestar y decenas de megas de ida y vuelta no entran siempre en diez.
  *
  * Con el enlace el servidor no toca los bytes ni una vez. Le pasa a Meta una
  * dirección firmada del bucket y Meta la busca por su cuenta, así que mandar
- * 50 MB le cuesta lo mismo que mandar 50 KB.
+ * veinte megas le cuesta lo mismo que mandar veinte kilos.
  *
  * Lo que se paga: durante los minutos que dura la firma, cualquiera que tenga
  * esa dirección puede bajar el archivo. Es una cadena larga e imposible de

@@ -1,6 +1,6 @@
 begin;
 
--- Documentos de hasta 50 MB saliendo por el chat.
+-- Documentos grandes saliendo por el chat.
 --
 -- ------------------------------------------------------------------------
 -- POR QUÉ NO ALCANZABA CON SUBIR UN NÚMERO
@@ -14,13 +14,14 @@ begin;
 -- Así que cambia el camino: el navegador sube el archivo derecho a este
 -- bucket, sin pasar por Netlify, y al servidor le llega nada más la ruta. De
 -- ahí en más el servidor tampoco mueve los bytes —le pasa a Meta un enlace
--- firmado que caduca— así que mandar 50 MB le cuesta lo mismo que mandar 50 KB.
+-- firmado que caduca— así que mandar veinte megas le cuesta lo mismo que mandar
+-- veinte kilos.
 --
 -- ------------------------------------------------------------------------
 -- LO QUE CAMBIA ACÁ
 -- ------------------------------------------------------------------------
 --
---   El tope del bucket        de 15 MB a 50.
+--   El tope del bucket        de 15 MB a 20.
 --   PowerPoint                faltaba, y ese es un error que ya estaba
 --                             mordiendo: un .pptx se le mandaba bien al
 --                             cliente pero la copia para el hilo la rechazaba
@@ -44,12 +45,37 @@ begin;
 -- Por eso el permiso llega hasta «saliente/» y ni un carácter más, y además
 -- cada archivo queda a nombre de quien lo subió.
 --
+-- ------------------------------------------------------------------------
+-- POR QUÉ 20 MB Y NO MÁS
+-- ------------------------------------------------------------------------
+--
+-- No es un techo técnico: WhatsApp acepta 100 MB y el camino nuevo no tiene
+-- otro límite. Es una decisión sobre el espacio total.
+--
+-- Lo que sale por el chat se queda guardado para siempre, porque es la única
+-- copia de lo que se le mandó al cliente. En el plan gratuito de Supabase hay
+-- 1 GB para todo, y ahí un tope de 50 MB alcanza para llenarlo con veinte
+-- archivos. Con 20 MB entran dos veces y media más, y sigue estando muy por
+-- encima de lo que pesa de verdad una lista de precios o un temario, que
+-- andan entre uno y diez megas.
+--
+-- Para cambiarlo hay que mover dos cosas a la vez, y las dos están señaladas:
+-- la línea de acá abajo y `TOPE_DOCUMENTO_BYTES` en
+-- `src/lib/whatsapp/adjuntos.ts`. Si sólo se cambia una, el archivo se elige
+-- en la pantalla y rebota al subir, o al revés.
+--
+-- Y hay un tercero que no vive acá: el límite global del proyecto, en
+-- Supabase → Storage → Settings. El del bucket no puede pasarlo. En el plan
+-- gratuito ese global llega hasta 50 MB; en Pro sube mucho más.
+--
 -- Se puede correr con gente trabajando, y dos veces.
 
 -- ---------------------------------------------------------------- el bucket
 
 update storage.buckets
-   set file_size_limit = 50 * 1024 * 1024,
+   -- EL TOPE. Su gemelo en la aplicación es `TOPE_DOCUMENTO_BYTES`, en
+   -- `src/lib/whatsapp/adjuntos.ts`: los dos se cambian juntos o ninguno.
+   set file_size_limit = 20 * 1024 * 1024,
        allowed_mime_types = array[
          -- Fotos: es como llegan las capturas de transferencia.
          'image/jpeg', 'image/png', 'image/webp', 'image/gif',
@@ -97,7 +123,7 @@ create policy whatsapp_subir_saliente on storage.objects
  *
  * Hace falta para limpiar: si el archivo sube pero WhatsApp rechaza el envío,
  * queda un archivo que nadie va a ver nunca. Sin esto se juntarían para
- * siempre, y son de hasta 50 MB cada uno.
+ * siempre, y son de hasta veinte megas cada uno.
  */
 drop policy if exists whatsapp_borrar_saliente on storage.objects;
 create policy whatsapp_borrar_saliente on storage.objects
@@ -112,7 +138,7 @@ commit;
 
 -- Cómo quedó.
 select
-  case when file_size_limit >= 50 * 1024 * 1024 then '✓' else '· revisar' end as estado,
+  case when file_size_limit = 20 * 1024 * 1024 then '✓' else '· revisar' end as estado,
   file_size_limit / 1024 / 1024 || ' MB'                                     as tope,
   case when 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
             = any(allowed_mime_types)

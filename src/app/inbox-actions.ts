@@ -583,7 +583,7 @@ export interface ArchivoSubido {
  *
  * De acá para adelante el servidor tampoco mueve los bytes: le firma a Meta
  * una dirección que caduca y Meta va a buscar el archivo solo. Por eso mandar
- * 50 MB tarda lo mismo que mandar 50 KB, y por eso no hay riesgo de que la
+ * un archivo grande tarda lo mismo que uno chico, y por eso no hay riesgo de que la
  * función se pase de los diez segundos que tiene para contestar.
  *
  * ------------------------------------------------------------------------
@@ -591,8 +591,8 @@ export interface ArchivoSubido {
  * ------------------------------------------------------------------------
  *
  * El archivo ya está subido cuando esto empieza, así que cualquier salida por
- * error tiene que borrarlo. Son archivos de hasta 50 MB: los que se dejaran
- * tirados no los ve nadie y no los borra nadie.
+ * error tiene que borrarlo. Son archivos de decenas de megas: los que se
+ * dejaran tirados no los ve nadie y no los borra nadie.
  */
 export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult> {
   const supabase = await getServerClient();

@@ -1,10 +1,10 @@
 /**
  * ¿Un archivo grande esquiva el servidor, y no deja basura si falla?
  *
- *     node supabase/pruebas/banco/prueba-archivo-grande.mjs
+ *     node --experimental-strip-types supabase/pruebas/banco/prueba-archivo-grande.mjs
  *
- * Las dos cosas que hacen posibles los 50 MB, y ninguna se ve mirando la
- * pantalla:
+ * Las dos cosas que hacen posible mandar archivos grandes, y ninguna se ve
+ * mirando la pantalla:
  *
  *   1. QUE EL ARCHIVO NO PASE POR EL SERVIDOR. Ese era el techo real: iba
  *      adentro de la llamada a la función de Netlify, que corta el cuerpo en
@@ -14,9 +14,14 @@
  *      el tope volvería a bajar a 6 MB sin que nadie se entere hasta que una
  *      asesora no pueda mandar un temario.
  *
- *   2. QUE NO QUEDE BASURA. Ahora el archivo se sube antes de saber si Meta lo
+ *   2. QUE PASADO EL TOPE SE FRENE ACÁ Y NO ALLÁ. Rechazar un archivo grande
+ *      después de subirlo es hacerle esperar a la asesora toda la subida para
+ *      después decirle que no. La comprobación tiene que pasar antes, y sin
+ *      que se toque el bucket.
+ *
+ *   3. QUE NO QUEDE BASURA. Ahora el archivo se sube antes de saber si Meta lo
  *      va a aceptar. Si el envío falla y nadie lo borra, queda en el bucket un
- *      archivo de hasta 50 MB que no se ve desde ninguna pantalla y que nadie
+ *      archivo de decenas de megas que no se ve desde ninguna pantalla y nadie
  *      va a salir a buscar.
  *
  * El envío falla a propósito: el banco tiene un token de WhatsApp de mentira,
@@ -30,7 +35,12 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
-const MEGAS = 12; // Bastante más que los 6 MB del camino viejo.
+const { TOPE_DOCUMENTO_BYTES } = await import("../../../src/lib/whatsapp/adjuntos.ts");
+
+// Bastante más que los 6 MB donde cortaba el camino viejo, y por debajo del
+// tope de hoy: lo que se prueba acá es que el archivo esquive el servidor, no
+// el tope, que tiene su propia prueba en `adjuntos.test.mjs`.
+const MEGAS = 12;
 
 const sql = (q) => {
   const ruta = path.join(os.tmpdir(), `prueba-grande-${process.pid}.sql`);
@@ -84,6 +94,26 @@ sql(`
    where cv.telefono='50399000001'
      and not exists (select 1 from mensajes m where m.conversacion_id=cv.id);
 `);
+
+/*
+ * Que el hilo haya quedado, antes de abrir el navegador.
+ *
+ * Sin esto, un sembrado que no entró se manifiesta treinta segundos después
+ * como un `locator.click: Timeout` sobre la lista de conversaciones, que no se
+ * parece en nada al problema: manda a buscar el error en la pantalla cuando
+ * está en la base. Pasó una vez y no se pudo repetir; el aviso queda para la
+ * próxima.
+ */
+{
+  const hilo = sql("select count(*) from conversaciones where telefono='50399000001';");
+  if (hilo !== "1") {
+    console.error(
+      `No se pudo sembrar la conversación de prueba (hay ${hilo}, tendría que haber 1).\n` +
+        "Revisá que el banco esté armado: bash supabase/pruebas/banco/armar.sh",
+    );
+    process.exit(1);
+  }
+}
 
 // -------------------------------------------------------------- el navegador
 
@@ -177,6 +207,27 @@ es(
   ),
   "0",
 );
+
+console.log(`\n── y uno pasado de tope (más de ${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB) ──`);
+{
+  const antes = alBucket.length;
+  const gordo = path.join(os.tmpdir(), "Catalogo enorme.pdf");
+  fs.writeFileSync(gordo, Buffer.alloc(TOPE_DOCUMENTO_BYTES + 1024 * 1024, 0x20));
+
+  await p.locator('input[type="file"]').first().setInputFiles(gordo);
+  await p.waitForTimeout(1200);
+  await p
+    .locator('div[role="dialog"][aria-label*="Se va a enviar"] button:has-text("Enviar")')
+    .click();
+  await p.waitForTimeout(2500);
+
+  const t = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+  es("avisa que pesa de más", /pesa .* y el tope es/.test(t), true);
+  es("y dice cuánto pesa y cuánto entra", /MB y el tope es \d+ MB/.test(t), true);
+  es("NI SIQUIERA LO SUBIÓ", alBucket.length, antes);
+  es("y el bucket sigue vacío", sql("select count(*) from storage.objects where bucket_id='whatsapp';"), "0");
+  fs.rmSync(gordo, { force: true });
+}
 
 es("sin errores en la página", errores, []);
 await nav.close();

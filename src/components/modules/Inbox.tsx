@@ -127,7 +127,7 @@ export function Inbox({
   /**
    * En qué va el envío, para poder decirlo.
    *
-   * Con archivos chicos daba igual, pero 50 MB por una conexión de oficina son
+   * Con archivos chicos daba igual, pero veinte megas por una conexión de oficina son
    * bastantes segundos: un botón que dice «Enviando…» todo ese rato parece
    * colgado. Diciendo «Subiendo…» primero se entiende que está avanzando.
    */

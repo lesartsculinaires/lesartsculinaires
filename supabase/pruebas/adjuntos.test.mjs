@@ -5,10 +5,16 @@
  *       --platform=node --alias:@=./src \
  *       --alias:server-only=./supabase/pruebas/server-only-vacio.mjs \
  *       --outfile=/tmp/env.mjs
- *     node supabase/pruebas/adjuntos.test.mjs /tmp/env.mjs
+ *     node --experimental-strip-types supabase/pruebas/adjuntos.test.mjs /tmp/env.mjs
+ *
+ * El `--experimental-strip-types` es para poder leer el tope desde el mismo
+ * archivo que usa la aplicación, en vez de repetir el número acá. Y ojo con el
+ * empaquetado: esbuild incrusta la constante, así que cambiar el tope y no
+ * volver a empaquetar hace fallar la prueba por una razón que no existe.
  *
  * A Meta se le pasa un enlace firmado al archivo, no el archivo: así mandar
- * 50 MB le cuesta al servidor lo mismo que mandar 50 KB. Lo que se vigila acá:
+ * veinte megas le cuesta al servidor lo mismo que mandar veinte kilos. Lo que
+ * se vigila acá:
  *
  *   · que vaya `filename`. Sin eso el cliente recibe la lista de precios
  *     llamada «document.pdf» y en su teléfono no se distingue de nada;
@@ -17,7 +23,9 @@
  *   · que vaya el enlace y NO los bytes, que es lo que levanta el tope;
  *   · que un .exe o un .zip se frenen acá y no en Meta, donde el error habla
  *     de «type» y no dice qué había que hacer;
- *   · que 50 MB pasen y 60 no.
+ *   · que el tope corte donde dice la constante, sin repetir el número acá:
+ *     una prueba con el número escrito a mano se queda vieja el día que el
+ *     tope cambie, y entonces falla sin que nada esté roto.
  *
  * No toca la red: se reemplaza `fetch` y se mira qué se le pidió.
  *
@@ -26,6 +34,7 @@
  * navegador, y acá se corre en Node a propósito, que es donde vive de verdad.
  */
 const { enviarDocumento, enviarImagen } = await import(process.argv[2] ?? "/tmp/env.mjs");
+const { TOPE_DOCUMENTO_BYTES } = await import("../../src/lib/whatsapp/adjuntos.ts");
 
 let f = 0;
 const es = (t, r, e) => {
@@ -113,18 +122,23 @@ console.log("\n── lo que no se puede, se frena acá ──");
   es("NO SE LLAMÓ A META", llamadas.length, 0);
   es("y el error dice qué sí se puede", /PDF, Word, Excel/.test(r.error), true);
 }
+const TOPE_MB = TOPE_DOCUMENTO_BYTES / 1024 / 1024;
 {
   const llamadas = espiar();
-  const r = await enviarDocumento("50370000000", pdf(60 * 1024 * 1024), "");
-  es("un PDF de 60 MB se rechaza", r.ok, false);
+  const r = await enviarDocumento("50370000000", pdf(TOPE_DOCUMENTO_BYTES + 1), "");
+  es(`uno de más de ${TOPE_MB} MB se rechaza`, r.ok, false);
   es("no se llamó a Meta", llamadas.length, 0);
-  es("y el error dice cuánto entra", /50 MB/.test(r.error), true);
+  es("y el error dice cuánto entra", r.error.includes(`${TOPE_MB} MB`), true);
 }
 {
   const llamadas = espiar();
-  const r = await enviarDocumento("50370000000", pdf(49 * 1024 * 1024), "");
-  es("UNO DE 49 MB SÍ PASA", r.ok, true);
-  es("y a Meta le fue el enlace, no 49 MB", JSON.parse(llamadas[0].opciones.body).document.link, ENLACE);
+  const r = await enviarDocumento("50370000000", pdf(TOPE_DOCUMENTO_BYTES), "");
+  es(`UNO DE ${TOPE_MB} MB CLAVADOS SÍ PASA`, r.ok, true);
+  es(
+    "y a Meta le fue el enlace, no el archivo",
+    JSON.parse(llamadas[0].opciones.body).document.link,
+    ENLACE,
+  );
 }
 
 console.log("\n── la foto sigue andando igual ──");

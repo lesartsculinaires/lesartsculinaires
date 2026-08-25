@@ -1,9 +1,9 @@
 /**
  * ¿La carpeta «saliente/» está bien cercada?
  *
- *     node supabase/pruebas/banco/prueba-saliente.mjs
+ *     node --experimental-strip-types supabase/pruebas/banco/prueba-saliente.mjs
  *
- * Para poder mandar documentos de 50 MB hubo que dejar que el navegador
+ * Para poder mandar documentos grandes hubo que dejar que el navegador
  * escriba en el bucket del chat, cosa que antes no podía nadie. Esa es la
  * concesión, y todo lo que la hace segura está en una política de tres
  * condiciones. Si esa política se afloja, lo que se pierde es serio: debajo de
@@ -23,6 +23,12 @@
  */
 import fs from "node:fs";
 import { execSync } from "node:child_process";
+
+// El tope sale de la aplicación, no escrito a mano: acá lo que se comprueba
+// es que el bucket y la aplicación digan lo mismo. Con el número repetido, la
+// prueba pasaría aunque estuvieran desfasados, que es justo el error que
+// deja al asesor eligiendo un archivo que después rebota al subir.
+const { TOPE_DOCUMENTO_BYTES } = await import("../../../src/lib/whatsapp/adjuntos.ts");
 
 const ALE = "cccccccc-0000-0000-0000-000000000001";
 const OTRA = "cccccccc-0000-0000-0000-000000000002";
@@ -138,9 +144,9 @@ es(
 
 console.log("\n── el tope del bucket ──");
 es(
-  "son 50 MB",
+  `EL BUCKET Y LA APLICACIÓN DICEN LO MISMO (${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB)`,
   sqlCrudo("select file_size_limit from storage.buckets where id='whatsapp';"),
-  String(50 * 1024 * 1024),
+  String(TOPE_DOCUMENTO_BYTES),
 );
 es(
   "y PowerPoint está permitido",
