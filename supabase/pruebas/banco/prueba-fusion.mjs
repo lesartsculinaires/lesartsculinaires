@@ -188,8 +188,20 @@ console.log("\n── quién puede fusionar ──");
   const a = sql("select id from clientes where nombre='PERMISO a';");
   const b = sql("select id from clientes where nombre='PERMISO b';");
 
-  // Ale es asesora, no dirección.
-  const ALE = "cccccccc-0000-0000-0000-000000000001";
+  /*
+   * El id sale de la base, no escrito a mano.
+   *
+   * Con un `sub` inventado esta prueba pasaba igual, pero por el motivo
+   * equivocado: `es_admin()` no encuentra al usuario y devuelve falso, así que
+   * la guarda salta aunque estuviera mal escrita. Con una cuenta que existe de
+   * verdad, lo que se comprueba es la regla.
+   */
+  const ALE = sql(`
+    select u.id from auth.users u
+      join public.usuarios pu on pu.id = u.id
+      join public.roles r on r.id = pu.rol_id
+     where r.es_admin = false limit 1;
+  `);
   const comoAle = sql(`
     begin;
     set local role authenticated;

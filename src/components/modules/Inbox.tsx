@@ -219,10 +219,21 @@ export function Inbox({
     }
   }, [actual, onRefrescar]);
 
+  /*
+   * Al cambiar de conversación se limpia el aviso y la nota interna.
+   *
+   * Depende del id y no del objeto, y ahí está la diferencia que importa:
+   * `actual` se rearma en cada refresco —lo trae la carga en vivo— así que con
+   * el objeto como dependencia esto se disparaba sin que nadie cambiara de
+   * hilo. El efecto era que cualquier aviso duraba lo que tardaba el siguiente
+   * refresco: «No era lead» archivaba, escribía su explicación, llegaba el
+   * refresco por el propio archivado y el mensaje desaparecía antes de que
+   * alguien lo leyera.
+   */
   useEffect(() => {
     setAviso(null);
     setNota(false);
-  }, [actual]);
+  }, [actual?.id]);
 
   /**
    * La venta de la que habla esta conversación.

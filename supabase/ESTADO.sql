@@ -219,7 +219,16 @@ with revisiones as (
 
     ('20260925120000_fusionar_desde_el_editor',
      'Fusionar también se puede desde el editor de SQL, que no tiene sesión',
-     exists (select 1 from pg_proc where proname = 'exige_direccion'))
+     exists (select 1 from pg_proc where proname = 'exige_direccion')),
+
+    ('20260926120000_solo_direccion_borra',
+     'Borrar un contacto —y sus leads en cascada— es sólo de dirección',
+     exists (select 1 from pg_policies
+              where schemaname = 'public' and tablename = 'clientes'
+                and cmd = 'DELETE' and qual = 'es_admin()')
+       and not exists (select 1 from pg_policies
+                        where schemaname = 'public' and tablename = 'clientes'
+                          and policyname = 'auth_all_clientes'))
 
   ) as t(archivo, para_que, aplicada)
 ),
