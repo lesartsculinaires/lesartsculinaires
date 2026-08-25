@@ -402,6 +402,7 @@ export default function CrmApp({
             <Clientes
               oportunidades={oportunidades}
               importaciones={importaciones}
+              esAdmin={accesos.esAdmin}
               accent={accent}
               query={state.q}
               filtros={state.filtros}

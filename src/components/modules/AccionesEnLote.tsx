@@ -26,7 +26,9 @@ export function AccionesEnLote({
   accent,
   cambiando,
   aviso,
+  esAdmin,
   onAplicar,
+  onBorrar,
   onLimpiar,
 }: {
   ids: number[];
@@ -34,7 +36,17 @@ export function AccionesEnLote({
   /** Qué campo se está escribiendo ahora, o null. */
   cambiando: string | null;
   aviso: { texto: string; malo: boolean } | null;
+  /**
+   * Si quien está mirando puede borrar.
+   *
+   * El botón no aparece cuando no puede, en vez de aparecer y negarse al
+   * apretarlo. Ofrecer algo que va a rebotar enseña a desconfiar de los
+   * botones, y además la base lo niega igual: esto es la misma regla dicha
+   * antes, no una segunda regla.
+   */
+  esAdmin: boolean;
   onAplicar: (campo: CampoEnLote, valorId: number, etiqueta: string, nombre: string) => void;
+  onBorrar: () => void;
   onLimpiar: () => void;
 }) {
   const cat = useCatalogo();
@@ -93,6 +105,45 @@ export function AccionesEnLote({
             </select>
           </label>
         ))}
+
+        {esAdmin && (
+          <button
+            type="button"
+            onClick={onBorrar}
+            disabled={cambiando != null}
+            title={ids.length === 1 ? "Borrar el lead seleccionado" : `Borrar los ${ids.length} leads seleccionados`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              height: 28,
+              padding: "0 10px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: "1px solid #E3B7B1",
+              background: "#FDF1EF",
+              color: "#B85042",
+              whiteSpace: "nowrap",
+              cursor: cambiando ? "wait" : "pointer",
+            }}
+          >
+            {/* El basurero dibujado y no un emoji: el emoji cambia de forma y
+                de color según el sistema, y acá conviene que se vea igual en
+                la computadora de la escuela que en la de la casa. */}
+            <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
+              <path
+                d="M2.5 3.5h9M5.5 3.5V2.2h3v1.3M3.6 3.5l.5 8.3h5.8l.5-8.3M6 5.8v4M8 5.8v4"
+                fill="none"
+                stroke="#B85042"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Borrar
+          </button>
+        )}
 
         <button
           type="button"

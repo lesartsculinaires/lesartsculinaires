@@ -1042,6 +1042,65 @@ const CAMPOS_EN_LOTE = ["vendedor_id", "etapa_id", "producto_id", "estado_id"] a
 /** Cuántas se pueden tocar de una vez. */
 const TOPE_LOTE = 300;
 
+/**
+ * Borra los leads seleccionados. Sólo dirección.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ SE COMPRUEBA ACÁ SI LA BASE YA LO HACE CUMPLIR
+ * ------------------------------------------------------------------------
+ *
+ * Porque un borrado que la política niega no falla: no toca ninguna fila y
+ * devuelve bien. Sin esta comprobación, una asesora apretaría el botón, vería
+ * «listo» y los leads seguirían en la lista. Un permiso que se niega en
+ * silencio se lee como una falla del sistema, y lo que hace la gente es
+ * intentarlo otra vez.
+ *
+ * Así que la base sigue siendo la que manda —esto no la reemplaza— y acá se
+ * traduce su «no» a algo que se entiende.
+ *
+ * ------------------------------------------------------------------------
+ * LO QUE SE LLEVA
+ * ------------------------------------------------------------------------
+ *
+ * El lead y todo lo que cuelga de él: notas, adjuntos, eventos, links de pago,
+ * recordatorios y seguimientos. La ficha del cliente NO se borra: una persona
+ * puede tener otros leads, y aunque no los tenga, su ficha es el registro de
+ * que existió. Borrar contactos es otra decisión y se hace desde otro lado.
+ *
+ * Devuelve cuántos se borraron de verdad, contados sobre la base y no sobre lo
+ * que se pidió: si alguno ya no estaba —dos personas borrando lo mismo— el
+ * número lo dice en vez de afirmar de más.
+ */
+export async function borrarLeads(
+  ids: number[],
+): Promise<ActionResult & { cuantos?: number }> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const limpios = [...new Set(ids.filter((n) => Number.isFinite(n)))];
+  if (limpios.length === 0) return { ok: false, error: "No hay ningún lead seleccionado." };
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return {
+      ok: false,
+      error: "Borrar leads es de dirección. Pedile a dirección que los elimine.",
+    };
+  }
+
+  const { data: borrados, error } = await supabase
+    .from("oportunidades")
+    .delete()
+    .in("id", limpios)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+
+  const cuantos = (borrados ?? []).length;
+  revalidatePath("/");
+  return { ok: true, error: null, cuantos };
+}
+
 export async function actualizarVarias(
   ids: number[],
   cambio: CambioEnLote,

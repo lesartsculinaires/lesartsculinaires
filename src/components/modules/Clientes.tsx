@@ -10,8 +10,9 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
-import { actualizarVarias } from "@/app/actions";
+import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
+import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
 import { definirFiltros, pasa } from "@/lib/filtros";
@@ -20,6 +21,8 @@ import type { Importacion, Oportunidad } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
+  /** Si quien está mirando puede borrar leads. Sólo dirección. */
+  esAdmin: boolean;
   /** Las bases subidas, para poder filtrar por la tanda que entró junta. */
   importaciones: Importacion[];
   accent: string;
@@ -38,6 +41,7 @@ interface Props {
 
 export function Clientes({
   oportunidades,
+  esAdmin,
   importaciones,
   accent,
   query,
@@ -184,6 +188,39 @@ export function Clientes({
   const [cambiando, setCambiando] = useState<string | null>(null);
   const [avisoLote, setAvisoLote] = useState<{ texto: string; malo: boolean } | null>(null);
 
+  /**
+   * Los leads que se van a borrar, esperando confirmación.
+   *
+   * Null mientras no haya nada pendiente. Se guardan las fichas enteras y no
+   * los ids: la ventana muestra código, nombre y etapa, y si sólo tuviera los
+   * ids tendría que volver a buscarlos justo cuando la lista puede estar
+   * cambiando debajo.
+   */
+  const [porBorrar, setPorBorrar] = useState<Oportunidad[] | null>(null);
+  const [borrando, setBorrando] = useState(false);
+
+  const confirmarBorrado = async () => {
+    if (!porBorrar) return;
+    setBorrando(true);
+    setAvisoLote(null);
+
+    const r = await borrarLeads(porBorrar.map((o) => o.id));
+
+    setBorrando(false);
+    setPorBorrar(null);
+
+    if (r.ok) {
+      setMarcadas([]);
+      setAvisoLote({
+        texto: `${r.cuantos} ${r.cuantos === 1 ? "lead borrado" : "leads borrados"}.`,
+        malo: false,
+      });
+      onRefresh();
+    } else {
+      setAvisoLote({ texto: r.error ?? "No se pudo borrar.", malo: true });
+    }
+  };
+
   const aplicarALasMarcadas = async (
     campo: "vendedor_id" | "etapa_id" | "producto_id" | "estado_id",
     valorId: number,
@@ -257,6 +294,42 @@ export function Clientes({
         se elige un vendedor, no se ve ninguna confirmación, y la conclusión
         razonable es que la función no anda.
       */}
+      {porBorrar && porBorrar.length > 0 && (
+        <ConfirmarBorrado
+          leads={porBorrar}
+          borrando={borrando}
+          onCancelar={() => setPorBorrar(null)}
+          onConfirmar={confirmarBorrado}
+        />
+      )}
+
+      {/*
+        El resultado, cuando ya no hay nada seleccionado.
+
+        El aviso vive dentro de la barra de acciones, y esa barra sólo existe
+        mientras haya filas marcadas. Al borrar se limpia la selección —que es
+        lo correcto: esas filas ya no están— y con ella desaparecía el
+        «1 lead borrado» en el mismo instante en que se escribía. Se borraba y
+        no había forma de saber si había pasado algo.
+      */}
+      {marcadas.length === 0 && avisoLote && (
+        <p
+          style={{
+            margin: "0 0 12px",
+            padding: "9px 13px",
+            borderRadius: 9,
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            background: avisoLote.malo ? "#FDF1EF" : "#EEF6F1",
+            color: avisoLote.malo ? "#B85042" : "#2F6B4F",
+            fontWeight: avisoLote.malo ? 600 : 400,
+          }}
+        >
+          {avisoLote.malo ? "⚠ " : "✓ "}
+          {avisoLote.texto}
+        </p>
+      )}
+
       {marcadas.length > 0 && (
         <div style={{ position: "sticky", top: 0, zIndex: 20 }}>
           <AccionesEnLote
@@ -264,7 +337,11 @@ export function Clientes({
             accent={accent}
             cambiando={cambiando}
             aviso={avisoLote}
+            esAdmin={esAdmin}
             onAplicar={aplicarALasMarcadas}
+            onBorrar={() =>
+              setPorBorrar(oportunidades.filter((o) => marcadas.includes(o.id)))
+            }
             onLimpiar={() => {
               setMarcadas([]);
               setAvisoLote(null);
