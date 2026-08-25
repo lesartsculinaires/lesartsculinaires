@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Bases } from "@/components/modules/Bases";
@@ -40,7 +40,7 @@ import {
   type Seguimiento,
 } from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
-import { MOD_USUARIOS } from "@/lib/modulos";
+import { MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
@@ -210,6 +210,39 @@ export default function CrmApp({
   const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
 
   /**
+   * Los módulos que esta persona tiene en la barra.
+   *
+   * Sale de lo que dirección marcó en Usuarios y Roles. Ojo con lo que esto
+   * es y lo que no: ordena la pantalla, no protege los datos. Quién puede ver
+   * qué información lo siguen decidiendo las políticas de la base, que no se
+   * enteran de esta lista. Sirve para que una asesora no tenga a la vista seis
+   * pantallas que no usa.
+   */
+  const permitidos = useMemo(
+    () =>
+      modulosPermitidos(
+        [...MODULOS, ...(accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : [])],
+        accesos.modulos,
+        accesos.permisos,
+        accesos.yo?.rolId ?? null,
+        accesos.esAdmin,
+      ),
+    [accesos, faltaMigracionAccesos],
+  );
+
+  /*
+   * Si la pantalla abierta ya no está permitida, se cae a la primera que sí.
+   *
+   * Pasa de verdad: dirección destilda un módulo mientras alguien lo tiene
+   * abierto, y en el siguiente refresco esa persona se queda mirando una
+   * pantalla que su barra ya no ofrece, sin forma de volver salvo recargando.
+   */
+  useEffect(() => {
+    if (permitidos.length === 0) return;
+    if (!permitidos.includes(mod)) actions.setMod(permitidos[0]);
+  }, [permitidos, mod, actions]);
+
+  /**
    * Las reservas con el plazo corriendo.
    *
    * Se calculan de las mismas oportunidades que ya están en pantalla: no hay
@@ -276,10 +309,7 @@ export default function CrmApp({
           userEmail={userEmail}
           rol={rol}
           nombre={accesos.yo?.nombre ?? null}
-          // Cuando faltan las tablas nadie es admin todavía, así que la entrada
-          // se muestra igual: si no, no habría forma de leer el aviso que dice
-          // cómo crearlas.
-          extras={accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : []}
+          modulos={permitidos}
           avisos={avisosDeLaBarra}
           onSelect={actions.setMod}
         />

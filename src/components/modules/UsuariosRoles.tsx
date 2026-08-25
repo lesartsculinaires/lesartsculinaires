@@ -39,13 +39,30 @@ const vacio = (): Record<Accion, boolean> => ({
   eliminar: false,
 });
 
+/**
+ * Lo que muestra un módulo del que nadie decidió nada todavía.
+ *
+ * «Ver» marcado, el resto no. No es un capricho: la barra lateral considera
+ * visible todo módulo sin permiso guardado —no haber decidido no es haber
+ * dicho que no— y la pantalla tiene que mostrar eso mismo. Con `vacio()`, un
+ * rol recién creado se veía todo destildado mientras en la práctica veía
+ * todo, y peor: al guardar cualquier otro cambio se escribían esos «no» y el
+ * rol perdía de golpe pantallas que nadie le quiso sacar.
+ */
+const sinDecidir = (): Record<Accion, boolean> => ({
+  ver: true,
+  crear: false,
+  editar: false,
+  eliminar: false,
+});
+
 function aBorrador(permisos: readonly Permiso[], rolId: number, claves: string[]): Borrador {
   const out: Borrador = {};
   for (const clave of claves) {
     const p = permisos.find((x) => x.rolId === rolId && x.modulo === clave);
     out[clave] = p
       ? { ver: p.ver, crear: p.crear, editar: p.editar, eliminar: p.eliminar }
-      : vacio();
+      : sinDecidir();
   }
   return out;
 }
