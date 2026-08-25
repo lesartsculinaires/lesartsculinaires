@@ -194,7 +194,15 @@ with revisiones as (
          'Diplomado Superior de Pastelería Internacional',
          'Diplomado Superior de Mixología Internacional',
          'Diplomado Superior de Barismo y Extracción de Café',
-         'Diplomado Superior de Management Gastronómico')) = 5)
+         'Diplomado Superior de Management Gastronómico')) = 5),
+
+    ('20260921120000_adjuntos_de_50_mb',
+     'Documentos de hasta 50 MB por el chat, subidos desde el navegador',
+     (select file_size_limit >= 50 * 1024 * 1024
+        from storage.buckets where id = 'whatsapp')
+       and exists (select 1 from pg_policies
+                    where schemaname = 'storage' and tablename = 'objects'
+                      and policyname = 'whatsapp_subir_saliente'))
 
   ) as t(archivo, para_que, aplicada)
 ),

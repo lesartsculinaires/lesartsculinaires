@@ -53,20 +53,33 @@ export const ACEPTA_ADJUNTOS = [
 ].join(",");
 
 /**
- * Tope para documentos, y este es nuestro, no de WhatsApp.
+ * Tope para documentos.
  *
- * Meta acepta hasta 100 MB en un documento, muchísimo más que esto. El que
- * manda es el alojamiento: el archivo viaja dentro del cuerpo de la petición a
- * la función de Netlify, y ese cuerpo tiene un techo de 6 MB. Pasado eso la
- * petición se corta antes de llegar al código, así que no hay forma de dar un
- * error que se entienda; por eso se corta acá, con margen para lo que el
- * formulario agrega alrededor del archivo.
+ * Los 50 MB son los del bucket, que es hoy el eslabón más bajo: Meta acepta
+ * 100 y el camino ya no tiene otro techo. Antes eran 4 MB y no porque WhatsApp
+ * lo pidiera, sino porque el archivo pasaba por la función de Netlify y ese
+ * cuerpo se corta en 6; ahora el navegador sube derecho al bucket y el
+ * servidor sólo maneja la ruta.
  *
- * Para mandar cosas más grandes hay que cambiar el camino: que el navegador
- * suba el archivo directo al balde de Supabase y que el servidor lo lea de
- * ahí, sin pasarlo por la función. Es otro trabajo, no un número más grande.
+ * Si algún día hicieran falta más, hay que subir dos cosas a la vez: el tope
+ * del bucket —en la migración— y el límite global de subida del proyecto, que
+ * se toca en Supabase, en Storage → Settings. El del bucket no puede pasar al
+ * global, así que cambiar uno solo no hace nada.
  */
-export const TOPE_DOCUMENTO_BYTES = 4 * 1024 * 1024;
+export const TOPE_DOCUMENTO_BYTES = 50 * 1024 * 1024;
+
+/** El bucket donde vive todo lo del chat, en las dos direcciones. */
+export const BALDE_WHATSAPP = "whatsapp";
+
+/**
+ * La carpeta de lo que mandamos nosotros.
+ *
+ * Aparte de «wa/», que es lo que manda el cliente, porque son las dos únicas
+ * carpetas del bucket y sólo esta se puede escribir desde el navegador. La
+ * política de Supabase mira exactamente este nombre; cambiarlo acá sin cambiar
+ * la migración deja las subidas rebotando con un error de permisos.
+ */
+export const CARPETA_SALIENTE = "saliente";
 
 /** «PDF, Word, Excel, PowerPoint o Texto», sin repetir. */
 export function tiposQueSePueden(): string {

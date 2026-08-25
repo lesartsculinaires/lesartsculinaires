@@ -7,16 +7,17 @@
  *       --outfile=/tmp/env.mjs
  *     node supabase/pruebas/adjuntos.test.mjs /tmp/env.mjs
  *
- * Mandar un documento son dos llamadas a Meta y el detalle está en la segunda.
- * Lo que se vigila acá:
+ * A Meta se le pasa un enlace firmado al archivo, no el archivo: así mandar
+ * 50 MB le cuesta al servidor lo mismo que mandar 50 KB. Lo que se vigila acá:
  *
  *   · que vaya `filename`. Sin eso el cliente recibe la lista de precios
  *     llamada «document.pdf» y en su teléfono no se distingue de nada;
  *   · que el tipo sea «document» y no «image», que es lo que hacía antes el
  *     único camino que existía;
+ *   · que vaya el enlace y NO los bytes, que es lo que levanta el tope;
  *   · que un .exe o un .zip se frenen acá y no en Meta, donde el error habla
  *     de «type» y no dice qué había que hacer;
- *   · que el tope de tamaño corte antes de subir cuatro megas al pedo.
+ *   · que 50 MB pasen y 60 no.
  *
  * No toca la red: se reemplaza `fetch` y se mira qué se le pidió.
  *
@@ -43,19 +44,20 @@ function espiar() {
   const llamadas = [];
   global.fetch = async (url, opciones) => {
     llamadas.push({ url: String(url), opciones });
-    const esSubida = String(url).endsWith("/media");
     return {
       ok: true,
       status: 200,
-      json: async () =>
-        esSubida ? { id: "media-123" } : { messages: [{ id: "wamid.ABC" }] },
+      json: async () => ({ messages: [{ id: "wamid.ABC" }] }),
     };
   };
   return llamadas;
 }
 
+const ENLACE = "https://ejemplo.supabase.co/storage/v1/object/sign/whatsapp/saliente/1/abc?token=xyz";
+
 const pdf = (bytes = 1024) => ({
-  bytes: new ArrayBuffer(bytes),
+  enlace: ENLACE,
+  bytes,
   mime: "application/pdf",
   nombre: "Lista de precios 2026.pdf",
 });
@@ -67,13 +69,12 @@ console.log("── un PDF ──");
 
   es("sale bien", r.ok, true);
   es("devuelve el id de Meta", r.waId, "wamid.ABC");
-  es("son dos llamadas: subir y mandar", llamadas.length, 2);
-  es("la primera sube el archivo", llamadas[0].url.endsWith("/111/media"), true);
+  es("ES UNA SOLA LLAMADA, NO SE SUBE NADA", llamadas.length, 1);
 
-  const cuerpo = JSON.parse(llamadas[1].opciones.body);
-  es("la segunda va a messages", llamadas[1].url.endsWith("/111/messages"), true);
+  const cuerpo = JSON.parse(llamadas[0].opciones.body);
+  es("va a messages", llamadas[0].url.endsWith("/111/messages"), true);
   es("EL TIPO ES DOCUMENT", cuerpo.type, "document");
-  es("apunta al archivo subido", cuerpo.document.id, "media-123");
+  es("VA EL ENLACE FIRMADO", cuerpo.document.link, ENLACE);
   es("VA EL NOMBRE DEL ARCHIVO", cuerpo.document.filename, "Lista de precios 2026.pdf");
   es("y el pie como caption", cuerpo.document.caption, "Te paso los precios");
   es("al número correcto", cuerpo.to, "50370000000");
@@ -83,7 +84,7 @@ console.log("\n── sin pie no manda un caption vacío ──");
 {
   const llamadas = espiar();
   await enviarDocumento("50370000000", pdf(), "   ");
-  const cuerpo = JSON.parse(llamadas[1].opciones.body);
+  const cuerpo = JSON.parse(llamadas[0].opciones.body);
   es("no hay caption", "caption" in cuerpo.document, false);
   es("pero sí filename", cuerpo.document.filename, "Lista de precios 2026.pdf");
 }
@@ -95,9 +96,9 @@ for (const [mime, nombre] of [
   ["application/msword", "Contrato.doc"],
 ]) {
   const llamadas = espiar();
-  const r = await enviarDocumento("50370000000", { bytes: new ArrayBuffer(64), mime, nombre }, "");
+  const r = await enviarDocumento("50370000000", { enlace: ENLACE, bytes: 64, mime, nombre }, "");
   es(`${nombre} sale`, r.ok, true);
-  es(`${nombre} conserva su nombre`, JSON.parse(llamadas[1].opciones.body).document.filename, nombre);
+  es(`${nombre} conserva su nombre`, JSON.parse(llamadas[0].opciones.body).document.filename, nombre);
 }
 
 console.log("\n── lo que no se puede, se frena acá ──");
@@ -105,7 +106,7 @@ console.log("\n── lo que no se puede, se frena acá ──");
   const llamadas = espiar();
   const r = await enviarDocumento(
     "50370000000",
-    { bytes: new ArrayBuffer(64), mime: "application/x-msdownload", nombre: "virus.exe" },
+    { enlace: ENLACE, bytes: 64, mime: "application/x-msdownload", nombre: "virus.exe" },
     "",
   );
   es("un .exe se rechaza", r.ok, false);
@@ -114,10 +115,16 @@ console.log("\n── lo que no se puede, se frena acá ──");
 }
 {
   const llamadas = espiar();
-  const r = await enviarDocumento("50370000000", pdf(9 * 1024 * 1024), "");
-  es("un PDF de 9 MB se rechaza", r.ok, false);
-  es("tampoco se subió nada", llamadas.length, 0);
-  es("y el error dice cuánto entra", /4 MB/.test(r.error), true);
+  const r = await enviarDocumento("50370000000", pdf(60 * 1024 * 1024), "");
+  es("un PDF de 60 MB se rechaza", r.ok, false);
+  es("no se llamó a Meta", llamadas.length, 0);
+  es("y el error dice cuánto entra", /50 MB/.test(r.error), true);
+}
+{
+  const llamadas = espiar();
+  const r = await enviarDocumento("50370000000", pdf(49 * 1024 * 1024), "");
+  es("UNO DE 49 MB SÍ PASA", r.ok, true);
+  es("y a Meta le fue el enlace, no 49 MB", JSON.parse(llamadas[0].opciones.body).document.link, ENLACE);
 }
 
 console.log("\n── la foto sigue andando igual ──");
@@ -125,13 +132,14 @@ console.log("\n── la foto sigue andando igual ──");
   const llamadas = espiar();
   const r = await enviarImagen(
     "50370000000",
-    { bytes: new ArrayBuffer(2048), mime: "image/jpeg", nombre: "recibo.jpg" },
+    { enlace: ENLACE, bytes: 2048, mime: "image/jpeg", nombre: "recibo.jpg" },
     "Recibido",
   );
-  const cuerpo = JSON.parse(llamadas[1].opciones.body);
+  const cuerpo = JSON.parse(llamadas[0].opciones.body);
   es("sale bien", r.ok, true);
   es("sigue siendo tipo image", cuerpo.type, "image");
   es("con su caption", cuerpo.image.caption, "Recibido");
+  es("y con el enlace", cuerpo.image.link, ENLACE);
   // Meta rechaza `filename` en una imagen; que el camino compartido no se lo
   // haya contagiado al refactorizar es justo lo que hay que comprobar.
   es("Y SIN FILENAME, QUE EN UNA FOTO NO VA", "filename" in cuerpo.image, false);

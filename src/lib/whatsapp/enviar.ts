@@ -79,16 +79,36 @@ export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
 /**
  * Manda un documento: un PDF, una planilla, una presentación.
  *
- * Casi igual que una foto —subir y después mandar el id— con una diferencia
- * que importa: `filename`. Sin eso el cliente recibe el archivo con un nombre
- * inventado por Meta, y una lista de precios que llega como «document.pdf» no
- * se distingue de cualquier otra cosa en su teléfono.
+ * ------------------------------------------------------------------------
+ * POR QUÉ UN ENLACE Y NO EL ARCHIVO
+ * ------------------------------------------------------------------------
  *
- * El pie va como `caption`, igual que en una foto.
+ * Meta acepta las dos formas: subirle los bytes y quedarse con un id, o darle
+ * una dirección y que él la busque. Antes se le subían los bytes, y eso
+ * obligaba a que el archivo entero pasara por el servidor: entraba por la
+ * petición, se guardaba en memoria y salía otra vez para Meta. Con 4 MB
+ * andaba; con 50 no, porque la función tiene diez segundos para contestar y
+ * cien megas de ida y vuelta no entran siempre en diez segundos.
+ *
+ * Con el enlace el servidor no toca los bytes ni una vez. Le pasa a Meta una
+ * dirección firmada del bucket y Meta la busca por su cuenta, así que mandar
+ * 50 MB le cuesta lo mismo que mandar 50 KB.
+ *
+ * Lo que se paga: durante los minutos que dura la firma, cualquiera que tenga
+ * esa dirección puede bajar el archivo. Es una cadena larga e imposible de
+ * adivinar, caduca sola y esto es lo que nosotros le mandamos al cliente —una
+ * lista de precios, un temario—, no lo que el cliente nos manda a nosotros.
+ * Los comprobantes que llegan siguen sin ser accesibles desde afuera.
+ *
+ * ------------------------------------------------------------------------
+ *
+ * `filename` es lo que distingue esto de una foto: sin eso el cliente recibe
+ * la lista de precios llamada «document.pdf», que en su teléfono no se
+ * distingue de nada.
  */
 export async function enviarDocumento(
   telefono: string,
-  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  archivo: { enlace: string; mime: string; nombre: string; bytes: number },
   pie: string,
 ): Promise<ResultadoEnvio> {
   if (!esDocumentoAceptado(archivo.mime)) {
@@ -99,41 +119,39 @@ export async function enviarDocumento(
     };
   }
 
-  if (archivo.bytes.byteLength > TOPE_DOCUMENTO_BYTES) {
+  if (archivo.bytes > TOPE_DOCUMENTO_BYTES) {
     return {
       ok: false,
       waId: null,
       error:
-        `El archivo pesa más de ${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB, que es lo que ` +
-        "aguanta el envío. Mandá una versión más liviana o pasale un enlace de descarga.",
+        `El archivo pesa más de ${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB, que es el tope. ` +
+        "Mandá una versión más liviana o pasale un enlace de descarga.",
     };
   }
 
-  return subirYMandar(telefono, archivo, (id) => ({
+  return mandar(telefono, {
     type: "document",
     document: {
-      id,
+      link: archivo.enlace,
       filename: archivo.nombre,
       ...(pie.trim() ? { caption: pie.trim() } : {}),
     },
-  }));
+  });
 }
 
 /**
  * Manda una foto.
  *
- * Son dos llamadas y ninguna se puede saltear: Meta no acepta el archivo junto
- * con el mensaje. Primero se sube y devuelve un id, y recién después se manda
- * un mensaje que apunta a ese id. (Se puede mandar una URL pública en vez del
- * id, pero eso obligaría a publicar el archivo en internet para que Meta lo
- * lea, y estos son comprobantes y documentos.)
+ * Mismo camino que el documento —un enlace firmado, no los bytes— con dos
+ * diferencias: el tope es el de Meta para imágenes, más bajo que el de
+ * documentos, y no lleva `filename`, que en una foto Meta rechaza.
  */
 export async function enviarImagen(
   telefono: string,
-  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  archivo: { enlace: string; mime: string; nombre: string; bytes: number },
   pie: string,
 ): Promise<ResultadoEnvio> {
-  if (archivo.bytes.byteLength > TOPE_IMAGEN_BYTES) {
+  if (archivo.bytes > TOPE_IMAGEN_BYTES) {
     return {
       ok: false,
       waId: null,
@@ -141,25 +159,25 @@ export async function enviarImagen(
     };
   }
 
-  return subirYMandar(telefono, archivo, (id) => ({
+  return mandar(telefono, {
     type: "image",
-    image: pie.trim() ? { id, caption: pie.trim() } : { id },
-  }));
+    image: pie.trim()
+      ? { link: archivo.enlace, caption: pie.trim() }
+      : { link: archivo.enlace },
+  });
 }
 
 /**
- * Los dos pasos que comparten la foto y el documento.
+ * Le pasa a Meta un mensaje ya armado.
  *
- * Lo único que cambia entre uno y otro es el cuerpo del segundo paso, así que
- * eso llega como función y el resto —subir, leer el id, manejar los errores de
- * las dos llamadas— vive una sola vez. Antes de que existiera el documento
- * esto estaba escrito dentro de `enviarImagen`; copiarlo habría dejado dos
- * lugares donde arreglar el día que Meta cambie algo.
+ * Una sola llamada: antes eran dos —subir y después mandar— y el paso de subir
+ * se fue con el cambio al enlace. Lo comparten la foto, el documento y
+ * cualquier cosa que se agregue mañana; lo único que cada uno pone es su
+ * pedazo del cuerpo.
  */
-async function subirYMandar(
+async function mandar(
   telefono: string,
-  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
-  cuerpoDelMensaje: (idDeMedia: string) => Record<string, unknown>,
+  cuerpoDelMensaje: Record<string, unknown>,
 ): Promise<ResultadoEnvio> {
   const token = process.env.WHATSAPP_TOKEN;
   const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -169,34 +187,13 @@ async function subirYMandar(
   }
 
   try {
-    // Paso 1: subir el archivo y quedarse con el id.
-    const formulario = new FormData();
-    formulario.append("messaging_product", "whatsapp");
-    formulario.append("type", archivo.mime);
-    formulario.append("file", new Blob([archivo.bytes], { type: archivo.mime }), archivo.nombre);
-
-    const subida = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/media`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      body: formulario,
-    });
-
-    const datos = (await subida.json().catch(() => null)) as
-      | { id?: string; error?: { message?: string; code?: number } }
-      | null;
-
-    if (!subida.ok || !datos?.id) {
-      return { ok: false, waId: null, error: explicar(datos?.error, subida.status) };
-    }
-
-    // Paso 2: el mensaje que apunta a ese id.
     const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: telefono,
-        ...cuerpoDelMensaje(datos.id),
+        ...cuerpoDelMensaje,
       }),
     });
 

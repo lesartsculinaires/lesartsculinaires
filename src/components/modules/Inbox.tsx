@@ -3,8 +3,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
-import { asignar, enviarFoto, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
-import { ACEPTA_ADJUNTOS } from "@/lib/whatsapp/adjuntos";
+import { asignar, enviarArchivo, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
+import {
+  ACEPTA_ADJUNTOS,
+  BALDE_WHATSAPP,
+  CARPETA_SALIENTE,
+  TOPE_DOCUMENTO_BYTES,
+} from "@/lib/whatsapp/adjuntos";
+import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
@@ -119,6 +125,14 @@ export function Inbox({
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
   /**
+   * En qué va el envío, para poder decirlo.
+   *
+   * Con archivos chicos daba igual, pero 50 MB por una conexión de oficina son
+   * bastantes segundos: un botón que dice «Enviando…» todo ese rato parece
+   * colgado. Diciendo «Subiendo…» primero se entiende que está avanzando.
+   */
+  const [fase, setFase] = useState<"subiendo" | "enviando" | null>(null);
+  /**
    * La foto elegida, esperando confirmación.
    *
    * Antes se mandaba en el mismo instante en que se elegía del disco. Elegir
@@ -226,23 +240,63 @@ export function Inbox({
   const nuncaEscribio = horasDesdeEntrante(delHilo) == null;
 
   /**
-   * Manda una foto.
+   * Manda el archivo elegido.
    *
-   * El pie de foto es lo que esté escrito en la caja: es lo que uno espera al
+   * Son dos pasos y el primero es el que cambió todo: el archivo sube derecho
+   * de acá al bucket de Supabase, sin pasar por el servidor de la aplicación.
+   * Antes iba adentro de la llamada al servidor y ahí el techo eran 6 MB, así
+   * que un PDF de veinte megas no había forma de mandarlo. Por este camino el
+   * tope pasa a ser el del bucket.
+   *
+   * El segundo paso le pasa al servidor nada más la ruta, y el servidor se
+   * encarga de WhatsApp. Si eso falla, él borra lo que se acaba de subir.
+   *
+   * El mensaje escrito en la caja va junto al archivo: es lo que uno espera al
    * escribir algo y después adjuntar, y ahorra mandar dos mensajes.
    */
   const mandarFoto = async (archivo: File) => {
     if (!actual) return;
+
+    if (archivo.size > TOPE_DOCUMENTO_BYTES) {
+      setAviso(
+        `«${archivo.name}» pesa ${(archivo.size / 1024 / 1024).toFixed(1)} MB y el tope es ` +
+          `${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB.`,
+      );
+      return;
+    }
+
     setMandandoFoto(true);
+    setFase("subiendo");
     setAviso(null);
 
-    const datos = new FormData();
-    datos.set("archivo", archivo);
-    datos.set("conversacionId", String(actual.id));
-    datos.set("pie", texto);
+    // Un nombre nuevo y sin relación con el original: dos personas mandando
+    // «Lista de precios.pdf» el mismo día no se pisan, y el nombre de verdad
+    // viaja aparte, que es el que va a ver el cliente.
+    const ruta = `${CARPETA_SALIENTE}/${actual.id}/${crypto.randomUUID()}`;
 
-    const r = await enviarFoto(datos);
+    const { error: errSubida } = await getBrowserClient()
+      .storage.from(BALDE_WHATSAPP)
+      .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+
+    if (errSubida) {
+      setMandandoFoto(false);
+      setFase(null);
+      setAviso(`No se pudo subir «${archivo.name}»: ${errSubida.message}`);
+      return;
+    }
+
+    setFase("enviando");
+    const r = await enviarArchivo({
+      conversacionId: actual.id,
+      ruta,
+      nombre: archivo.name,
+      mime: archivo.type,
+      bytes: archivo.size,
+      pie: texto,
+    });
+
     setMandandoFoto(false);
+    setFase(null);
 
     if (r.ok) {
       setTexto("");
@@ -505,7 +559,7 @@ export function Inbox({
                   cursor: mandandoFoto ? "wait" : "pointer",
                 }}
               >
-                {mandandoFoto ? "Enviando…" : "Enviar"}
+                {fase === "subiendo" ? "Subiendo…" : fase === "enviando" ? "Enviando…" : "Enviar"}
               </button>
             </div>
           }
