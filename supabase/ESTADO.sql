@@ -215,7 +215,11 @@ with revisiones as (
 
     ('20260924120000_fusionar_oportunidades',
      'Unir dos leads del mismo contacto sin perder su bitácora ni su canal',
-     exists (select 1 from pg_proc where proname = 'fusionar_oportunidades'))
+     exists (select 1 from pg_proc where proname = 'fusionar_oportunidades')),
+
+    ('20260925120000_fusionar_desde_el_editor',
+     'Fusionar también se puede desde el editor de SQL, que no tiene sesión',
+     exists (select 1 from pg_proc where proname = 'exige_direccion'))
 
   ) as t(archivo, para_que, aplicada)
 ),
