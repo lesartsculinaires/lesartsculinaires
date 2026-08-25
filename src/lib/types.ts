@@ -346,6 +346,18 @@ export interface Rol {
    * supervisa al equipo— sin darle además la administración del sistema.
    */
   veTodo: boolean;
+  /**
+   * Ve todos los clientes, pero en el Pipeline sólo sus propios leads.
+   *
+   * Estrecha nada más el tablero. Existe porque `veTodo` es una sola llave
+   * para dos pantallas —Clientes y Pipeline salen de las mismas filas— y hay
+   * quien necesita poder buscar a cualquier cliente y a la vez tener un
+   * tablero que sea el suyo.
+   *
+   * A quien no tiene `veTodo` no le cambia nada: la base ya le devuelve sólo
+   * lo suyo y el tablero sale filtrado solo.
+   */
+  pipelineSoloPropios: boolean;
 }
 
 /** One row of the permissions grid. */

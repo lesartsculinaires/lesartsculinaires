@@ -41,6 +41,29 @@ export async function fetchAccesos(userId: string): Promise<{
     supabase.from("usuarios").select("id, nombre, correo, rol_id, activo").order("correo"),
   ]);
 
+  /*
+   * La casilla del tablero se pide aparte, y si no está no pasa nada.
+   *
+   * Va en su propia consulta a propósito. Nombrar una columna que todavía no
+   * existe hace que PostgREST conteste «does not exist», y eso lo lee la
+   * comprobación de abajo como «faltan las tablas de roles»: el CRM entero
+   * pasaría a mostrar la pantalla de «corré la migración» hasta que alguien la
+   * corriera. Desplegar el código antes que el SQL es lo normal, así que ese
+   * rato tiene que ser inofensivo.
+   *
+   * Sin la columna, nadie estrecha su tablero, que es exactamente como se
+   * comportaba el CRM hasta ahora.
+   */
+  const soloPropios = new Set<number>();
+  {
+    const { data, error } = await supabase.from("roles").select("id, pipeline_solo_propios");
+    if (!error) {
+      for (const r of (data ?? []) as Row[]) {
+        if (r.pipeline_solo_propios === true) soloPropios.add(Number(r.id));
+      }
+    }
+  }
+
   // El enlace usuario→vendedor vive en `vendedores`, no en `usuarios`: es esa
   // ficha la que apunta a la cuenta. Se trae aparte y se cruza acá.
   const { data: vends } = await supabase
@@ -74,6 +97,7 @@ export async function fetchAccesos(userId: string): Promise<{
     // Falta la columna mientras no se corra la migración de permisos; sin ella
     // nadie tiene el permiso, que es el estado de antes.
     veTodo: r.ve_todo === true,
+    pipelineSoloPropios: soloPropios.has(Number(r.id)),
   }));
 
   const usuarios: Usuario[] = rows(usrs).map((r) => ({

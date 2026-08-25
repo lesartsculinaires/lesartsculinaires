@@ -239,7 +239,13 @@ with revisiones as (
      exists (select 1 from public.roles where nombre = 'Asesores' and ve_todo = false)
        and not exists (select 1 from public.roles
                         where nombre in ('Gerente de ventas', 'Jefe de ventas')
-                          and ve_todo = false))
+                          and ve_todo = false)),
+
+    ('20260929120000_pipeline_solo_propios',
+     'Ver todos los clientes pero en el Pipeline sólo los leads propios',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'roles'
+                and column_name = 'pipeline_solo_propios'))
 
   ) as t(archivo, para_que, aplicada)
 ),
