@@ -147,8 +147,12 @@ begin
   insert into public.contactos_canal (cliente_id, canal_id, primera_vez, ultima_vez)
   select o.cliente_id,
          o.canal_id,
-         min(o.fecha_registro::timestamptz),
-         max(o.fecha_registro::timestamptz)
+         -- Al mediodía y en hora de El Salvador. `fecha_registro` no tiene
+         -- hora; convertirla derecho la clava a medianoche UTC, que acá son
+         -- las seis de la tarde del día anterior, y el lead quedaría anotado
+         -- un día antes de cuando llegó.
+         min((o.fecha_registro + time '12:00') at time zone 'America/El_Salvador'),
+         max((o.fecha_registro + time '12:00') at time zone 'America/El_Salvador')
     from public.oportunidades o
    where o.canal_id is not null and o.cliente_id is not null
    group by o.cliente_id, o.canal_id

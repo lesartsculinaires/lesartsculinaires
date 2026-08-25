@@ -211,7 +211,11 @@ with revisiones as (
 
     ('20260923120000_fusionar_contactos',
      'Unir fichas repetidas sin perder leads ni la fecha de entrada',
-     exists (select 1 from pg_proc where proname = 'fusionar_contactos'))
+     exists (select 1 from pg_proc where proname = 'fusionar_contactos')),
+
+    ('20260924120000_fusionar_oportunidades',
+     'Unir dos leads del mismo contacto sin perder su bitácora ni su canal',
+     exists (select 1 from pg_proc where proname = 'fusionar_oportunidades'))
 
   ) as t(archivo, para_que, aplicada)
 ),
