@@ -232,7 +232,14 @@ with revisiones as (
 
     ('20260927120000_modulos_por_rol',
      'El catálogo de módulos al día, para poder elegir cuáles ve cada rol',
-     (select count(*) from public.modulos where padre is null) >= 13)
+     (select count(*) from public.modulos where padre is null) >= 13),
+
+    ('20260928120000_pipeline_por_rol',
+     'Gerencia ve todo el pipeline; Ventas y Asesores, sólo lo suyo',
+     exists (select 1 from public.roles where nombre = 'Asesores' and ve_todo = false)
+       and not exists (select 1 from public.roles
+                        where nombre in ('Gerente de ventas', 'Jefe de ventas')
+                          and ve_todo = false))
 
   ) as t(archivo, para_que, aplicada)
 ),
