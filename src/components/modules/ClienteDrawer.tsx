@@ -7,6 +7,7 @@ import { programarReactivacion } from "@/app/seguimientos-actions";
 import { Adjuntos } from "@/components/modules/Adjuntos";
 import { Bitacora } from "@/components/modules/Bitacora";
 import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
+import { CanalesDelContacto } from "@/components/modules/CanalesDelContacto";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { CampoEditable } from "@/components/ui/CampoEditable";
@@ -473,6 +474,10 @@ export function ClienteDrawer({
           {o.canal}
         </span>
       </div>
+
+      {o.clienteId != null && (
+        <CanalesDelContacto clienteId={o.clienteId} accent={accent} />
+      )}
 
       <BotonLinkRegistro oportunidadId={o.id} accent={accent} />
 
