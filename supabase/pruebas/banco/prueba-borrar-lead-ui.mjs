@@ -43,12 +43,24 @@ const es = (t, r, e) => {
   } else console.log(`✓ ${t}`);
 };
 
-const ASESORA = sql(`
-  select u.id from auth.users u join public.usuarios pu on pu.id=u.id
-    join public.roles r on r.id=pu.rol_id where r.es_admin=false limit 1;`);
-const DIRECCION = sql(`
-  select u.id from auth.users u join public.usuarios pu on pu.id=u.id
-    join public.roles r on r.id=pu.rol_id where r.es_admin=true limit 1;`);
+/*
+ * Quién es cada una sale del token con el que se va a entrar.
+ *
+ * Buscarlas con «la primera que no sea admin» y entrar igual con el token de
+ * Ale es una trampa que ya mordió tres veces: cuando la consulta devuelve a
+ * Huri, la prueba le asigna los leads a una y mira la pantalla de la otra, que
+ * por supuesto no los ve. Falla saltado y culpando al código.
+ */
+const subDe = (archivo) => {
+  const cuerpo = fs
+    .readFileSync(`/home/user/lesartsculinaires/supabase/pruebas/banco/${archivo}`, "utf8")
+    .trim()
+    .split(".")[1];
+  return JSON.parse(Buffer.from(cuerpo, "base64url").toString()).sub;
+};
+
+const ASESORA = subDe("jwt-ale.txt");
+const DIRECCION = subDe("jwt-jefa.txt");
 const VENDEDORA = sql(`select id from public.vendedores where usuario_id='${ASESORA}' limit 1;`);
 
 const limpiar = `

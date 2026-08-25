@@ -210,6 +210,25 @@ export default function CrmApp({
   const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
 
   /**
+   * Las oportunidades que se muestran en el tablero.
+   *
+   * Casi siempre son todas las que llegaron, porque la base ya devolvió las
+   * que esta persona puede ver. La excepción es el rol que ve todos los
+   * clientes pero trabaja su propio tablero: ahí se filtra acá, y sólo acá,
+   * para que Clientes las siga listando enteras.
+   *
+   * Si la persona no tiene ficha de vendedor no se filtra nada. Filtrar contra
+   * un vendedor que no existe dejaría el tablero vacío sin explicación, y un
+   * tablero vacío se lee como «se perdieron los leads».
+   */
+  const delTablero = useMemo(() => {
+    const soloMios = rolActual?.pipelineSoloPropios === true;
+    const yo = accesos.yo?.vendedorId ?? null;
+    if (!soloMios || yo == null) return oportunidades;
+    return oportunidades.filter((o) => o.vendedorId === yo);
+  }, [oportunidades, rolActual, accesos.yo]);
+
+  /**
    * Los módulos que esta persona tiene en la barra.
    *
    * Sale de lo que dirección marcó en Usuarios y Roles. Ojo con lo que esto
@@ -481,7 +500,7 @@ export default function CrmApp({
 
           {mod === "Pipeline" && (
             <Pipeline
-              oportunidades={oportunidades}
+              oportunidades={delTablero}
               accent={accent}
               drag={state.drag}
               over={state.over}

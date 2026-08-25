@@ -51,12 +51,25 @@ const es = (t, r, e) => {
 // La asesora y su ficha de vendedora salen de la base, enlazadas por el
 // usuario. Buscarla por nombre no sirve: «Ale%» encuentra también a Alexandra
 // Ramos, la subconsulta devuelve dos filas y el sembrado se cae entero.
-const ASESORA = sql(`
-  select u.id from auth.users u
-    join public.usuarios pu on pu.id = u.id
-    join public.roles r on r.id = pu.rol_id
-   where r.es_admin = false limit 1;
-`);
+/*
+ * La asesora sale del token con el que se entra, no de una consulta.
+ *
+ * Buscarla con «la primera que no sea admin» y entrar igual con el token de
+ * Ale es una trampa: cuando la consulta devuelve a Huri, la prueba siembra la
+ * conversación de una y mira la pantalla de la otra. Falla saltado y culpando
+ * al código. Sólo importa en las pruebas que abren el navegador; las que hacen
+ * todo por SQL usan el mismo id para sembrar y para los claims, así que ahí
+ * la consulta no puede discrepar con nada.
+ */
+const subDe = (archivo) => {
+  const cuerpo = fs
+    .readFileSync(`/home/user/lesartsculinaires/supabase/pruebas/banco/${archivo}`, "utf8")
+    .trim()
+    .split(".")[1];
+  return JSON.parse(Buffer.from(cuerpo, "base64url").toString()).sub;
+};
+
+const ASESORA = subDe("jwt-ale.txt");
 const VENDEDORA = sql(`select id from public.vendedores where usuario_id = '${ASESORA}' limit 1;`);
 
 if (!ASESORA || !VENDEDORA) {
