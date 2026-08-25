@@ -6,8 +6,10 @@ import { revalidatePath } from "next/cache";
 import { altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { getServerClient, getUser } from "@/lib/supabase/server";
+import { esDocumentoAceptado, tiposQueSePueden } from "@/lib/whatsapp/adjuntos";
 import {
   TOPE_IMAGEN_BYTES,
+  enviarDocumento,
   enviarImagen,
   enviarTexto,
   hayWhatsapp,
@@ -552,16 +554,21 @@ async function porDefecto(
 }
 
 /**
- * Manda una foto por WhatsApp.
+ * Manda una foto o un documento por WhatsApp.
  *
  * El archivo sí pasa por el servidor, a diferencia de los adjuntos de la ficha
  * —que el navegador sube directo a Supabase—, y no hay alternativa: Meta pide
- * el archivo con el token, y el token no puede salir del servidor. Por eso el
- * tope es el de Meta para imágenes, que además entra en el cuerpo que aceptan
- * las funciones de Netlify.
+ * el archivo con el token, y el token no puede salir del servidor. Eso es lo
+ * que le pone techo al tamaño: no lo que aguanta WhatsApp, sino lo que entra
+ * en el cuerpo de una función de Netlify.
+ *
+ * Foto y documento van por el mismo camino porque todo lo de acá es igual para
+ * los dos —la conversación, la copia en el balde, la fila en `mensajes`, el
+ * resumen del hilo—; lo único que cambia es a cuál de las dos funciones de
+ * envío se llama y qué queda escrito en `tipo`.
  *
  * Mismo orden que al responder con texto: primero sale, después se guarda. Al
- * revés, un fallo de envío dejaría en el hilo una foto que el cliente no
+ * revés, un fallo de envío dejaría en el hilo un archivo que el cliente no
  * recibió.
  */
 export async function enviarFoto(datos: FormData): Promise<ActionResult> {
@@ -569,13 +576,19 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
   const conversacionId = Number(datos.get("conversacionId"));
   const pie = String(datos.get("pie") ?? "");
 
-  if (!(archivo instanceof File)) return { ok: false, error: "No llegó ninguna foto." };
+  if (!(archivo instanceof File)) return { ok: false, error: "No llegó ningún archivo." };
   if (!Number.isFinite(conversacionId)) return { ok: false, error: "Conversación no válida." };
 
-  if (!archivo.type.startsWith("image/")) {
-    return { ok: false, error: "Sólo se pueden mandar fotos por acá." };
+  const esImagen = archivo.type.startsWith("image/");
+  const esDocumento = esDocumentoAceptado(archivo.type);
+
+  if (!esImagen && !esDocumento) {
+    return {
+      ok: false,
+      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar fotos, ${tiposQueSePueden()}.`,
+    };
   }
-  if (archivo.size > TOPE_IMAGEN_BYTES) {
+  if (esImagen && archivo.size > TOPE_IMAGEN_BYTES) {
     return {
       ok: false,
       error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
@@ -600,7 +613,8 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
 
   const bytes = await archivo.arrayBuffer();
 
-  const envio = await enviarImagen(
+  const mandar = esImagen ? enviarImagen : enviarDocumento;
+  const envio = await mandar(
     String(conv.telefono),
     { bytes, mime: archivo.type, nombre: archivo.name },
     pie,
@@ -609,7 +623,7 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
   if (!envio.ok) return { ok: false, error: envio.error };
 
   // Se guarda una copia en el balde para poder verla en el hilo. Meta no
-  // devuelve la foto que uno mismo mandó, así que sin esta copia el mensaje
+  // devuelve el archivo que uno mismo mandó, así que sin esta copia el mensaje
   // saliente quedaría como un hueco.
   let ruta: string | null = null;
   const nombreArchivo = `${crypto.randomUUID()}${extensionDeMime(archivo.type)}`;
@@ -623,7 +637,9 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
     conversacion_id: conversacionId,
     wa_id: envio.waId,
     direccion: "saliente",
-    tipo: "image",
+    // El mismo vocabulario que usa Meta en lo que entra, para que el hilo no
+    // tenga que distinguir si el mensaje lo mandamos nosotros o el cliente.
+    tipo: esImagen ? "image" : "document",
     texto: pie.trim() || null,
     estado: "enviado",
     enviado_por: user.id,
@@ -642,7 +658,10 @@ export async function enviarFoto(datos: FormData): Promise<ActionResult> {
   await supabase
     .from("conversaciones")
     .update({
-      ultimo_texto: (pie.trim() || "Foto").slice(0, 200),
+      // Sin pie, en la lista de chats se lee el nombre del archivo y no un
+      // «Documento» a secas: entre cinco hilos, «Lista de precios.pdf» dice
+      // cuál es cuál y la palabra sola no dice nada.
+      ultimo_texto: (pie.trim() || (esImagen ? "Foto" : archivo.name)).slice(0, 200),
       ultimo_mensaje_en: new Date().toISOString(),
       sin_leer: 0,
     })
@@ -731,6 +750,13 @@ function extensionDeMime(mime: string): string {
     "image/webp": ".webp",
     "image/gif": ".gif",
     "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "text/plain": ".txt",
   };
   return tabla[mime.split(";")[0].trim()] ?? "";
 }

@@ -1,5 +1,11 @@
 import "server-only";
 
+import {
+  TOPE_DOCUMENTO_BYTES,
+  esDocumentoAceptado,
+  tiposQueSePueden,
+} from "@/lib/whatsapp/adjuntos";
+
 /**
  * Envío por la API de Meta.
  *
@@ -71,6 +77,49 @@ export async function enviarTexto(
 export const TOPE_IMAGEN_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Manda un documento: un PDF, una planilla, una presentación.
+ *
+ * Casi igual que una foto —subir y después mandar el id— con una diferencia
+ * que importa: `filename`. Sin eso el cliente recibe el archivo con un nombre
+ * inventado por Meta, y una lista de precios que llega como «document.pdf» no
+ * se distingue de cualquier otra cosa en su teléfono.
+ *
+ * El pie va como `caption`, igual que en una foto.
+ */
+export async function enviarDocumento(
+  telefono: string,
+  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  pie: string,
+): Promise<ResultadoEnvio> {
+  if (!esDocumentoAceptado(archivo.mime)) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar ${tiposQueSePueden()}.`,
+    };
+  }
+
+  if (archivo.bytes.byteLength > TOPE_DOCUMENTO_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error:
+        `El archivo pesa más de ${TOPE_DOCUMENTO_BYTES / 1024 / 1024} MB, que es lo que ` +
+        "aguanta el envío. Mandá una versión más liviana o pasale un enlace de descarga.",
+    };
+  }
+
+  return subirYMandar(telefono, archivo, (id) => ({
+    type: "document",
+    document: {
+      id,
+      filename: archivo.nombre,
+      ...(pie.trim() ? { caption: pie.trim() } : {}),
+    },
+  }));
+}
+
+/**
  * Manda una foto.
  *
  * Son dos llamadas y ninguna se puede saltear: Meta no acepta el archivo junto
@@ -84,19 +133,39 @@ export async function enviarImagen(
   archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
   pie: string,
 ): Promise<ResultadoEnvio> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  if (!token || !numero) {
-    return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
-  }
-
   if (archivo.bytes.byteLength > TOPE_IMAGEN_BYTES) {
     return {
       ok: false,
       waId: null,
       error: `WhatsApp no acepta imágenes de más de ${TOPE_IMAGEN_BYTES / 1024 / 1024} MB.`,
     };
+  }
+
+  return subirYMandar(telefono, archivo, (id) => ({
+    type: "image",
+    image: pie.trim() ? { id, caption: pie.trim() } : { id },
+  }));
+}
+
+/**
+ * Los dos pasos que comparten la foto y el documento.
+ *
+ * Lo único que cambia entre uno y otro es el cuerpo del segundo paso, así que
+ * eso llega como función y el resto —subir, leer el id, manejar los errores de
+ * las dos llamadas— vive una sola vez. Antes de que existiera el documento
+ * esto estaba escrito dentro de `enviarImagen`; copiarlo habría dejado dos
+ * lugares donde arreglar el día que Meta cambie algo.
+ */
+async function subirYMandar(
+  telefono: string,
+  archivo: { bytes: ArrayBuffer; mime: string; nombre: string },
+  cuerpoDelMensaje: (idDeMedia: string) => Record<string, unknown>,
+): Promise<ResultadoEnvio> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  if (!token || !numero) {
+    return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
   }
 
   try {
@@ -127,8 +196,7 @@ export async function enviarImagen(
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: telefono,
-        type: "image",
-        image: pie.trim() ? { id: datos.id, caption: pie.trim() } : { id: datos.id },
+        ...cuerpoDelMensaje(datos.id),
       }),
     });
 

@@ -100,7 +100,9 @@ console.log("\n── mandar una foto pide confirmación ──");
   const t = (await visor.innerText()).replace(/\s+/g," ").trim();
   console.log(`   (${t.slice(0, 90)})`);
   es("dice qué archivo es", /prueba-envio\.png/.test(t), true);
-  es("ofrece pie de foto", await visor.locator('input[placeholder*="Pie de foto"]').count(), 1);
+  // «junto al archivo» y no «pie de foto»: por acá ahora también salen PDF,
+  // planillas y presentaciones, y un documento no lleva pie de foto.
+  es("ofrece escribir un mensaje", await visor.locator('input[placeholder*="junto al archivo"]').count(), 1);
   es("y los dos botones", /Cancelar/.test(t) && /Enviar/.test(t), true);
   await p.screenshot({path: process.env.SP + "/visor-envio.png"});
 

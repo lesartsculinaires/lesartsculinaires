@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
 import { asignar, enviarFoto, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
+import { ACEPTA_ADJUNTOS } from "@/lib/whatsapp/adjuntos";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
@@ -460,7 +461,7 @@ export function Inbox({
               <input
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
-                placeholder="Pie de foto (opcional)"
+                placeholder="Un mensaje junto al archivo (opcional)"
                 style={{
                   flex: 1,
                   minWidth: 180,
@@ -869,20 +870,22 @@ export function Inbox({
             </label>
 
             <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
-              {/* El clip. Sólo fotos: los documentos del cliente van a los
-                  adjuntos de su ficha, que es donde después se los busca. */}
+              {/* El clip: fotos y documentos —PDF, Word, Excel, PowerPoint—,
+                  que es lo que Meta deja mandar. La lista sale de la misma
+                  constante que comprueba el servidor, así que el selector no
+                  puede ofrecer algo que después se rechace. */}
               <input
                 ref={fotoRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={ACEPTA_ADJUNTOS}
                 style={{ display: "none" }}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  // Se limpia siempre: si no, elegir la misma foto dos veces
+                  // Se limpia siempre: si no, elegir el mismo archivo dos veces
                   // seguidas no dispara nada y parece que el botón se rompió.
                   e.target.value = "";
-                  // `createObjectURL` la muestra desde el disco, sin subirla:
-                  // si la persona cancela, la foto no salió a ningún lado.
+                  // `createObjectURL` lo muestra desde el disco, sin subirlo:
+                  // si la persona cancela, el archivo no salió a ningún lado.
                   if (f) setPorEnviar({ archivo: f, url: URL.createObjectURL(f) });
                 }}
               />
@@ -892,10 +895,10 @@ export function Inbox({
                 disabled={!puedeResponder || nota || mandandoFoto || ventanaCerrada}
                 title={
                   nota
-                    ? "Una nota interna no lleva foto"
+                    ? "Una nota interna no lleva archivos"
                     : ventanaCerrada
                       ? "Pasadas las 24 horas sólo se puede mandar una plantilla"
-                      : "Adjuntar una foto"
+                      : "Adjuntar una foto o un documento"
                 }
                 style={{
                   alignSelf: "flex-end",
