@@ -229,6 +229,43 @@ console.log(`\n── y uno pasado de tope (más de ${TOPE_DOCUMENTO_BYTES / 102
   fs.rmSync(gordo, { force: true });
 }
 
+/*
+ * El caso que dejaba encerrada a la persona.
+ *
+ * Los dos pasos del envío pueden lanzar en vez de devolver un error —una
+ * conexión que se corta a mitad, el servidor que contesta 500— y antes eso no
+ * lo atrapaba nadie: el visor se quedaba diciendo «Subiendo…» para siempre y,
+ * como no se dejaba cerrar mientras creía que estaba mandando, la única salida
+ * era recargar la página. Un archivo de 2 MB con la red inestable bastaba.
+ *
+ * Acá se corta la subida a propósito y se comprueba lo único que importa: que
+ * avise y que se pueda salir.
+ */
+console.log("\n── si la conexión se corta a mitad ──");
+{
+  await p.route("**/storage/v1/object/whatsapp/**", (ruta) => ruta.abort("failed"));
+
+  await p.locator('input[type="file"]').first().setInputFiles(ARCHIVO);
+  await p.waitForTimeout(1200);
+  const v = p.locator('div[role="dialog"][aria-label*="Se va a enviar"]');
+  await v.locator('button:has-text("Enviar")').click();
+  await p.waitForTimeout(3000);
+
+  const t = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+  es("NO SE QUEDA EN «SUBIENDO…»", /Subiendo…/.test(t), false);
+  es("avisa que no se pudo", /No se pudo|tardó demasiado|no deja subir/.test(t), true);
+
+  // Y lo segundo que faltaba: poder salir.
+  await v.locator('button:has-text("Cancelar")').click();
+  await p.waitForTimeout(800);
+  es(
+    "Y SE PUEDE CERRAR EL VISOR",
+    await p.locator('div[role="dialog"][aria-label*="Se va a enviar"]').count(),
+    0,
+  );
+  await p.unroute("**/storage/v1/object/whatsapp/**");
+}
+
 es("sin errores en la página", errores, []);
 await nav.close();
 

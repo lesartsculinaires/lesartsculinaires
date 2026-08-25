@@ -254,6 +254,83 @@ export function Inbox({
    * El mensaje escrito en la caja va junto al archivo: es lo que uno espera al
    * escribir algo y después adjuntar, y ahorra mandar dos mensajes.
    */
+  /**
+   * Cuánto se espera antes de dar por perdido un envío.
+   *
+   * Existe porque sin esto no había nada que cortara: una subida que se queda
+   * a medias —conexión que se cae, wifi que cambia de antena— dejaba el visor
+   * diciendo «Subiendo…» para siempre, y como el visor no se dejaba cerrar
+   * mientras creía que estaba mandando, no quedaba más salida que recargar la
+   * página. Dos minutos alcanzan de sobra para lo que se manda por acá.
+   */
+  const ESPERA_MAXIMA_MS = 120_000;
+
+  /**
+   * La misma promesa, pero que se rinde en vez de esperar para siempre.
+   *
+   * `Promise.race` con un reloj. El temporizador se limpia igual si gana la
+   * promesa: sin eso quedarían timers vivos por cada archivo mandado.
+   */
+  const conTiempoLimite = <T,>(promesa: Promise<T>): Promise<T> => {
+    let reloj: ReturnType<typeof setTimeout>;
+    return Promise.race([
+      promesa,
+      new Promise<never>((_, rechazar) => {
+        reloj = setTimeout(() => rechazar(new Error("TIEMPO")), ESPERA_MAXIMA_MS);
+      }),
+    ]).finally(() => clearTimeout(reloj)) as Promise<T>;
+  };
+
+  /**
+   * El envío que está en curso, si hay alguno.
+   *
+   * Hace falta para dos cosas: poder cancelarlo, y que un resultado que llega
+   * tarde —después de que la persona cerró el visor— no vuelva a encender un
+   * cartel sobre una pantalla en la que ya está haciendo otra cosa.
+   */
+  const enCurso = useRef<{ ruta: string; cancelado: boolean } | null>(null);
+
+  /** Traduce a algo que se entienda lo que devuelve un envío que falló. */
+  const porQueFallo = (e: unknown, nombre: string): string => {
+    const dice = e instanceof Error ? e.message : String(e);
+
+    if (dice === "TIEMPO") {
+      return `«${nombre}» tardó demasiado y se canceló. Puede ser la conexión: probá de nuevo.`;
+    }
+    // El caso más probable la primera vez, y el más difícil de adivinar: la
+    // base todavía no tiene el permiso que deja subir al bucket.
+    if (/row-level security|Unauthorized|violates|403/i.test(dice)) {
+      return (
+        "El servidor no deja subir el archivo. Falta correr la migración " +
+        "20260921120000_adjuntos_grandes.sql en Supabase."
+      );
+    }
+    if (/mime|content type/i.test(dice)) {
+      return `El tipo de «${nombre}» no está permitido en el servidor todavía.`;
+    }
+    return `No se pudo enviar «${nombre}»: ${dice}`;
+  };
+
+  /**
+   * Manda el archivo elegido.
+   *
+   * Son dos pasos y el primero es el que cambió todo: el archivo sube derecho
+   * de acá al bucket de Supabase, sin pasar por el servidor de la aplicación.
+   * Antes iba adentro de la llamada al servidor y ahí el techo eran 6 MB, así
+   * que un PDF de veinte megas no había forma de mandarlo. Por este camino el
+   * tope pasa a ser el del bucket.
+   *
+   * El segundo paso le pasa al servidor nada más la ruta, y el servidor se
+   * encarga de WhatsApp. Si eso falla, él borra lo que se acaba de subir.
+   *
+   * Todo va adentro de un `try`, y eso no es prolijidad: los dos pasos pueden
+   * lanzar en vez de devolver un error —una conexión que se corta, el servidor
+   * que contesta 500— y sin atraparlo el visor quedaba trabado sin forma de
+   * salir.
+   *
+   * El mensaje escrito en la caja va junto al archivo: es lo que uno espera al
+   * escribir algo y después adjuntar, y ahorra mandar dos mensajes.
+   */
   const mandarFoto = async (archivo: File) => {
     if (!actual) return;
 
@@ -265,46 +342,88 @@ export function Inbox({
       return;
     }
 
-    setMandandoFoto(true);
-    setFase("subiendo");
-    setAviso(null);
-
     // Un nombre nuevo y sin relación con el original: dos personas mandando
     // «Lista de precios.pdf» el mismo día no se pisan, y el nombre de verdad
     // viaja aparte, que es el que va a ver el cliente.
     const ruta = `${CARPETA_SALIENTE}/${actual.id}/${crypto.randomUUID()}`;
+    const envio = { ruta, cancelado: false };
+    enCurso.current = envio;
 
-    const { error: errSubida } = await getBrowserClient()
-      .storage.from(BALDE_WHATSAPP)
-      .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+    setMandandoFoto(true);
+    setFase("subiendo");
+    setAviso(null);
 
-    if (errSubida) {
-      setMandandoFoto(false);
-      setFase(null);
-      setAviso(`No se pudo subir «${archivo.name}»: ${errSubida.message}`);
-      return;
+    try {
+      const { error: errSubida } = await conTiempoLimite(
+        getBrowserClient()
+          .storage.from(BALDE_WHATSAPP)
+          .upload(ruta, archivo, { contentType: archivo.type, upsert: false }),
+      );
+
+      if (envio.cancelado) return;
+      if (errSubida) {
+        setAviso(porQueFallo(errSubida, archivo.name));
+        return;
+      }
+
+      setFase("enviando");
+      const r = await conTiempoLimite(
+        enviarArchivo({
+          conversacionId: actual.id,
+          ruta,
+          nombre: archivo.name,
+          mime: archivo.type,
+          bytes: archivo.size,
+          pie: texto,
+        }),
+      );
+
+      if (envio.cancelado) return;
+
+      if (r.ok) {
+        setTexto("");
+        cerrarVisor();
+        onRefrescar();
+      } else {
+        setAviso(r.error);
+      }
+    } catch (e) {
+      if (envio.cancelado) return;
+      setAviso(porQueFallo(e, archivo.name));
+    } finally {
+      if (!envio.cancelado) {
+        setMandandoFoto(false);
+        setFase(null);
+      }
+      enCurso.current = null;
     }
+  };
 
-    setFase("enviando");
-    const r = await enviarArchivo({
-      conversacionId: actual.id,
-      ruta,
-      nombre: archivo.name,
-      mime: archivo.type,
-      bytes: archivo.size,
-      pie: texto,
-    });
-
+  /**
+   * Salir del envío, esté donde esté.
+   *
+   * Se puede en cualquier momento, incluso a mitad de la subida: quedarse
+   * mirando una barra que no avanza, sin poder cerrar, es peor que perder la
+   * subida y volver a empezar. Lo que haya llegado al bucket se borra —la
+   * política deja borrar lo propio bajo «saliente/»— para no dejar un archivo
+   * que nadie va a ver.
+   */
+  const cancelarEnvio = () => {
+    const envio = enCurso.current;
+    if (envio) {
+      envio.cancelado = true;
+      void getBrowserClient()
+        .storage.from(BALDE_WHATSAPP)
+        .remove([envio.ruta])
+        .catch(() => {
+          // Si no llegó a subir no hay nada que borrar, y si falla el borrado
+          // tampoco hay que molestar a nadie con eso.
+        });
+      enCurso.current = null;
+    }
     setMandandoFoto(false);
     setFase(null);
-
-    if (r.ok) {
-      setTexto("");
-      cerrarVisor();
-      onRefrescar();
-    } else {
-      setAviso(r.error);
-    }
+    cerrarVisor();
   };
 
   /**
@@ -509,7 +628,7 @@ export function Inbox({
           mime={porEnviar.archivo.type}
           nombre={porEnviar.archivo.name}
           titulo={`Se va a enviar: ${porEnviar.archivo.name}`}
-          onCerrar={mandandoFoto ? () => {} : cerrarVisor}
+          onCerrar={cancelarEnvio}
           pie={
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <input
@@ -530,8 +649,7 @@ export function Inbox({
               />
               <button
                 type="button"
-                onClick={cerrarVisor}
-                disabled={mandandoFoto}
+                onClick={cancelarEnvio}
                 style={{
                   height: 34,
                   padding: "0 14px",
