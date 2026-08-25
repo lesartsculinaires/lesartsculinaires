@@ -81,10 +81,29 @@ const pesa = (fs.statSync(ARCHIVO).size / 1024 / 1024).toFixed(1);
 
 // ------------------------------------------------------- un hilo para usar
 
+/*
+ * Se limpia antes, no sólo después.
+ *
+ * `clientes.telefono` no tiene restricción única —dos personas pueden compartir
+ * un teléfono— así que el `on conflict do nothing` que había acá no hacía nada
+ * y cada corrida dejaba un cliente más. Con dos, el insert de la conversación
+ * pasaba a devolver dos filas y chocaba contra la única de
+ * `conversaciones.telefono`: se quedaba sin sembrar, y a partir de ahí la
+ * prueba no volvía a pasar nunca hasta rearmar el banco.
+ *
+ * Limpiar al empezar y no confiar en que la corrida anterior terminó bien es
+ * lo que hace que una prueba se pueda repetir.
+ */
 sql(`
   delete from storage.objects where bucket_id='whatsapp';
-  insert into clientes (nombre, telefono) values ('Prueba Grande','50399000001')
-    on conflict do nothing;
+  delete from mensajes where conversacion_id in
+    (select id from conversaciones where telefono='50399000001');
+  delete from conversaciones where telefono='50399000001';
+  delete from oportunidades where cliente_id in
+    (select id from clientes where telefono='50399000001');
+  delete from clientes where telefono='50399000001';
+
+  insert into clientes (nombre, telefono) values ('Prueba Grande','50399000001');
   insert into conversaciones (telefono, cliente_id, estado, ultimo_texto, ultimo_mensaje_en, sin_leer, archivada)
   select '50399000001', c.id, 'open', 'Hola', now(), 1, false from clientes c
    where c.telefono='50399000001'
@@ -101,8 +120,8 @@ sql(`
  * Sin esto, un sembrado que no entró se manifiesta treinta segundos después
  * como un `locator.click: Timeout` sobre la lista de conversaciones, que no se
  * parece en nada al problema: manda a buscar el error en la pantalla cuando
- * está en la base. Pasó una vez y no se pudo repetir; el aviso queda para la
- * próxima.
+ * está en la base. Fue justamente este aviso el que dejó ver que el sembrado
+ * se rompía solo por los clientes duplicados que dejaba cada corrida fallida.
  */
 {
   const hilo = sql("select count(*) from conversaciones where telefono='50399000001';");
