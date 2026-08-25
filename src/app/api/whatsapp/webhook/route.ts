@@ -150,7 +150,60 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
     p_cuando: m.enviadoEn.toISOString(),
   });
 
+  await anotarQueEscribioPorWhatsapp(supabase, conversacion, m);
   await abrirLeadSiEsNuevo(supabase, conversacion);
+}
+
+/**
+ * Dejar anotado que esta persona escribió por WhatsApp, y cuándo.
+ *
+ * ------------------------------------------------------------------------
+ * PARA QUÉ SIRVE
+ * ------------------------------------------------------------------------
+ *
+ * Una persona llega por Instagram, le contestan, y días después escribe por
+ * WhatsApp. Son el mismo lead —y ahora se unifica en vez de duplicarse— pero
+ * el asesor necesita saber las dos cosas: por dónde entró primero, que dice
+ * qué campaña la trajo, y cuándo escribió por acá, que es lo que decide a
+ * quién le contesta ahora.
+ *
+ * El canal del lead —`oportunidades.canal_id`— no alcanza para eso: es uno
+ * solo y sin hora. Esto va a `contactos_canal`, que guarda una fila por canal
+ * con la primera y la última vez.
+ *
+ * Se llama en cada mensaje y no sólo en el primero: la primera fecha no se
+ * mueve —la función se encarga— y la última tiene que quedar al día.
+ *
+ * Como todo lo de acá, no lanza. Que no se pueda anotar el canal no puede
+ * costar el mensaje, que es lo que la persona mandó.
+ */
+async function anotarQueEscribioPorWhatsapp(
+  supabase: Cliente,
+  conversacionId: number,
+  m: MensajeEntrante,
+) {
+  try {
+    const { data: conv } = await supabase
+      .from("conversaciones")
+      .select("cliente_id")
+      .eq("id", conversacionId)
+      .maybeSingle();
+
+    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
+    if (clienteId == null) return;
+
+    const canal = await idDeCanalWhatsapp(supabase);
+    if (canal == null) return;
+
+    await supabase.rpc("anotar_canal", {
+      p_cliente: clienteId,
+      p_canal: canal,
+      p_identificador: m.telefono || null,
+      p_cuando: m.enviadoEn.toISOString(),
+    });
+  } catch (e) {
+    console.error("[whatsapp] no se pudo anotar el canal", e);
+  }
 }
 
 /**

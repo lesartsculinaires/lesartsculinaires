@@ -202,7 +202,16 @@ with revisiones as (
         from storage.buckets where id = 'whatsapp')
        and exists (select 1 from pg_policies
                     where schemaname = 'storage' and tablename = 'objects'
-                      and policyname = 'whatsapp_subir_saliente'))
+                      and policyname = 'whatsapp_subir_saliente')),
+
+    ('20260922120000_canales_del_contacto',
+     'Por qué canales llegó cada persona, y cuándo por cada uno',
+     to_regclass('public.contactos_canal') is not null
+       and exists (select 1 from pg_proc where proname = 'anotar_canal')),
+
+    ('20260923120000_fusionar_contactos',
+     'Unir fichas repetidas sin perder leads ni la fecha de entrada',
+     exists (select 1 from pg_proc where proname = 'fusionar_contactos'))
 
   ) as t(archivo, para_que, aplicada)
 ),

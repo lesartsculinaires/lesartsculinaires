@@ -7,7 +7,13 @@ import { redirect } from "next/navigation";
 
 import { getAdminClient } from "@/lib/supabase/admin";
 import { SUPABASE_URL } from "@/lib/supabase/config";
-import { altaLead, contactosConocidos, numeroDeCodigo, type DatosLead } from "@/lib/crm/altaLead";
+import {
+  altaLead,
+  anotarCanal,
+  contactosConocidos,
+  numeroDeCodigo,
+  type DatosLead,
+} from "@/lib/crm/altaLead";
 import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import { fechaLarga } from "@/lib/format";
@@ -982,6 +988,11 @@ export async function unificarCliente(
       .single();
 
     if (!errOp) {
+      // El canal por el que llegó esta vez se suma al historial del contacto.
+      // Es el punto de todo esto: unificar sin perder que ahora también
+      // escribió por otro lado.
+      await anotarCanal(supabase, clienteId, datos.canal_id, datos.fecha_registro);
+
       revalidatePath("/");
       return {
         ok: true,

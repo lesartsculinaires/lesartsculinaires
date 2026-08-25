@@ -134,6 +134,8 @@ export async function altaLead(
 
   const abierta = await abrirOportunidad(supabase, clienteId, datos);
 
+  if (abierta.ok) await anotarCanal(supabase, clienteId, datos.canal_id, datos.fecha_registro);
+
   if (abierta.ok) {
     return { ok: true, error: null, codigo: abierta.codigo, clienteId, oportunidadId: abierta.oportunidadId };
   }
@@ -142,6 +144,40 @@ export async function altaLead(
   // deshace el alta en vez de dejar una fila huérfana.
   await supabase.from("clientes").delete().eq("id", clienteId);
   return { ok: false, error: abierta.error };
+}
+
+/**
+ * Dejar anotado por qué canal llegó este contacto.
+ *
+ * Va aparte de la oportunidad porque son dos preguntas distintas.
+ * `oportunidades.canal_id` dice por dónde entró ESE lead y es lo que miran los
+ * cortes del Dashboard. `contactos_canal` dice por qué canales llegó LA
+ * PERSONA y cuándo por cada uno, que es lo que hace falta cuando alguien
+ * escribe primero por Instagram y después por WhatsApp.
+ *
+ * Sin fecha con hora se usa la de registro, que es lo que se sabe. Cuando el
+ * canal es WhatsApp la hora exacta la pisa después el webhook, que sí la tiene.
+ *
+ * No lanza: el lead ya está creado y es lo que importa. Que falte el renglón
+ * del historial se arregla solo la próxima vez que la persona escriba.
+ */
+export async function anotarCanal(
+  supabase: SupabaseClient,
+  clienteId: number,
+  canalId: number | null,
+  cuando: string | null,
+): Promise<void> {
+  if (canalId == null) return;
+  try {
+    await supabase.rpc("anotar_canal", {
+      p_cliente: clienteId,
+      p_canal: canalId,
+      p_identificador: null,
+      p_cuando: cuando ? new Date(`${cuando}T12:00:00`).toISOString() : new Date().toISOString(),
+    });
+  } catch {
+    // El historial de canales no vale un alta.
+  }
 }
 
 /** Los campos de la oportunidad, sin nada del cliente. */
