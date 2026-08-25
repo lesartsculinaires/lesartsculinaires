@@ -5,7 +5,6 @@ import type { CSSProperties } from "react";
 import { signOut } from "@/app/actions";
 import { IconoModulo } from "@/components/ui/IconoModulo";
 import { getBrowserClient } from "@/lib/supabase/browser";
-import { MODULOS } from "@/lib/modulos";
 import { T, soft } from "@/lib/theme";
 
 interface Props {
@@ -23,8 +22,14 @@ interface Props {
   rol: string | null;
   /** Nombre de la persona, si su cuenta lo tiene cargado. */
   nombre: string | null;
-  /** Extra entries the signed-in user is allowed to open, e.g. admin-only. */
-  extras?: readonly string[];
+  /**
+   * Los módulos que esta persona ve, ya resueltos.
+   *
+   * Llega hecha y no se arma acá: quién ve qué sale de lo que dirección marcó
+   * por rol, y eso lo sabe quien tiene los accesos cargados. La barra
+   * solamente dibuja lo que le dan, que es su trabajo.
+   */
+  modulos: readonly string[];
   /**
    * Cuántas cosas sin atender tiene cada módulo: «Inbox» → 3.
    *
@@ -42,7 +47,7 @@ export function Sidebar({
   userEmail,
   rol,
   nombre,
-  extras = [],
+  modulos,
   avisos = {},
   onSelect,
 }: Props) {
@@ -190,7 +195,7 @@ export function Sidebar({
         vez de desplazarse.
       */}
       <nav style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        {[...MODULOS, ...extras].map((m) => {
+        {modulos.map((m) => {
           const puesto = mod === m;
           const cuantos = avisos[m] ?? 0;
 

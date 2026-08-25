@@ -228,7 +228,11 @@ with revisiones as (
                 and cmd = 'DELETE' and qual = 'es_admin()')
        and not exists (select 1 from pg_policies
                         where schemaname = 'public' and tablename = 'clientes'
-                          and policyname = 'auth_all_clientes'))
+                          and policyname = 'auth_all_clientes')),
+
+    ('20260927120000_modulos_por_rol',
+     'El catálogo de módulos al día, para poder elegir cuáles ve cada rol',
+     (select count(*) from public.modulos where padre is null) >= 13)
 
   ) as t(archivo, para_que, aplicada)
 ),
