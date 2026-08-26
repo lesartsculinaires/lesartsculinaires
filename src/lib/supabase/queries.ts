@@ -1,5 +1,6 @@
 import "server-only";
 
+import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import { SIN_ASIGNAR, SIN_DATO } from "@/lib/types";
 import type {
@@ -96,28 +97,44 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
   const supabase = await getServerClient();
   if (!supabase) return { data: [], error: null };
 
-  const { data, error } = await supabase
-    .from("vw_pipeline")
-    .select("*")
-    .order("fecha_registro", { ascending: false })
-    .order("id", { ascending: false });
+  /*
+   * De a tandas, porque Supabase corta en mil filas y no lo dice.
+   *
+   * Acá había una consulta suelta. Con 1053 leads devolvía 1000 y la
+   * aplicación los tomaba por todos: al Gerente y al Jefe de ventas les
+   * faltaban fichas en el tablero, siempre las más viejas, mientras que a una
+   * asesora —que tiene 537— no le faltaba ninguna. Por eso se leía como que
+   * «a veces» no veían el pipeline de Ventas.
+   *
+   * El segundo `order` por `id` no es decorativo: sin un orden que no empate
+   * nunca, dos tandas distintas podrían devolver la misma fila dos veces y
+   * saltearse otra.
+   */
+  const { data, error } = await traerTodo<Row>(() =>
+    supabase
+      .from("vw_pipeline")
+      .select("*")
+      .order("fecha_registro", { ascending: false })
+      .order("id", { ascending: false }),
+  );
 
-  if (error) return { data: [], error: error.message };
+  if (error) return { data: [], error };
 
-  const filas = ((data ?? []) as Row[]).map(toOportunidad);
+  const filas = data.map(toOportunidad);
 
   // La vista sólo expone `created_at` después de la migración de bases. La
   // columna existe en la tabla desde siempre, así que se completa desde ahí:
   // el módulo de Bases puede agrupar por día de carga sin esperar a nadie.
   if (filas.length > 0 && filas[0].creadoEn == null) {
-    const { data: fechas } = await supabase
-      .from("oportunidades")
-      .select("id, created_at")
-      .limit(20000);
+    // También de a tandas: `.limit(20000)` no levanta el techo de Supabase,
+    // se aplica igual sobre lo que se devuelve.
+    const { data: fechas } = await traerTodo<Row>(() =>
+      supabase.from("oportunidades").select("id, created_at").order("id"),
+    );
 
-    if (fechas) {
+    if (fechas.length > 0) {
       const porId = new Map(
-        (fechas as Row[]).map((r) => [num(r.id), r.created_at ? str(r.created_at) : null]),
+        fechas.map((r) => [num(r.id), r.created_at ? str(r.created_at) : null]),
       );
       for (const f of filas) f.creadoEn = porId.get(f.id) ?? null;
     }

@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { buscarDuplicados, type Coincidencia } from "@/lib/duplicados";
+import { traerTodo } from "@/lib/supabase/paginar";
 
 /**
  * Dar de alta un lead: la persona y su primera oportunidad.
@@ -66,24 +67,38 @@ export const numeroDeCodigo = (codigo: string | null): number => {
  * filtrar en la consulta. El teléfono se guarda con guiones y espacios
  * ("7100-0001", "+503 7100 0001"), así que un `where` sobre el texto crudo no
  * encontraría los repetidos; hay que normalizar, y eso pasa en JavaScript.
- * Con la base actual son unos pocos cientos de filas. Si algún día fueran
- * decenas de miles, esto se convierte en una función en Postgres.
+ *
+ * Hoy son mil y pico de filas y entran bien. El día que sean decenas de miles,
+ * traerlas todas para dar de alta un lead deja de tener sentido y esto se
+ * convierte en una función en Postgres que compare los dígitos ahí adentro.
  */
 export async function contactosConocidos(
   supabase: SupabaseClient,
 ): Promise<
   { clienteId: number; nombre: string; telefono: string | null; correo: string | null }[]
 > {
-  const { data } = await supabase
-    .from("clientes")
-    .select("id, nombre, telefono, correo")
-    .limit(20000);
+  /*
+   * De a tandas, y no con un `.limit()` grande.
+   *
+   * Acá decía `.limit(20000)`, que no sirve: Supabase corta en mil filas pase
+   * lo que pase, y lo hace sin error y sin aviso. Con 1017 contactos en la
+   * base, los últimos quedaban afuera de esta lista —y esta lista es contra la
+   * que se comprueba si el contacto ya existe—. O sea que la detección de
+   * repetidos dejaba de ver justo a una parte de la gente, y por ahí entraban
+   * duplicados que el CRM tendría que haber frenado.
+   */
+  const { data } = await traerTodo<{
+    id: number;
+    nombre: string | null;
+    telefono: string | null;
+    correo: string | null;
+  }>(() => supabase.from("clientes").select("id, nombre, telefono, correo").order("id"));
 
-  return (data ?? []).map((c) => ({
-    clienteId: c.id as number,
-    nombre: (c.nombre as string) ?? "",
-    telefono: (c.telefono as string | null) ?? null,
-    correo: (c.correo as string | null) ?? null,
+  return data.map((c) => ({
+    clienteId: c.id,
+    nombre: c.nombre ?? "",
+    telefono: c.telefono,
+    correo: c.correo,
   }));
 }
 
