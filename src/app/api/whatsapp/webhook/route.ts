@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { sortear } from "@/lib/reparto";
+import { abrirOportunidad } from "@/lib/crm/altaLead";
+import { sortear, yaEsLead } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
@@ -315,16 +316,68 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
     });
 
     if (error) {
-      // Sin la migración corrida la función no existe. Se avisa con el nombre
-      // del archivo: es lo que hace falta para arreglarlo.
-      if (faltaLaFuncion(error)) {
-        console.error(
-          "[whatsapp] falta correr 20260930120000_un_solo_lead_por_whatsapp.sql;" +
-            " el lead no se abrió para no arriesgar un duplicado",
+      if (!faltaLaFuncion(error)) {
+        console.error("[whatsapp] no se pudo abrir el lead", error.message);
+        return;
+      }
+
+      /*
+       * Sin la migración corrida se abre el lead al modo viejo, con hueco y
+       * todo, en vez de no abrirlo.
+       *
+       * Es a propósito, y es lo que permite desplegar el código sin esperar a
+       * que se corra el SQL. La otra opción —no abrir nada hasta que la
+       * función exista— cambiaría un problema visible por uno invisible: un
+       * lead duplicado se ve en la lista y se fusiona; un lead que nunca se
+       * creó no lo ve nadie, y quien escribió se queda sin respuesta.
+       */
+      console.error(
+        "[whatsapp] falta correr 20260930120000_un_solo_lead_por_whatsapp.sql;" +
+          " se abre el lead al modo viejo, que puede duplicar",
+      );
+
+      const { count } = await supabase
+        .from("oportunidades")
+        .select("id", { count: "exact", head: true })
+        .eq("cliente_id", clienteId);
+
+      if (yaEsLead(count ?? 0)) {
+        const { data: suya } = await supabase
+          .from("oportunidades")
+          .select("vendedor_id")
+          .eq("cliente_id", clienteId)
+          .not("vendedor_id", "is", null)
+          .order("id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        await ponerDuenoAlHilo(
+          supabase,
+          conversacionId,
+          suya?.vendedor_id == null ? null : Number(suya.vendedor_id),
         );
         return;
       }
-      console.error("[whatsapp] no se pudo abrir el lead", error.message);
+
+      const r = await abrirOportunidad(supabase, clienteId, {
+        vendedor_id: quien?.id ?? null,
+        producto_id: null,
+        territorio_id: null,
+        canal_id: await idDeCanalWhatsapp(supabase),
+        etapa_id: await idDeEtapaProspectos(supabase),
+        estado_id: null,
+        fecha_registro: hoyEnSalvador(),
+        fecha_cierre: null,
+        valor_oportunidad: null,
+        descuento_promocion: null,
+      });
+
+      if (!r.ok) {
+        console.error("[whatsapp] no se pudo abrir el lead", r.error);
+        return;
+      }
+
+      await ponerDuenoAlHilo(supabase, conversacionId, quien?.id ?? null);
       return;
     }
 

@@ -134,23 +134,23 @@ console.log("\n── una carga rara no tumba el webhook ──");
  * llegan pisándose. Es el caso que duplicaba leads en producción.
  *
  * ------------------------------------------------------------------------
- * QUÉ PRUEBA ESTO Y QUÉ NO
+ * ESTA SECCIÓN ATRAPA EL DEFECTO, PERO NO SIEMPRE
  * ------------------------------------------------------------------------
  *
- * PRUEBA que la ráfaga entera funciona de punta a punta: los tres mensajes se
- * guardan, la ficha es una, el lead es uno, y el hilo de la bandeja queda del
- * mismo asesor que el lead.
+ * Conviene saberlo antes de confiar en ella. Corriendo el código viejo a
+ * propósito, esta sección encontró tres leads para un solo cliente —el defecto
+ * exacto que se veía en producción— pero en otra corrida, con el mismo código
+ * viejo, pasó en verde.
  *
- * NO prueba que el arreglo del duplicado sirva, y conviene saberlo. Se
- * comprobó: con el código viejo esta misma sección también pasa. En esta
- * máquina la base contesta en fracciones de milisegundo, así que las tres
- * llamadas terminan atendiéndose casi en fila y la ventana no llega a
- * abrirse. En producción cada viaje a Supabase son decenas de milisegundos y
- * ahí sí se pisan.
+ * La diferencia es cuánto tarda la base en contestar. Acá contesta en
+ * fracciones de milisegundo, así que a veces las tres llamadas terminan
+ * atendiéndose casi en fila y la ventana no llega a abrirse. En producción
+ * cada viaje a Supabase son decenas de milisegundos y se pisan siempre.
  *
- * La prueba que sí falla con el código viejo es
- * `prueba-lead-unico.mjs`, que ataca la base directamente y abre la ventana a
- * propósito. Es la que hay que mirar si esto se toca.
+ * Así que un verde acá NO alcanza para dar por bueno un cambio en este camino.
+ * La prueba que falla siempre con el código viejo es `prueba-lead-unico.mjs`,
+ * que ataca la base directamente y abre la ventana a propósito. Es la que hay
+ * que mirar si esto se toca.
  */
 console.log("\n── tres mensajes juntos, un solo lead ──");
 {
@@ -190,15 +190,22 @@ console.log("\n── tres mensajes juntos, un solo lead ──");
   es("y una sola conversación",
      sql(`select count(*) from conversaciones where telefono='${RAFAGA}'`), "1");
 
-  // El hilo de la bandeja y el lead tienen que ser del mismo asesor. Cuando se
-  // duplicaba, cada lead salía sorteado aparte y el hilo se quedaba con el de
-  // la llamada que ganó la carrera, que no era el del otro lead.
+  /*
+   * El hilo de la bandeja y el lead tienen que ser del mismo asesor. Cuando se
+   * duplicaba, cada lead salía sorteado aparte y el hilo se quedaba con el de
+   * la llamada que ganó la carrera, que no era el del otro lead.
+   *
+   * Se cuenta en vez de comparar de a uno: comparando con un subselect, la
+   * corrida en la que sí hay dos leads no falla sino que revienta con «more
+   * than one row», y una prueba que revienta esconde lo que encontró.
+   */
   es("el hilo y el lead son del mismo asesor",
-     sql(`select (select vendedor_id from conversaciones where telefono='${RAFAGA}')
-                 is not distinct from
-                 (select o.vendedor_id from oportunidades o
-                    join clientes c on c.id=o.cliente_id where c.telefono='${RAFAGA}')`),
-     "t");
+     sql(`select count(*) from oportunidades o
+            join clientes c on c.id = o.cliente_id
+           where c.telefono='${RAFAGA}'
+             and o.vendedor_id is not distinct from
+                 (select vendedor_id from conversaciones where telefono='${RAFAGA}')`),
+     "1");
 
   sql(`delete from mensajes where wa_id like '${WAID}-rafaga-%'`);
   sql(`delete from conversaciones where telefono='${RAFAGA}'`);
