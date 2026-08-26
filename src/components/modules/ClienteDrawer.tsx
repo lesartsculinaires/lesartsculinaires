@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { addNota } from "@/app/actions";
 import { programarReactivacion } from "@/app/seguimientos-actions";
 import { Adjuntos } from "@/components/modules/Adjuntos";
+import { AutorizacionesDelLead } from "@/components/modules/AutorizacionesDelLead";
 import { Bitacora } from "@/components/modules/Bitacora";
 import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
 import { CanalesDelContacto } from "@/components/modules/CanalesDelContacto";
@@ -1007,6 +1008,20 @@ export function ClienteDrawer({
           accent={accent}
           onCambio={() => setRefrescoBitacora((n) => n + 1)}
         />
+      </div>
+
+      {/*
+        Pedir permiso a dirección sin salir de la ficha.
+
+        Va acá abajo y no arriba con los campos porque no es un dato del lead:
+        es un trámite que se abre mientras se lo atiende. Y va en la ficha y no
+        en un módulo aparte porque el descuento se pide con el cliente en el
+        teléfono; obligar a cambiar de pantalla, buscar el lead otra vez y
+        volver es lo que hace que se termine pidiendo por WhatsApp.
+      */}
+      <div style={{ marginTop: 18 }}>
+        <SectionLabel>Autorizaciones</SectionLabel>
+        <AutorizacionesDelLead oportunidadId={o.id} cliente={o.cliente} accent={accent} />
       </div>
 
       <div

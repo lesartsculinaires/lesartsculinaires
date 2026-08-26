@@ -66,6 +66,9 @@ const TRAZOS: Record<string, string> = {
   // La campana.
   Notificaciones: "M12 3.5a5.5 5.5 0 0 0-5.5 5.5c0 5-2 6.5-2 6.5h15s-2-1.5-2-6.5A5.5 5.5 0 0 0 12 3.5ZM10.3 19a2 2 0 0 0 3.4 0",
 
+  // Una hoja con el visto: lo que dirección aprobó.
+  Autorizaciones: "M6 3.5h7.5L18 8v12.5H6zM13.5 3.5V8H18M9 13.5l2 2 4-4",
+
   // Un escudo: quién puede qué.
   [MOD_USUARIOS]: "M12 3.5 5 6.2v5.4c0 4.2 2.9 7.6 7 8.9 4.1-1.3 7-4.7 7-8.9V6.2L12 3.5ZM9.2 12l2 2 3.6-4",
 };
