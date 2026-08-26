@@ -42,6 +42,7 @@ import {
 } from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
+import { permisosDeBases } from "@/lib/permisos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
@@ -251,6 +252,22 @@ export default function CrmApp({
   );
 
   /*
+   * Qué se puede hacer en Bases: subir una, y abrir una para ver qué trajo.
+   *
+   * Sale de las casillas «crear» y «editar» del rol, las mismas que dibuja
+   * Usuarios y Roles. Va acá arriba y no dentro del módulo porque el botón de
+   * subir está en dos pantallas —Bases y Clientes— y las dos tienen que
+   * respetar la misma decisión; calcularlo dos veces sería tenerlo mal en una.
+   *
+   * Como todo lo de esta pantalla, ordena la vista y no protege nada: quien
+   * manda es `public.puede()` en la base, que decide aunque nadie mire.
+   */
+  const enBases = useMemo(
+    () => permisosDeBases(accesos.permisos, accesos.yo?.rolId ?? null, accesos.esAdmin),
+    [accesos],
+  );
+
+  /*
    * Si la pantalla abierta ya no está permitida, se cae a la primera que sí.
    *
    * Pasa de verdad: dirección destilda un módulo mientras alguien lo tiene
@@ -453,6 +470,7 @@ export default function CrmApp({
               oportunidades={oportunidades}
               importaciones={importaciones}
               esAdmin={accesos.esAdmin}
+              puedeSubirBases={enBases.subir}
               accent={accent}
               query={state.q}
               filtros={state.filtros}
@@ -493,9 +511,11 @@ export default function CrmApp({
               oportunidades={oportunidades}
               importaciones={importaciones}
               faltaMigracion={faltaMigracionBases}
-              esAdmin={accesos.esAdmin}
+              puedeAbrir={enBases.abrir}
+              puedeSubir={enBases.subir}
               accent={accent}
               onAbrir={(id) => actions.verEnClientes({}, id)}
+              onRefrescar={() => router.refresh()}
             />
           )}
 

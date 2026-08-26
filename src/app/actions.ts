@@ -747,6 +747,38 @@ export async function importarClientes(
   const supabase = await getServerClient();
   if (!supabase) return { ...NO_SESSION, ...vacio };
 
+  /*
+   * Subir una base es de quien tenga la casilla «crear» en Bases.
+   *
+   * Se pregunta acá y no sólo en la pantalla porque la pantalla se puede
+   * saltar: quien tenga la llave pública del proyecto puede llamar a esta
+   * acción por su cuenta. La política de `importaciones` lo impide igual; esto
+   * está para que el «no» llegue como una frase que se entiende en vez de un
+   * error de base de datos a mitad de un archivo de trescientas filas.
+   *
+   * Si la función todavía no existe —falta correr la migración— se sigue de
+   * largo. Es lo mismo que hacía el CRM hasta ahora, y es preferible a que
+   * nadie pueda importar hasta que se corra el SQL.
+   */
+  {
+    const { data: autorizado, error } = await supabase.rpc("puede", {
+      p_modulo: "bases",
+      p_accion: "crear",
+    });
+    const faltaLaFuncion =
+      error != null &&
+      (error.code === "PGRST202" ||
+        /Could not find the function|does not exist/i.test(error.message ?? ""));
+
+    if (!faltaLaFuncion && autorizado !== true) {
+      return {
+        ok: false,
+        error: "Subir bases es de dirección. Pedile a un administrador que te habilite el permiso.",
+        ...vacio,
+      };
+    }
+  }
+
   // El encabezado se abre en el primer lote y se reutiliza en los siguientes.
   // Si la tabla todavía no existe —falta correr la migración— la importación
   // sigue adelante sin registrar la base: es preferible a no poder importar.

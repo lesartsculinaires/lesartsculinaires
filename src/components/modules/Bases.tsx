@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { agruparBases, resumirBase } from "@/lib/bases";
 import { fechaCorta, horaDe, money } from "@/lib/format";
 import { T, softer } from "@/lib/theme";
@@ -13,32 +14,47 @@ interface Props {
   /** La tabla de importaciones todavía no existe. */
   faltaMigracion: boolean;
   /**
-   * Sin esto sólo se ve el listado de bases, no lo que hay adentro.
+   * Abrir una base y ver los registros que trajo. Casilla «editar» del rol.
    *
    * Es una restricción de esta pantalla, no del acceso a los datos: los
    * mismos nombres siguen estando en Clientes, que ventas necesita para
    * trabajar. Sirve para que el módulo de Bases no sea un atajo para
    * exportar la cartera entera, no para ocultarle datos a nadie.
    */
-  esAdmin: boolean;
+  puedeAbrir: boolean;
+  /**
+   * Subir una base nueva. Casilla «crear» del rol.
+   *
+   * La política de `importaciones` lo hace cumplir aparte; esto sólo evita
+   * ofrecer un botón que iba a fallar. Un botón que siempre falla se lee como
+   * que el CRM está roto, no como que no te corresponde.
+   */
+  puedeSubir: boolean;
   accent: string;
   /** Abre una oportunidad en Clientes. */
   onAbrir: (id: number) => void;
+  /** Para volver a pedir los datos cuando termina una importación. */
+  onRefrescar: () => void;
 }
 
 export function Bases({
   oportunidades,
   importaciones,
   faltaMigracion,
-  esAdmin,
+  puedeAbrir,
+  puedeSubir,
   accent,
   onAbrir,
+  onRefrescar,
 }: Props) {
   const bases = useMemo(
     () => agruparBases(oportunidades, importaciones),
     [oportunidades, importaciones],
   );
   const [abierta, setAbierta] = useState<string | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  /** El resumen de la última importación hecha desde acá. */
+  const [recien, setRecien] = useState<string | null>(null);
 
   const th = {
     textAlign: "left" as const,
@@ -73,6 +89,66 @@ export function Bases({
           <code>supabase/migrations/20260731120000_bases_importadas.sql</code> en
           Supabase → SQL Editor. Aplica de ahí en adelante: las cargas
           anteriores seguirán agrupadas por fecha.
+        </p>
+      )}
+
+      {/*
+        Subir una base, desde el módulo que las lista.
+
+        Hasta ahora el botón vivía sólo en Clientes, que es donde se termina
+        mirando el resultado. Pero quien viene a subir una base entra a Bases:
+        es el nombre de lo que quiere hacer. Los dos botones abren la misma
+        pantalla y respetan la misma casilla del rol.
+      */}
+      {puedeSubir && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={() => setSubiendo(true)}
+            style={{
+              height: 34,
+              padding: "0 15px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              borderRadius: 7,
+              background: accent,
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            ↑ Subir base
+          </button>
+        </div>
+      )}
+
+      {subiendo && (
+        <ImportarClientes
+          accent={accent}
+          oportunidades={oportunidades}
+          onCerrar={() => setSubiendo(false)}
+          onImportado={(resumen) => {
+            setSubiendo(false);
+            setRecien(resumen);
+            onRefrescar();
+          }}
+        />
+      )}
+
+      {/* Lo que acaba de entrar, dicho una vez. La tabla de abajo ya lo muestra
+          en su primera fila, pero recién después del refresco. */}
+      {recien && (
+        <p
+          style={{
+            margin: "0 0 12px",
+            padding: "10px 13px",
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            borderRadius: 8,
+            background: softer(accent),
+            color: T.ink,
+          }}
+        >
+          {recien}
         </p>
       )}
 
@@ -123,7 +199,7 @@ export function Bases({
           </p>
           <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
             De la más reciente a la más antigua.{" "}
-            {esAdmin
+            {puedeAbrir
               ? "Clic en una para ver sus registros."
               : "El detalle de cada base es solo para administradores."}
           </p>
@@ -136,9 +212,9 @@ export function Bases({
                 <th style={th}>Base</th>
                 <th style={th}>Ingresada</th>
                 <th style={{ ...th, textAlign: "right" }}>Registros</th>
-                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Clientes</th>}
-                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Ganados</th>}
-                {esAdmin && <th style={{ ...th, textAlign: "right" }}>Venta cerrada</th>}
+                {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Clientes</th>}
+                {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Ganados</th>}
+                {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Venta cerrada</th>}
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>
@@ -150,13 +226,13 @@ export function Bases({
                   <>
                     <tr
                       key={b.clave}
-                      className={esAdmin ? "row" : undefined}
+                      className={puedeAbrir ? "row" : undefined}
                       onClick={
-                        esAdmin ? () => setAbierta(expandida ? null : b.clave) : undefined
+                        puedeAbrir ? () => setAbierta(expandida ? null : b.clave) : undefined
                       }
                       style={{
                         borderTop: i ? `1px solid ${T.border}` : "none",
-                        cursor: esAdmin ? "pointer" : "default",
+                        cursor: puedeAbrir ? "pointer" : "default",
                         background: expandida ? softer(accent) : "transparent",
                       }}
                     >
@@ -188,29 +264,29 @@ export function Bases({
                             </span>
                           )}
                       </td>
-                      {esAdmin && (
+                      {puedeAbrir && (
                         <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
                           {r.clientes}
                         </td>
                       )}
-                      {esAdmin && (
+                      {puedeAbrir && (
                         <td className="mono" style={{ ...td, textAlign: "right", color: T.muted }}>
                           {r.ganados}
                         </td>
                       )}
-                      {esAdmin && (
+                      {puedeAbrir && (
                         <td className="mono" style={{ ...td, textAlign: "right" }}>
                           {money(r.cerrado || null)}
                         </td>
                       )}
                       <td style={{ ...td, textAlign: "right", color: T.borderStrong }}>
-                        {esAdmin ? (expandida ? "▾" : "›") : ""}
+                        {puedeAbrir ? (expandida ? "▾" : "›") : ""}
                       </td>
                     </tr>
 
-                    {esAdmin && expandida && (
+                    {puedeAbrir && expandida && (
                       <tr key={`${b.clave}-detalle`}>
-                        <td colSpan={esAdmin ? 7 : 4} style={{ padding: 0, background: T.paper }}>
+                        <td colSpan={puedeAbrir ? 7 : 4} style={{ padding: 0, background: T.paper }}>
                           {b.oportunidades.length === 0 ? (
                             <p style={{ margin: 0, padding: "18px 20px", fontSize: 12.5, color: T.faint }}>
                               Esta base no tiene registros vivos. Se subió, pero sus
@@ -263,7 +339,7 @@ export function Bases({
 
               {bases.length === 0 && (
                 <tr>
-                  <td colSpan={esAdmin ? 7 : 4} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
+                  <td colSpan={puedeAbrir ? 7 : 4} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
                     Todavía no hay bases cargadas. Subí una desde Clientes → Subir
                     base de datos.
                   </td>
