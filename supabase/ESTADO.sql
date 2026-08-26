@@ -245,7 +245,16 @@ with revisiones as (
      'Ver todos los clientes pero en el Pipeline sólo los leads propios',
      exists (select 1 from information_schema.columns
               where table_schema = 'public' and table_name = 'roles'
-                and column_name = 'pipeline_solo_propios'))
+                and column_name = 'pipeline_solo_propios')),
+
+    ('20260930120000_un_solo_lead_por_whatsapp',
+     'Que una ráfaga de mensajes no abra dos leads del mismo cliente',
+     exists (select 1 from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'abrir_lead_de_whatsapp')
+       and exists (select 1 from pg_proc p
+                     join pg_namespace n on n.oid = p.pronamespace
+                    where n.nspname = 'public' and p.proname = 'cliente_de_whatsapp'))
 
   ) as t(archivo, para_que, aplicada)
 ),

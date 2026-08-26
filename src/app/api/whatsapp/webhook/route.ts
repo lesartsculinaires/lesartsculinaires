@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { abrirOportunidad } from "@/lib/crm/altaLead";
-import { sortear, yaEsLead } from "@/lib/reparto";
+import { sortear } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
@@ -256,6 +255,27 @@ async function ponerDuenoAlHilo(
  *                               persona mirando.
  *
  * ------------------------------------------------------------------------
+ * POR QUÉ LO DECIDE LA BASE Y NO ESTA FUNCIÓN
+ * ------------------------------------------------------------------------
+ *
+ * Antes acá se preguntaba «¿ya tiene lead?» y, si la respuesta era que no, se
+ * insertaba. Dos viajes distintos a la base, con un hueco en el medio.
+ *
+ * Ese hueco es el que duplicaba. Quien escribe manda tres globos seguidos
+ * —«Hola», «buenas tardes», «quiero información»—; Meta los entrega en tres
+ * llamadas separadas; Netlify levanta una función por llamada y las tres
+ * corren a la vez. Las tres preguntan antes de que ninguna haya escrito, las
+ * tres reciben «no», y las tres abren un lead. Como cada una sortea por su
+ * cuenta, cada lead cae en un asesor distinto: el mismo cliente, el mismo día,
+ * dos o tres vendedoras.
+ *
+ * `abrir_lead_de_whatsapp` hace las dos cosas en una sola llamada y con
+ * candado, así que la segunda entra recién cuando la primera terminó y ya
+ * encuentra el lead hecho. El sorteo se sigue haciendo acá —es una decisión de
+ * la aplicación, no de la base— y se le pasa como propuesta: si el lead ya
+ * existía, la base la ignora y devuelve el dueño que ya tenía.
+ *
+ * ------------------------------------------------------------------------
  * SI ALGO FALLA, EL MENSAJE NO SE PIERDE
  * ------------------------------------------------------------------------
  *
@@ -275,38 +295,6 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
     const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
     if (clienteId == null) return;
 
-    const { count } = await supabase
-      .from("oportunidades")
-      .select("id", { count: "exact", head: true })
-      .eq("cliente_id", clienteId);
-
-    if (yaEsLead(count ?? 0)) {
-      /*
-       * Ya es lead: no se abre otro, pero el hilo igual necesita dueño.
-       *
-       * Pasa con quien vuelve a escribir después de que alguien archivó su
-       * conversación, y con los clientes que ya estaban en la base antes de
-       * que existiera todo esto. Se hereda del lead abierto más reciente:
-       * es de quien lo viene atendiendo, y contestarle desde la bandeja
-       * tiene que caerle a esa misma persona.
-       */
-      const { data: suya } = await supabase
-        .from("oportunidades")
-        .select("vendedor_id")
-        .eq("cliente_id", clienteId)
-        .not("vendedor_id", "is", null)
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      await ponerDuenoAlHilo(
-        supabase,
-        conversacionId,
-        suya?.vendedor_id == null ? null : Number(suya.vendedor_id),
-      );
-      return;
-    }
-
     const { data: gente } = await supabase.rpc("vendedores_para_reparto");
     const candidatos = ((gente ?? []) as { id: number; nombre: string }[]).map((v) => ({
       id: Number(v.id),
@@ -318,35 +306,67 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
     // un lead que no se creó no lo ve nadie nunca.
     const quien = sortear(candidatos);
 
-    const r = await abrirOportunidad(supabase, clienteId, {
-      vendedor_id: quien?.id ?? null,
-      producto_id: null,
-      territorio_id: null,
-      canal_id: await idDeCanalWhatsapp(supabase),
-      etapa_id: await idDeEtapaProspectos(supabase),
-      estado_id: null,
-      fecha_registro: hoyEnSalvador(),
-      fecha_cierre: null,
-      valor_oportunidad: null,
-      descuento_promocion: null,
+    const { data, error } = await supabase.rpc("abrir_lead_de_whatsapp", {
+      p_cliente: clienteId,
+      p_vendedor: quien?.id ?? null,
+      p_canal: await idDeCanalWhatsapp(supabase),
+      p_etapa: await idDeEtapaProspectos(supabase),
+      p_fecha: hoyEnSalvador(),
     });
 
-    if (!r.ok) {
-      console.error("[whatsapp] no se pudo abrir el lead", r.error);
+    if (error) {
+      // Sin la migración corrida la función no existe. Se avisa con el nombre
+      // del archivo: es lo que hace falta para arreglarlo.
+      if (faltaLaFuncion(error)) {
+        console.error(
+          "[whatsapp] falta correr 20260930120000_un_solo_lead_por_whatsapp.sql;" +
+            " el lead no se abrió para no arriesgar un duplicado",
+        );
+        return;
+      }
+      console.error("[whatsapp] no se pudo abrir el lead", error.message);
       return;
     }
 
-    // El hilo queda del mismo asesor que el lead. Si no, la bandeja diría
-    // «sin asignar» sobre un lead que sí tiene dueño.
-    await ponerDuenoAlHilo(supabase, conversacionId, quien?.id ?? null);
+    const fila = (Array.isArray(data) ? data[0] : data) as {
+      id_lead?: number;
+      codigo_lead?: string | null;
+      id_vendedor?: number | null;
+      se_creo?: boolean;
+    } | null;
 
-    console.info(
-      `[whatsapp] lead ${r.codigo} abierto para ${quien?.nombre ?? "nadie (sin asignar)"}`,
+    if (!fila) return;
+
+    /*
+     * El hilo queda del mismo asesor que el lead, se haya creado recién o no.
+     *
+     * Cuando el lead ya existía, el dueño que devuelve la base es el que lo
+     * viene atendiendo, no el que salió sorteado: contestarle desde la bandeja
+     * tiene que caerle a esa misma persona. Pasa con quien vuelve a escribir
+     * después de que alguien archivó su conversación, y con los clientes que
+     * ya estaban en la base antes de que existiera todo esto.
+     */
+    await ponerDuenoAlHilo(
+      supabase,
+      conversacionId,
+      fila.id_vendedor == null ? null : Number(fila.id_vendedor),
     );
+
+    if (fila.se_creo) {
+      console.info(
+        `[whatsapp] lead ${fila.codigo_lead ?? "?"} abierto para ${
+          quien?.nombre ?? "nadie (sin asignar)"
+        }`,
+      );
+    }
   } catch (e) {
     console.error("[whatsapp] no se pudo abrir el lead", e);
   }
 }
+
+/** La base no conoce esa función: falta correr la migración. */
+const faltaLaFuncion = (e: { code?: string; message?: string }): boolean =>
+  e.code === "PGRST202" || /Could not find the function|does not exist/i.test(e.message ?? "");
 
 /**
  * El canal «Whatsapp» del catálogo.
@@ -427,12 +447,52 @@ async function conversacionDe(supabase: Cliente, m: MensajeEntrante): Promise<nu
 /**
  * El cliente de esta conversación: el que ya existe, o uno nuevo.
  *
- * Los teléfonos guardados no tienen código de país ni formato fijo, así que se
- * comparan por los últimos 8 dígitos, igual que la detección de duplicados del
- * resto del CRM. Un número que ya está en la base se vincula a su ficha en vez
- * de abrir otra.
+ * ------------------------------------------------------------------------
+ * POR QUÉ ESTO TAMBIÉN LO DECIDE LA BASE
+ * ------------------------------------------------------------------------
+ *
+ * Buscar y después insertar tiene el mismo hueco que abrir el lead, y además
+ * tenía un error propio: la búsqueda comparaba el texto crudo del teléfono
+ * —`like '%77972598'`— contra los últimos ocho dígitos del número de WhatsApp.
+ *
+ * En la base los teléfonos están escritos de todas las formas: «7797-2598» de
+ * lo cargado a mano, «+503 7797 2598» de las planillas, «50377972598» de lo
+ * que puso el propio webhook. Contra «7797-2598» esa comparación no encuentra
+ * nada, porque el guión cae en el medio de los ocho dígitos. Así que a un
+ * cliente cargado a mano que después escribía por WhatsApp se le abría ficha
+ * nueva, con lead nuevo y asesor nuevo, al lado de la que ya tenía.
+ *
+ * `cliente_de_whatsapp` limpia el número antes de comparar —igual que
+ * `buscarDuplicados`, que es la regla del resto del CRM— y hace la búsqueda y
+ * el alta en una sola llamada con candado.
  */
 async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number | null> {
+  const { data, error } = await supabase.rpc("cliente_de_whatsapp", {
+    p_telefono: m.telefono,
+    p_nombre: m.nombrePerfil ?? null,
+  });
+
+  if (!error) return data == null ? null : Number(data);
+
+  if (!faltaLaFuncion(error)) {
+    // Que falle el alta no debe perder el mensaje: la conversación se guarda
+    // igual, sin cliente, y el asesor lo resuelve desde la bandeja.
+    console.error("[whatsapp] no se pudo resolver el cliente", error.message);
+    return null;
+  }
+
+  /*
+   * Sin la migración corrida se sigue como antes, con el hueco y todo.
+   *
+   * Es a propósito: entre perder el mensaje de alguien que está preguntando y
+   * arriesgar un duplicado que se puede fusionar después, el duplicado es el
+   * mal menor. El aviso queda en el registro para que se note.
+   */
+  console.error(
+    "[whatsapp] falta correr 20260930120000_un_solo_lead_por_whatsapp.sql;" +
+      " se busca el cliente al modo viejo",
+  );
+
   if (m.telefono.length >= 8) {
     const { data: ya } = await supabase
       .from("clientes")
@@ -443,7 +503,7 @@ async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number 
     if (ya) return Number(ya.id);
   }
 
-  const { data: creado, error } = await supabase
+  const { data: creado, error: errAlta } = await supabase
     .from("clientes")
     .insert({
       // Sin nombre de perfil queda el teléfono, que es mejor que «Sin nombre»:
@@ -454,10 +514,8 @@ async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number 
     .select("id")
     .single();
 
-  if (error) {
-    // Que falle el alta no debe perder el mensaje: la conversación se guarda
-    // igual, sin cliente, y el asesor lo resuelve desde la bandeja.
-    console.error("[whatsapp] no se pudo crear el cliente", error);
+  if (errAlta) {
+    console.error("[whatsapp] no se pudo crear el cliente", errAlta);
     return null;
   }
   return Number(creado.id);
