@@ -271,7 +271,14 @@ with revisiones as (
               where n.nspname = 'public' and p.proname = 'puede')
        and exists (select 1 from pg_policies
                     where schemaname = 'public' and tablename = 'importaciones'
-                      and policyname = 'importaciones_subir'))
+                      and policyname = 'importaciones_subir')),
+
+    ('20261003120000_extranjero',
+     'Territorio «Extranjero», y en qué país',
+     exists (select 1 from public.territorios where lower(btrim(nombre)) = 'extranjero')
+       and exists (select 1 from information_schema.columns
+                    where table_schema = 'public' and table_name = 'clientes'
+                      and column_name = 'pais'))
 
   ) as t(archivo, para_que, aplicada)
 ),

@@ -161,6 +161,8 @@ export interface Oportunidad {
   /** Edad declarada. Null si nadie la preguntó todavía. */
   edad: number | null;
   /** El adulto que responde por un menor. Se pide de 17 para abajo. */
+  /** País, cuando el territorio es «Extranjero». Nulo en los de acá. */
+  pais: string | null;
   responsableNombre: string | null;
   responsableTelefono: string | null;
   responsableCorreo: string | null;
@@ -254,6 +256,7 @@ export interface OportunidadPatch {
  */
 export interface ClientePatch {
   nombre?: string;
+  pais?: string | null;
   telefono?: string | null;
   correo?: string | null;
   edad?: number | null;

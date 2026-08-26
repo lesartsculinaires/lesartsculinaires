@@ -276,6 +276,25 @@ export function ClienteDrawer({
   ];
 
   /** Fields stored on the shared client record. */
+  /*
+   * ¿El territorio elegido es «Extranjero»?
+   *
+   * Se mira el que está sin guardar si lo hay, y si no el guardado: el orden
+   * importa, porque el caso normal es marcar «Extranjero» y escribir el país
+   * a continuación, antes de apretar Guardar.
+   *
+   * Se compara por nombre y no por un id escrito en el código: los catálogos
+   * se editan desde el CRM, y un número fijo acá apuntaría a otra cosa el día
+   * que alguien reordene la tabla.
+   */
+  // La clave es la que usa el desplegable de arriba: `clas_` más el campo.
+  const territorioPendiente = pendientes.get("clas_territorio")?.despues;
+  const nombreTerritorio =
+    territorioPendiente ??
+    cat.territorios.find((t) => t.id === o.territorioId)?.nombre ??
+    o.territorio;
+  const esExtranjero = nombreTerritorio?.trim().toLowerCase() === "extranjero";
+
   const delCliente = [
     {
       clave: "cliente_nombre",
@@ -306,6 +325,30 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditarCliente(o.clienteId, { correo: oNull(v) }, { correo: oNull(v) }),
     },
+    /*
+     * El país, sólo cuando el territorio dice «Extranjero».
+     *
+     * Aparece y desaparece con el territorio elegido —incluido el que todavía
+     * está sin guardar, arriba en la lista de cambios— para que se pueda
+     * marcar «Extranjero» y escribir el país en el mismo momento, sin guardar
+     * en el medio. Mostrarlo siempre llenaría la ficha de una casilla vacía
+     * que a casi nadie le corresponde.
+     */
+    ...(esExtranjero
+      ? [
+          {
+            clave: "cliente_pais",
+            label: "País",
+            value: o.pais ?? "",
+            tipo: "texto" as const,
+            requerido: false,
+            acentos: true,
+            placeholder: "Guatemala, Honduras, España…",
+            guardar: (v: string) =>
+              onEditarCliente(o.clienteId, { pais: oNull(v) }, { pais: oNull(v) }),
+          },
+        ]
+      : []),
     {
       clave: "cliente_edad",
       label: "Edad",
@@ -810,7 +853,15 @@ export function ClienteDrawer({
               accent={accent}
               acentos={"acentos" in f && f.acentos}
               esNombre={"esNombre" in f && f.esNombre}
-              placeholder={f.requerido ? undefined : "Sin dato"}
+              /* El campo puede traer su propia pista —el País sugiere países—;
+                 si no, «Sin dato», que es lo que dicen los demás. */
+              placeholder={
+                "placeholder" in f && f.placeholder
+                  ? f.placeholder
+                  : f.requerido
+                    ? undefined
+                    : "Sin dato"
+              }
               onBorrador={f.clave === "cliente_edad" ? setBorradorEdad : undefined}
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))

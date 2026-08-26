@@ -528,7 +528,20 @@ export default function CrmApp({
               onSetDrag={actions.setDrag}
               onSetOver={actions.setOver}
               onEditar={actions.editar}
-              onOpen={(id) => actions.verEnClientes({}, id)}
+              /*
+               * La ficha se abre encima del tablero, sin irse a Clientes.
+               *
+               * Antes esto llamaba a `verEnClientes`, que cambia de pantalla.
+               * Quien está trabajando el embudo abre una ficha para mirar un
+               * dato y seguir moviendo tarjetas, y el salto le costaba dos
+               * pasos cada vez: volver a Pipeline y reencontrar dónde estaba
+               * —con la columna desplazada y el asesor elegido perdido—.
+               *
+               * `select` solo marca cuál está abierta. La ficha se dibuja
+               * fuera de todos los módulos, así que aparece igual y el tablero
+               * queda atrás, intacto.
+               */
+              onOpen={actions.select}
               puedeElegirAsesor={veTodoElEquipo}
               vendedorId={state.pipeVend}
               onVendedor={actions.setPipeVend}
