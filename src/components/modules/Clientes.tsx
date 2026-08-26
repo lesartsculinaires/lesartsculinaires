@@ -23,6 +23,14 @@ interface Props {
   oportunidades: Oportunidad[];
   /** Si quien está mirando puede borrar leads. Sólo dirección. */
   esAdmin: boolean;
+  /**
+   * Sube el botón de subir base. Casilla «crear» del rol en Bases.
+   *
+   * El mismo botón está en el módulo de Bases y los dos respetan esta
+   * decisión. La política de `importaciones` lo hace cumplir aparte; esto sólo
+   * evita ofrecer algo que iba a fallar.
+   */
+  puedeSubirBases: boolean;
   /** Las bases subidas, para poder filtrar por la tanda que entró junta. */
   importaciones: Importacion[];
   accent: string;
@@ -42,6 +50,7 @@ interface Props {
 export function Clientes({
   oportunidades,
   esAdmin,
+  puedeSubirBases,
   importaciones,
   accent,
   query,
@@ -455,25 +464,27 @@ export function Clientes({
             + Nuevo cliente
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCreado(null);
-              setImportando(true);
-            }}
-            style={{
-              height: 32,
-              padding: "0 14px",
-              fontSize: 12.5,
-              borderRadius: 6,
-              border: `1px solid ${accent}`,
-              color: accent,
-              background: "transparent",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ↑ Subir base de datos
-          </button>
+          {puedeSubirBases && (
+            <button
+              type="button"
+              onClick={() => {
+                setCreado(null);
+                setImportando(true);
+              }}
+              style={{
+                height: 32,
+                padding: "0 14px",
+                fontSize: 12.5,
+                borderRadius: 6,
+                border: `1px solid ${accent}`,
+                color: accent,
+                background: "transparent",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ↑ Subir base de datos
+            </button>
+          )}
         </div>
 
         {creado && (

@@ -72,6 +72,29 @@ const subDe = (archivo) => {
 const ALE = subDe("jwt-ale.txt");
 const JEFA = subDe("jwt-jefa.txt");
 
+const ROL_ALE = sql(`select rol_id from public.usuarios where id = '${ALE}';`);
+
+/*
+ * El módulo se le esconde a Ale acá, en la prueba, y no se da por sentado.
+ *
+ * La migración lo destilda para los roles que no son dirección, pero eso es un
+ * valor de arranque que después dirección puede cambiar —y en el banco el
+ * sembrado lo deja tildado—. Cuando esta prueba se apoyaba en ese valor,
+ * fallaba sin que hubiera nada roto: estaba comprobando cómo quedó la base, no
+ * si el CRM respeta la casilla. Se pone la casilla y se comprueba el efecto.
+ */
+const AUTORIZ_ANTES = sql(`
+  select coalesce(ver::text, '-') from public.rol_permisos
+   where rol_id = ${ROL_ALE} and modulo = 'autorizaciones';
+`);
+const verAutorizaciones = (ver) =>
+  sql(`
+    insert into public.rol_permisos (rol_id, modulo, ver, crear, editar, eliminar)
+    values (${ROL_ALE}, 'autorizaciones', ${ver}, false, false, false)
+        on conflict (rol_id, modulo) do update set ver = excluded.ver;
+  `);
+verAutorizaciones(false);
+
 const MOTIVO = "PRUEBA: pide 15% porque se inscribe con una amiga.";
 const TIPO_NUEVO = "PRUEBA autorización nueva";
 
@@ -323,6 +346,13 @@ console.log("\n── 4. y la base no la deja aprobar aunque se lo pida directo 
     sql(`select estado from public.autorizaciones where id = ${pedido};`),
     "autorizada",
   );
+}
+
+// Devolver la casilla de Ale a como estaba.
+if (AUTORIZ_ANTES === "") {
+  sql(`delete from public.rol_permisos where rol_id = ${ROL_ALE} and modulo = 'autorizaciones';`);
+} else {
+  verAutorizaciones(AUTORIZ_ANTES);
 }
 
 sql(limpiar);

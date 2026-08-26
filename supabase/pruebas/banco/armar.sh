@@ -122,6 +122,17 @@ db-schemas = "public"
 db-anon-role = "anon"
 jwt-secret = "una-clave-de-pruebas-larguisima-para-firmar-jwt-0123456789"
 server-port = 3140
+
+# El mismo techo de filas que pone Supabase.
+#
+# Sin esto el banco mentía. PostgREST recorta las respuestas a mil filas —sin
+# error y sin aviso— y Supabase lo trae puesto; acá, por omisión, no hay techo
+# ninguno. Así que una consulta sin paginar andaba perfecto en el banco y
+# devolvía media tabla en producción.
+#
+# Es exactamente lo que pasó: con 1053 leads, al Gerente y al Jefe de ventas
+# les faltaban fichas en el tablero y ninguna prueba lo veía.
+db-max-rows = 1000
 CONF
 pkill -f "postgrest v.conf" 2>/dev/null
 

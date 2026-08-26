@@ -262,7 +262,16 @@ with revisiones as (
               where table_schema = 'public' and table_name = 'autorizaciones_tipo')
        and exists (select 1 from information_schema.columns
                     where table_schema = 'public' and table_name = 'autorizaciones'
-                      and column_name = 'oportunidad_id'))
+                      and column_name = 'oportunidad_id')),
+
+    ('20261002120000_permisos_de_bases',
+     'Quién sube bases y quién puede abrirlas, por rol',
+     exists (select 1 from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'puede')
+       and exists (select 1 from pg_policies
+                    where schemaname = 'public' and tablename = 'importaciones'
+                      and policyname = 'importaciones_subir'))
 
   ) as t(archivo, para_que, aplicada)
 ),
