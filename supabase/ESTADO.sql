@@ -254,7 +254,15 @@ with revisiones as (
               where n.nspname = 'public' and p.proname = 'abrir_lead_de_whatsapp')
        and exists (select 1 from pg_proc p
                      join pg_namespace n on n.oid = p.pronamespace
-                    where n.nspname = 'public' and p.proname = 'cliente_de_whatsapp'))
+                    where n.nspname = 'public' and p.proname = 'cliente_de_whatsapp')),
+
+    ('20261001120000_autorizaciones',
+     'Pedir autorización desde la ficha; dirección la aprueba desde su módulo',
+     exists (select 1 from information_schema.tables
+              where table_schema = 'public' and table_name = 'autorizaciones_tipo')
+       and exists (select 1 from information_schema.columns
+                    where table_schema = 'public' and table_name = 'autorizaciones'
+                      and column_name = 'oportunidad_id'))
 
   ) as t(archivo, para_que, aplicada)
 ),
