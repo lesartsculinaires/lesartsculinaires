@@ -54,33 +54,36 @@ export function puede(
   return fila[accion];
 }
 
-/** La clave del módulo de Bases en el catálogo. */
+/** Las claves de los módulos en el catálogo de la base. */
 export const MOD_BASES = "bases";
+export const MOD_FORMULARIOS = "formularios";
 
 /**
- * Lo que se puede hacer en Bases, resuelto de una vez.
+ * Las cuatro casillas de un módulo, resueltas de una vez.
  *
- * Va junto y no suelto porque las tres las necesitan las mismas dos pantallas
- * —Bases y Clientes, que comparte el botón de subir— y pasarlas de a una sería
- * tres propiedades donde alcanza con una.
+ * Van juntas y no sueltas porque cada pantalla necesita varias a la vez
+ * —Bases usa tres, Formularios usa tres— y pasarlas de a una serían cuatro
+ * propiedades donde alcanza con una. Se resuelven acá arriba, una sola vez,
+ * porque el mismo botón aparece en dos pantallas y calcularlo dos veces es la
+ * forma más segura de tenerlo mal en una.
  */
-export interface PermisosDeBases {
-  /** Aparece el módulo. */
+export interface PermisosDeModulo {
   ver: boolean;
-  /** Aparece el botón «Subir base» y la importación se acepta. */
-  subir: boolean;
-  /** Se puede abrir una base y ver los registros que trajo. */
-  abrir: boolean;
+  crear: boolean;
+  editar: boolean;
+  eliminar: boolean;
 }
 
-export function permisosDeBases(
+export function permisosDeModulo(
   permisos: readonly Permiso[],
   rolId: number | null,
   esAdmin: boolean,
-): PermisosDeBases {
+  modulo: string,
+): PermisosDeModulo {
   return {
-    ver: puede(permisos, rolId, esAdmin, MOD_BASES, "ver"),
-    subir: puede(permisos, rolId, esAdmin, MOD_BASES, "crear"),
-    abrir: puede(permisos, rolId, esAdmin, MOD_BASES, "editar"),
+    ver: puede(permisos, rolId, esAdmin, modulo, "ver"),
+    crear: puede(permisos, rolId, esAdmin, modulo, "crear"),
+    editar: puede(permisos, rolId, esAdmin, modulo, "editar"),
+    eliminar: puede(permisos, rolId, esAdmin, modulo, "eliminar"),
   };
 }

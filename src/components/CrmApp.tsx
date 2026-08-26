@@ -42,7 +42,7 @@ import {
 } from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
-import { permisosDeBases } from "@/lib/permisos";
+import { MOD_BASES, MOD_FORMULARIOS, permisosDeModulo } from "@/lib/permisos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
@@ -262,10 +262,12 @@ export default function CrmApp({
    * Como todo lo de esta pantalla, ordena la vista y no protege nada: quien
    * manda es `public.puede()` en la base, que decide aunque nadie mire.
    */
-  const enBases = useMemo(
-    () => permisosDeBases(accesos.permisos, accesos.yo?.rolId ?? null, accesos.esAdmin),
-    [accesos],
-  );
+  const casillas = useMemo(() => {
+    const rolId = accesos.yo?.rolId ?? null;
+    const de = (modulo: string) =>
+      permisosDeModulo(accesos.permisos, rolId, accesos.esAdmin, modulo);
+    return { bases: de(MOD_BASES), formularios: de(MOD_FORMULARIOS) };
+  }, [accesos]);
 
   /*
    * Si la pantalla abierta ya no está permitida, se cae a la primera que sí.
@@ -470,7 +472,7 @@ export default function CrmApp({
               oportunidades={oportunidades}
               importaciones={importaciones}
               esAdmin={accesos.esAdmin}
-              puedeSubirBases={enBases.subir}
+              puedeSubirBases={casillas.bases.crear}
               accent={accent}
               query={state.q}
               filtros={state.filtros}
@@ -511,8 +513,8 @@ export default function CrmApp({
               oportunidades={oportunidades}
               importaciones={importaciones}
               faltaMigracion={faltaMigracionBases}
-              puedeAbrir={enBases.abrir}
-              puedeSubir={enBases.subir}
+              puedeAbrir={casillas.bases.editar}
+              puedeSubir={casillas.bases.crear}
               accent={accent}
               onAbrir={(id) => actions.verEnClientes({}, id)}
               onRefrescar={() => router.refresh()}
@@ -603,7 +605,8 @@ export default function CrmApp({
             <Formularios
               formularios={formularios}
               faltaMigracion={faltaMigracionFormularios}
-              esAdmin={accesos.esAdmin}
+              puedeCrear={casillas.formularios.crear}
+              puedeEditar={casillas.formularios.editar}
               accent={accent}
               onVerFicha={abrirFicha}
               onRefrescar={() => router.refresh()}

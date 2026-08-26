@@ -24,7 +24,8 @@ type Vista =
 export function Formularios({
   formularios,
   faltaMigracion,
-  esAdmin,
+  puedeCrear,
+  puedeEditar,
   accent,
   onVerFicha,
   onRefrescar,
@@ -32,7 +33,16 @@ export function Formularios({
   formularios: Formulario[];
   /** Las tablas todavía no existen. */
   faltaMigracion: boolean;
-  esAdmin: boolean;
+  /**
+   * Armar un formulario nuevo. Casilla «crear» del rol.
+   *
+   * Antes esto era «sos administrador», y por eso dirección podía tildarle la
+   * casilla al Jefe de ventas sin que apareciera el botón. La política de la
+   * base lo hace cumplir aparte; esto sólo evita ofrecer algo que iba a fallar.
+   */
+  puedeCrear: boolean;
+  /** Cambiar las preguntas, y cerrar o reabrir. Casilla «editar». */
+  puedeEditar: boolean;
   accent: string;
   onVerFicha: (oportunidadId: number) => void;
   onRefrescar: () => void;
@@ -111,7 +121,7 @@ export function Formularios({
         contestado queda anotado en su bitácora.
       </p>
 
-      {esAdmin && (
+      {puedeCrear && (
         <button
           type="button"
           onClick={() => setVista({ que: "armar", formulario: null })}
@@ -140,7 +150,7 @@ export function Formularios({
       {formularios.length === 0 ? (
         <p style={{ fontSize: 13, color: T.muted, lineHeight: 1.55 }}>
           Todavía no hay formularios.
-          {esAdmin
+          {puedeCrear
             ? " Armá el primero con el botón de arriba."
             : " Pedile a dirección que arme el de la feria."}
         </p>
@@ -219,7 +229,7 @@ export function Formularios({
                   >
                     Llenar
                   </button>
-                  {esAdmin && (
+                  {puedeEditar && (
                     <>
                       <button
                         type="button"
