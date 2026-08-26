@@ -278,7 +278,13 @@ with revisiones as (
      exists (select 1 from public.territorios where lower(btrim(nombre)) = 'extranjero')
        and exists (select 1 from information_schema.columns
                     where table_schema = 'public' and table_name = 'clientes'
-                      and column_name = 'pais'))
+                      and column_name = 'pais')),
+
+    ('20261004120000_formularios_por_rol',
+     'Armar y editar formularios sale de la casilla del rol, no de ser admin',
+     exists (select 1 from pg_policies
+              where schemaname = 'public' and tablename = 'formularios'
+                and policyname = 'formularios_crear'))
 
   ) as t(archivo, para_que, aplicada)
 ),

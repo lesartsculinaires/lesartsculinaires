@@ -219,11 +219,44 @@ export interface ResultadoFormulario {
   id?: number;
 }
 
-const NO_ES_ADMIN: ResultadoFormulario = {
+const SIN_PERMISO = (que: string): ResultadoFormulario => ({
   ok: false,
-  error: "Sólo un administrador puede armar formularios.",
+  error: `No tenés permiso para ${que}. Pedile a dirección que te habilite la casilla en Usuarios y Roles.`,
   faltaMigracion: false,
-};
+});
+
+/**
+ * ¿El rol de quien pide tiene esta casilla en Formularios?
+ *
+ * Antes acá se preguntaba `es_admin`, y por eso dirección podía tildarle
+ * «crear» al Jefe de ventas sin que sirviera de nada. `puede` mira la casilla
+ * del rol, y sigue devolviendo verdadero para dirección.
+ *
+ * Si la función todavía no existe —falta correr la migración— se cae a la
+ * pregunta vieja. Es el comportamiento de antes, que es preferible a que nadie
+ * pueda armar un formulario hasta que se corra el SQL.
+ */
+async function tienePermiso(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+  accion: "crear" | "editar" | "eliminar",
+): Promise<boolean> {
+  if (!supabase) return false;
+
+  const { data, error } = await supabase.rpc("puede", {
+    p_modulo: "formularios",
+    p_accion: accion,
+  });
+
+  const faltaLaFuncion =
+    error != null &&
+    (error.code === "PGRST202" ||
+      /Could not find the function|does not exist/i.test(error.message ?? ""));
+
+  if (!faltaLaFuncion) return data === true;
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  return esAdmin === true;
+}
 
 /** Traduce el error de PostgREST a algo con lo que se pueda hacer algo. */
 function explicar(codigo: string | undefined, mensaje: string | undefined): ResultadoFormulario {
@@ -255,8 +288,7 @@ export async function crearFormulario(datos: DatosFormulario): Promise<Resultado
     return { ok: false, error: "Sesión vencida. Volvé a entrar.", faltaMigracion: false };
   }
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) return NO_ES_ADMIN;
+  if (!(await tienePermiso(supabase, "crear"))) return SIN_PERMISO("armar formularios");
 
   const nombre = datos.nombre.trim();
   if (!nombre) {
@@ -292,8 +324,7 @@ export async function editarFormulario(
     return { ok: false, error: "Sesión vencida. Volvé a entrar.", faltaMigracion: false };
   }
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) return NO_ES_ADMIN;
+  if (!(await tienePermiso(supabase, "editar"))) return SIN_PERMISO("cambiar este formulario");
 
   const nombre = datos.nombre.trim();
   if (!nombre) {
@@ -327,8 +358,7 @@ export async function alternarFormulario(
     return { ok: false, error: "Sesión vencida. Volvé a entrar.", faltaMigracion: false };
   }
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) return NO_ES_ADMIN;
+  if (!(await tienePermiso(supabase, "editar"))) return SIN_PERMISO("cerrar o reabrir formularios");
 
   const { error } = await supabase.from("formularios").update({ activo }).eq("id", id);
   if (error) return explicar(error.code, error.message);
@@ -371,8 +401,7 @@ export async function guardarCampos(
     return { ok: false, error: "Sesión vencida. Volvé a entrar.", faltaMigracion: false };
   }
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) return NO_ES_ADMIN;
+  if (!(await tienePermiso(supabase, "editar"))) return SIN_PERMISO("cambiar las preguntas");
 
   const limpios = campos.filter((c) => c.etiqueta.trim() !== "");
   if (limpios.length === 0) {
