@@ -48,6 +48,9 @@ function toOportunidad(r: Row): Oportunidad {
     // Vienen en null mientras no se haya corrido la migración de la edad: la
     // vista vieja no trae estas columnas y la ficha tiene que seguir abriendo.
     edad: numOrNull(r.edad),
+    // Nulo mientras no se haya corrido la migración de «Extranjero»: la vista
+    // vieja no trae la columna y la ficha tiene que seguir abriendo.
+    pais: r.pais ? str(r.pais) : null,
     responsableNombre: r.responsable_nombre ? str(r.responsable_nombre) : null,
     responsableTelefono: r.responsable_telefono ? str(r.responsable_telefono) : null,
     responsableCorreo: r.responsable_correo ? str(r.responsable_correo) : null,
