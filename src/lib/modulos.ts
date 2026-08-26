@@ -21,6 +21,7 @@ export const MODULOS = [
   "Plantillas",
   "Recordatorios",
   "Notificaciones",
+  "Autorizaciones",
 ] as const;
 
 /** La pantalla de administración, que no está en la lista de todos. */

@@ -68,6 +68,24 @@ export function sortear(
  *                          escribir se atiende sobre su ficha, donde está lo
  *                          que ya cursó; si hace falta abrirle una venta
  *                          nueva, eso lo decide una persona mirando.
+ *
+ * ------------------------------------------------------------------------
+ * QUIÉN APLICA ESTA REGLA HOY
+ * ------------------------------------------------------------------------
+ *
+ * La base, en `abrir_lead_de_whatsapp`. El webhook ya no decide esto con esta
+ * función salvo en un caso: cuando la migración todavía no se corrió y hay que
+ * abrir el lead al modo viejo para no perderlo.
+ *
+ * El motivo de la mudanza es que preguntar esto desde el servidor obliga a un
+ * viaje a la base para preguntar y a otro para escribir, y entre los dos entra
+ * el mensaje siguiente de la misma persona: pregunta antes de que el primero
+ * haya escrito, recibe «todavía no», y abre un segundo lead con otro asesor.
+ * Eso es lo que duplicaba los leads de WhatsApp. La base lo resuelve en una
+ * sola llamada, con candado, que es la única forma de que no quede hueco.
+ *
+ * Así que esto sirve para explicar la regla y para el camino de respaldo, pero
+ * no para volver a decidir con ella en el camino normal.
  */
 export const yaEsLead = (cuantasOportunidades: number): boolean =>
   cuantasOportunidades > 0;

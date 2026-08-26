@@ -124,9 +124,100 @@ console.log("\n── una carga rara no tumba el webhook ──");
   es("contesta 200 en vez de romper", r.estado, 200);
 }
 
+/*
+ * ------------------------------------------------------------------------
+ * LA RÁFAGA: TRES GLOBOS SEGUIDOS
+ * ------------------------------------------------------------------------
+ *
+ * Quien escribe no manda una frase: manda «Hola», «buenas tardes» y «quiero
+ * información» uno atrás del otro. Meta los entrega en llamadas separadas y
+ * llegan pisándose. Es el caso que duplicaba leads en producción.
+ *
+ * ------------------------------------------------------------------------
+ * ESTA SECCIÓN ATRAPA EL DEFECTO, PERO NO SIEMPRE
+ * ------------------------------------------------------------------------
+ *
+ * Conviene saberlo antes de confiar en ella. Corriendo el código viejo a
+ * propósito, esta sección encontró tres leads para un solo cliente —el defecto
+ * exacto que se veía en producción— pero en otra corrida, con el mismo código
+ * viejo, pasó en verde.
+ *
+ * La diferencia es cuánto tarda la base en contestar. Acá contesta en
+ * fracciones de milisegundo, así que a veces las tres llamadas terminan
+ * atendiéndose casi en fila y la ventana no llega a abrirse. En producción
+ * cada viaje a Supabase son decenas de milisegundos y se pisan siempre.
+ *
+ * Así que un verde acá NO alcanza para dar por bueno un cambio en este camino.
+ * La prueba que falla siempre con el código viejo es `prueba-lead-unico.mjs`,
+ * que ataca la base directamente y abre la ventana a propósito. Es la que hay
+ * que mirar si esto se toca.
+ */
+console.log("\n── tres mensajes juntos, un solo lead ──");
+{
+  const RAFAGA = "50361234599";
+  const globo = (texto, i) => ({
+    object: "whatsapp_business_account",
+    entry: [{ id: "222", changes: [{ field: "messages", value: {
+      messaging_product: "whatsapp",
+      metadata: { display_phone_number: "50322334455", phone_number_id: "111" },
+      contacts: [{ profile: { name: "Alex Spencer" }, wa_id: RAFAGA }],
+      messages: [{
+        from: RAFAGA,
+        id: `${WAID}-rafaga-${i}`,
+        timestamp: String(Math.floor(Date.now() / 1000)),
+        type: "text",
+        text: { body: texto },
+      }],
+    } }] }],
+  });
+
+  const respuestas = await Promise.all([
+    mandar(globo("Hola", 1)),
+    mandar(globo("buenas tardes", 2)),
+    mandar(globo("quiero información", 3)),
+  ]);
+
+  es("las tres entran", respuestas.map((r) => r.estado), [200, 200, 200]);
+
+  await new Promise((s) => setTimeout(s, 1500));
+
+  es("los tres mensajes se guardaron",
+     sql(`select count(*) from mensajes where wa_id like '${WAID}-rafaga-%'`), "3");
+  es("UNA sola ficha", sql(`select count(*) from clientes where telefono='${RAFAGA}'`), "1");
+  es("UN solo lead",
+     sql(`select count(*) from oportunidades o join clientes c on c.id=o.cliente_id where c.telefono='${RAFAGA}'`),
+     "1");
+  es("y una sola conversación",
+     sql(`select count(*) from conversaciones where telefono='${RAFAGA}'`), "1");
+
+  /*
+   * El hilo de la bandeja y el lead tienen que ser del mismo asesor. Cuando se
+   * duplicaba, cada lead salía sorteado aparte y el hilo se quedaba con el de
+   * la llamada que ganó la carrera, que no era el del otro lead.
+   *
+   * Se cuenta en vez de comparar de a uno: comparando con un subselect, la
+   * corrida en la que sí hay dos leads no falla sino que revienta con «more
+   * than one row», y una prueba que revienta esconde lo que encontró.
+   */
+  es("el hilo y el lead son del mismo asesor",
+     sql(`select count(*) from oportunidades o
+            join clientes c on c.id = o.cliente_id
+           where c.telefono='${RAFAGA}'
+             and o.vendedor_id is not distinct from
+                 (select vendedor_id from conversaciones where telefono='${RAFAGA}')`),
+     "1");
+
+  sql(`delete from mensajes where wa_id like '${WAID}-rafaga-%'`);
+  sql(`delete from conversaciones where telefono='${RAFAGA}'`);
+  sql(`delete from oportunidades where cliente_id in (select id from clientes where telefono='${RAFAGA}')`);
+  sql(`delete from contactos_canal where cliente_id in (select id from clientes where telefono='${RAFAGA}')`);
+  sql(`delete from clientes where telefono='${RAFAGA}'`);
+}
+
 sql(`delete from mensajes where wa_id='${WAID}'`);
 sql(`delete from conversaciones where telefono='${TEL}'`);
 sql(`delete from oportunidades where cliente_id in (select id from clientes where telefono='${TEL}')`);
+sql(`delete from contactos_canal where cliente_id in (select id from clientes where telefono='${TEL}')`);
 sql(`delete from clientes where telefono='${TEL}'`);
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

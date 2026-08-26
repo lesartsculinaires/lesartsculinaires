@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { Autorizaciones } from "@/components/modules/Autorizaciones";
 import { Bases } from "@/components/modules/Bases";
 import { Calendario } from "@/components/modules/Calendario";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
@@ -608,6 +609,14 @@ export default function CrmApp({
               onVerLeads={(productoId) => actions.verEnClientes({ producto: productoId })}
               esAdmin={accesos.esAdmin}
               onRefrescar={() => router.refresh()}
+            />
+          )}
+
+          {mod === "Autorizaciones" && (
+            <Autorizaciones
+              accent={accent}
+              esAdmin={accesos.esAdmin}
+              onAbrirFicha={abrirFicha}
             />
           )}
 
