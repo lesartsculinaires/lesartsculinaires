@@ -13,6 +13,15 @@ interface Props {
   onSeparar: (clave: string) => void;
   onVolver: () => void;
   onConfirmar: () => void;
+  /**
+   * La importación ya está corriendo.
+   *
+   * Sin esto el botón se quedaba encendido y con el mismo texto todo el rato
+   * que dura la carga —que con trescientas filas son varios segundos—, así que
+   * apretarlo otra vez arrancaba una segunda importación completa. El archivo
+   * entraba dos veces, con su base repetida y sus fichas repetidas.
+   */
+  ocupado?: boolean;
 }
 
 /**
@@ -34,6 +43,7 @@ export function RevisarBase({
   onSeparar,
   onVolver,
   onConfirmar,
+  ocupado = false,
 }: Props) {
   const { resumen } = plan;
   const hayQueMirar = resumen.aRevisar.length > 0 || resumen.sospechas.length > 0;
@@ -204,6 +214,7 @@ export function RevisarBase({
             <button
               type="button"
               onClick={onVolver}
+              disabled={ocupado}
               style={{
                 height: 37,
                 padding: "0 16px",
@@ -219,19 +230,23 @@ export function RevisarBase({
             <button
               type="button"
               onClick={onConfirmar}
-              disabled={resumen.oportunidades === 0}
+              disabled={resumen.oportunidades === 0 || ocupado}
               style={{
                 height: 37,
                 padding: "0 18px",
                 fontSize: 13,
                 fontWeight: 600,
                 borderRadius: 7,
-                background: resumen.oportunidades > 0 ? accent : T.border,
-                color: resumen.oportunidades > 0 ? "#fff" : T.faint,
-                cursor: resumen.oportunidades > 0 ? "pointer" : "not-allowed",
+                background: resumen.oportunidades > 0 && !ocupado ? accent : T.border,
+                color: resumen.oportunidades > 0 && !ocupado ? "#fff" : T.faint,
+                cursor: ocupado
+                  ? "wait"
+                  : resumen.oportunidades > 0
+                    ? "pointer"
+                    : "not-allowed",
               }}
             >
-              Importar {resumen.oportunidades}
+              {ocupado ? "Importando…" : `Importar ${resumen.oportunidades}`}
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
 import { RevisarBase } from "@/components/modules/RevisarBase";
@@ -171,7 +171,37 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     setLeyendo(false);
   };
 
+  /*
+   * ------------------------------------------------------------------------
+   * UNA IMPORTACIÓN A LA VEZ, Y ESTO ES LO QUE DE VERDAD LO IMPIDE
+   * ------------------------------------------------------------------------
+   *
+   * Apagar el botón mientras corre acomoda la pantalla, pero no alcanza:
+   * entre el clic y el repintado de React hay un instante, y un segundo clic
+   * que caiga ahí entra igual. En una tablet es todavía más fácil, porque un
+   * toque puede llegar dos veces.
+   *
+   * Y el precio de que entre es alto: la segunda vuelta arranca con `base` en
+   * nulo, así que abre OTRA fila de importación y vuelve a cargar el archivo
+   * entero. Es exactamente lo que pasó con «Asalariados 2025-2026»: dos bases
+   * del mismo nombre, del mismo minuto, con las mismas 326 filas cada una.
+   *
+   * Un `ref` no espera al repintado: se pone en el mismo tick del primer clic,
+   * así que el segundo ya lo encuentra puesto.
+   */
+  const corriendo = useRef(false);
+
   const importar = async () => {
+    if (corriendo.current) return;
+    corriendo.current = true;
+    try {
+      await importarDeVerdad();
+    } finally {
+      corriendo.current = false;
+    }
+  };
+
+  const importarDeVerdad = async () => {
     setError(null);
     setProgreso({ hechas: 0, total: aImportar.length });
 
@@ -664,6 +694,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
           }
           onVolver={() => setRevisando(false)}
           onConfirmar={() => void importar()}
+          ocupado={progreso != null}
         />
       )}
     </>
