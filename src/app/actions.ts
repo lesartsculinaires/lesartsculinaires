@@ -1,6 +1,5 @@
 "use server";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -15,15 +14,9 @@ import {
   type DatosLead,
 } from "@/lib/crm/altaLead";
 import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
+import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
-import { fechaLarga } from "@/lib/format";
 import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
-import {
-  detalleDe,
-  detectarSeguimiento,
-  hoyEnSalvador,
-  loQueSeEntendio,
-} from "@/lib/seguimientos";
 import { getServerClient } from "@/lib/supabase/server";
 import { COOKIE_MODULO } from "@/lib/ultimoModulo";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
@@ -133,7 +126,7 @@ export async function addNota(
 
   if (error) return { ok: false, error: error.message, seguimiento: null };
 
-  const seguimiento = await anotarSeguimiento(
+  const seguimiento = await anotarSeguimientoDeNota(
     supabase,
     oportunidadId,
     texto,
@@ -145,53 +138,6 @@ export async function addNota(
   return { ok: true, error: null, seguimiento };
 }
 
-/**
- * Si la nota pedía un seguimiento, dejarlo anotado.
- *
- * Va acá y no en un trigger de la base por una razón: leer «el 15 de cada
- * mes» o «pasado mañana» es trabajo de texto en español, con tildes, plurales
- * y meses cortos, y eso se escribe y se prueba mucho mejor en TypeScript. La
- * lógica entera vive en `@/lib/seguimientos`, probada línea por línea, y acá
- * queda nada más el viaje a la base.
- *
- * Si falla, no se cae la nota. La nota es lo que la persona vino a hacer y ya
- * está guardada; perderla porque el recordatorio no se pudo crear sería
- * cambiar un problema chico por uno grande.
- */
-async function anotarSeguimiento(
-  supabase: SupabaseClient,
-  oportunidadId: number,
-  texto: string,
-  notaId: number | null,
-  autorId: string | null,
-): Promise<string | null> {
-  const visto = detectarSeguimiento(texto, hoyEnSalvador());
-  if (!visto) return null;
-
-  const mensual = visto.cuando?.clase === "mensual" ? visto.cuando : null;
-
-  const { error } = await supabase.from("seguimientos").insert({
-    oportunidad_id: oportunidadId,
-    nota_id: notaId,
-    tipo: visto.tipo,
-    detalle: detalleDe(texto),
-    proxima: visto.proxima,
-    dia_del_mes: mensual?.dia ?? null,
-    dia_hasta: mensual?.hasta ?? null,
-    creado_por: autorId,
-  });
-
-  if (error) {
-    // Decirlo, y no callarlo: el asesor escribió la frase creyendo que quedaba
-    // agendado, y enterarse hoy de que no vale mucho más que descubrirlo el
-    // día que el cliente no recibió la llamada.
-    return error.code === "PGRST205" || error.code === "42P01" || !error.message
-      ? "La nota quedó guardada, pero el recordatorio no: falta correr la migración 20260911120000_seguimientos.sql."
-      : "La nota quedó guardada, pero el recordatorio no se pudo crear: " + error.message;
-  }
-
-  return loQueSeEntendio(visto, fechaLarga);
-}
 
 /** Una línea de la bitácora, lista para mostrar. */
 export interface NotaRegistrada {

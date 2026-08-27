@@ -1143,9 +1143,23 @@ export function Inbox({
                   }
                 }}
                 placeholder={
-                  puedeResponder ? "Escribí tu respuesta… (Enter envía)" : "WhatsApp no está configurado en el servidor."
+                  nota
+                    ? "Una nota para el equipo. No sale a WhatsApp."
+                    : puedeResponder
+                      ? "Escribí tu respuesta… (Enter envía)"
+                      : "WhatsApp no está configurado en el servidor."
                 }
-                disabled={!puedeResponder}
+                /*
+                 * Una nota interna se puede escribir siempre.
+                 *
+                 * Acá se pedía `puedeResponder`, que es tener token de
+                 * WhatsApp. Para una respuesta está bien; para una nota del
+                 * equipo no: no sale a ningún lado, es un dato del CRM. Con el
+                 * token caído —o pasadas las 24 horas— el asesor se quedaba
+                 * sin poder anotar lo que acababa de hablar por teléfono, que
+                 * es justo cuando más falta hace.
+                 */
+                disabled={!nota && !puedeResponder}
                 style={{
                   flex: 1,
                   minHeight: 40,
@@ -1155,22 +1169,28 @@ export function Inbox({
                   fontSize: 13,
                   border: `1px solid ${T.border}`,
                   borderRadius: 8,
-                  background: puedeResponder ? T.paper : T.border,
+                  background: nota || puedeResponder ? T.paper : T.border,
                   resize: "vertical",
                 }}
               />
               <button
                 type="button"
                 onClick={enviar}
-                disabled={!puedeResponder || !texto.trim() || enviando}
+                disabled={(!nota && !puedeResponder) || !texto.trim() || enviando}
                 style={{
                   ...botonLleno(accent),
                   height: 40,
                   padding: "0 18px",
-                  opacity: !puedeResponder || !texto.trim() ? 0.5 : 1,
+                  opacity: (!nota && !puedeResponder) || !texto.trim() ? 0.5 : 1,
                 }}
               >
-                {enviando ? "Enviando…" : "Enviar"}
+                {enviando
+                  ? nota
+                    ? "Guardando…"
+                    : "Enviando…"
+                  : nota
+                    ? "Guardar nota"
+                    : "Enviar"}
               </button>
             </div>
           </>

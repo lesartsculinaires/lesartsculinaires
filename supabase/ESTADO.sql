@@ -290,7 +290,13 @@ with revisiones as (
      'Cumpleaños en la ficha, para poder saludar',
      exists (select 1 from information_schema.columns
               where table_schema = 'public' and table_name = 'clientes'
-                and column_name = 'fecha_nacimiento'))
+                and column_name = 'fecha_nacimiento')),
+
+    ('20261006120000_seguimiento_recuperacion',
+     '«RECUPERACIÓN» en una nota agenda la llamada para una semana después',
+     exists (select 1 from pg_constraint
+              where conname = 'seguimientos_tipo_check'
+                and pg_get_constraintdef(oid) like '%recuperacion%'))
 
   ) as t(archivo, para_que, aplicada)
 ),

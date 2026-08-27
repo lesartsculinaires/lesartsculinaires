@@ -39,7 +39,7 @@ import type { Urgencia } from "@/lib/recordatorios";
  * tercero no sale de ninguna nota: lo deja el CRM cuando alguien marca un lead
  * como perdido por falta de interés, para volver a escribirle más adelante.
  */
-export type TipoSeguimiento = "pago" | "cierre" | "reactivacion";
+export type TipoSeguimiento = "pago" | "cierre" | "reactivacion" | "recuperacion";
 
 /** Cuándo hay que volver: una vez, o el mismo día de cada mes. */
 export type Cuando =
@@ -308,6 +308,15 @@ export function primeraFecha(cuando: Cuando | null, hoy: string): string {
 }
 
 /**
+ * Cuántos días se dejan pasar antes de llamar a quien hay que recuperar.
+ *
+ * Una semana. Va como constante y no escrito en el medio de la función porque
+ * es una regla del negocio, no un detalle: el día que la escuela decida que
+ * son cinco o diez, se cambia acá y la prueba lo sigue solo.
+ */
+export const DIAS_PARA_RECUPERAR = 7;
+
+/**
  * ¿Esta nota pide un seguimiento? Y si lo pide, ¿para cuándo?
  *
  * Devuelve nulo cuando la nota no lleva ninguna de las dos frases, que es el
@@ -315,6 +324,31 @@ export function primeraFecha(cuando: Cuando | null, hoy: string): string {
  */
 export function detectarSeguimiento(nota: string, hoy: string): Detectado | null {
   const t = normalizar(nota);
+
+  /*
+   * «Recuperación» se mira primero, y se mira distinto.
+   *
+   * Las otras dos son frases con fecha adentro —«seguimiento de pago el 15»—.
+   * Esta es una palabra sola: el asesor escribe «recuperación» en la nota y lo
+   * que quiere decir es «volver a este dentro de una semana». No hay fecha que
+   * leer, así que no se busca ninguna.
+   *
+   * Una semana y no menos porque recuperar es volver a alguien que se enfrió;
+   * llamarlo al otro día es demasiado pronto y termina en el mismo «no».
+   *
+   * `normalizar` ya sacó tildes y mayúsculas, así que esto atrapa
+   * «RECUPERACIÓN», «Recuperacion» y «recuperación» por igual.
+   */
+  if (/\brecuperacion(es)?\b/.test(t)) {
+    const fecha = sumarDias(hoy, DIAS_PARA_RECUPERAR);
+    return {
+      tipo: "recuperacion",
+      frase: "recuperación",
+      cuando: { clase: "fecha", fecha },
+      proxima: fecha,
+    };
+  }
+
   const frase = /\bseguimiento de (pago|cierre)\b/.exec(t);
   if (!frase) return null;
 
@@ -337,11 +371,19 @@ export const tituloDe = (tipo: TipoSeguimiento): string =>
     ? "Seguimiento de pago"
     : tipo === "cierre"
       ? "Seguimiento de cierre"
-      : "Volver a escribirle";
+      : tipo === "recuperacion"
+        ? "Llamar para recuperar"
+        : "Volver a escribirle";
 
 /** El rótulo corto, el de la pastilla en la lista. */
 export const rotuloDe = (tipo: TipoSeguimiento): string =>
-  tipo === "pago" ? "Pago" : tipo === "cierre" ? "Cierre" : "Reactivación";
+  tipo === "pago"
+    ? "Pago"
+    : tipo === "cierre"
+      ? "Cierre"
+      : tipo === "recuperacion"
+        ? "Recuperación"
+        : "Reactivación";
 
 /**
  * Lo que la nota decía, recortado.
@@ -379,6 +421,19 @@ export function comoSeRepite(cuando: Cuando | null): string {
  */
 export function loQueSeEntendio(d: Detectado, comoFecha: (iso: string) => string): string {
   const que = tituloDe(d.tipo);
+
+  /*
+   * La recuperación se dice con sus propias palabras.
+   *
+   * Con la frase general saldría «Llamar para recuperar anotado para el 3 de
+   * septiembre», que se entiende a medias. Acá conviene decir además cuánto
+   * falta: es lo que le confirma al asesor que el CRM entendió «en una
+   * semana» y no otra cosa.
+   */
+  if (d.tipo === "recuperacion") {
+    return `Recuperación anotada: llamalo el ${comoFecha(d.proxima)}, en una semana.`;
+  }
+
   if (d.cuando == null) {
     return `${que} anotado para hoy: la nota no decía para cuándo.`;
   }
