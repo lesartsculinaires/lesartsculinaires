@@ -26,6 +26,7 @@ import {
   type Pendientes,
 } from "@/lib/cambios";
 import { useCatalogo } from "@/lib/catalog";
+import { PAISES_POR_GRUPO, normalizarPais } from "@/lib/paises";
 import { fechaCorta, fechaLarga, mesLargo, money } from "@/lib/format";
 import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
@@ -339,16 +340,51 @@ export function ClienteDrawer({
           {
             clave: "cliente_pais",
             label: "País",
-            value: o.pais ?? "",
+            /*
+             * Lo guardado se normaliza sólo para MOSTRARLO.
+             *
+             * Una ficha vieja que dice «guatemala» o «GUATEMALA» aparece
+             * elegida en «Guatemala» y no como algo fuera de la lista. Lo que
+             * hay en la base no se toca hasta que alguien elija de verdad.
+             */
+            value: normalizarPais(o.pais) ?? "",
             tipo: "texto" as const,
             requerido: false,
-            acentos: true,
-            placeholder: "Guatemala, Honduras, España…",
+            placeholder: "Elegí el país",
+            opciones: PAISES_POR_GRUPO.map((g) => ({
+              grupo: g.grupo,
+              valores: g.paises,
+            })),
             guardar: (v: string) =>
               onEditarCliente(o.clienteId, { pais: oNull(v) }, { pais: oNull(v) }),
           },
         ]
       : []),
+    /*
+     * El cumpleaños, al lado de la edad.
+     *
+     * Las dos conviven a propósito: la edad es lo que se pregunta en la feria
+     * y lo que decide si hace falta un adulto responsable; la fecha es lo que
+     * sirve para saludar y lo único que no envejece solo.
+     *
+     * Se muestra como día/mes/año, que es como se pidió y como se lee acá. Se
+     * guarda como fecha: «03/04/1995» en texto no se puede ordenar ni
+     * consultar, y encima no se sabe si es el 3 de abril o el 4 de marzo.
+     */
+    {
+      clave: "cliente_cumple",
+      label: "Cumpleaños",
+      value: o.fechaNacimiento ?? "",
+      tipo: "fecha" as const,
+      requerido: false,
+      placeholder: "Sin dato",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { fecha_nacimiento: oNull(v) },
+          { fechaNacimiento: oNull(v) },
+        ),
+    },
     {
       clave: "cliente_edad",
       label: "Edad",
@@ -862,6 +898,8 @@ export function ClienteDrawer({
                     ? undefined
                     : "Sin dato"
               }
+              /* Con opciones el campo se elige de una lista en vez de escribirse. */
+              opciones={"opciones" in f ? f.opciones : undefined}
               onBorrador={f.clave === "cliente_edad" ? setBorradorEdad : undefined}
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))

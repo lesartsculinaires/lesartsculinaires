@@ -7,6 +7,12 @@ import { T } from "@/lib/theme";
 
 type Tipo = "texto" | "fecha" | "monto";
 
+/** Opciones agrupadas, para los campos que se eligen de una lista. */
+export interface GrupoDeOpciones {
+  grupo: string;
+  valores: readonly string[];
+}
+
 interface Props {
   label: string;
   /** Current stored value. Empty string renders as the placeholder. */
@@ -14,6 +20,18 @@ interface Props {
   tipo?: Tipo;
   accent: string;
   placeholder?: string;
+  /**
+   * Cuando viene, el campo se elige de una lista en vez de escribirse.
+   *
+   * Se agrupan porque una lista larga sin secciones obliga a recorrerla
+   * entera: el País tiene ochenta y pico y lo que se elige casi siempre son
+   * los cinco de Centroamérica.
+   *
+   * Lo guardado sigue siendo el texto, no un id. Así una ficha vieja con el
+   * país escrito a mano se sigue leyendo, y se muestra tal cual aunque no esté
+   * en la lista.
+   */
+  opciones?: readonly GrupoDeOpciones[];
   /** Blocks clearing the field; use for `not null` columns. */
   requerido?: boolean;
   /** Called on blur or Enter, only when the value actually changed. */
@@ -50,6 +68,7 @@ export function CampoEditable({
   tipo = "texto",
   accent,
   placeholder,
+  opciones,
   requerido = false,
   onGuardar,
   acentos = false,
@@ -148,7 +167,43 @@ export function CampoEditable({
     >
       <span style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{label}</span>
       <span style={{ flex: 1, maxWidth: multilinea ? "72%" : tipo === "texto" ? "62%" : 150 }}>
-        {multilinea ? (
+        {opciones ? (
+          /*
+           * Un `select`, no un cuadro de texto.
+           *
+           * Se guarda en cuanto se elige y no al salir del campo: en un
+           * desplegable no hay «terminar de escribir», así que esperar al
+           * `blur` haría que elegir y cerrar la ficha perdiera el cambio.
+           *
+           * La opción vacía existe para poder borrar el dato. Y si lo guardado
+           * no está en la lista —una ficha vieja, un país escrito a mano— se
+           * agrega como una opción más al final, para no cambiárselo en
+           * silencio a quien sólo vino a mirar.
+           */
+          <select
+            value={draft}
+            onChange={(e) => {
+              poner(e.target.value);
+              onGuardar(e.target.value);
+            }}
+            style={{ ...input, textAlign: "left", border: `1px solid ${T.border}` }}
+          >
+            <option value="">{placeholder ?? "—"}</option>
+            {draft !== "" &&
+              !opciones.some((g) => g.valores.includes(draft)) && (
+                <option value={draft}>{draft}</option>
+              )}
+            {opciones.map((g) => (
+              <optgroup key={g.grupo} label={g.grupo}>
+                {g.valores.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        ) : multilinea ? (
           <textarea
             ref={ref as React.RefObject<HTMLTextAreaElement>}
             rows={focus ? 3 : 1}

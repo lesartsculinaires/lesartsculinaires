@@ -515,10 +515,26 @@ export default function CrmApp({
               accent={accent}
               onRefrescar={() => router.refresh()}
               onVerCliente={(clienteId) => {
-                // Las pantallas listan oportunidades, no clientes: se salta a
-                // la primera de esa persona.
+                /*
+                 * La ficha se abre encima de la bandeja, sin irse a Clientes.
+                 *
+                 * Antes esto saltaba de pantalla. Quien está atendiendo un
+                 * chat abre la ficha para mirar un dato —qué programa quería,
+                 * cuánto le cotizaron— y tiene que volver a contestar: el
+                 * salto le costaba perder el hilo abierto y buscarlo otra vez
+                 * entre todos.
+                 *
+                 * La ficha se dibuja fuera de todos los módulos, así que
+                 * alcanza con marcar cuál está abierta. Es lo mismo que ya se
+                 * hizo en el Pipeline.
+                 *
+                 * Las pantallas listan oportunidades, no clientes, así que se
+                 * abre la primera de esa persona. Si no tiene ninguna no hay
+                 * ficha que mostrar, y ahí sí se va a Clientes, que es donde
+                 * se le puede crear una.
+                 */
                 const suya = oportunidades.find((o) => o.clienteId === clienteId);
-                if (suya) actions.verEnClientes({}, suya.id);
+                if (suya) actions.select(suya.id);
                 else actions.setMod("Clientes");
               }}
             />

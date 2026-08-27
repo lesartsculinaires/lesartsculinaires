@@ -186,13 +186,17 @@ await p.waitForTimeout(1200);
 es("AHORA SÍ SE PIDE EL PAÍS, ANTES DE GUARDAR", /\bPaís\b/.test(await dice()), true);
 await foto("2-pide-el-pais");
 
-// Escribirlo. La casilla se edita como todas: se hace clic y se escribe.
-await ficha.getByText("País", { exact: true }).first().click({ force: true });
-await p.waitForTimeout(600);
-const caja = p.locator('input[placeholder*="Guatemala"]').first();
-es("la casilla está lista para escribir", await caja.count(), 1);
-await caja.fill("Costa Rica");
-await caja.press("Enter");
+/*
+ * El País pasó de cuadro de texto a lista.
+ *
+ * Esta prueba lo escribía a mano y buscaba el campo por su placeholder de
+ * entonces —«Guatemala, Honduras, España…»—. Ahora se elige de un desplegable
+ * agrupado, que es lo que evita que la misma columna termine con «guate»,
+ * «Guate» y «GUATEMALA».
+ */
+const caja = ficha.locator("select").filter({ hasText: "Costa Rica" });
+es("el país se elige de una lista", await caja.count(), 1);
+await caja.selectOption("Costa Rica");
 await p.waitForTimeout(900);
 
 // Guardar los dos cambios juntos: el territorio y el país.
