@@ -31,6 +31,7 @@ import { useAvisoDiario } from "@/hooks/useAvisoDiario";
 import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
+import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
 import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
@@ -89,6 +90,8 @@ interface Props {
   seguimientos: Seguimiento[];
   /** La tabla de seguimientos todavía no existe. */
   faltaMigracionSeguimientos: boolean;
+  /** Pedidos de autorización sin resolver, para el globito de la barra. */
+  autorizacionesPendientes: number;
   /** Los formularios de feria, con sus preguntas. */
   formularios: FormularioDeFeria[];
   /** Las tablas de formularios todavía no existen. */
@@ -123,6 +126,7 @@ export default function CrmApp({
   faltaMigracionRecordatorios,
   seguimientos,
   faltaMigracionSeguimientos,
+  autorizacionesPendientes,
   formularios,
   faltaMigracionFormularios,
   modInicial,
@@ -324,9 +328,21 @@ export default function CrmApp({
     .filter((c) => !c.archivada)
     .reduce((s, c) => s + (c.sinLeer ?? 0), 0);
 
-  const avisosDeLaBarra: Record<string, number> = sinLeer > 0 ? { Inbox: sinLeer } : {};
-
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
+
+  /*
+   * Los números rojos de la barra, todos juntos.
+   *
+   * Qué se cuenta y por qué está en `@/lib/avisos`, aparte de esta pantalla:
+   * es una regla —«lo que está sin atender y vence hoy o ya venció»— y las
+   * reglas se prueban mejor solas que a través de un navegador.
+   */
+  const avisos = avisosDeLaBarra({
+    mensajesSinLeer: sinLeer,
+    reservasUrgentes: urgentes,
+    seguimientos: pendientes,
+    autorizacionesPendientes,
+  });
   const llamadasDeHoy = seguimientosParaInterrumpir(pendientes);
 
   // La ventana emergente: sólo por lo de hoy y lo vencido, y una vez por día.
@@ -349,7 +365,7 @@ export default function CrmApp({
           rol={rol}
           nombre={accesos.yo?.nombre ?? null}
           modulos={permitidos}
-          avisos={avisosDeLaBarra}
+          avisos={avisos}
           onSelect={actions.setMod}
         />
 
