@@ -388,3 +388,32 @@ export async function resolverAutorizacion(
   revalidatePath("/");
   return { ok: true, error: null };
 }
+
+/**
+ * Cuántos pedidos sin resolver ve esta persona.
+ *
+ * Va aparte de `cargarAutorizaciones` y no como un campo suyo porque quien lo
+ * necesita es la barra lateral, que se dibuja en cada pantalla: pedir los
+ * cuatrocientos pedidos con sus leads para mostrar un número sería traer una
+ * pantalla entera para pintar un globito.
+ *
+ * Cuánto cuenta lo decide la política, igual que la lista: dirección ve todos
+ * los pendientes de la escuela, y quien pidió algo ve los de los leads que ya
+ * puede ver. Así el número de cada uno coincide con lo que va a encontrar
+ * cuando entre.
+ *
+ * Sin la migración corrida devuelve cero en vez de fallar: un globito que no
+ * aparece es mejor que una barra lateral que no se dibuja.
+ */
+export async function contarAutorizacionesPendientes(): Promise<number> {
+  const supabase = await getServerClient();
+  if (!supabase) return 0;
+
+  const { count, error } = await supabase
+    .from("autorizaciones")
+    .select("id", { count: "exact", head: true })
+    .eq("estado", "pendiente");
+
+  if (error) return 0;
+  return count ?? 0;
+}

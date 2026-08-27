@@ -10,6 +10,7 @@ import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
 import { listarEtiquetas } from "@/app/etiquetas-actions";
 import { estadoPlantillas } from "@/app/plantillas-actions";
+import { contarAutorizacionesPendientes } from "@/app/autorizaciones-actions";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import { fetchPospuestos } from "@/lib/supabase/recordatorios";
 import { fetchSeguimientos } from "@/lib/supabase/seguimientos";
@@ -48,6 +49,11 @@ export default async function Page({
       fetchSeguimientos(),
     ]);
 
+  // Para el globito de la barra. Va suelto y no dentro del `Promise.all`
+  // de arriba porque ese arreglo se desestructura por posición, y meter
+  // uno en el medio corre todos los demás.
+  const autorizacionesPendientes = await contarAutorizacionesPendientes();
+
   const puedeResponder = await salidaDisponible();
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
@@ -76,6 +82,7 @@ export default async function Page({
       oportunidades={ops.data}
       catalogo={catalogo.data}
       eventos={eventos.data}
+      autorizacionesPendientes={autorizacionesPendientes}
       importaciones={bases.data}
       faltaMigracionBases={bases.faltaMigracion}
       conversaciones={inbox.conversaciones}
