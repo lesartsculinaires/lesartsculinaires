@@ -36,6 +36,15 @@ export interface Recibo {
    */
   horario: string | null;
   territorio: string | null;
+  /**
+   * El país, cuando el territorio es «Extranjero».
+   *
+   * Sin esto el recibo decía «Territorio: Extranjero» y nada más, que para
+   * quien inscribe es lo mismo que no decir nada: no distingue a alguien de
+   * Guatemala de alguien de España, y de eso dependen el trámite y la
+   * documentación que hay que pedirle.
+   */
+  pais: string | null;
   asesor: string | null;
   valor: number | null;
   reserva: number | null;
@@ -120,6 +129,7 @@ export async function leerRecibo(token: string): Promise<ResultadoRecibo> {
       programa: texto(fila.producto),
       horario: texto(fila.horario),
       territorio: texto(fila.territorio),
+      pais: texto(fila.pais),
       asesor: texto(fila.vendedor),
       valor: fila.valor_oportunidad == null ? null : Number(fila.valor_oportunidad),
       reserva: fila.reserva == null ? null : Number(fila.reserva),

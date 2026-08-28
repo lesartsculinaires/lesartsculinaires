@@ -94,7 +94,8 @@ sql(`
   insert into public.productos (nombre, categoria, horario)
   values ('${PROGRAMA}', 'Diplomado', '${DEL_PROGRAMA}');
 
-  insert into public.clientes (nombre, telefono) values ('${CLIENTE}', '70770001');
+  insert into public.clientes (nombre, telefono, pais)
+  values ('${CLIENTE}', '70770001', 'Guatemala');
 
   insert into public.oportunidades
     (codigo, cliente_id, vendedor_id, producto_id, etapa_id, fecha_registro, valor_oportunidad)
@@ -239,6 +240,15 @@ console.log("\n── y sale en el link de registro ──");
   es("el recibo dice HORARIO", texto.includes("Horario"), true);
   es("Y ES EL QUE ESCRIBIÓ VENTAS", texto.includes(CERRADO), true);
   es("no el del programa", texto.includes(DEL_PROGRAMA), false);
+
+  /*
+   * Y el país.
+   *
+   * «Territorio: Extranjero» a secas no le sirve a quien inscribe: no
+   * distingue a alguien de Guatemala de alguien de España, y de eso dependen
+   * el trámite y los papeles que hay que pedirle.
+   */
+  es("Y DICE DE QUÉ PAÍS ES", texto.includes("País") && texto.includes("Guatemala"), true);
   await recibo.close();
 }
 
