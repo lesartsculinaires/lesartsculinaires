@@ -8,6 +8,16 @@ import { T } from "@/lib/theme";
 interface Props {
   oportunidadId: number;
   accent: string;
+  /**
+   * ¿Este lead ya tiene cargado el horario con el que se cerró?
+   *
+   * No impide generar el enlace: hay inscripciones que no lo necesitan, y
+   * frenar a alguien por un campo vacío a la hora de mandar un link es la
+   * forma más rápida de que dejen de usar el link. Sólo se avisa, que es
+   * cuando conviene enterarse: un segundo antes de que el recibo salga sin el
+   * dato y académica tenga que llamar a preguntarlo.
+   */
+  faltaHorario?: boolean;
 }
 
 /**
@@ -17,7 +27,7 @@ interface Props {
  * nadie quiere «generar» algo y después buscar dónde copiarlo. Si ya había un
  * enlace vivo se reutiliza, así que apretarlo dos veces devuelve el mismo.
  */
-export function BotonLinkRegistro({ oportunidadId, accent }: Props) {
+export function BotonLinkRegistro({ oportunidadId, accent, faltaHorario }: Props) {
   const [estado, setEstado] = useState<"idle" | "generando" | "copiado" | "error">("idle");
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -105,6 +115,14 @@ export function BotonLinkRegistro({ oportunidadId, accent }: Props) {
             color: T.ink,
           }}
         />
+      )}
+
+      {faltaHorario && (
+        <p style={{ margin: "6px 0 0", fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
+          Este lead no tiene cargado el <strong>horario del diplomado</strong>: el
+          recibo va a salir sin esa línea. Podés escribirlo más abajo, en el campo
+          «Horario del diplomado», y volver a copiar el link.
+        </p>
       )}
 
       {estado === "copiado" && (

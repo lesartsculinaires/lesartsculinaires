@@ -86,6 +86,12 @@ function ReciboImpreso({ recibo: r }: { recibo: Recibo }) {
       <Regla />
       <Bloque>PROGRAMA</Bloque>
       <Linea etiqueta="Programa" valor={r.programa ?? "—"} />
+      {/* El horario sólo cuando lo hay. Una línea «Horario —» en cada recibo se
+          vuelve invisible de tanto repetirse, igual que pasaba con la reserva.
+          Cuando falta, quien lo lea nota el hueco y lo pregunta; cuando está,
+          es lo que se le prometió a esta persona y no lo que el programa diga
+          hoy. */}
+      {r.horario && <Linea etiqueta="Horario" valor={r.horario} />}
       {r.territorio && <Linea etiqueta="Territorio" valor={r.territorio} />}
 
       <Regla />

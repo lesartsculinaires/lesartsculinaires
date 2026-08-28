@@ -274,6 +274,36 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditar(o.id, { descuento_promocion: oNull(v) }, { descuento: oNull(v) }),
     },
+    /*
+     * ------------------------------------------------------------------------
+     * EL HORARIO CON EL QUE SE CERRÓ
+     * ------------------------------------------------------------------------
+     *
+     * Sale impreso tal cual en el link de registro, así que lo que se escriba
+     * acá es lo que va a leer académica para inscribir a esta persona.
+     *
+     * Vive en el lead y no en el programa, aunque el horario SEA del programa,
+     * porque el del programa cambia todos los años. Si el recibo lo leyera de
+     * ahí, una inscripción cerrada en marzo empezaría a decir el horario del
+     * año siguiente en cuanto dirección lo actualice, y académica inscribiría a
+     * esa persona en los días equivocados sin que nadie hubiera tocado su
+     * ficha. Lo que se le prometió a alguien es un hecho del pasado.
+     *
+     * Para que eso no cueste teclearlo trescientas veces, el horario vigente
+     * del programa se ofrece abajo y entra con un clic.
+     */
+    {
+      clave: "horario",
+      label: "Horario del diplomado",
+      value: o.horario ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      multilinea: true,
+      acentos: true,
+      placeholder:
+        o.horarioPrograma ?? "Ej.: Sábados de 8:00 a 12:00, del 15/02 al 20/06",
+      guardar: (v: string) => onEditar(o.id, { horario: oNull(v) }, { horario: oNull(v) }),
+    },
   ];
 
   /** Fields stored on the shared client record. */
@@ -559,7 +589,14 @@ export function ClienteDrawer({
         <CanalesDelContacto clienteId={o.clienteId} accent={accent} />
       )}
 
-      <BotonLinkRegistro oportunidadId={o.id} accent={accent} />
+      <BotonLinkRegistro
+        oportunidadId={o.id}
+        accent={accent}
+        // Cuenta lo que todavía no se guardó: quien acaba de escribir el
+        // horario y no apretó Guardar no tiene por qué ver un aviso de que
+        // falta.
+        faltaHorario={!valorVisible(pendientes, "horario", o.horario ?? "").trim()}
+      />
 
       <SectionLabel>Etapa del proceso</SectionLabel>
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
@@ -858,7 +895,22 @@ export function ClienteDrawer({
                         accent={accent}
                       />
                     )
-                  : undefined
+                  : f.clave === "horario" && o.horarioPrograma
+                    ? (borrador, poner) => (
+                        <Sugerencias
+                          opciones={[{ texto: o.horarioPrograma as string, veces: 0 }]}
+                          valor={borrador}
+                          onElegir={poner}
+                          accent={accent}
+                          titulo="Del programa:"
+                          detalle={() =>
+                            "El horario que dirección tiene cargado hoy para este " +
+                            "programa. Al ponerlo acá queda guardado en este lead: " +
+                            "si el programa cambia el año que viene, éste no cambia."
+                          }
+                        />
+                      )
+                    : undefined
               }
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))

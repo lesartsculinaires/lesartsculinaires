@@ -113,3 +113,74 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
   revalidatePath("/");
   return { ok: true, error: null };
 }
+
+/**
+ * El horario vigente de un programa.
+ *
+ * ------------------------------------------------------------------------
+ * QUÉ CAMBIA Y QUÉ NO CAMBIA AL GUARDAR ESTO
+ * ------------------------------------------------------------------------
+ *
+ * Cambia el borrador que se le va a ofrecer a ventas de acá en adelante. NO
+ * cambia ninguna inscripción ya cerrada: cada lead guarda su propio horario,
+ * congelado el día que se escribió.
+ *
+ * Es a propósito y es la razón de que sean dos columnas. La escuela cambia el
+ * horario todos los años; si tocarlo acá reescribiera los recibos ya emitidos,
+ * el primer cambio de calendario mandaría al área académica a inscribir en los
+ * días equivocados a toda la gente del año anterior.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ ES DE DIRECCIÓN
+ * ------------------------------------------------------------------------
+ *
+ * Porque el catálogo lo comparten todas las pantallas: lo que se escriba acá
+ * es lo que van a copiar todos los asesores. Un horario mal puesto se propaga
+ * solo a las inscripciones de la semana. Ventas escribe el suyo en cada lead,
+ * que es donde una errata afecta a una persona y no a todas.
+ */
+export async function guardarHorarioDePrograma(
+  productoId: number,
+  horario: string | null,
+): Promise<{ ok: boolean; error: string | null }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data: esAdmin } = await supabase.rpc("es_admin");
+  if (esAdmin !== true) {
+    return { ok: false, error: "Sólo dirección puede cambiar el horario de un programa." };
+  }
+
+  const limpio = (horario ?? "").trim();
+  if (limpio.length > 400) {
+    return {
+      ok: false,
+      error: "El horario es demasiado largo. Con los días, la hora y las fechas alcanza.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("productos")
+    .update({ horario: limpio || null })
+    .eq("id", productoId);
+
+  if (error) {
+    // 42703: la columna todavía no existe. Es lo que se ve si el código se
+    // desplegó y el SQL no, y decirlo por su nombre ahorra el rato de creer
+    // que se rompió el catálogo.
+    if (error.code === "42703" || /column .*horario/i.test(error.message ?? "")) {
+      return {
+        ok: false,
+        error:
+          "Falta correr la migración 20261008120000_horario_del_diplomado.sql en Supabase.",
+      };
+    }
+    if (error.code === "42501") {
+      return { ok: false, error: "Sólo dirección puede cambiar el horario de un programa." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
