@@ -92,6 +92,8 @@ interface Props {
   faltaMigracionSeguimientos: boolean;
   /** Pedidos de autorización sin resolver, para el globito de la barra. */
   autorizacionesPendientes: number;
+  /** Movimientos del equipo sin mirar, para el globito de Notificaciones. */
+  actividadSinVer: number;
   /** Los formularios de feria, con sus preguntas. */
   formularios: FormularioDeFeria[];
   /** Las tablas de formularios todavía no existen. */
@@ -127,6 +129,7 @@ export default function CrmApp({
   seguimientos,
   faltaMigracionSeguimientos,
   autorizacionesPendientes,
+  actividadSinVer,
   formularios,
   faltaMigracionFormularios,
   modInicial,
@@ -342,6 +345,9 @@ export default function CrmApp({
     reservasUrgentes: urgentes,
     seguimientos: pendientes,
     autorizacionesPendientes,
+    // Se apaga solo al abrir el módulo: `Notificaciones` marca lo visto, y el
+    // próximo refresco de la pantalla trae el número ya en cero.
+    actividadSinVer: mod === "Notificaciones" ? 0 : actividadSinVer,
   });
   const llamadasDeHoy = seguimientosParaInterrumpir(pendientes);
 

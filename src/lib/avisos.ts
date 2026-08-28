@@ -41,6 +41,14 @@ export interface ParaAvisar {
   seguimientos: readonly SeguimientoPendiente[];
   /** Pedidos de autorización sin resolver que esta persona puede ver. */
   autorizacionesPendientes: number;
+  /**
+   * Movimientos del equipo desde la última vez que esta persona miró.
+   *
+   * No cuenta lo que hizo ella misma: nadie necesita un aviso rojo de lo que
+   * acaba de hacer, y contándolo el número nunca bajaría a cero para quien
+   * está trabajando.
+   */
+  actividadSinVer: number;
 }
 
 /**
@@ -77,6 +85,18 @@ export function avisosDeLaBarra(datos: ParaAvisar): Record<string, number> {
   if (datos.autorizacionesPendientes > 0) {
     avisos.Autorizaciones = datos.autorizacionesPendientes;
   }
+
+  /*
+   * Notificaciones es distinto de los otros tres, y vale la pena decir por qué
+   * entra igual.
+   *
+   * Los demás cuentan pendientes: cosas que alguien tiene que hacer. Éste
+   * cuenta novedades: cosas que pasaron y todavía no se miraron. Cumple igual
+   * la regla de arriba —baja a cero cuando se atiende, porque abrir el módulo
+   * lo apaga— y por eso no se vuelve un número permanente de los que enseñan a
+   * ignorar los otros.
+   */
+  if (datos.actividadSinVer > 0) avisos.Notificaciones = datos.actividadSinVer;
 
   return avisos;
 }
