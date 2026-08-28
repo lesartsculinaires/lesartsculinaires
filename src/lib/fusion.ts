@@ -9,16 +9,60 @@
 
 import { normalizarCorreo, normalizarTelefono, normalizarTexto } from "@/lib/duplicados";
 
-/** Lo que se guarda de un cliente y puede fusionarse. */
+/**
+ * Lo que se guarda de un cliente y puede fusionarse.
+ *
+ * ------------------------------------------------------------------------
+ * ESTA LISTA TIENE QUE CRECER CON LA TABLA
+ * ------------------------------------------------------------------------
+ *
+ * Un campo que existe en `clientes` y no está acá se pierde en silencio al
+ * unificar: el lead entra, se junta con el que ya estaba, y el dato nuevo que
+ * traía no se escribe en ningún lado. Pasó con la edad y el responsable, que
+ * se agregaron a la tabla y no acá, así que un menor cargado desde el
+ * formulario perdía el nombre del adulto si coincidía con un contacto viejo.
+ *
+ * Si se agrega una columna a `clientes`, se agrega también en
+ * `CAMPOS_DE_CLIENTE`, en `ETIQUETA_CAMPO` y en la lista que leen
+ * `unificarCliente` e `importarClientes`.
+ */
 export interface DatosCliente {
   nombre?: string | null;
   telefono?: string | null;
   telefono_secundario?: string | null;
   correo?: string | null;
   territorio_id?: number | null;
+  pais?: string | null;
+  fecha_nacimiento?: string | null;
+  edad?: number | null;
+  responsable_nombre?: string | null;
+  responsable_telefono?: string | null;
+  responsable_correo?: string | null;
 }
 
 export type CampoFusion = keyof DatosCliente;
+
+/**
+ * Qué se intenta completar, en orden.
+ *
+ * `telefono_secundario` no está: no se completa desde el entrante sino que lo
+ * llena el teléfono que choca con el primero, más abajo.
+ */
+export const CAMPOS_DE_CLIENTE: readonly CampoFusion[] = [
+  "nombre",
+  "telefono",
+  "correo",
+  "territorio_id",
+  "pais",
+  "fecha_nacimiento",
+  "edad",
+  "responsable_nombre",
+  "responsable_telefono",
+  "responsable_correo",
+];
+
+/** Las columnas que hay que leer del cliente para poder fusionarlo. */
+export const COLUMNAS_DE_FUSION = ["id", "telefono_secundario", ...CAMPOS_DE_CLIENTE].join(", ");
 
 export interface Choque {
   campo: CampoFusion;
@@ -65,9 +109,7 @@ export function planificarFusion(
   const completados: CampoFusion[] = [];
   const choques: Choque[] = [];
 
-  const campos: CampoFusion[] = ["nombre", "telefono", "correo", "territorio_id"];
-
-  for (const campo of campos) {
+  for (const campo of CAMPOS_DE_CLIENTE) {
     const nuevo = entrante[campo];
     if (vacio(nuevo)) continue;
 
@@ -102,6 +144,12 @@ export const ETIQUETA_CAMPO: Record<CampoFusion, string> = {
   telefono_secundario: "Teléfono secundario",
   correo: "Correo",
   territorio_id: "Territorio",
+  pais: "País",
+  fecha_nacimiento: "Cumpleaños",
+  edad: "Edad",
+  responsable_nombre: "Responsable",
+  responsable_telefono: "Teléfono del responsable",
+  responsable_correo: "Correo del responsable",
 };
 
 /** "Teléfono y Correo" — para contar qué se completó. */

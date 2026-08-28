@@ -14,6 +14,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import type { ContactoConocido } from "@/lib/duplicados";
 import {
+  A_NOTA,
   CAMPOS,
   construirFilas,
   detectarMapeo,
@@ -104,6 +105,17 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const aImportar = plan.destinos;
   const seUnifican = plan.resumen.seUnenAlCrm + plan.resumen.seJuntanEntreSi;
   const hayNombre = Object.values(mapeo).includes("nombre");
+
+  // Los encabezados que van a la bitácora, para decirlo antes de importar: es
+  // la única parte del mapeo que admite varias columnas, y conviene que quien
+  // sube el archivo vea cuáles agarró solo.
+  const encabezadosNota = matriz
+    ? Object.keys(mapeo)
+        .map(Number)
+        .filter((i) => mapeo[i] === A_NOTA)
+        .sort((a, b) => a - b)
+        .map((i) => matriz[0][i]?.trim() || `columna ${i + 1}`)
+    : [];
 
   const leerArchivo = async (file: File) => {
     setLeyendo(true);
@@ -226,6 +238,12 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       valor_oportunidad: d.fila.valor_oportunidad,
       venta_cerrada: d.fila.venta_cerrada,
       descuento_promocion: d.fila.descuento_promocion,
+      // De la persona, unificados con los de sus otras filas.
+      pais: d.pais,
+      fecha_nacimiento: d.fecha_nacimiento,
+      edad: d.edad,
+      // De la fila: cada consulta dejó su propia nota.
+      nota: d.fila.nota,
     });
 
     let creados = 0;
@@ -440,7 +458,10 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                     <select
                       value={mapeo[i] ?? ""}
                       onChange={(e) =>
-                        setMapeo((m) => ({ ...m, [i]: e.target.value as ClaveCampo | "" }))
+                        setMapeo((m) => ({
+                          ...m,
+                          [i]: e.target.value as ClaveCampo | typeof A_NOTA | "",
+                        }))
                       }
                       style={{ ...campo, width: "100%" }}
                     >
@@ -451,10 +472,39 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                           {c.obligatorio ? " *" : ""}
                         </option>
                       ))}
+                      {/*
+                        Aparte y al final: no es un campo más, es la salida
+                        para todas las columnas que no tienen dónde caer. Y a
+                        diferencia de los campos, se puede elegir en varias
+                        columnas a la vez.
+                      */}
+                      <option value={A_NOTA}>↳ A las notas del lead</option>
                     </select>
                   </label>
                 ))}
               </div>
+
+              {encabezadosNota.length > 0 && (
+                <p
+                  style={{
+                    margin: "0 0 16px",
+                    padding: "10px 13px",
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    borderRadius: 7,
+                    background: "#EDF3EE",
+                    color: "#2F5B45",
+                  }}
+                >
+                  {encabezadosNota.length === 1
+                    ? `La columna «${encabezadosNota[0]}» va a quedar como nota en la ficha de cada lead.`
+                    : `Estas columnas van a quedar como nota en la ficha de cada lead: ${encabezadosNota
+                        .map((h) => `«${h}»`)
+                        .join(", ")}.`}{" "}
+                  Si alguna dice «recuperación», el CRM agenda la llamada para dentro de una
+                  semana.
+                </p>
+              )}
 
               {!hayNombre && (
                 <p

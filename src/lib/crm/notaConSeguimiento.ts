@@ -46,19 +46,26 @@ import {
  * septiembre»— o nulo cuando la nota no pedía nada, que es el caso de la
  * enorme mayoría.
  */
-export async function anotarSeguimientoDeNota(
-  supabase: SupabaseClient,
+/**
+ * La fila de `seguimientos` que pide una nota, o nulo si no pedía ninguna.
+ *
+ * Se expone aparte de la función que escribe porque la importación mete
+ * trescientas notas de una vez: llamando a `anotarSeguimientoDeNota` por cada
+ * una serían trescientos viajes a la base, y una planilla de recuperaciones
+ * —que es de las que más se suben— los haría todos.
+ */
+export function filaDeSeguimiento(
   oportunidadId: number,
   texto: string,
   notaId: number | null,
   autorId: string | null,
-): Promise<string | null> {
+): Record<string, unknown> | null {
   const visto = detectarSeguimiento(texto, hoyEnSalvador());
   if (!visto) return null;
 
   const mensual = visto.cuando?.clase === "mensual" ? visto.cuando : null;
 
-  const { error } = await supabase.from("seguimientos").insert({
+  return {
     oportunidad_id: oportunidadId,
     nota_id: notaId,
     tipo: visto.tipo,
@@ -67,7 +74,20 @@ export async function anotarSeguimientoDeNota(
     dia_del_mes: mensual?.dia ?? null,
     dia_hasta: mensual?.hasta ?? null,
     creado_por: autorId,
-  });
+  };
+}
+
+export async function anotarSeguimientoDeNota(
+  supabase: SupabaseClient,
+  oportunidadId: number,
+  texto: string,
+  notaId: number | null,
+  autorId: string | null,
+): Promise<string | null> {
+  const fila = filaDeSeguimiento(oportunidadId, texto, notaId, autorId);
+  if (!fila) return null;
+
+  const { error } = await supabase.from("seguimientos").insert(fila);
 
   if (error) {
     /*
@@ -90,5 +110,6 @@ export async function anotarSeguimientoDeNota(
       : "La nota quedó guardada, pero el recordatorio no se pudo crear: " + error.message;
   }
 
-  return loQueSeEntendio(visto, fechaLarga);
+  const visto = detectarSeguimiento(texto, hoyEnSalvador());
+  return visto ? loQueSeEntendio(visto, fechaLarga) : null;
 }
