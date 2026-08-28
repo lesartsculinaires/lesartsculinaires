@@ -23,6 +23,7 @@ import {
   type FilaImportada,
   type Mapeo,
 } from "@/lib/importar";
+import { seAcomoda } from "@/lib/texto";
 import { T, softer } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
 
@@ -62,6 +63,19 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
   /** Aviso cuando el Excel traía varias hojas. */
   const [hoja, setHoja] = useState<string | null>(null);
+  /*
+   * Enderezar los nombres que vienen en MAYÚSCULAS o con espacios de más.
+   *
+   * Encendido por omisión, y no apagado, porque el caso normal es que haga
+   * falta: las planillas que exporta la escuela vienen en mayúsculas enteras.
+   * Apagado por omisión, nadie lo encontraría, y las trescientas fichas
+   * entrarían gritando.
+   *
+   * Es seguro de tener encendido: son las mismas letras en otro caso. Las
+   * tildes NO se tocan acá —eso cambia letras y se propone de a una, en la
+   * ficha, con alguien mirando—.
+   */
+  const [acomodarNombres, setAcomodarNombres] = useState(true);
 
   const existentes: ContactoConocido[] = useMemo(() => {
     const m = new Map<number, ContactoConocido>();
@@ -87,8 +101,25 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       catalogo,
       existentes,
       fechaPorDefecto: hoyISO(),
+      acomodarNombres,
     });
-  }, [matriz, mapeo, catalogo, existentes]);
+  }, [matriz, mapeo, catalogo, existentes, acomodarNombres]);
+
+  /*
+   * Cuántos nombres cambiarían. Se calcula siempre con la opción apagada, para
+   * poder decir el número aunque esté encendida: si se contara sobre `filas`,
+   * al encenderla el número caería a cero y no se sabría qué se aplicó.
+   */
+  const nombresQueSeAcomodan = useMemo(() => {
+    if (!matriz || matriz.length < 2) return 0;
+    return construirFilas({
+      matriz,
+      mapeo,
+      catalogo,
+      existentes: [],
+      fechaPorDefecto: hoyISO(),
+    }).filter((f) => f.nombre && seAcomoda(f.nombre)).length;
+  }, [matriz, mapeo, catalogo]);
 
   const validas = filas.filter((f) => f.errores.length === 0);
   const conError = filas.length - validas.length;
@@ -504,6 +535,39 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                   Si alguna dice «recuperación», el CRM agenda la llamada para dentro de una
                   semana.
                 </p>
+              )}
+
+              {hayNombre && nombresQueSeAcomodan > 0 && (
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "flex-start",
+                    margin: "0 0 16px",
+                    padding: "10px 13px",
+                    borderRadius: 7,
+                    background: T.surface,
+                    border: `1px solid ${T.border}`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={acomodarNombres}
+                    onChange={(e) => setAcomodarNombres(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                    <strong>
+                      Acomodar {nombresQueSeAcomodan}{" "}
+                      {nombresQueSeAcomodan === 1 ? "nombre" : "nombres"}
+                    </strong>{" "}
+                    que vienen en MAYÚSCULAS, en minúsculas o con espacios de más.
+                    Son las mismas letras, bien capitalizadas: «MARIA DEL CARMEN» queda
+                    «Maria del Carmen». Las tildes no se tocan acá; ésas se proponen de a
+                    una en la ficha.
+                  </span>
+                </label>
               )}
 
               {!hayNombre && (

@@ -7,6 +7,7 @@
  */
 
 import { buscarDuplicados, type ContactoConocido } from "@/lib/duplicados";
+import { acomodarNombre } from "@/lib/texto";
 import type { Catalogo, CatalogItem } from "@/lib/types";
 
 /** Minúsculas, sin acentos, sin espacios de más. Para comparar encabezados y catálogos. */
@@ -389,6 +390,16 @@ export interface OpcionesFilas {
   existentes: readonly ContactoConocido[];
   /** Fecha a usar cuando la fila no trae ninguna. */
   fechaPorDefecto: string;
+  /**
+   * Enderezar los nombres que vienen en MAYÚSCULAS o con espacios de más.
+   *
+   * Acá es donde vale la pena y no en la ficha de a una: una planilla
+   * exportada trae las trescientas así, y arreglarlas después es abrir
+   * trescientas fichas. Son las mismas letras en otro caso; no se inventa
+   * ninguna, y las tildes NO se tocan —eso se propone de a una, con alguien
+   * mirando, porque cambia letras—.
+   */
+  acomodarNombres?: boolean;
 }
 
 /** Convierte la matriz cruda en filas listas para revisar e importar. */
@@ -398,6 +409,7 @@ export function construirFilas({
   catalogo,
   existentes,
   fechaPorDefecto,
+  acomodarNombres = false,
 }: OpcionesFilas): FilaImportada[] {
   const columnaDe = (clave: ClaveCampo): number =>
     Number(Object.keys(mapeo).find((i) => mapeo[Number(i)] === clave) ?? -1);
@@ -440,8 +452,10 @@ export function construirFilas({
     const errores: string[] = [];
     const avisos: string[] = [];
 
-    const nombre = valor(fila, "nombre") ?? "";
+    const crudoNombre = valor(fila, "nombre") ?? "";
+    const nombre = acomodarNombres ? acomodarNombre(crudoNombre) : crudoNombre;
     if (!nombre) errores.push("Sin nombre de cliente");
+    if (nombre !== crudoNombre) avisos.push(`Nombre acomodado desde «${crudoNombre}»`);
 
     const cat = (clave: ClaveCampo, items: readonly CatalogItem[], etiqueta: string) => {
       const texto = valor(fila, clave);

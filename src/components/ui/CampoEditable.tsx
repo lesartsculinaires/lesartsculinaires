@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { ArreglarNombre } from "@/components/ui/ArreglarNombre";
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { T } from "@/lib/theme";
 
@@ -126,19 +127,44 @@ export function CampoEditable({
 
   const vacioInvalido = requerido && draft.trim() === "";
 
-  const commit = () => {
+  /**
+   * Dar por bueno lo que hay escrito.
+   *
+   * Toma el valor por parámetro porque hay una llamada que no puede leerlo del
+   * borrador: la de una pastilla, que lo acaba de cambiar en el mismo tick y
+   * todavía no repintó. Sin eso guardaría el valor anterior.
+   */
+  const commit = (valor: string = draft) => {
     setFocus(false);
     if (cancelado.current) {
       cancelado.current = false;
       return;
     }
-    const limpio = tipo === "monto" ? draft.replace(/[^0-9.]/g, "") : draft.trim();
-    if (vacioInvalido) {
+    const limpio = tipo === "monto" ? valor.replace(/[^0-9.]/g, "") : valor.trim();
+    if (requerido && limpio === "") {
       poner(value);
       return;
     }
     if (limpio === value) return;
     onGuardar(limpio);
+  };
+
+  /**
+   * Lo que hace una pastilla: poner el texto Y darlo por bueno.
+   *
+   * Las pastillas no roban el foco a propósito —el campo guarda al perderlo, y
+   * un clic que primero desenfoca dispararía un guardado a medio camino—. Pero
+   * eso dejaba el cambio sin registrar hasta que la persona saliera del campo,
+   * así que «Guardar cambios» seguía apagado: había que apretarlo dos veces,
+   * la primera para desenfocar y la segunda para que hiciera algo.
+   *
+   * Apretar una pastilla es una decisión explícita, no un tecleo a medias. Se
+   * confirma sola, y el campo se queda enfocado por si hay otra que aplicar.
+   */
+  const ponerYGuardar = (v: string) => {
+    poner(v);
+    commit(v);
+    setFocus(true);
   };
 
   const input: CSSProperties = {
@@ -211,7 +237,7 @@ export function CampoEditable({
             placeholder={placeholder ?? "—"}
             onChange={(e) => poner(e.target.value)}
             onFocus={() => setFocus(true)}
-            onBlur={commit}
+            onBlur={() => commit()}
             onKeyDown={(e) => {
               if (e.key === "Escape") cancelar(e.currentTarget);
             }}
@@ -226,7 +252,7 @@ export function CampoEditable({
           placeholder={placeholder ?? "—"}
           onChange={(e) => poner(e.target.value)}
           onFocus={() => setFocus(true)}
-          onBlur={commit}
+          onBlur={() => commit()}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") cancelar(e.currentTarget);
@@ -235,7 +261,14 @@ export function CampoEditable({
           style={input}
         />
         )}
-        {extra && focus && <div style={{ marginTop: 6 }}>{extra(draft, poner)}</div>}
+        {extra && focus && (
+          <div style={{ marginTop: 6 }}>{extra(draft, ponerYGuardar)}</div>
+        )}
+        {esNombre && focus && (
+          <div style={{ marginTop: 6 }}>
+            <ArreglarNombre valor={draft} onCambio={ponerYGuardar} accent={accent} />
+          </div>
+        )}
         {acentos && focus && (
           <div style={{ marginTop: 6 }}>
             <TecladoAcentos

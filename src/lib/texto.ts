@@ -69,8 +69,45 @@ export function revisarNombre(s: string): string | null {
     return "Está todo en mayúsculas.";
   }
   if (forma === "minusculas") return "Está todo en minúsculas.";
+  if (sobranEspacios(s)) return "Tiene espacios de más.";
   return null;
 }
+
+/** ¿Sobra algún espacio: al principio, al final o repetido en el medio? */
+export const sobranEspacios = (s: string): boolean => s !== s.trim().replace(/\s+/g, " ");
+
+/**
+ * ------------------------------------------------------------------------
+ * ACOMODAR UN NOMBRE: QUÉ SE TOCA Y QUÉ NO
+ * ------------------------------------------------------------------------
+ *
+ * Se tocan dos cosas y nada más: los espacios que sobran y la capitalización
+ * de un nombre escrito entero en mayúsculas o entero en minúsculas.
+ *
+ * NO se tocan las letras. Nunca. Es la línea que separa esto de un corrector
+ * ortográfico, y hay una razón concreta: los nombres propios no están en
+ * ningún diccionario. «Perez» sin tilde es un apellido de verdad que lleva
+ * gente de verdad, y cambiárselo en silencio no es corregir un error, es
+ * escribir mal el nombre de una persona en su inscripción. Una tilde que falta
+ * se ve fea; una tilde puesta por una máquina donde no iba manda a alguien al
+ * área académica con el apellido cambiado.
+ *
+ * Tampoco se toca un nombre que ya está en mixto. «AST SURF HOTEL» está en
+ * mayúsculas a propósito, «McDonald» y «de la O» están escritos como quiso
+ * quien los escribió, y adivinar ahí es meterse donde no llaman.
+ */
+export function acomodarNombre(s: string): string {
+  const limpio = s.trim().replace(/\s+/g, " ");
+  const forma = formaDeEscritura(limpio);
+
+  // Sólo cuando no hay ninguna mezcla: ahí es seguro que la capitalización no
+  // fue una decisión de nadie, sino el Bloq Mayús o una planilla exportada.
+  if (forma === "mayusculas" || forma === "minusculas") return tituloEspanol(limpio);
+  return limpio;
+}
+
+/** ¿`acomodarNombre` cambiaría algo? */
+export const seAcomoda = (s: string): boolean => acomodarNombre(s) !== s;
 
 /**
  * Inserta texto en la posición del cursor.
