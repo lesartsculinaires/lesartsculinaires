@@ -93,6 +93,11 @@ function ReciboImpreso({ recibo: r }: { recibo: Recibo }) {
           hoy. */}
       {r.horario && <Linea etiqueta="Horario" valor={r.horario} />}
       {r.territorio && <Linea etiqueta="Territorio" valor={r.territorio} />}
+      {/* El país va debajo del territorio y sólo cuando lo hay. «Territorio:
+          Extranjero» solo no le sirve a quien inscribe: no distingue a alguien
+          de Guatemala de alguien de España, y de eso dependen el trámite y los
+          papeles que hay que pedirle. */}
+      {r.pais && <Linea etiqueta="País" valor={r.pais} />}
 
       <Regla />
       <Bloque>MONTO</Bloque>
