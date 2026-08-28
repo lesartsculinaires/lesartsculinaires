@@ -553,6 +553,7 @@ export default function CrmApp({
               faltaMigracion={faltaMigracionBases}
               puedeAbrir={casillas.bases.editar}
               puedeSubir={casillas.bases.crear}
+              esAdmin={accesos.esAdmin}
               accent={accent}
               onAbrir={(id) => actions.verEnClientes({}, id)}
               onRefrescar={() => router.refresh()}

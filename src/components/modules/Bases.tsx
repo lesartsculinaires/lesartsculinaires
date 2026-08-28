@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 
+import { BorrarBases } from "@/components/modules/BorrarBases";
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
-import { agruparBases, resumirBase } from "@/lib/bases";
+import { agruparBases, repetidas, resumirBase } from "@/lib/bases";
 import { fechaCorta, horaDe, money } from "@/lib/format";
 import { T, softer } from "@/lib/theme";
 import type { Importacion, Oportunidad } from "@/lib/types";
@@ -30,6 +31,14 @@ interface Props {
    * que el CRM está roto, no como que no te corresponde.
    */
   puedeSubir: boolean;
+  /**
+   * Seleccionar bases y borrarlas, con las fichas que trajeron.
+   *
+   * Sólo dirección, y no una casilla del rol: no es «editar bases», es
+   * destruir datos que no vuelven. La función de la base lo hace cumplir
+   * aparte; esto sólo evita ofrecer un botón que iba a fallar.
+   */
+  esAdmin: boolean;
   accent: string;
   /** Abre una oportunidad en Clientes. */
   onAbrir: (id: number) => void;
@@ -43,6 +52,7 @@ export function Bases({
   faltaMigracion,
   puedeAbrir,
   puedeSubir,
+  esAdmin,
   accent,
   onAbrir,
   onRefrescar,
@@ -53,6 +63,20 @@ export function Bases({
   );
   const [abierta, setAbierta] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
+  /**
+   * Las bases marcadas, por clave.
+   *
+   * Sólo se pueden marcar las registradas: las agrupadas por día no son una
+   * carga, son una fecha, y no hay nada que borrar del otro lado.
+   */
+  const [marcadas, setMarcadas] = useState<string[]>([]);
+  const [borrando, setBorrando] = useState(false);
+
+  const repes = useMemo(() => repetidas(bases), [bases]);
+  const elegidas = bases.filter((b) => marcadas.includes(b.clave));
+
+  const marcar = (clave: string) =>
+    setMarcadas((m) => (m.includes(clave) ? m.filter((c) => c !== clave) : [...m, clave]));
   /** El resumen de la última importación hecha desde acá. */
   const [recien, setRecien] = useState<string | null>(null);
 
@@ -119,6 +143,109 @@ export function Bases({
             ↑ Subir base
           </button>
         </div>
+      )}
+
+      {/*
+        Las repetidas, dichas antes de la tabla.
+
+        Aparece sólo cuando las hay y sólo para dirección: al resto no le sirve
+        —no puede borrarlas— y sería un cartel rojo permanente sobre algo que
+        no puede resolver.
+      */}
+      {esAdmin && repes.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+            margin: "0 0 12px",
+            padding: "11px 14px",
+            borderRadius: 8,
+            background: "#FFF6D6",
+            border: "1px solid #F0CE55",
+            color: "#6B5200",
+          }}
+        >
+          <span style={{ fontSize: 12.5, lineHeight: 1.5, flex: 1, minWidth: 240 }}>
+            {repes.length === 1
+              ? "Hay 1 base repetida: el mismo archivo se subió dos veces el mismo día."
+              : `Hay ${repes.length} bases repetidas: el mismo archivo se subió más de una vez el mismo día.`}{" "}
+            Están marcadas abajo con «copia».
+          </span>
+          <button
+            type="button"
+            onClick={() => setMarcadas(repes.map((b) => b.clave))}
+            style={{
+              height: 30,
+              padding: "0 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: "1px solid #C9A227",
+              background: "transparent",
+              color: "#6B5200",
+            }}
+          >
+            Seleccionar las copias
+          </button>
+        </div>
+      )}
+
+      {/* Lo que hay marcado, con el botón de borrar. Sólo dirección. */}
+      {esAdmin && marcadas.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+            margin: "0 0 12px",
+            padding: "10px 14px",
+            borderRadius: 8,
+            background: softer(accent),
+          }}
+        >
+          <span style={{ fontSize: 12.5, flex: 1, minWidth: 200 }}>
+            {marcadas.length} {marcadas.length === 1 ? "base marcada" : "bases marcadas"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMarcadas([])}
+            style={{ fontSize: 12, color: T.muted, padding: "0 6px" }}
+          >
+            Quitar la selección
+          </button>
+          <button
+            type="button"
+            onClick={() => setBorrando(true)}
+            style={{
+              height: 30,
+              padding: "0 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              background: "#B85042",
+              color: "#fff",
+            }}
+          >
+            Borrar {marcadas.length === 1 ? "la base" : "las bases"}
+          </button>
+        </div>
+      )}
+
+      {borrando && (
+        <BorrarBases
+          elegidas={elegidas}
+          accent={accent}
+          onCerrar={() => setBorrando(false)}
+          onBorrado={(resumen) => {
+            setBorrando(false);
+            setMarcadas([]);
+            setRecien(resumen);
+            onRefrescar();
+          }}
+        />
       )}
 
       {subiendo && (
@@ -209,6 +336,7 @@ export function Bases({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: T.paper }}>
+                {esAdmin && <th style={{ ...th, width: 34, paddingRight: 0 }} />}
                 <th style={th}>Base</th>
                 <th style={th}>Ingresada</th>
                 <th style={{ ...th, textAlign: "right" }}>Registros</th>
@@ -236,11 +364,52 @@ export function Bases({
                         background: expandida ? softer(accent) : "transparent",
                       }}
                     >
+                      {esAdmin && (
+                        <td
+                          style={{ ...td, width: 34, paddingRight: 0 }}
+                          // El clic de la casilla no tiene que abrir la base:
+                          // marcar y abrir son dos intenciones distintas y en
+                          // la misma fila se pisan.
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={marcadas.includes(b.clave)}
+                            onChange={() => marcar(b.clave)}
+                            // Las agrupadas por día no son una carga sino una
+                            // fecha: no hay registro que borrar.
+                            disabled={b.importacionId == null}
+                            title={
+                              b.importacionId == null
+                                ? "Esta carga no quedó registrada como base; no se puede borrar desde acá"
+                                : "Marcar para borrar"
+                            }
+                            aria-label={`Marcar ${b.titulo}`}
+                          />
+                        </td>
+                      )}
                       <td style={{ ...td, whiteSpace: "normal", color: T.ink }}>
                         <span style={{ display: "block", fontSize: 13 }}>{b.titulo}</span>
                         {!b.registrada && (
                           <span style={{ display: "block", marginTop: 2, fontSize: 11, color: T.faint }}>
                             Sin archivo registrado
+                          </span>
+                        )}
+                        {b.duplicadaDe && (
+                          <span
+                            style={{
+                              display: "inline-block",
+                              marginTop: 3,
+                              padding: "2px 8px",
+                              fontSize: 10.5,
+                              borderRadius: 20,
+                              background: "#FFF6D6",
+                              border: "1px solid #F0CE55",
+                              color: "#6B5200",
+                            }}
+                            title="El mismo archivo se subió más de una vez el mismo día. Ésta es la copia; la otra se conserva."
+                          >
+                            copia
                           </span>
                         )}
                       </td>
@@ -286,7 +455,7 @@ export function Bases({
 
                     {puedeAbrir && expandida && (
                       <tr key={`${b.clave}-detalle`}>
-                        <td colSpan={puedeAbrir ? 7 : 4} style={{ padding: 0, background: T.paper }}>
+                        <td colSpan={(puedeAbrir ? 7 : 4) + (esAdmin ? 1 : 0)} style={{ padding: 0, background: T.paper }}>
                           {b.oportunidades.length === 0 ? (
                             <p style={{ margin: 0, padding: "18px 20px", fontSize: 12.5, color: T.faint }}>
                               Esta base no tiene registros vivos. Se subió, pero sus
@@ -339,7 +508,7 @@ export function Bases({
 
               {bases.length === 0 && (
                 <tr>
-                  <td colSpan={puedeAbrir ? 7 : 4} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
+                  <td colSpan={(puedeAbrir ? 7 : 4) + (esAdmin ? 1 : 0)} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
                     Todavía no hay bases cargadas. Subí una desde Clientes → Subir
                     base de datos.
                   </td>
