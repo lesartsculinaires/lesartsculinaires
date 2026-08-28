@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
 import { RevisarBase } from "@/components/modules/RevisarBase";
@@ -14,6 +14,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import type { ContactoConocido } from "@/lib/duplicados";
 import {
+  A_NOTA,
   CAMPOS,
   construirFilas,
   detectarMapeo,
@@ -22,6 +23,7 @@ import {
   type FilaImportada,
   type Mapeo,
 } from "@/lib/importar";
+import { seAcomoda } from "@/lib/texto";
 import { T, softer } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
 
@@ -61,6 +63,19 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const [progreso, setProgreso] = useState<{ hechas: number; total: number } | null>(null);
   /** Aviso cuando el Excel traía varias hojas. */
   const [hoja, setHoja] = useState<string | null>(null);
+  /*
+   * Enderezar los nombres que vienen en MAYÚSCULAS o con espacios de más.
+   *
+   * Encendido por omisión, y no apagado, porque el caso normal es que haga
+   * falta: las planillas que exporta la escuela vienen en mayúsculas enteras.
+   * Apagado por omisión, nadie lo encontraría, y las trescientas fichas
+   * entrarían gritando.
+   *
+   * Es seguro de tener encendido: son las mismas letras en otro caso. Las
+   * tildes NO se tocan acá —eso cambia letras y se propone de a una, en la
+   * ficha, con alguien mirando—.
+   */
+  const [acomodarNombres, setAcomodarNombres] = useState(true);
 
   const existentes: ContactoConocido[] = useMemo(() => {
     const m = new Map<number, ContactoConocido>();
@@ -86,8 +101,25 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       catalogo,
       existentes,
       fechaPorDefecto: hoyISO(),
+      acomodarNombres,
     });
-  }, [matriz, mapeo, catalogo, existentes]);
+  }, [matriz, mapeo, catalogo, existentes, acomodarNombres]);
+
+  /*
+   * Cuántos nombres cambiarían. Se calcula siempre con la opción apagada, para
+   * poder decir el número aunque esté encendida: si se contara sobre `filas`,
+   * al encenderla el número caería a cero y no se sabría qué se aplicó.
+   */
+  const nombresQueSeAcomodan = useMemo(() => {
+    if (!matriz || matriz.length < 2) return 0;
+    return construirFilas({
+      matriz,
+      mapeo,
+      catalogo,
+      existentes: [],
+      fechaPorDefecto: hoyISO(),
+    }).filter((f) => f.nombre && seAcomoda(f.nombre)).length;
+  }, [matriz, mapeo, catalogo]);
 
   const validas = filas.filter((f) => f.errores.length === 0);
   const conError = filas.length - validas.length;
@@ -104,6 +136,17 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   const aImportar = plan.destinos;
   const seUnifican = plan.resumen.seUnenAlCrm + plan.resumen.seJuntanEntreSi;
   const hayNombre = Object.values(mapeo).includes("nombre");
+
+  // Los encabezados que van a la bitácora, para decirlo antes de importar: es
+  // la única parte del mapeo que admite varias columnas, y conviene que quien
+  // sube el archivo vea cuáles agarró solo.
+  const encabezadosNota = matriz
+    ? Object.keys(mapeo)
+        .map(Number)
+        .filter((i) => mapeo[i] === A_NOTA)
+        .sort((a, b) => a - b)
+        .map((i) => matriz[0][i]?.trim() || `columna ${i + 1}`)
+    : [];
 
   const leerArchivo = async (file: File) => {
     setLeyendo(true);
@@ -171,7 +214,37 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     setLeyendo(false);
   };
 
+  /*
+   * ------------------------------------------------------------------------
+   * UNA IMPORTACIÓN A LA VEZ, Y ESTO ES LO QUE DE VERDAD LO IMPIDE
+   * ------------------------------------------------------------------------
+   *
+   * Apagar el botón mientras corre acomoda la pantalla, pero no alcanza:
+   * entre el clic y el repintado de React hay un instante, y un segundo clic
+   * que caiga ahí entra igual. En una tablet es todavía más fácil, porque un
+   * toque puede llegar dos veces.
+   *
+   * Y el precio de que entre es alto: la segunda vuelta arranca con `base` en
+   * nulo, así que abre OTRA fila de importación y vuelve a cargar el archivo
+   * entero. Es exactamente lo que pasó con «Asalariados 2025-2026»: dos bases
+   * del mismo nombre, del mismo minuto, con las mismas 326 filas cada una.
+   *
+   * Un `ref` no espera al repintado: se pone en el mismo tick del primer clic,
+   * así que el segundo ya lo encuentra puesto.
+   */
+  const corriendo = useRef(false);
+
   const importar = async () => {
+    if (corriendo.current) return;
+    corriendo.current = true;
+    try {
+      await importarDeVerdad();
+    } finally {
+      corriendo.current = false;
+    }
+  };
+
+  const importarDeVerdad = async () => {
     setError(null);
     setProgreso({ hechas: 0, total: aImportar.length });
 
@@ -196,6 +269,12 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       valor_oportunidad: d.fila.valor_oportunidad,
       venta_cerrada: d.fila.venta_cerrada,
       descuento_promocion: d.fila.descuento_promocion,
+      // De la persona, unificados con los de sus otras filas.
+      pais: d.pais,
+      fecha_nacimiento: d.fecha_nacimiento,
+      edad: d.edad,
+      // De la fila: cada consulta dejó su propia nota.
+      nota: d.fila.nota,
     });
 
     let creados = 0;
@@ -410,7 +489,10 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                     <select
                       value={mapeo[i] ?? ""}
                       onChange={(e) =>
-                        setMapeo((m) => ({ ...m, [i]: e.target.value as ClaveCampo | "" }))
+                        setMapeo((m) => ({
+                          ...m,
+                          [i]: e.target.value as ClaveCampo | typeof A_NOTA | "",
+                        }))
                       }
                       style={{ ...campo, width: "100%" }}
                     >
@@ -421,10 +503,72 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                           {c.obligatorio ? " *" : ""}
                         </option>
                       ))}
+                      {/*
+                        Aparte y al final: no es un campo más, es la salida
+                        para todas las columnas que no tienen dónde caer. Y a
+                        diferencia de los campos, se puede elegir en varias
+                        columnas a la vez.
+                      */}
+                      <option value={A_NOTA}>↳ A las notas del lead</option>
                     </select>
                   </label>
                 ))}
               </div>
+
+              {encabezadosNota.length > 0 && (
+                <p
+                  style={{
+                    margin: "0 0 16px",
+                    padding: "10px 13px",
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    borderRadius: 7,
+                    background: "#EDF3EE",
+                    color: "#2F5B45",
+                  }}
+                >
+                  {encabezadosNota.length === 1
+                    ? `La columna «${encabezadosNota[0]}» va a quedar como nota en la ficha de cada lead.`
+                    : `Estas columnas van a quedar como nota en la ficha de cada lead: ${encabezadosNota
+                        .map((h) => `«${h}»`)
+                        .join(", ")}.`}{" "}
+                  Si alguna dice «recuperación», el CRM agenda la llamada para dentro de una
+                  semana.
+                </p>
+              )}
+
+              {hayNombre && nombresQueSeAcomodan > 0 && (
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "flex-start",
+                    margin: "0 0 16px",
+                    padding: "10px 13px",
+                    borderRadius: 7,
+                    background: T.surface,
+                    border: `1px solid ${T.border}`,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={acomodarNombres}
+                    onChange={(e) => setAcomodarNombres(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                    <strong>
+                      Acomodar {nombresQueSeAcomodan}{" "}
+                      {nombresQueSeAcomodan === 1 ? "nombre" : "nombres"}
+                    </strong>{" "}
+                    que vienen en MAYÚSCULAS, en minúsculas o con espacios de más.
+                    Son las mismas letras, bien capitalizadas: «MARIA DEL CARMEN» queda
+                    «Maria del Carmen». Las tildes no se tocan acá; ésas se proponen de a
+                    una en la ficha.
+                  </span>
+                </label>
+              )}
 
               {!hayNombre && (
                 <p
@@ -664,6 +808,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
           }
           onVolver={() => setRevisando(false)}
           onConfirmar={() => void importar()}
+          ocupado={progreso != null}
         />
       )}
     </>

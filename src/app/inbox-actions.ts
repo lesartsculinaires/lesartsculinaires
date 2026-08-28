@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
+import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import {
   BALDE_WHATSAPP,
@@ -109,7 +110,27 @@ export async function responderConversacion(
   return { ok: true, error: null };
 }
 
-/** Nota que sólo ve el equipo. No sale a WhatsApp. */
+/**
+ * Nota que sólo ve el equipo. No sale a WhatsApp.
+ *
+ * ------------------------------------------------------------------------
+ * ADEMÁS QUEDA EN LA FICHA
+ * ------------------------------------------------------------------------
+ *
+ * Antes vivía sólo en el hilo de la bandeja. El problema es que el seguimiento
+ * de un cliente se lee en su ficha, no en su chat: quien abría la ficha para
+ * ver qué se había hablado no encontraba nada, y lo anotado en la bandeja se
+ * perdía para todos los que no estuvieran mirando ese hilo.
+ *
+ * Así que la misma nota se escribe también en la bitácora del lead. Queda en
+ * los dos lados a propósito: en el chat para no perder el contexto de la
+ * conversación, y en la ficha porque es ahí donde se arma la historia.
+ *
+ * Y como pasa por la bitácora, hereda lo que ya sabe hacer: una nota interna
+ * que diga «recuperación» o «seguimiento de pago» deja su recordatorio igual
+ * que si se hubiera escrito desde la ficha. Antes eso no pasaba, y el asesor
+ * que lo escribía en la bandeja se quedaba sin el aviso.
+ */
 async function guardarNotaInterna(
   supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
   conversacionId: number,
@@ -126,8 +147,81 @@ async function guardarNotaInterna(
   });
 
   if (error) return { ok: false, error: error.message };
+
+  await copiarNotaALaFicha(supabase, conversacionId, texto, autorId);
+
   revalidatePath("/");
   return { ok: true, error: null };
+}
+
+/**
+ * Copia la nota interna a la bitácora del lead de esa conversación.
+ *
+ * No lanza y no devuelve error. La nota ya está guardada en el hilo, que es lo
+ * que la persona vino a hacer; que además no haya llegado a la ficha es un
+ * problema menor y decirle «no se guardó» la llevaría a escribirla dos veces.
+ *
+ * Si la conversación todavía no tiene lead —un número desconocido que nadie
+ * convirtió— no hay ficha donde ponerla, y no pasa nada: la nota queda en el
+ * hilo hasta que alguien lo convierta.
+ */
+async function copiarNotaALaFicha(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  conversacionId: number,
+  texto: string,
+  autorId: string,
+): Promise<void> {
+  try {
+    const { data: conv } = await supabase
+      .from("conversaciones")
+      .select("cliente_id")
+      .eq("id", conversacionId)
+      .maybeSingle();
+
+    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
+    if (clienteId == null) return;
+
+    /*
+     * El lead más reciente de esa persona.
+     *
+     * Si tiene varios, la nota va al que se está trabajando ahora, que es el
+     * último. Ponerla en todos llenaría de ruido las fichas viejas, y ponerla
+     * en el más antiguo la escondería justo donde nadie mira.
+     */
+    const { data: op } = await supabase
+      .from("oportunidades")
+      .select("id")
+      .eq("cliente_id", clienteId)
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!op) return;
+
+    const { data: guardada } = await supabase
+      .from("oportunidad_notas")
+      .insert({
+        oportunidad_id: Number(op.id),
+        nota: texto,
+        // Se marca de dónde vino para poder distinguirla en la bitácora: una
+        // nota escrita en el chat y una escrita en la ficha se leen igual, y
+        // saber cuál es cuál ayuda a reconstruir qué pasó.
+        origen: "inbox",
+        autor_id: autorId,
+      })
+      .select("id")
+      .maybeSingle();
+
+    await anotarSeguimientoDeNota(
+      supabase,
+      Number(op.id),
+      texto,
+      guardada?.id == null ? null : Number(guardada.id),
+      autorId,
+    );
+  } catch {
+    // Ver arriba: la nota del hilo vale más que su copia.
+  }
 }
 
 /**

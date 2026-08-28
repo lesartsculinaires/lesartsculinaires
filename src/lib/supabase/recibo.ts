@@ -27,6 +27,14 @@ export interface Recibo {
   responsableTelefono: string | null;
   responsableCorreo: string | null;
   programa: string | null;
+  /**
+   * El horario con el que se cerró, tal como lo escribió ventas.
+   *
+   * Sale del lead y no del programa a propósito: el horario del programa
+   * cambia cada año, y un recibo tiene que seguir diciendo lo que se le
+   * prometió a esta persona el día que se inscribió.
+   */
+  horario: string | null;
   territorio: string | null;
   asesor: string | null;
   valor: number | null;
@@ -110,6 +118,7 @@ export async function leerRecibo(token: string): Promise<ResultadoRecibo> {
       responsableTelefono: texto(fila.responsable_telefono),
       responsableCorreo: texto(fila.responsable_correo),
       programa: texto(fila.producto),
+      horario: texto(fila.horario),
       territorio: texto(fila.territorio),
       asesor: texto(fila.vendedor),
       valor: fila.valor_oportunidad == null ? null : Number(fila.valor_oportunidad),

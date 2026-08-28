@@ -2,10 +2,17 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { ArreglarNombre } from "@/components/ui/ArreglarNombre";
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
 import { T } from "@/lib/theme";
 
 type Tipo = "texto" | "fecha" | "monto";
+
+/** Opciones agrupadas, para los campos que se eligen de una lista. */
+export interface GrupoDeOpciones {
+  grupo: string;
+  valores: readonly string[];
+}
 
 interface Props {
   label: string;
@@ -14,6 +21,18 @@ interface Props {
   tipo?: Tipo;
   accent: string;
   placeholder?: string;
+  /**
+   * Cuando viene, el campo se elige de una lista en vez de escribirse.
+   *
+   * Se agrupan porque una lista larga sin secciones obliga a recorrerla
+   * entera: el País tiene ochenta y pico y lo que se elige casi siempre son
+   * los cinco de Centroamérica.
+   *
+   * Lo guardado sigue siendo el texto, no un id. Así una ficha vieja con el
+   * país escrito a mano se sigue leyendo, y se muestra tal cual aunque no esté
+   * en la lista.
+   */
+  opciones?: readonly GrupoDeOpciones[];
   /** Blocks clearing the field; use for `not null` columns. */
   requerido?: boolean;
   /** Called on blur or Enter, only when the value actually changed. */
@@ -50,6 +69,7 @@ export function CampoEditable({
   tipo = "texto",
   accent,
   placeholder,
+  opciones,
   requerido = false,
   onGuardar,
   acentos = false,
@@ -107,19 +127,44 @@ export function CampoEditable({
 
   const vacioInvalido = requerido && draft.trim() === "";
 
-  const commit = () => {
+  /**
+   * Dar por bueno lo que hay escrito.
+   *
+   * Toma el valor por parámetro porque hay una llamada que no puede leerlo del
+   * borrador: la de una pastilla, que lo acaba de cambiar en el mismo tick y
+   * todavía no repintó. Sin eso guardaría el valor anterior.
+   */
+  const commit = (valor: string = draft) => {
     setFocus(false);
     if (cancelado.current) {
       cancelado.current = false;
       return;
     }
-    const limpio = tipo === "monto" ? draft.replace(/[^0-9.]/g, "") : draft.trim();
-    if (vacioInvalido) {
+    const limpio = tipo === "monto" ? valor.replace(/[^0-9.]/g, "") : valor.trim();
+    if (requerido && limpio === "") {
       poner(value);
       return;
     }
     if (limpio === value) return;
     onGuardar(limpio);
+  };
+
+  /**
+   * Lo que hace una pastilla: poner el texto Y darlo por bueno.
+   *
+   * Las pastillas no roban el foco a propósito —el campo guarda al perderlo, y
+   * un clic que primero desenfoca dispararía un guardado a medio camino—. Pero
+   * eso dejaba el cambio sin registrar hasta que la persona saliera del campo,
+   * así que «Guardar cambios» seguía apagado: había que apretarlo dos veces,
+   * la primera para desenfocar y la segunda para que hiciera algo.
+   *
+   * Apretar una pastilla es una decisión explícita, no un tecleo a medias. Se
+   * confirma sola, y el campo se queda enfocado por si hay otra que aplicar.
+   */
+  const ponerYGuardar = (v: string) => {
+    poner(v);
+    commit(v);
+    setFocus(true);
   };
 
   const input: CSSProperties = {
@@ -148,7 +193,43 @@ export function CampoEditable({
     >
       <span style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{label}</span>
       <span style={{ flex: 1, maxWidth: multilinea ? "72%" : tipo === "texto" ? "62%" : 150 }}>
-        {multilinea ? (
+        {opciones ? (
+          /*
+           * Un `select`, no un cuadro de texto.
+           *
+           * Se guarda en cuanto se elige y no al salir del campo: en un
+           * desplegable no hay «terminar de escribir», así que esperar al
+           * `blur` haría que elegir y cerrar la ficha perdiera el cambio.
+           *
+           * La opción vacía existe para poder borrar el dato. Y si lo guardado
+           * no está en la lista —una ficha vieja, un país escrito a mano— se
+           * agrega como una opción más al final, para no cambiárselo en
+           * silencio a quien sólo vino a mirar.
+           */
+          <select
+            value={draft}
+            onChange={(e) => {
+              poner(e.target.value);
+              onGuardar(e.target.value);
+            }}
+            style={{ ...input, textAlign: "left", border: `1px solid ${T.border}` }}
+          >
+            <option value="">{placeholder ?? "—"}</option>
+            {draft !== "" &&
+              !opciones.some((g) => g.valores.includes(draft)) && (
+                <option value={draft}>{draft}</option>
+              )}
+            {opciones.map((g) => (
+              <optgroup key={g.grupo} label={g.grupo}>
+                {g.valores.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        ) : multilinea ? (
           <textarea
             ref={ref as React.RefObject<HTMLTextAreaElement>}
             rows={focus ? 3 : 1}
@@ -156,7 +237,7 @@ export function CampoEditable({
             placeholder={placeholder ?? "—"}
             onChange={(e) => poner(e.target.value)}
             onFocus={() => setFocus(true)}
-            onBlur={commit}
+            onBlur={() => commit()}
             onKeyDown={(e) => {
               if (e.key === "Escape") cancelar(e.currentTarget);
             }}
@@ -171,7 +252,7 @@ export function CampoEditable({
           placeholder={placeholder ?? "—"}
           onChange={(e) => poner(e.target.value)}
           onFocus={() => setFocus(true)}
-          onBlur={commit}
+          onBlur={() => commit()}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") cancelar(e.currentTarget);
@@ -180,7 +261,14 @@ export function CampoEditable({
           style={input}
         />
         )}
-        {extra && focus && <div style={{ marginTop: 6 }}>{extra(draft, poner)}</div>}
+        {extra && focus && (
+          <div style={{ marginTop: 6 }}>{extra(draft, ponerYGuardar)}</div>
+        )}
+        {esNombre && focus && (
+          <div style={{ marginTop: 6 }}>
+            <ArreglarNombre valor={draft} onCambio={ponerYGuardar} accent={accent} />
+          </div>
+        )}
         {acentos && focus && (
           <div style={{ marginTop: 6 }}>
             <TecladoAcentos

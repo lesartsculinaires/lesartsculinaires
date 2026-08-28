@@ -284,7 +284,19 @@ with revisiones as (
      'Armar y editar formularios sale de la casilla del rol, no de ser admin',
      exists (select 1 from pg_policies
               where schemaname = 'public' and tablename = 'formularios'
-                and policyname = 'formularios_crear'))
+                and policyname = 'formularios_crear')),
+
+    ('20261005120000_fecha_nacimiento',
+     'Cumpleaños en la ficha, para poder saludar',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'clientes'
+                and column_name = 'fecha_nacimiento')),
+
+    ('20261006120000_seguimiento_recuperacion',
+     '«RECUPERACIÓN» en una nota agenda la llamada para una semana después',
+     exists (select 1 from pg_constraint
+              where conname = 'seguimientos_tipo_check'
+                and pg_get_constraintdef(oid) like '%recuperacion%'))
 
   ) as t(archivo, para_que, aplicada)
 ),

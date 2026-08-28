@@ -9,20 +9,32 @@ interface Props {
   valor: string;
   onElegir: (texto: string) => void;
   accent: string;
+  /** Qué son estas opciones. Por omisión, promociones ya usadas. */
+  titulo?: string;
+  /** Qué dice el globo al pasar por encima. Recibe cuántas veces se usó. */
+  detalle?: (o: PromocionUsada) => string;
 }
 
 /**
- * Promociones ya usadas, para repetir una con un clic.
+ * Textos para repetir con un clic: promociones ya usadas, el horario del
+ * programa.
  *
  * No roban el foco: en el panel de cliente el campo guarda al perderlo, y un
  * clic que primero desenfoca dispararía un guardado a medio camino.
  */
-export function Sugerencias({ opciones, valor, onElegir, accent }: Props) {
+export function Sugerencias({
+  opciones,
+  valor,
+  onElegir,
+  accent,
+  titulo = "Ya usadas:",
+  detalle,
+}: Props) {
   if (opciones.length === 0) return null;
 
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
-      <span style={{ fontSize: 11, color: T.faint, marginRight: 2 }}>Ya usadas:</span>
+      <span style={{ fontSize: 11, color: T.faint, marginRight: 2 }}>{titulo}</span>
       {opciones.map((o) => {
         const elegida = valor.trim() === o.texto;
         return (
@@ -34,7 +46,9 @@ export function Sugerencias({ opciones, valor, onElegir, accent }: Props) {
             title={
               elegida
                 ? "Quitar"
-                : `Usada en ${o.veces} ${o.veces === 1 ? "oportunidad" : "oportunidades"}`
+                : detalle
+                  ? detalle(o)
+                  : `Usada en ${o.veces} ${o.veces === 1 ? "oportunidad" : "oportunidades"}`
             }
             style={{
               padding: "3px 9px",

@@ -3,6 +3,7 @@
 import { useRef, type CSSProperties } from "react";
 
 import { TecladoAcentos } from "@/components/ui/TecladoAcentos";
+import { ArreglarNombre } from "@/components/ui/ArreglarNombre";
 import { revisarNombre } from "@/lib/texto";
 import { T } from "@/lib/theme";
 
@@ -108,9 +109,15 @@ export function CampoTexto({
         />
       </div>
 
+      {esNombre && (
+        <div style={{ marginTop: 6 }}>
+          <ArreglarNombre valor={valor} onCambio={onCambio} accent={accent} />
+        </div>
+      )}
+
       {aviso && (
         <p style={{ margin: "6px 0 0", fontSize: 11.5, color: T.warn }}>
-          {aviso} Podés dejarlo así si es correcto, o usar «Aa Capitalizar».
+          {aviso} Podés dejarlo así si es correcto.
         </p>
       )}
     </div>

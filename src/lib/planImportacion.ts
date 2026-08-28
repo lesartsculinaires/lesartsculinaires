@@ -28,6 +28,28 @@ export interface Destino {
   nombre: string;
   telefono: string | null;
   correo: string | null;
+  /**
+   * Datos de la persona, no del trato, juntados entre todas sus filas.
+   *
+   * Es el caso que la escuela pidió: la base de cumpleaños trae el nombre y la
+   * fecha, la de inscripciones trae el nombre y el país. Si cada fila mandara
+   * sólo lo suyo, la ficha se quedaría con lo que trajo la última.
+   */
+  pais: string | null;
+  fecha_nacimiento: string | null;
+  edad: number | null;
+}
+
+/** El primer valor que alguna fila del grupo haya traído. */
+function primeroQueHaya<K extends "pais" | "fecha_nacimiento" | "edad">(
+  filas: readonly FilaImportada[],
+  campo: K,
+): FilaImportada[K] {
+  for (const f of filas) {
+    const v = f[campo];
+    if (v != null && v !== "") return v;
+  }
+  return null as FilaImportada[K];
 }
 
 export interface Resumen {
@@ -104,6 +126,9 @@ export function construirPlan({
         nombre: f.nombre,
         telefono: f.telefono,
         correo: f.correo,
+        pais: f.pais,
+        fecha_nacimiento: f.fecha_nacimiento,
+        edad: f.edad,
       })),
       resumen: {
         validas: validas.length,
@@ -174,6 +199,8 @@ export function construirPlan({
     if (p.clienteId != null) seUnenAlCrm += filasDeLaPersona.length;
     if (filasDeLaPersona.length > 1) seJuntanEntreSi += filasDeLaPersona.length - 1;
 
+    const deLaPersona = filasDeLaPersona.map((i) => validas[i]);
+
     for (const indice of filasDeLaPersona) {
       destinos.push({
         fila: validas[indice],
@@ -185,6 +212,9 @@ export function construirPlan({
         nombre: p.nombre,
         telefono: p.telefono,
         correo: p.correo,
+        pais: primeroQueHaya(deLaPersona, "pais"),
+        fecha_nacimiento: primeroQueHaya(deLaPersona, "fecha_nacimiento"),
+        edad: primeroQueHaya(deLaPersona, "edad"),
       });
     }
   });

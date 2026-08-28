@@ -26,6 +26,7 @@ import {
   type Pendientes,
 } from "@/lib/cambios";
 import { useCatalogo } from "@/lib/catalog";
+import { PAISES_POR_GRUPO, normalizarPais } from "@/lib/paises";
 import { fechaCorta, fechaLarga, mesLargo, money } from "@/lib/format";
 import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
@@ -273,6 +274,36 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditar(o.id, { descuento_promocion: oNull(v) }, { descuento: oNull(v) }),
     },
+    /*
+     * ------------------------------------------------------------------------
+     * EL HORARIO CON EL QUE SE CERRÓ
+     * ------------------------------------------------------------------------
+     *
+     * Sale impreso tal cual en el link de registro, así que lo que se escriba
+     * acá es lo que va a leer académica para inscribir a esta persona.
+     *
+     * Vive en el lead y no en el programa, aunque el horario SEA del programa,
+     * porque el del programa cambia todos los años. Si el recibo lo leyera de
+     * ahí, una inscripción cerrada en marzo empezaría a decir el horario del
+     * año siguiente en cuanto dirección lo actualice, y académica inscribiría a
+     * esa persona en los días equivocados sin que nadie hubiera tocado su
+     * ficha. Lo que se le prometió a alguien es un hecho del pasado.
+     *
+     * Para que eso no cueste teclearlo trescientas veces, el horario vigente
+     * del programa se ofrece abajo y entra con un clic.
+     */
+    {
+      clave: "horario",
+      label: "Horario del diplomado",
+      value: o.horario ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      multilinea: true,
+      acentos: true,
+      placeholder:
+        o.horarioPrograma ?? "Ej.: Sábados de 8:00 a 12:00, del 15/02 al 20/06",
+      guardar: (v: string) => onEditar(o.id, { horario: oNull(v) }, { horario: oNull(v) }),
+    },
   ];
 
   /** Fields stored on the shared client record. */
@@ -339,16 +370,51 @@ export function ClienteDrawer({
           {
             clave: "cliente_pais",
             label: "País",
-            value: o.pais ?? "",
+            /*
+             * Lo guardado se normaliza sólo para MOSTRARLO.
+             *
+             * Una ficha vieja que dice «guatemala» o «GUATEMALA» aparece
+             * elegida en «Guatemala» y no como algo fuera de la lista. Lo que
+             * hay en la base no se toca hasta que alguien elija de verdad.
+             */
+            value: normalizarPais(o.pais) ?? "",
             tipo: "texto" as const,
             requerido: false,
-            acentos: true,
-            placeholder: "Guatemala, Honduras, España…",
+            placeholder: "Elegí el país",
+            opciones: PAISES_POR_GRUPO.map((g) => ({
+              grupo: g.grupo,
+              valores: g.paises,
+            })),
             guardar: (v: string) =>
               onEditarCliente(o.clienteId, { pais: oNull(v) }, { pais: oNull(v) }),
           },
         ]
       : []),
+    /*
+     * El cumpleaños, al lado de la edad.
+     *
+     * Las dos conviven a propósito: la edad es lo que se pregunta en la feria
+     * y lo que decide si hace falta un adulto responsable; la fecha es lo que
+     * sirve para saludar y lo único que no envejece solo.
+     *
+     * Se muestra como día/mes/año, que es como se pidió y como se lee acá. Se
+     * guarda como fecha: «03/04/1995» en texto no se puede ordenar ni
+     * consultar, y encima no se sabe si es el 3 de abril o el 4 de marzo.
+     */
+    {
+      clave: "cliente_cumple",
+      label: "Cumpleaños",
+      value: o.fechaNacimiento ?? "",
+      tipo: "fecha" as const,
+      requerido: false,
+      placeholder: "Sin dato",
+      guardar: (v: string) =>
+        onEditarCliente(
+          o.clienteId,
+          { fecha_nacimiento: oNull(v) },
+          { fechaNacimiento: oNull(v) },
+        ),
+    },
     {
       clave: "cliente_edad",
       label: "Edad",
@@ -523,7 +589,14 @@ export function ClienteDrawer({
         <CanalesDelContacto clienteId={o.clienteId} accent={accent} />
       )}
 
-      <BotonLinkRegistro oportunidadId={o.id} accent={accent} />
+      <BotonLinkRegistro
+        oportunidadId={o.id}
+        accent={accent}
+        // Cuenta lo que todavía no se guardó: quien acaba de escribir el
+        // horario y no apretó Guardar no tiene por qué ver un aviso de que
+        // falta.
+        faltaHorario={!valorVisible(pendientes, "horario", o.horario ?? "").trim()}
+      />
 
       <SectionLabel>Etapa del proceso</SectionLabel>
       <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
@@ -822,7 +895,22 @@ export function ClienteDrawer({
                         accent={accent}
                       />
                     )
-                  : undefined
+                  : f.clave === "horario" && o.horarioPrograma
+                    ? (borrador, poner) => (
+                        <Sugerencias
+                          opciones={[{ texto: o.horarioPrograma as string, veces: 0 }]}
+                          valor={borrador}
+                          onElegir={poner}
+                          accent={accent}
+                          titulo="Del programa:"
+                          detalle={() =>
+                            "El horario que dirección tiene cargado hoy para este " +
+                            "programa. Al ponerlo acá queda guardado en este lead: " +
+                            "si el programa cambia el año que viene, éste no cambia."
+                          }
+                        />
+                      )
+                    : undefined
               }
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))
@@ -862,6 +950,8 @@ export function ClienteDrawer({
                     ? undefined
                     : "Sin dato"
               }
+              /* Con opciones el campo se elige de una lista en vez de escribirse. */
+              opciones={"opciones" in f ? f.opciones : undefined}
               onBorrador={f.clave === "cliente_edad" ? setBorradorEdad : undefined}
               onGuardar={(v) =>
                 anotarCambio(f.clave, f.label, f.value, v, () => f.guardar(v))

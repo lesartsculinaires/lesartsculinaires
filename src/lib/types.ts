@@ -72,6 +72,15 @@ export interface Producto extends CatalogItem {
   categoria: ProductoCategoria;
   /** List price; null until someone fills it in. */
   precio: number | null;
+  /**
+   * El horario vigente del programa, como se le dice al alumno.
+   *
+   * Es un borrador, no la verdad: lo que vale para una inscripción es el
+   * horario que quedó guardado en su lead. Éste cambia cada año; aquél no
+   * cambia nunca, para que un recibo emitido en marzo no empiece a decir otra
+   * cosa cuando dirección actualice el calendario.
+   */
+  horario: string | null;
 }
 
 export interface TipoEvento extends CatalogItem {
@@ -163,6 +172,8 @@ export interface Oportunidad {
   /** El adulto que responde por un menor. Se pide de 17 para abajo. */
   /** País, cuando el territorio es «Extranjero». Nulo en los de acá. */
   pais: string | null;
+  /** Cumpleaños, en ISO. Se muestra como día/mes/año. */
+  fechaNacimiento: string | null;
   responsableNombre: string | null;
   responsableTelefono: string | null;
   responsableCorreo: string | null;
@@ -212,6 +223,17 @@ export interface Oportunidad {
   descuento: string | null;
 
   /**
+   * El horario con el que se cerró con esta persona.
+   *
+   * Sale impreso tal cual en el link de registro, así que es lo que va a leer
+   * académica para inscribirla. Se congela: una vez escrito, que dirección
+   * cambie el calendario del programa el año que viene no lo mueve.
+   */
+  horario: string | null;
+  /** El horario vigente del programa. Sólo para ofrecerlo con un clic. */
+  horarioPrograma: string | null;
+
+  /**
    * Cuándo entró la fila al sistema. Distinto de `fechaRegistro`, que es
    * cuando el lead llegó al negocio: una base histórica se sube hoy con
    * fechas de hace meses.
@@ -246,6 +268,7 @@ export interface OportunidadPatch {
   venta_cerrada?: number | null;
   reserva?: number | null;
   descuento_promocion?: string | null;
+  horario?: string | null;
 }
 
 /**
@@ -257,6 +280,7 @@ export interface OportunidadPatch {
 export interface ClientePatch {
   nombre?: string;
   pais?: string | null;
+  fecha_nacimiento?: string | null;
   telefono?: string | null;
   correo?: string | null;
   edad?: number | null;

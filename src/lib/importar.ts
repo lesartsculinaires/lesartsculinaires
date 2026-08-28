@@ -7,6 +7,7 @@
  */
 
 import { buscarDuplicados, type ContactoConocido } from "@/lib/duplicados";
+import { acomodarNombre } from "@/lib/texto";
 import type { Catalogo, CatalogItem } from "@/lib/types";
 
 /** Minúsculas, sin acentos, sin espacios de más. Para comparar encabezados y catálogos. */
@@ -26,8 +27,12 @@ export const CAMPOS = [
     alias: ["telefono", "tel", "celular", "movil", "whatsapp", "numero", "telefono 1"] },
   { clave: "correo", etiqueta: "Correo", obligatorio: false,
     alias: ["correo", "email", "e-mail", "mail", "correo electronico"] },
+  // «interes» a secas no está, y es a propósito: agarraba «Horario de
+  // interés», que no es el programa, y mandaba «Sábados por la mañana» a
+  // buscarse en el catálogo de diplomados. Es el mismo error que «Nombre del
+  // curso» yendo al nombre del cliente, explicado más abajo en `detectarMapeo`.
   { clave: "producto", etiqueta: "Programa", obligatorio: false,
-    alias: ["producto", "programa", "curso", "diplomado", "programa de interes", "interes"] },
+    alias: ["producto", "programa", "curso", "diplomado", "programa de interes"] },
   { clave: "vendedor", etiqueta: "Vendedor", obligatorio: false,
     alias: ["vendedor", "asesor", "ejecutivo", "responsable", "asignado a", "agente"] },
   { clave: "etapa", etiqueta: "Etapa", obligatorio: false,
@@ -48,12 +53,47 @@ export const CAMPOS = [
     alias: ["venta cerrada", "cerrada", "monto cerrado", "pagado", "matricula"] },
   { clave: "descuento", etiqueta: "Descuento o promoción", obligatorio: false,
     alias: ["descuento", "promocion", "descuento o promocion", "beca", "oferta"] },
+  // Estos tres son de la persona, no del trato: viajan a la ficha del cliente
+  // y no a la oportunidad. Están acá porque las bases que manda la escuela los
+  // traen —la de cumpleaños es una columna de fechas y nada más— y sin ellos
+  // había que copiarlos a mano ficha por ficha.
+  { clave: "fecha_nacimiento", etiqueta: "Cumpleaños", obligatorio: false,
+    alias: ["cumpleanos", "cumple", "fecha de nacimiento", "fecha nacimiento", "nacimiento", "birthday", "fecha de cumpleanos"] },
+  { clave: "pais", etiqueta: "País", obligatorio: false,
+    alias: ["pais", "country", "nacionalidad"] },
+  { clave: "edad", etiqueta: "Edad", obligatorio: false,
+    alias: ["edad", "anos", "anios", "edad del alumno"] },
 ] as const;
 
 export type ClaveCampo = (typeof CAMPOS)[number]["clave"];
 
-/** Encabezado del archivo → campo del CRM. La clave es el índice de columna. */
-export type Mapeo = Record<number, ClaveCampo | "">;
+/**
+ * Columna que no llena un campo sino que se copia a la bitácora del lead.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ NO ES UN CAMPO MÁS
+ * ------------------------------------------------------------------------
+ *
+ * Porque no es uno: son todas las que sobran. Las planillas de la escuela
+ * traen columnas que no tienen dónde caer —«horario que le queda», «de qué
+ * feria vino», «qué preguntó»— y hasta ahora la única opción era «no
+ * importar», es decir, tirarlas. Ese dato es justamente el que el asesor
+ * necesita en la primera llamada.
+ *
+ * Por eso admite varias columnas a la vez, a diferencia de los campos, que son
+ * uno a uno: la nota que queda en la ficha las junta todas, cada una con su
+ * encabezado adelante para que se sepa de dónde salió cada cosa.
+ */
+export const A_NOTA = "nota";
+
+/** Encabezados que se mandan solos a la bitácora. */
+const ALIAS_NOTA = [
+  "nota", "notas", "observacion", "observaciones", "comentario", "comentarios",
+  "detalle", "detalles", "bitacora", "descripcion",
+];
+
+/** Encabezado del archivo → campo del CRM, o a la bitácora. La clave es el índice de columna. */
+export type Mapeo = Record<number, ClaveCampo | typeof A_NOTA | "">;
 
 // ------------------------------------------------------------------ delimitados
 
@@ -235,9 +275,14 @@ export function detectarMapeo(encabezados: readonly string[]): Mapeo {
   const usados = new Set<ClaveCampo>();
   const normalizados = encabezados.map((h) => normalizar(h));
 
+  // La bitácora primero, y sólo por nombre exacto: son varias columnas y no
+  // compiten entre sí, así que reservarlas acá no le quita ninguna a un campo.
   normalizados.forEach((n, i) => {
-    mapeo[i] = "";
-    if (!n) return;
+    mapeo[i] = n && (ALIAS_NOTA as readonly string[]).includes(n) ? A_NOTA : "";
+  });
+
+  normalizados.forEach((n, i) => {
+    if (!n || mapeo[i]) return;
     const exacto = CAMPOS.find(
       (c) => !usados.has(c.clave) && (c.alias as readonly string[]).includes(n),
     );
@@ -258,15 +303,29 @@ export function detectarMapeo(encabezados: readonly string[]): Mapeo {
     if (!candidato) return;
 
     // Si el encabezado también nombra otro campo, la columna es ambigua.
-    const ambiguo = CAMPOS.some(
-      (c) =>
-        c.clave !== candidato.clave &&
-        (c.alias as readonly string[]).some((a) => contienePalabra(n, a)),
-    );
+    //
+    // «Comentario del asesor» es el caso: nombra al vendedor y nombra una
+    // nota. Adivinarlo como vendedor mandaba el comentario entero a buscarse
+    // en la lista de asesores, no lo encontraba, y la columna se perdía. Con
+    // la duda declarada, la pasada de abajo la deja donde el texto se conserva.
+    const ambiguo =
+      CAMPOS.some(
+        (c) =>
+          c.clave !== candidato.clave &&
+          (c.alias as readonly string[]).some((a) => contienePalabra(n, a)),
+      ) || ALIAS_NOTA.some((a) => contienePalabra(n, a));
     if (ambiguo) return;
 
     mapeo[i] = candidato.clave;
     usados.add(candidato.clave);
+  });
+
+  // Y al final, «Observaciones del asesor» o «Comentario de la feria»: lo que
+  // ningún campo reclamó y se llama como se llama una nota. Va último a
+  // propósito, para que un campo de verdad siempre gane.
+  normalizados.forEach((n, i) => {
+    if (!n || mapeo[i]) return;
+    if (ALIAS_NOTA.some((a) => contienePalabra(n, a))) mapeo[i] = A_NOTA;
   });
 
   return mapeo;
@@ -291,6 +350,15 @@ export interface FilaImportada {
   valor_oportunidad: number | null;
   venta_cerrada: number | null;
   descuento_promocion: string | null;
+  /** Cumpleaños, si la planilla lo trae. Va a la ficha, no a la oportunidad. */
+  fecha_nacimiento: string | null;
+  pais: string | null;
+  edad: number | null;
+  /**
+   * Lo que traían las columnas marcadas «Nota», ya junto y con su encabezado.
+   * Nulo cuando no había ninguna o venían todas vacías.
+   */
+  nota: string | null;
   /** Motivos por los que la fila no se puede importar. */
   errores: string[];
   /** Cosas que se importan igual, pero conviene mirar. */
@@ -322,6 +390,16 @@ export interface OpcionesFilas {
   existentes: readonly ContactoConocido[];
   /** Fecha a usar cuando la fila no trae ninguna. */
   fechaPorDefecto: string;
+  /**
+   * Enderezar los nombres que vienen en MAYÚSCULAS o con espacios de más.
+   *
+   * Acá es donde vale la pena y no en la ficha de a una: una planilla
+   * exportada trae las trescientas así, y arreglarlas después es abrir
+   * trescientas fichas. Son las mismas letras en otro caso; no se inventa
+   * ninguna, y las tildes NO se tocan —eso se propone de a una, con alguien
+   * mirando, porque cambia letras—.
+   */
+  acomodarNombres?: boolean;
 }
 
 /** Convierte la matriz cruda en filas listas para revisar e importar. */
@@ -331,6 +409,7 @@ export function construirFilas({
   catalogo,
   existentes,
   fechaPorDefecto,
+  acomodarNombres = false,
 }: OpcionesFilas): FilaImportada[] {
   const columnaDe = (clave: ClaveCampo): number =>
     Number(Object.keys(mapeo).find((i) => mapeo[Number(i)] === clave) ?? -1);
@@ -341,6 +420,29 @@ export function construirFilas({
   const valor = (fila: string[], clave: ClaveCampo): string | null =>
     col[clave] >= 0 ? oNull(fila[col[clave]]) : null;
 
+  // Las columnas que van a la bitácora son varias, así que se guardan todas
+  // con su encabezado: en la ficha se lee «Horario de interés: sábados» y no
+  // un «sábados» suelto que no dice nada seis meses después.
+  const columnasNota = Object.keys(mapeo)
+    .map(Number)
+    .filter((i) => mapeo[i] === A_NOTA)
+    .sort((a, b) => a - b);
+
+  const encabezado = (i: number): string => String(matriz[0]?.[i] ?? "").trim();
+
+  const notaDe = (fila: string[]): string | null => {
+    const partes = columnasNota
+      .map((i) => {
+        const v = oNull(fila[i]);
+        if (!v) return null;
+        const h = encabezado(i);
+        return h ? `${h}: ${v}` : v;
+      })
+      .filter((p): p is string => p != null);
+
+    return partes.length > 0 ? partes.join("\n") : null;
+  };
+
   // Los repetidos se buscan contra la base y contra las filas ya leídas del
   // propio archivo: subir una planilla que se repite a sí misma duplicaría
   // igual, aunque la base estuviera limpia.
@@ -350,8 +452,10 @@ export function construirFilas({
     const errores: string[] = [];
     const avisos: string[] = [];
 
-    const nombre = valor(fila, "nombre") ?? "";
+    const crudoNombre = valor(fila, "nombre") ?? "";
+    const nombre = acomodarNombres ? acomodarNombre(crudoNombre) : crudoNombre;
     if (!nombre) errores.push("Sin nombre de cliente");
+    if (nombre !== crudoNombre) avisos.push(`Nombre acomodado desde «${crudoNombre}»`);
 
     const cat = (clave: ClaveCampo, items: readonly CatalogItem[], etiqueta: string) => {
       const texto = valor(fila, clave);
@@ -372,6 +476,24 @@ export function construirFilas({
 
     const telefono = valor(fila, "telefono");
     const correo = valor(fila, "correo");
+
+    const crudoNacimiento = valor(fila, "fecha_nacimiento");
+    const fechaNacimiento = parseFecha(crudoNacimiento);
+    if (crudoNacimiento && !fechaNacimiento) {
+      avisos.push(`Cumpleaños «${crudoNacimiento}» no se entiende; se deja vacío`);
+    }
+
+    // Una edad imposible es casi siempre un año de nacimiento en la casilla
+    // equivocada. La base lo rechazaría a mitad del archivo; acá se avisa y se
+    // deja vacío, que es lo que hace el resto del importador con lo que no
+    // entiende: la fila entra igual y el dato se completa a mano.
+    const crudaEdad = valor(fila, "edad");
+    const edadNum = crudaEdad == null ? null : Number(crudaEdad.replace(/[^\d]/g, ""));
+    const edad =
+      edadNum != null && Number.isFinite(edadNum) && edadNum > 0 && edadNum <= 120
+        ? edadNum
+        : null;
+    if (crudaEdad && edad == null) avisos.push(`Edad «${crudaEdad}» no es válida; se deja vacía`);
 
     const choques = buscarDuplicados({ nombre, telefono, correo }, acumulado);
     const duplicado = choques.length > 0;
@@ -406,6 +528,10 @@ export function construirFilas({
       valor_oportunidad: parseMonto(valor(fila, "valor")),
       venta_cerrada: parseMonto(valor(fila, "cerrada")),
       descuento_promocion: valor(fila, "descuento"),
+      fecha_nacimiento: fechaNacimiento,
+      pais: valor(fila, "pais"),
+      edad,
+      nota: notaDe(fila),
       errores,
       avisos,
       duplicado,

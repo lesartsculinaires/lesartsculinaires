@@ -1032,27 +1032,39 @@ export function Inbox({
             )}
 
             {ventanaCerrada && (
-              <p
+              /*
+               * Un `div`, no un `p`.
+               *
+               * Acá había un `<p>` con el aviso y, adentro, el selector de
+               * plantillas —que es un `<div>` con un `<select>` y un botón—.
+               * Eso es HTML inválido: el navegador cierra el párrafo antes del
+               * div, así que el árbol que arma no es el que React dibujó.
+               *
+               * La consecuencia no es visual sino peor: React no puede
+               * enganchar sus manejadores sobre un árbol que no reconoce, y el
+               * botón «Mandar» queda dibujado pero muerto. Se hace clic y no
+               * pasa nada, sin ningún error a la vista.
+               */
+              <div
                 style={{
-                  margin: 0,
                   padding: "9px 14px",
-                  fontSize: 12,
-                  lineHeight: 1.5,
                   background: "#FFF6D6",
                   color: "#8A5200",
                   borderTop: `1px solid ${T.border}`,
                 }}
               >
-                {nuncaEscribio
-                  ? "Esta persona todavía no le escribió al WhatsApp de la escuela. Hasta que lo haga, WhatsApp sólo deja llegarle con una plantilla aprobada."
-                  : "Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja escribirle libremente hasta que vuelva a escribir."}
+                <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
+                  {nuncaEscribio
+                    ? "Esta persona todavía no le escribió al WhatsApp de la escuela. Hasta que lo haga, WhatsApp sólo deja llegarle con una plantilla aprobada."
+                    : "Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja escribirle libremente hasta que vuelva a escribir."}
+                </p>
                 <MandarPlantilla
                   conversacionId={actual.id}
                   plantillas={plantillas}
                   accent={accent}
                   onEnviado={onRefrescar}
                 />
-              </p>
+              </div>
             )}
 
             <label
@@ -1131,9 +1143,23 @@ export function Inbox({
                   }
                 }}
                 placeholder={
-                  puedeResponder ? "Escribí tu respuesta… (Enter envía)" : "WhatsApp no está configurado en el servidor."
+                  nota
+                    ? "Una nota para el equipo. No sale a WhatsApp."
+                    : puedeResponder
+                      ? "Escribí tu respuesta… (Enter envía)"
+                      : "WhatsApp no está configurado en el servidor."
                 }
-                disabled={!puedeResponder}
+                /*
+                 * Una nota interna se puede escribir siempre.
+                 *
+                 * Acá se pedía `puedeResponder`, que es tener token de
+                 * WhatsApp. Para una respuesta está bien; para una nota del
+                 * equipo no: no sale a ningún lado, es un dato del CRM. Con el
+                 * token caído —o pasadas las 24 horas— el asesor se quedaba
+                 * sin poder anotar lo que acababa de hablar por teléfono, que
+                 * es justo cuando más falta hace.
+                 */
+                disabled={!nota && !puedeResponder}
                 style={{
                   flex: 1,
                   minHeight: 40,
@@ -1143,22 +1169,28 @@ export function Inbox({
                   fontSize: 13,
                   border: `1px solid ${T.border}`,
                   borderRadius: 8,
-                  background: puedeResponder ? T.paper : T.border,
+                  background: nota || puedeResponder ? T.paper : T.border,
                   resize: "vertical",
                 }}
               />
               <button
                 type="button"
                 onClick={enviar}
-                disabled={!puedeResponder || !texto.trim() || enviando}
+                disabled={(!nota && !puedeResponder) || !texto.trim() || enviando}
                 style={{
                   ...botonLleno(accent),
                   height: 40,
                   padding: "0 18px",
-                  opacity: !puedeResponder || !texto.trim() ? 0.5 : 1,
+                  opacity: (!nota && !puedeResponder) || !texto.trim() ? 0.5 : 1,
                 }}
               >
-                {enviando ? "Enviando…" : "Enviar"}
+                {enviando
+                  ? nota
+                    ? "Guardando…"
+                    : "Enviando…"
+                  : nota
+                    ? "Guardar nota"
+                    : "Enviar"}
               </button>
             </div>
           </>

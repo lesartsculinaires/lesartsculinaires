@@ -15,15 +15,15 @@ import {
   type DatosLead,
 } from "@/lib/crm/altaLead";
 import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
+import { anotarSeguimientoDeNota, filaDeSeguimiento } from "@/lib/crm/notaConSeguimiento";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
-import { fechaLarga } from "@/lib/format";
-import { listarCampos, planificarFusion, type Choque } from "@/lib/fusion";
 import {
-  detalleDe,
-  detectarSeguimiento,
-  hoyEnSalvador,
-  loQueSeEntendio,
-} from "@/lib/seguimientos";
+  COLUMNAS_DE_FUSION,
+  listarCampos,
+  planificarFusion,
+  type Choque,
+  type DatosCliente,
+} from "@/lib/fusion";
 import { getServerClient } from "@/lib/supabase/server";
 import { COOKIE_MODULO } from "@/lib/ultimoModulo";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
@@ -133,7 +133,7 @@ export async function addNota(
 
   if (error) return { ok: false, error: error.message, seguimiento: null };
 
-  const seguimiento = await anotarSeguimiento(
+  const seguimiento = await anotarSeguimientoDeNota(
     supabase,
     oportunidadId,
     texto,
@@ -145,53 +145,6 @@ export async function addNota(
   return { ok: true, error: null, seguimiento };
 }
 
-/**
- * Si la nota pedía un seguimiento, dejarlo anotado.
- *
- * Va acá y no en un trigger de la base por una razón: leer «el 15 de cada
- * mes» o «pasado mañana» es trabajo de texto en español, con tildes, plurales
- * y meses cortos, y eso se escribe y se prueba mucho mejor en TypeScript. La
- * lógica entera vive en `@/lib/seguimientos`, probada línea por línea, y acá
- * queda nada más el viaje a la base.
- *
- * Si falla, no se cae la nota. La nota es lo que la persona vino a hacer y ya
- * está guardada; perderla porque el recordatorio no se pudo crear sería
- * cambiar un problema chico por uno grande.
- */
-async function anotarSeguimiento(
-  supabase: SupabaseClient,
-  oportunidadId: number,
-  texto: string,
-  notaId: number | null,
-  autorId: string | null,
-): Promise<string | null> {
-  const visto = detectarSeguimiento(texto, hoyEnSalvador());
-  if (!visto) return null;
-
-  const mensual = visto.cuando?.clase === "mensual" ? visto.cuando : null;
-
-  const { error } = await supabase.from("seguimientos").insert({
-    oportunidad_id: oportunidadId,
-    nota_id: notaId,
-    tipo: visto.tipo,
-    detalle: detalleDe(texto),
-    proxima: visto.proxima,
-    dia_del_mes: mensual?.dia ?? null,
-    dia_hasta: mensual?.hasta ?? null,
-    creado_por: autorId,
-  });
-
-  if (error) {
-    // Decirlo, y no callarlo: el asesor escribió la frase creyendo que quedaba
-    // agendado, y enterarse hoy de que no vale mucho más que descubrirlo el
-    // día que el cliente no recibió la llamada.
-    return error.code === "PGRST205" || error.code === "42P01" || !error.message
-      ? "La nota quedó guardada, pero el recordatorio no: falta correr la migración 20260911120000_seguimientos.sql."
-      : "La nota quedó guardada, pero el recordatorio no se pudo crear: " + error.message;
-  }
-
-  return loQueSeEntendio(visto, fechaLarga);
-}
 
 /** Una línea de la bitácora, lista para mostrar. */
 export interface NotaRegistrada {
@@ -704,6 +657,117 @@ export interface FilaParaImportar {
   valor_oportunidad: number | null;
   venta_cerrada: number | null;
   descuento_promocion: string | null;
+  /** Datos de la persona: se escriben en la ficha, no en la oportunidad. */
+  pais?: string | null;
+  fecha_nacimiento?: string | null;
+  edad?: number | null;
+  /**
+   * Lo que traían las columnas que la pantalla marcó «Nota».
+   *
+   * Queda en la bitácora del lead, con el encabezado de cada columna adelante.
+   * Es lo que antes se perdía: la planilla trae «horario que le queda» o «de
+   * qué feria vino», el importador no tenía dónde ponerlo y la única opción
+   * era no importar esa columna.
+   */
+  nota?: string | null;
+}
+
+interface OportunidadCreada {
+  id: number;
+  codigo: string | null;
+}
+
+/**
+ * Las columnas sueltas de la planilla, ya en la bitácora de cada lead.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ ESTO NO PUEDE HACER FALLAR LA IMPORTACIÓN
+ * ------------------------------------------------------------------------
+ *
+ * Porque para cuando corre, los clientes y las oportunidades ya están
+ * escritos. Volver atrás trescientas filas porque una nota no entró sería
+ * cambiar un problema chico —un dato de contexto que se copia a mano— por uno
+ * grande: la base entera sin subir, y nadie sabiendo cuál mitad quedó.
+ *
+ * Así que no devuelve error: hace lo que puede y sigue. Si algo no entra, el
+ * lead está igual y la columna se puede volver a subir.
+ *
+ * ------------------------------------------------------------------------
+ * Y POR QUÉ TAMBIÉN DEJA RECORDATORIOS
+ * ------------------------------------------------------------------------
+ *
+ * Porque una nota importada es una nota. Si la columna «estado de la gestión»
+ * de la planilla dice «recuperación», tiene que agendar la llamada para dentro
+ * de una semana igual que si la hubiera escrito el asesor en la ficha. Justo
+ * ahí está el valor de subir esa columna: la base vieja de recuperaciones
+ * entra al CRM ya con su agenda armada.
+ */
+async function guardarNotasDeLaBase(
+  supabase: SupabaseClient,
+  filas: readonly FilaParaImportar[],
+  codigos: readonly string[],
+  creadas: readonly OportunidadCreada[],
+): Promise<void> {
+  const conNota = filas
+    .map((f, i) => ({ texto: (f.nota ?? "").trim(), i }))
+    .filter((x) => x.texto !== "");
+  if (conNota.length === 0) return;
+
+  /*
+   * De qué fila es cada oportunidad.
+   *
+   * Lo normal es que vuelvan todas y en orden, y ahí el índice alcanza. Pero
+   * pueden volver menos: quien importa ve sólo las oportunidades que le tocan,
+   * así que una asesora subiendo una base repartida entre varios recibiría de
+   * vuelta nada más las suyas. En ese caso se busca por código, que es lo
+   * único que sigue siendo de la fila.
+   */
+  const porFila = new Map<number, number>();
+  if (creadas.length === filas.length) {
+    creadas.forEach((op, i) => porFila.set(i, op.id));
+  } else {
+    const porCodigo = new Map(creadas.map((op) => [op.codigo ?? "", op.id]));
+    codigos.forEach((c, i) => {
+      const id = porCodigo.get(c);
+      if (id != null) porFila.set(i, id);
+    });
+  }
+
+  const aInsertar = conNota
+    .filter((x) => porFila.has(x.i))
+    .map((x) => ({
+      oportunidad_id: porFila.get(x.i) as number,
+      nota: x.texto,
+      origen: "importacion",
+    }));
+  if (aInsertar.length === 0) return;
+
+  const { data: notas, error } = await supabase
+    .from("oportunidad_notas")
+    .insert(aInsertar)
+    .select("id, oportunidad_id");
+  if (error) return;
+
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+
+  // Un solo insert para todos los recordatorios que hayan salido de las notas.
+  // Una planilla de recuperaciones los dispara todos a la vez, y de a uno
+  // serían trescientos viajes.
+  // El texto se busca por oportunidad y no por posición: cada lead lleva una
+  // sola nota en este lote, así que la oportunidad la identifica, y si la base
+  // devolviera las filas en otro orden el recordatorio seguiría siendo el de
+  // su nota.
+  const textoDe = new Map(aInsertar.map((n) => [n.oportunidad_id, n.nota]));
+
+  const filasSeguimiento = (notas ?? [])
+    .map((n) =>
+      filaDeSeguimiento(n.oportunidad_id, textoDe.get(n.oportunidad_id) ?? "", n.id, user?.id ?? null),
+    )
+    .filter((f): f is Record<string, unknown> => f != null);
+
+  if (filasSeguimiento.length > 0) {
+    await supabase.from("seguimientos").insert(filasSeguimiento);
+  }
 }
 
 export interface ResultadoImportacion {
@@ -814,6 +878,9 @@ export async function importarClientes(
           telefono: f.telefono,
           correo: f.correo,
           territorio_id: f.territorio_id,
+          pais: f.pais ?? null,
+          fecha_nacimiento: f.fecha_nacimiento ?? null,
+          edad: f.edad ?? null,
         })),
       )
       .select("id");
@@ -837,20 +904,42 @@ export async function importarClientes(
     const ids = [...new Set(aUnificar.map((f) => f.unificar_con as number))];
     const { data: existentes } = await supabase
       .from("clientes")
-      .select("id, nombre, telefono, telefono_secundario, correo, territorio_id")
+      .select(COLUMNAS_DE_FUSION)
       .in("id", ids);
 
-    for (const previo of existentes ?? []) {
-      const fila = aUnificar.find((f) => f.unificar_con === previo.id);
-      if (!fila) continue;
-      const plan = planificarFusion(previo, {
-        nombre: fila.nombre,
-        telefono: fila.telefono,
-        correo: fila.correo,
-        territorio_id: fila.territorio_id,
-      });
-      if (Object.keys(plan.parche).length > 0) {
-        await supabase.from("clientes").update(plan.parche).eq("id", previo.id);
+    for (const previo of (existentes ?? []) as unknown as { id: number }[]) {
+      /*
+       * Todas las filas que caen en el mismo contacto, no la primera.
+       *
+       * Una base de cumpleaños puede traer a la misma persona dos veces —una
+       * por programa que cursó— y sólo una de las dos con la fecha cargada.
+       * Quedándose con la primera, el dato de la segunda no se escribía nunca.
+       */
+      const suyas = aUnificar.filter((f) => f.unificar_con === previo.id);
+      if (suyas.length === 0) continue;
+
+      // Se aplica una fila por vez sobre el resultado de la anterior: así lo
+      // que completó la primera ya cuenta como ocupado para la segunda, y no
+      // se pisa lo que acaba de entrar.
+      let estado: Record<string, unknown> = { ...previo };
+      const parche: Record<string, unknown> = {};
+
+      for (const fila of suyas) {
+        const plan = planificarFusion(estado, {
+          nombre: fila.nombre,
+          telefono: fila.telefono,
+          correo: fila.correo,
+          territorio_id: fila.territorio_id,
+          pais: fila.pais ?? null,
+          fecha_nacimiento: fila.fecha_nacimiento ?? null,
+          edad: fila.edad ?? null,
+        });
+        Object.assign(parche, plan.parche);
+        estado = { ...estado, ...plan.parche };
+      }
+
+      if (Object.keys(parche).length > 0) {
+        await supabase.from("clientes").update(parche).eq("id", previo.id);
       }
     }
   }
@@ -870,7 +959,7 @@ export async function importarClientes(
   const base = numeroDeCodigo(previo?.codigo ?? null);
   const codigo = (i: number) => `CRM-${String(base + 1 + i).padStart(4, "0")}`;
 
-  const { error: errOps } = await supabase.from("oportunidades").insert(
+  const { data: opsCreadas, error: errOps } = await supabase.from("oportunidades").insert(
     filas.map((f, i) => ({
       codigo: codigo(i),
       importacion_id: baseId,
@@ -887,7 +976,11 @@ export async function importarClientes(
       venta_cerrada: f.venta_cerrada,
       descuento_promocion: f.descuento_promocion,
     })),
-  );
+  )
+    // Hacen falta los ids para colgarles la nota. Se piden en el mismo viaje:
+    // una segunda consulta buscando por código traería lo mismo y podría no
+    // encontrar una fila si el disparador de la base le cambió el número.
+    .select("id, codigo");
 
   if (errOps) {
     // Los clientes ya entraron. Sin su oportunidad no aparecen en ninguna
@@ -903,6 +996,13 @@ export async function importarClientes(
     }
     return { ok: false, error: errOps.message, ...vacio };
   }
+
+  await guardarNotasDeLaBase(
+    supabase,
+    filas,
+    filas.map((_, i) => codigo(i)),
+    (opsCreadas ?? []) as unknown as OportunidadCreada[],
+  );
 
   // El contador de la base se acumula lote a lote.
   if (baseId != null) {
@@ -962,7 +1062,7 @@ export async function unificarCliente(
 
   const { data: existente, error: errLeer } = await supabase
     .from("clientes")
-    .select("id, nombre, telefono, telefono_secundario, correo, territorio_id")
+    .select(COLUMNAS_DE_FUSION)
     .eq("id", clienteId)
     .maybeSingle();
 
@@ -971,11 +1071,23 @@ export async function unificarCliente(
     return { ok: false, error: "Ese contacto ya no existe. Recargá y volvé a intentar." };
   }
 
-  const plan = planificarFusion(existente, {
+  /*
+   * Todo lo que trajo el alta, no sólo el contacto.
+   *
+   * Antes iban nombre, teléfono, correo y territorio, y nada más. La edad y
+   * los datos del responsable se escribían en el formulario y se perdían al
+   * unificar: un menor que ya estaba cargado sin responsable seguía sin él,
+   * aunque quien lo dio de alta acabara de escribir el nombre del adulto.
+   */
+  const plan = planificarFusion(existente as unknown as DatosCliente, {
     nombre: datos.nombre,
     telefono: datos.telefono,
     correo: datos.correo,
     territorio_id: datos.territorio_id,
+    edad: datos.edad ?? null,
+    responsable_nombre: datos.responsable_nombre ?? null,
+    responsable_telefono: datos.responsable_telefono ?? null,
+    responsable_correo: datos.responsable_correo ?? null,
   });
 
   if (Object.keys(plan.parche).length > 0) {

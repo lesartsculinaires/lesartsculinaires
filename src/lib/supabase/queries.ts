@@ -51,6 +51,8 @@ function toOportunidad(r: Row): Oportunidad {
     // Nulo mientras no se haya corrido la migración de «Extranjero»: la vista
     // vieja no trae la columna y la ficha tiene que seguir abriendo.
     pais: r.pais ? str(r.pais) : null,
+    // Nula mientras no se haya corrido la migración del cumpleaños.
+    fechaNacimiento: r.fecha_nacimiento ? str(r.fecha_nacimiento) : null,
     responsableNombre: r.responsable_nombre ? str(r.responsable_nombre) : null,
     responsableTelefono: r.responsable_telefono ? str(r.responsable_telefono) : null,
     responsableCorreo: r.responsable_correo ? str(r.responsable_correo) : null,
@@ -82,6 +84,12 @@ function toOportunidad(r: Row): Oportunidad {
     // vieja no la trae y la aplicación tiene que seguir andando igual.
     reservaEn: r.reserva_en ? str(r.reserva_en) : null,
     descuento: r.descuento_promocion ? str(r.descuento_promocion) : null,
+
+    // El horario cerrado con este alumno, y el que el programa tiene vigente.
+    // Nulos mientras no se haya corrido la migración del horario: la vista
+    // vieja no los trae y la aplicación tiene que seguir andando igual.
+    horario: r.horario ? str(r.horario) : null,
+    horarioPrograma: r.horario_programa ? str(r.horario_programa) : null,
 
     // Vienen en null mientras no se haya corrido la migración de bases: la
     // vista vieja no las trae y la app tiene que seguir funcionando igual.
@@ -168,7 +176,11 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
     // algo que ya pasó —un evento del calendario, una ficha vieja— necesitan
     // también a los dados de baja, o mostrarían un hueco donde hay un dato.
     supabase.from("vendedores").select("id, nombre, activo, correo, telefono").order("nombre"),
-    supabase.from("productos").select("id, nombre, categoria, precio").order("nombre"),
+    // Con `*` y no con la lista de columnas: el horario del programa se agrega
+    // en una migración, y nombrarlo acá tumbaría el catálogo entero —y con él
+    // el CRM— en el rato que va entre el despliegue del código y la corrida
+    // del SQL. La tabla es chica y no tiene nada que esconder.
+    supabase.from("productos").select("*").order("nombre"),
     supabase.from("territorios").select("id, nombre").order("nombre"),
     supabase.from("canales").select("id, nombre").order("nombre"),
     supabase.from("etapas").select("id, nombre, orden").order("orden"),
@@ -203,6 +215,7 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
         nombre: str(r.nombre),
         categoria: str(r.categoria, "Otro") as ProductoCategoria,
         precio: numOrNull(r.precio),
+        horario: r.horario ? str(r.horario) : null,
       }),
     ),
     territorios: rows(terr).map((r) => ({ id: num(r.id), nombre: str(r.nombre) })),
