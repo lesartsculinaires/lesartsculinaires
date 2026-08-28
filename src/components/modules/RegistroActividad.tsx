@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { buscarActividad, type FiltrosActividad } from "@/app/actividad-actions";
+import { buscarActividad, marcarVisto, type FiltrosActividad } from "@/app/actividad-actions";
 import {
   ACCIONES,
   ENTIDADES,
@@ -77,6 +77,22 @@ export function RegistroActividad({
   useEffect(() => {
     void buscar(filtros);
   }, [buscar, filtros]);
+
+  /*
+   * Abrir el módulo cuenta como haber mirado.
+   *
+   * Sin esto, el globito de la barra se encendería y no se apagaría nunca:
+   * hasta ahora sólo la campana marcaba lo visto, así que quien entrara por el
+   * módulo vería el mismo número la próxima vez que refrescara la pantalla. Un
+   * número que no baja deja de mirarse en dos días, y de paso enseña a ignorar
+   * los otros.
+   *
+   * Va sin `filtros` en las dependencias a propósito: se marca una vez al
+   * entrar, no cada vez que alguien cambia un filtro.
+   */
+  useEffect(() => {
+    void marcarVisto();
+  }, []);
 
   /** Trae la tanda siguiente y la suma abajo, sin perder lo ya leído. */
   const traerMas = async () => {
@@ -208,7 +224,20 @@ export function RegistroActividad({
             : `${total} ${total === 1 ? "acción" : "acciones"}${
                 hayFiltros ? " con estos filtros" : ""
               }`}
-        {!esAdmin && " · sólo se muestran tus acciones"}
+        {/*
+          Antes decía «sólo se muestran tus acciones» a quien no fuera
+          dirección, y era verdad: la política dejaba ver nada más lo propio.
+          Ahora el registro es de todo el equipo, así que ese cartel pasó a ser
+          mentira —y un cartel que miente sobre lo que se está viendo es peor
+          que ninguno—.
+
+          En su lugar se dice lo que sí sigue siendo cierto para ventas: se ve
+          QUÉ se hizo y QUIÉN lo hizo, pero los leads ajenos siguen sin
+          nombrarse. Sin esta línea, alguien vería «Cambió la etapa» sin código
+          ni cliente y pensaría que el CRM se rompió.
+        */}
+        {!esAdmin &&
+          " · de todo el equipo. Los leads que no son tuyos aparecen sin nombre."}
       </p>
 
       {error && (

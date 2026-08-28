@@ -78,9 +78,31 @@ async function enriquecer(
   const actores = [...new Set(filas.map((f) => f.actor_id).filter(Boolean))] as string[];
   const fichas = [...new Set(filas.map((f) => f.oportunidad_id).filter(Boolean))] as number[];
 
+  /*
+   * Los nombres salen de una función y no de la tabla `usuarios`.
+   *
+   * La política de `usuarios` deja ver sólo la fila propia, así que leyéndola
+   * directo una asesora no resolvía ningún nombre ajeno y el panel decía «Una
+   * integración editó un lead» para todo lo que hacía el equipo: peor que no
+   * decir nada, porque además miente.
+   *
+   * `nombres_del_equipo` corre como `security definer` y devuelve `id` y
+   * `nombre`, nada más. Para poner una etiqueta en un aviso no hace falta el
+   * correo ni el rol de nadie.
+   *
+   * Con la consulta vieja de respaldo, para el rato que va entre el despliegue
+   * del código y la corrida del SQL: ahí sigue andando como antes en vez de
+   * quedarse sin panel.
+   */
   const [gente, ops] = await Promise.all([
     actores.length
-      ? supabase.from("usuarios").select("id, nombre, correo").in("id", actores)
+      ? supabase
+          .rpc("nombres_del_equipo", { p_ids: actores })
+          .then((r) =>
+            r.error
+              ? supabase.from("usuarios").select("id, nombre, correo").in("id", actores)
+              : r,
+          )
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     fichas.length
       ? supabase.from("vw_pipeline").select("id, codigo, cliente").in("id", fichas)
@@ -159,6 +181,26 @@ async function contarSinVer(
     .or(`actor_id.is.null,actor_id.neq.${user.id}`);
 
   return count ?? 0;
+}
+
+/**
+ * Nada más el número, para el globito de la barra.
+ *
+ * Aparte de `listarActividad` porque la barra lo pide en cada refresco y no
+ * necesita los 120 movimientos ni los dos viajes que resuelven los nombres:
+ * es un `count` y se acabó. Traer la lista entera para dibujar un número sería
+ * pagar el panel completo cada vez que alguien mira la pantalla.
+ */
+export async function contarActividadSinVer(): Promise<number> {
+  const supabase = await getServerClient();
+  if (!supabase) return 0;
+
+  try {
+    return await contarSinVer(supabase);
+  } catch {
+    // Un globito que no se puede calcular no vale una pantalla en blanco.
+    return 0;
+  }
 }
 
 /** Deja anotado que esta persona ya miró el panel. */

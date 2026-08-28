@@ -10,6 +10,7 @@ import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
 import { listarEtiquetas } from "@/app/etiquetas-actions";
 import { estadoPlantillas } from "@/app/plantillas-actions";
+import { contarActividadSinVer } from "@/app/actividad-actions";
 import { contarAutorizacionesPendientes } from "@/app/autorizaciones-actions";
 import { fetchImportaciones } from "@/lib/supabase/bases";
 import { fetchPospuestos } from "@/lib/supabase/recordatorios";
@@ -53,6 +54,7 @@ export default async function Page({
   // de arriba porque ese arreglo se desestructura por posición, y meter
   // uno en el medio corre todos los demás.
   const autorizacionesPendientes = await contarAutorizacionesPendientes();
+  const actividadSinVer = await contarActividadSinVer();
 
   const puedeResponder = await salidaDisponible();
 
@@ -83,6 +85,7 @@ export default async function Page({
       catalogo={catalogo.data}
       eventos={eventos.data}
       autorizacionesPendientes={autorizacionesPendientes}
+      actividadSinVer={actividadSinVer}
       importaciones={bases.data}
       faltaMigracionBases={bases.faltaMigracion}
       conversaciones={inbox.conversaciones}

@@ -35,6 +35,7 @@ const nada = {
   reservasUrgentes: [],
   seguimientos: [],
   autorizacionesPendientes: 0,
+  actividadSinVer: 0,
 };
 
 console.log("── sin nada pendiente, la barra va limpia ──");
@@ -53,6 +54,30 @@ console.log("\n── cada uno cuenta lo suyo ──");
     "los pedidos sin resolver van a Autorizaciones",
     avisosDeLaBarra({ ...nada, autorizacionesPendientes: 2 }),
     { Autorizaciones: 2 },
+  );
+  es(
+    "y los movimientos del equipo van a Notificaciones",
+    avisosDeLaBarra({ ...nada, actividadSinVer: 9 }),
+    { Notificaciones: 9 },
+  );
+}
+
+console.log("\n── Notificaciones también baja a cero ──");
+{
+  /*
+   * Es la condición para que un globito valga la pena, y la que decide si
+   * éste ayuda o se vuelve ruido permanente.
+   *
+   * Notificaciones cuenta novedades y no pendientes, así que había que
+   * comprobar que igual se apaga: abrir el módulo marca lo visto, el próximo
+   * refresco trae cero, y el número desaparece. Un contador que no llega a
+   * cero deja de mirarse en dos días y de paso enseña a ignorar los otros.
+   */
+  es("sin nada nuevo, no dibuja nada", avisosDeLaBarra({ ...nada, actividadSinVer: 0 }), {});
+  es(
+    "y no se cuela un cero cuando hay otros",
+    avisosDeLaBarra({ ...nada, mensajesSinLeer: 2, actividadSinVer: 0 }),
+    { Inbox: 2 },
   );
 }
 
@@ -110,14 +135,15 @@ console.log("\n── un cero nunca queda en el mapa ──");
 console.log("\n── todo junto ──");
 {
   es(
-    "los tres módulos, cada uno con lo suyo",
+    "los cuatro módulos, cada uno con lo suyo",
     avisosDeLaBarra({
       mensajesSinLeer: 7,
       reservasUrgentes: [reserva(), reserva()],
       seguimientos: [seg("hoy"), seg("pronto")],
       autorizacionesPendientes: 1,
+      actividadSinVer: 12,
     }),
-    { Inbox: 7, Recordatorios: 3, Autorizaciones: 1 },
+    { Inbox: 7, Recordatorios: 3, Autorizaciones: 1, Notificaciones: 12 },
   );
 }
 
