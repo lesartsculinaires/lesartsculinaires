@@ -219,10 +219,55 @@ export function construirPlan({
     }
   });
 
-  // Se devuelven en el orden del archivo. Importar salteado haría que los
-  // códigos CRM-XXXX no siguieran el orden de la planilla, y eso confunde a
-  // quien después compara las dos cosas.
-  destinos.sort((a, b) => a.fila.linea - b.fila.linea);
+  /*
+   * En el orden del archivo, pero con las filas de una misma persona juntas.
+   *
+   * ------------------------------------------------------------------------
+   * POR QUÉ NO ALCANZA CON EL ORDEN DEL ARCHIVO
+   * ------------------------------------------------------------------------
+   *
+   * Acá se ordenaba sólo por línea, que es lo que uno quiere: los códigos
+   * CRM-XXXX se asignan en ese orden y quien después compara la planilla con
+   * el CRM puede seguir la lista.
+   *
+   * El problema aparece dos pasos más adelante. La pantalla manda las filas de
+   * a doscientas, y el servidor crea UNA ficha por grupo DENTRO DE CADA LOTE.
+   * `enLotes` evita cortar un grupo por la mitad, pero sólo puede hacerlo si
+   * las filas del grupo están una al lado de la otra: mira la que sigue.
+   *
+   * Y en el orden del archivo casi nunca lo están. La misma persona
+   * preguntando por dos programas distintos aparece en la fila 5 y en la 300
+   * —las planillas de la escuela vienen ordenadas por programa o por fecha—,
+   * así que el corte del lote cae en el medio, cada lote crea su propia ficha,
+   * y esa persona termina duplicada. Es exactamente lo que avisó la escuela:
+   * «siempre se repiten los leads y no se unifican».
+   *
+   * ------------------------------------------------------------------------
+   * LO QUE HACE ESTE ORDEN
+   * ------------------------------------------------------------------------
+   *
+   * Cada fila se ordena por la PRIMERA línea de su persona, y después por la
+   * suya. O sea: la segunda aparición de alguien se adelanta hasta pegarse a
+   * la primera, y todo lo demás queda donde estaba. El archivo se sigue
+   * leyendo de arriba abajo; lo único que se mueve son las repeticiones, que
+   * son pocas y que de todos modos no tienen un lugar propio en la lista.
+   *
+   * Sólo importa para las filas con `grupo` —las que van a crear una ficha
+   * nueva entre varias—. Una fila que se une a un contacto que ya está en el
+   * CRM viaja con su `unificarCon`, que el servidor resuelve igual en
+   * cualquier lote.
+   */
+  const primeraDelGrupo = new Map<string, number>();
+  for (const d of destinos) {
+    if (d.grupo == null) continue;
+    const previa = primeraDelGrupo.get(d.grupo);
+    if (previa == null || d.fila.linea < previa) primeraDelGrupo.set(d.grupo, d.fila.linea);
+  }
+
+  const dondeVa = (d: Destino): number =>
+    d.grupo != null ? (primeraDelGrupo.get(d.grupo) ?? d.fila.linea) : d.fila.linea;
+
+  destinos.sort((a, b) => dondeVa(a) - dondeVa(b) || a.fila.linea - b.fila.linea);
 
   return {
     personas,
