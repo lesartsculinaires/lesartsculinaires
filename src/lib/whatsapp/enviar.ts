@@ -216,6 +216,60 @@ async function mandar(
 }
 
 /**
+ * Tope de Meta para audio. Un minuto de nota de voz pesa unos 100 KB, así que
+ * dieciséis megas son horas: nunca va a ser el límite que moleste.
+ */
+export const TOPE_AUDIO_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Manda una nota de voz.
+ *
+ * ------------------------------------------------------------------------
+ * EL TIPO ES LA MITAD DEL ASUNTO
+ * ------------------------------------------------------------------------
+ *
+ * Meta acepta varios formatos de audio, pero el que WhatsApp muestra como nota
+ * de voz —con la ondita y el botón de reproducir adentro del globo— es Ogg con
+ * Opus. Los demás llegan como un archivo adjunto de audio: se pueden escuchar,
+ * pero no es lo mismo, y del lado del cliente parece que le mandaron un archivo
+ * en vez de hablarle.
+ *
+ * Por eso el navegador re-empaqueta lo que grabó antes de subirlo (ver
+ * `src/lib/audio/ogg.ts`) y acá se comprueba que lo que llega sea eso. Un audio
+ * de otro tipo se rechaza antes de mandarlo: mandarlo igual daría un mensaje
+ * que el cliente no puede escuchar y nadie de este lado se enteraría.
+ *
+ * No lleva `caption`: Meta no acepta pie en los audios. Lo que se quiera decir
+ * va en un mensaje aparte.
+ */
+export async function enviarAudio(
+  telefono: string,
+  archivo: { enlace: string; mime: string; bytes: number },
+): Promise<ResultadoEnvio> {
+  const tipo = archivo.mime.split(";")[0].trim();
+
+  if (tipo !== "audio/ogg") {
+    return {
+      ok: false,
+      waId: null,
+      error:
+        "Para que llegue como nota de voz el audio tiene que ser Ogg con Opus, " +
+        `y éste es «${tipo}».`,
+    };
+  }
+
+  if (archivo.bytes > TOPE_AUDIO_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta audios de más de ${TOPE_AUDIO_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  return mandar(telefono, { type: "audio", audio: { link: archivo.enlace } });
+}
+
+/**
  * Reacciona a un mensaje, o le saca la reacción.
  *
  * ------------------------------------------------------------------------

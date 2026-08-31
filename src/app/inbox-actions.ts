@@ -14,6 +14,7 @@ import {
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
 import {
+  enviarAudio,
   enviarDocumento,
   enviarImagen,
   enviarReaccion,
@@ -869,8 +870,12 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
 
   const esImagen = datos.mime.startsWith("image/");
   const esDocumento = esDocumentoAceptado(datos.mime);
+  // Las notas de voz entran por la misma puerta que las fotos: se graban en el
+  // navegador, se suben al bucket y el servidor sólo maneja la ruta. Lo que
+  // cambia es qué se le manda a Meta y cómo queda escrito en el hilo.
+  const esAudio = datos.mime.startsWith("audio/");
 
-  if (!esImagen && !esDocumento) {
+  if (!esImagen && !esDocumento && !esAudio) {
     await limpiar();
     return {
       ok: false,
@@ -909,12 +914,18 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     return { ok: false, error: `No se pudo preparar el archivo: ${errFirma?.message ?? "sin firma"}` };
   }
 
-  const mandar = esImagen ? enviarImagen : enviarDocumento;
-  const envio = await mandar(
-    String(conv.telefono),
-    { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
-    datos.pie,
-  );
+  const envio = esAudio
+    ? // El audio va sin pie: Meta no lo acepta en este tipo de mensaje.
+      await enviarAudio(String(conv.telefono), {
+        enlace: firmado.signedUrl,
+        mime: datos.mime,
+        bytes: datos.bytes,
+      })
+    : await (esImagen ? enviarImagen : enviarDocumento)(
+        String(conv.telefono),
+        { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
+        datos.pie,
+      );
 
   if (!envio.ok) {
     await limpiar();
@@ -930,8 +941,8 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     direccion: "saliente",
     // El mismo vocabulario que usa Meta en lo que entra, para que el hilo no
     // tenga que distinguir si el mensaje lo mandamos nosotros o el cliente.
-    tipo: esImagen ? "image" : "document",
-    texto: datos.pie.trim() || null,
+    tipo: esAudio ? "audio" : esImagen ? "image" : "document",
+    texto: esAudio ? null : datos.pie.trim() || null,
     estado: "enviado",
     enviado_por: user.id,
     media_ruta: datos.ruta,
@@ -954,7 +965,10 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
       // Sin pie, en la lista de chats se lee el nombre del archivo y no un
       // «Documento» a secas: entre cinco hilos, «Lista de precios.pdf» dice
       // cuál es cuál y la palabra sola no dice nada.
-      ultimo_texto: (datos.pie.trim() || (esImagen ? "Foto" : datos.nombre)).slice(0, 200),
+      ultimo_texto: (esAudio
+        ? "Nota de voz"
+        : datos.pie.trim() || (esImagen ? "Foto" : datos.nombre)
+      ).slice(0, 200),
       ultimo_mensaje_en: new Date().toISOString(),
       sin_leer: 0,
     })

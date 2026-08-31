@@ -55,12 +55,66 @@ const servidor = http.createServer((req, res) => {
   /*
    * El almacenamiento, de mentira pero completo.
    *
-   * Hacen falta las dos mitades para poder probar las fotos y las notas de voz
-   * del chat: la aplicación primero pide direcciones firmadas —una por
-   * archivo— y recién después las carga en la pantalla. Contestando `[]` a lo
-   * primero, la segunda no llega nunca y el visor se queda en «abriendo el
-   * archivo…» para siempre.
+   * Hacen falta las tres partes para poder probar las fotos y las notas de voz
+   * del chat: subir, firmar y bajar. La aplicación sube el archivo derecho al
+   * bucket desde el navegador, después pide una dirección firmada, y recién
+   * entonces la carga en la pantalla. Si falta cualquiera de las tres, la
+   * siguiente no llega nunca.
+   *
+   * ------------------------------------------------------------------------
+   * CORS, QUE NO ES UN DETALLE
+   * ------------------------------------------------------------------------
+   *
+   * La aplicación corre en 3142 y esto en 3141: para el navegador son dos
+   * orígenes distintos, así que sin las cabeceras de permiso la subida falla
+   * con «Failed to fetch» —un error de red, sin más explicación— antes de que
+   * el servidor llegue a ver nada. Lo de PostgREST anda porque PostgREST manda
+   * esas cabeceras por su cuenta; esto, no.
    */
+  if (url.pathname.startsWith("/storage/v1/")) {
+    const permisos = {
+      "access-control-allow-origin": req.headers.origin ?? "*",
+      "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "access-control-allow-headers": "authorization, apikey, content-type, x-client-info, x-upsert, cache-control",
+      "access-control-max-age": "86400",
+    };
+
+    // El navegador pregunta antes de subir. Sin esta respuesta no llega a
+    // intentarlo.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, permisos);
+      res.end();
+      return;
+    }
+
+    responder(url, req, res, permisos);
+    return;
+  }
+
+  const destino = url.pathname.startsWith("/rest/v1")
+    ? url.pathname.slice("/rest/v1".length) + url.search
+    : url.pathname + url.search;
+
+  // Cada petición queda contada, para poder medir cuánto cuesta un refresco.
+  console.log("REST " + destino.split("?")[0]);
+
+  const p = http.request(
+    PGRST + destino,
+    { method: req.method, headers: { ...req.headers, host: "127.0.0.1:3140" } },
+    (r) => {
+      res.writeHead(r.statusCode ?? 500, r.headers);
+      r.pipe(res);
+    },
+  );
+  p.on("error", (e) => {
+    res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ message: String(e) }));
+  });
+  req.pipe(p);
+});
+
+/** Las tres partes del almacenamiento de mentira. */
+function responder(url, req, res, permisos) {
   if (url.pathname.startsWith("/storage/v1/object/sign/")) {
     let cuerpo = "";
     req.on("data", (t) => (cuerpo += t));
@@ -71,7 +125,7 @@ const servidor = http.createServer((req, res) => {
       } catch {
         // Un cuerpo ilegible se contesta como «ninguna ruta».
       }
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(200, { ...permisos, "content-type": "application/json" });
       res.end(
         JSON.stringify(
           rutas.map((ruta) => ({
@@ -97,38 +151,33 @@ const servidor = http.createServer((req, res) => {
       : /\.pdf$/.test(url.pathname)
         ? "application/pdf"
         : "image/png";
-    res.writeHead(200, { "content-type": tipo, "content-length": png.length });
+    res.writeHead(200, { ...permisos, "content-type": tipo, "content-length": png.length });
     res.end(png);
     return;
   }
 
-  if (url.pathname.startsWith("/storage/v1/")) {
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end("[]");
+  /*
+   * Subir un archivo.
+   *
+   * Se contesta lo que contesta Supabase —un objeto con la clave— y no un
+   * arreglo vacío: `supabase-js` mira que no haya `error`, pero la aplicación
+   * después usa la ruta, y devolver otra forma haría que el banco pruebe algo
+   * distinto de lo que pasa en producción. Los bytes se tiran: lo que hace
+   * falta comprobar es que el camino funcione, no guardar nada.
+   */
+  if (req.method === "POST" || req.method === "PUT") {
+    const ruta = decodeURIComponent(url.pathname.replace("/storage/v1/object/", ""));
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(200, { ...permisos, "content-type": "application/json" });
+      res.end(JSON.stringify({ Id: "de-mentira", Key: ruta }));
+    });
     return;
   }
 
-  const destino = url.pathname.startsWith("/rest/v1")
-    ? url.pathname.slice("/rest/v1".length) + url.search
-    : url.pathname + url.search;
-
-  // Cada petición queda contada, para poder medir cuánto cuesta un refresco.
-  console.log("REST " + destino.split("?")[0]);
-
-  const p = http.request(
-    PGRST + destino,
-    { method: req.method, headers: { ...req.headers, host: "127.0.0.1:3140" } },
-    (r) => {
-      res.writeHead(r.statusCode ?? 500, r.headers);
-      r.pipe(res);
-    },
-  );
-  p.on("error", (e) => {
-    res.writeHead(502, { "content-type": "application/json" });
-    res.end(JSON.stringify({ message: String(e) }));
-  });
-  req.pipe(p);
-});
+  res.writeHead(200, { ...permisos, "content-type": "application/json" });
+  res.end("[]");
+}
 
 /**
  * El websocket de Realtime, empalmado a mano.
