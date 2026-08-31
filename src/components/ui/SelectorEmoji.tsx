@@ -72,60 +72,36 @@ const guardarReciente = (e: string, previos: string[]): string[] => {
   return lista;
 };
 
-export function SelectorEmoji({
+/**
+ * La caja con el buscador, las pestañas y la rejilla.
+ *
+ * Va aparte del botón porque hay dos maneras de llegar a ella y sólo la
+ * primera necesita un botón propio: desde el cuadro de mensaje —el 🙂 de la
+ * barra— y desde las reacciones de un mensaje, donde lo que se abre primero es
+ * la fila de los seis de siempre y esto aparece recién al pedir «más».
+ *
+ * No se posiciona sola: quien la usa la mete adentro de su propio contenedor
+ * absoluto, que es el que sabe hacia dónde hay lugar.
+ */
+export function PanelEmoji({
   onElegir,
   accent,
-  disabled = false,
-  title = "Emojis",
 }: {
   onElegir: (emoji: string) => void;
   accent: string;
-  disabled?: boolean;
-  title?: string;
 }) {
-  const [abierto, setAbierto] = useState(false);
   const [grupo, setGrupo] = useState(0);
   const [q, setQ] = useState("");
   const [recientes, setRecientes] = useState<string[]>([]);
-  const caja = useRef<HTMLDivElement | null>(null);
   const buscador = useRef<HTMLInputElement | null>(null);
 
-  // Se leen al abrir y no al montar: en una bandeja con cuarenta hilos este
-  // componente se dibuja una sola vez, pero lo que hay guardado puede haber
-  // cambiado en otra pestaña.
+  // Se leen al aparecer y no una vez para siempre: en una bandeja con cuarenta
+  // hilos este componente se monta y se desmonta todo el tiempo, y lo guardado
+  // puede haber cambiado en otra pestaña.
   useEffect(() => {
-    if (abierto) {
-      setRecientes(leerRecientes());
-      buscador.current?.focus();
-    } else {
-      setQ("");
-    }
-  }, [abierto]);
-
-  /*
-   * Cerrar con Escape o tocando afuera.
-   *
-   * `mousedown` y no `click`: con `click`, tocar el botón de cerrar del propio
-   * panel dispara primero el cierre de afuera y después el botón, sobre algo
-   * que ya no está.
-   */
-  useEffect(() => {
-    if (!abierto) return;
-
-    const afuera = (ev: MouseEvent) => {
-      if (caja.current && !caja.current.contains(ev.target as Node)) setAbierto(false);
-    };
-    const tecla = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") setAbierto(false);
-    };
-
-    document.addEventListener("mousedown", afuera);
-    document.addEventListener("keydown", tecla);
-    return () => {
-      document.removeEventListener("mousedown", afuera);
-      document.removeEventListener("keydown", tecla);
-    };
-  }, [abierto]);
+    setRecientes(leerRecientes());
+    buscador.current?.focus();
+  }, []);
 
   const hallados = useMemo(() => buscar(q), [q]);
   const buscando = q.trim() !== "";
@@ -177,6 +153,140 @@ export function SelectorEmoji({
   );
 
   return (
+    <div
+      role="dialog"
+      aria-label="Elegir un emoji"
+      style={{
+        width: 306,
+        background: T.surface,
+        border: `1px solid ${T.borderStrong}`,
+        borderRadius: 10,
+        boxShadow: "0 16px 34px rgba(3,27,79,0.18)",
+        padding: 8,
+      }}
+    >
+      <input
+        ref={buscador}
+        value={q}
+        onChange={(ev) => setQ(ev.target.value)}
+        placeholder="Buscar: pastel, gracias, fuego…"
+        aria-label="Buscar un emoji"
+        style={{
+          width: "100%",
+          height: 30,
+          padding: "0 9px",
+          marginBottom: 7,
+          fontSize: 12.5,
+          border: `1px solid ${T.border}`,
+          borderRadius: 7,
+          background: T.paper,
+          color: T.ink,
+        }}
+      />
+
+      {/* Las pestañas se esconden mientras se busca: lo que se ve entonces no
+          es un grupo, y dejar una marcada diría que sí. */}
+      {!buscando && (
+        <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
+          {GRUPOS.map((gr, i) => (
+            <button
+              key={gr.titulo}
+              type="button"
+              onClick={() => setGrupo(i)}
+              title={gr.titulo}
+              aria-label={gr.titulo}
+              style={{
+                flex: 1,
+                height: 28,
+                fontSize: 16,
+                borderRadius: 6,
+                background: grupo === i ? T.paper : "transparent",
+                borderBottom: `2px solid ${grupo === i ? accent : "transparent"}`,
+                cursor: "pointer",
+              }}
+            >
+              {gr.icono}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ maxHeight: 214, overflowY: "auto", paddingRight: 2 }}>
+        {buscando ? (
+          hallados.length === 0 ? (
+            <p style={{ margin: "14px 6px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+              No hay ninguno que se llame «{q.trim()}». Probá con una palabra
+              más corta: «past», «gra», «fue».
+            </p>
+          ) : (
+            rejilla(hallados)
+          )
+        ) : (
+          <>
+            {/* Los recientes sólo en la primera pestaña: repetirlos arriba de
+                cada grupo sería la misma fila cinco veces. */}
+            {grupo === 0 && recientes.length > 0 && (
+              <>
+                <p style={titulito}>Los que más usás</p>
+                {rejilla(recientes.map((e) => ({ e, nombre: e })))}
+                <p style={titulito}>{GRUPOS[0].titulo}</p>
+              </>
+            )}
+            {rejilla(GRUPOS[grupo].emojis)}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El botón 🙂 del cuadro de mensaje, con su panel.
+ *
+ * Se queda abierto al elegir: casi nunca se manda un emoji solo —van dos o
+ * tres juntos— y cerrarse después de cada uno obligaría a abrirlo tres veces
+ * para escribir «🎉🎂✨».
+ */
+export function SelectorEmoji({
+  onElegir,
+  accent,
+  disabled = false,
+  title = "Emojis",
+}: {
+  onElegir: (emoji: string) => void;
+  accent: string;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const caja = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Cerrar con Escape o tocando afuera.
+   *
+   * `mousedown` y no `click`: con `click`, tocar un botón del propio panel
+   * dispara primero el cierre de afuera y después el botón, sobre algo que ya
+   * no está.
+   */
+  useEffect(() => {
+    if (!abierto) return;
+
+    const afuera = (ev: MouseEvent) => {
+      if (caja.current && !caja.current.contains(ev.target as Node)) setAbierto(false);
+    };
+    const tecla = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setAbierto(false);
+    };
+
+    document.addEventListener("mousedown", afuera);
+    document.addEventListener("keydown", tecla);
+    return () => {
+      document.removeEventListener("mousedown", afuera);
+      document.removeEventListener("keydown", tecla);
+    };
+  }, [abierto]);
+
+  return (
     <div ref={caja} style={{ position: "relative", alignSelf: "flex-end" }}>
       <button
         type="button"
@@ -201,8 +311,6 @@ export function SelectorEmoji({
 
       {abierto && (
         <div
-          role="dialog"
-          aria-label="Elegir un emoji"
           style={{
             position: "absolute",
             // Hacia arriba: el cuadro de mensaje está pegado al piso de la
@@ -210,85 +318,9 @@ export function SelectorEmoji({
             bottom: "calc(100% + 6px)",
             left: 0,
             zIndex: 80,
-            width: 306,
-            background: T.surface,
-            border: `1px solid ${T.borderStrong}`,
-            borderRadius: 10,
-            boxShadow: "0 16px 34px rgba(3,27,79,0.18)",
-            padding: 8,
           }}
         >
-          <input
-            ref={buscador}
-            value={q}
-            onChange={(ev) => setQ(ev.target.value)}
-            placeholder="Buscar: pastel, gracias, fuego…"
-            aria-label="Buscar un emoji"
-            style={{
-              width: "100%",
-              height: 30,
-              padding: "0 9px",
-              marginBottom: 7,
-              fontSize: 12.5,
-              border: `1px solid ${T.border}`,
-              borderRadius: 7,
-              background: T.paper,
-              color: T.ink,
-            }}
-          />
-
-          {/* Las pestañas se esconden mientras se busca: lo que se ve entonces
-              no es un grupo, y dejar una marcada diría que sí. */}
-          {!buscando && (
-            <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
-              {GRUPOS.map((gr, i) => (
-                <button
-                  key={gr.titulo}
-                  type="button"
-                  onClick={() => setGrupo(i)}
-                  title={gr.titulo}
-                  aria-label={gr.titulo}
-                  style={{
-                    flex: 1,
-                    height: 28,
-                    fontSize: 16,
-                    borderRadius: 6,
-                    background: grupo === i ? T.paper : "transparent",
-                    borderBottom: `2px solid ${grupo === i ? accent : "transparent"}`,
-                    cursor: "pointer",
-                  }}
-                >
-                  {gr.icono}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div style={{ maxHeight: 214, overflowY: "auto", paddingRight: 2 }}>
-            {buscando ? (
-              hallados.length === 0 ? (
-                <p style={{ margin: "14px 6px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
-                  No hay ninguno que se llame «{q.trim()}». Probá con una palabra
-                  más corta: «past», «gra», «fue».
-                </p>
-              ) : (
-                rejilla(hallados)
-              )
-            ) : (
-              <>
-                {/* Los recientes sólo en la primera pestaña: repetirlos arriba
-                    de cada grupo sería la misma fila cinco veces. */}
-                {grupo === 0 && recientes.length > 0 && (
-                  <>
-                    <p style={titulito}>Los que más usás</p>
-                    {rejilla(recientes.map((e) => ({ e, nombre: e })))}
-                    <p style={titulito}>{GRUPOS[0].titulo}</p>
-                  </>
-                )}
-                {rejilla(GRUPOS[grupo].emojis)}
-              </>
-            )}
-          </div>
+          <PanelEmoji onElegir={onElegir} accent={accent} />
         </div>
       )}
     </div>

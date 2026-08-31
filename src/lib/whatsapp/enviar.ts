@@ -216,6 +216,90 @@ async function mandar(
 }
 
 /**
+ * Tope de Meta para audio. Un minuto de nota de voz pesa unos 100 KB, así que
+ * dieciséis megas son horas: nunca va a ser el límite que moleste.
+ */
+export const TOPE_AUDIO_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Manda una nota de voz.
+ *
+ * ------------------------------------------------------------------------
+ * EL TIPO ES LA MITAD DEL ASUNTO
+ * ------------------------------------------------------------------------
+ *
+ * Meta acepta varios formatos de audio, pero el que WhatsApp muestra como nota
+ * de voz —con la ondita y el botón de reproducir adentro del globo— es Ogg con
+ * Opus. Los demás llegan como un archivo adjunto de audio: se pueden escuchar,
+ * pero no es lo mismo, y del lado del cliente parece que le mandaron un archivo
+ * en vez de hablarle.
+ *
+ * Por eso el navegador re-empaqueta lo que grabó antes de subirlo (ver
+ * `src/lib/audio/ogg.ts`) y acá se comprueba que lo que llega sea eso. Un audio
+ * de otro tipo se rechaza antes de mandarlo: mandarlo igual daría un mensaje
+ * que el cliente no puede escuchar y nadie de este lado se enteraría.
+ *
+ * No lleva `caption`: Meta no acepta pie en los audios. Lo que se quiera decir
+ * va en un mensaje aparte.
+ */
+export async function enviarAudio(
+  telefono: string,
+  archivo: { enlace: string; mime: string; bytes: number },
+): Promise<ResultadoEnvio> {
+  const tipo = archivo.mime.split(";")[0].trim();
+
+  if (tipo !== "audio/ogg") {
+    return {
+      ok: false,
+      waId: null,
+      error:
+        "Para que llegue como nota de voz el audio tiene que ser Ogg con Opus, " +
+        `y éste es «${tipo}».`,
+    };
+  }
+
+  if (archivo.bytes > TOPE_AUDIO_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error: `WhatsApp no acepta audios de más de ${TOPE_AUDIO_BYTES / 1024 / 1024} MB.`,
+    };
+  }
+
+  return mandar(telefono, { type: "audio", audio: { link: archivo.enlace } });
+}
+
+/**
+ * Reacciona a un mensaje, o le saca la reacción.
+ *
+ * ------------------------------------------------------------------------
+ * ES UN MENSAJE, AUNQUE NO LO PAREZCA
+ * ------------------------------------------------------------------------
+ *
+ * Para Meta una reacción es un mensaje más: viaja por la misma ruta, devuelve
+ * su propio id y —lo que importa— vive bajo la misma ventana de 24 horas. Un
+ * corazón sobre un mensaje de hace tres días se rechaza igual que un «hola».
+ *
+ * Quitar la reacción es mandar la cadena vacía, no borrar nada. Meta lo dice
+ * así y es lo que hace la aplicación del teléfono: por eso `emoji` acepta null
+ * y se traduce a `""`.
+ *
+ * `sobreWaId` es el id que Meta le puso al mensaje al que se reacciona, no el
+ * id nuestro de la tabla. Un mensaje sin `wa_id` —una nota interna, o uno cuyo
+ * envío falló— no se puede reaccionar, y eso se decide antes de llegar acá.
+ */
+export async function enviarReaccion(
+  telefono: string,
+  sobreWaId: string,
+  emoji: string | null,
+): Promise<ResultadoEnvio> {
+  return mandar(telefono, {
+    type: "reaction",
+    reaction: { message_id: sobreWaId, emoji: emoji ?? "" },
+  });
+}
+
+/**
  * Manda una plantilla aprobada.
  *
  * Es la única forma de escribirle a alguien cuando pasaron 24 horas desde su

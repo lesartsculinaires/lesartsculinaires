@@ -83,23 +83,44 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   }
 
   if (ids.length) {
-    const traer = (conMedia: boolean) =>
+    /*
+     * Las reacciones vienen anidadas en la misma consulta.
+     *
+     * La otra manera sería pedirlas aparte con `in('mensaje_id', […])`, y no
+     * entra: acá se traen hasta 4.000 mensajes y esa lista de ids en la
+     * dirección daría una URL de decenas de miles de caracteres, que el
+     * servidor rechaza antes de mirarla. Anidado va por la clave foránea y no
+     * cuesta una consulta más.
+     */
+    const traer = (conMedia: boolean, conReacciones: boolean) =>
       supabase
         .from("mensajes")
         .select(
-          "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado" +
-            (conMedia ? ", media_ruta, media_mime, media_nombre, media_error" : ""),
+          "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado, wa_id" +
+            (conMedia ? ", media_ruta, media_mime, media_nombre, media_error" : "") +
+            (conReacciones ? ", reacciones(emoji, direccion)" : ""),
         )
         .in("conversacion_id", ids)
         .order("creado_en", { ascending: true })
         .limit(4000);
 
-    let { data: msgs, error: errMsg } = await traer(true);
+    let { data: msgs, error: errMsg } = await traer(true, true);
 
-    // 42703: faltan las columnas de archivos, de la migración de media. Se
-    // vuelve a pedir sin ellas para que la bandeja siga funcionando entera
-    // menos las fotos, en vez de quedarse en blanco.
-    if (errMsg?.code === "42703") ({ data: msgs, error: errMsg } = await traer(false));
+    /*
+     * Dos migraciones opcionales, dos reintentos.
+     *
+     * PGRST200 es «no existe esa relación»: falta la tabla `reacciones`.
+     * 42703 son las columnas de archivos. Cada una se cae por su lado para que
+     * faltar una no arrastre a la otra: sin esto, una escuela que corrió la de
+     * media pero no la de reacciones se quedaría además sin fotos.
+     */
+    if (errMsg?.code === "PGRST200") {
+      ({ data: msgs, error: errMsg } = await traer(true, false));
+    }
+    if (errMsg?.code === "42703") {
+      ({ data: msgs, error: errMsg } = await traer(false, true));
+      if (errMsg?.code === "PGRST200") ({ data: msgs, error: errMsg } = await traer(false, false));
+    }
 
     if (errMsg) return { ...VACIO, error: errMsg.message };
 
@@ -113,6 +134,16 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       error: m.error ? String(m.error) : null,
       creadoEn: String(m.creado_en),
       privado: Boolean(m.privado),
+      // El `wa_id` se lee pero no se manda: al navegador le alcanza con saber
+      // si hay a qué reaccionar.
+      reaccionable: m.wa_id != null && !m.privado,
+      reacciones: (Array.isArray(m.reacciones) ? m.reacciones : []).map((r) => {
+        const fila = r as Fila;
+        return {
+          emoji: String(fila.emoji ?? ""),
+          direccion: fila.direccion === "saliente" ? ("saliente" as const) : ("entrante" as const),
+        };
+      }),
       mediaRuta: m.media_ruta ? String(m.media_ruta) : null,
       mediaMime: m.media_mime ? String(m.media_mime) : null,
       mediaNombre: m.media_nombre ? String(m.media_nombre) : null,

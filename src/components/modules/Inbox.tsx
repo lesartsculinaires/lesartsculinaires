@@ -15,6 +15,8 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
+import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
+import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
@@ -152,6 +154,8 @@ export function Inbox({
   const finRef = useRef<HTMLDivElement | null>(null);
   /** Para meter el emoji donde está el cursor y no siempre al final. */
   const cajaTexto = useRef<HTMLTextAreaElement | null>(null);
+  /** El grabador está ocupando la fila del mensaje. */
+  const [grabando, setGrabando] = useState(false);
   const soft = softer(accent);
 
   const lista = useMemo(
@@ -1067,9 +1071,27 @@ export function Inbox({
                       marginBottom: 8,
                     }}
                   >
+                    {/*
+                      Una columna: la burbuja arriba y sus reacciones debajo.
+
+                      El tope de ancho pasó de la burbuja a esta columna, y por
+                      eso hace falta `alignItems`: sin él, la burbuja —que es un
+                      bloque— se estiraría al 74% completo aunque el mensaje
+                      diga «ok», y el hilo entero quedaría de cajas del mismo
+                      tamaño. Alineada al mismo borde que el mensaje, la fila de
+                      reacciones cae justo debajo de la burbuja.
+                    */}
                     <div
                       style={{
                         maxWidth: "74%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: mio ? "flex-end" : "flex-start",
+                      }}
+                    >
+                    <div
+                      style={{
+                        maxWidth: "100%",
                         padding: "8px 11px",
                         borderRadius: 10,
                         background: m.privado ? "#FFF6D6" : mio ? accent : T.surface,
@@ -1129,6 +1151,19 @@ export function Inbox({
                           {m.error}
                         </span>
                       )}
+                      </div>
+
+                      {/* Las reacciones van FUERA de la burbuja.
+                          Adentro heredarían su fondo —el azul de los nuestros—
+                          y un emoji sobre azul se lee como parte del mensaje.
+                          Afuera se leen como lo que son: algo puesto encima. */}
+                      <ReaccionesDelMensaje
+                        mensaje={m}
+                        mio={mio}
+                        accent={accent}
+                        ventanaAbierta={!ventanaCerrada}
+                        onCambio={onRefrescar}
+                      />
                     </div>
                   </div>
                 );
@@ -1224,6 +1259,11 @@ export function Inbox({
                   if (f) setPorEnviar({ archivo: f, url: URL.createObjectURL(f) });
                 }}
               />
+              {/* Mientras se graba, la fila es del grabador y nada más: el
+                  clip, los emojis y el cuadro de texto se van. Una nota de voz
+                  no lleva pie —Meta no lo acepta en un audio— así que dejarlos
+                  a la vista invitaría a escribir algo que no va a salir. */}
+              {!grabando && (
               <button
                 type="button"
                 onClick={() => fotoRef.current?.click()}
@@ -1255,17 +1295,38 @@ export function Inbox({
               >
                 {mandandoFoto ? "…" : "📎"}
               </button>
+              )}
 
               {/* Los emojis funcionan también en una nota interna y con la
                   ventana de 24 horas cerrada: no salen a WhatsApp por sí
                   mismos, son texto. Se apaga sólo cuando no hay dónde
                   escribir. */}
-              <SelectorEmoji
+              {!grabando && (
+                <SelectorEmoji
+                  accent={accent}
+                  disabled={!nota && !puedeResponder}
+                  onElegir={ponerEmoji}
+                />
+              )}
+
+              {/* El micrófono. Mientras se graba o se escucha, ocupa la fila
+                  entera: el cuadro de texto se esconde a propósito, porque una
+                  nota de voz no lleva pie —Meta no lo acepta en un audio— y
+                  dejarlo a la vista invitaría a escribir algo que no va a
+                  salir. */}
+              <GrabadorDeVoz
+                // Cambiar de conversación desmonta el grabador, y eso suelta el
+                // micrófono. Sin esto se seguiría grabando sobre un hilo que ya
+                // no está a la vista, y la nota saldría al cliente equivocado.
+                key={actual.id}
+                conversacionId={actual.id}
                 accent={accent}
-                disabled={!nota && !puedeResponder}
-                onElegir={ponerEmoji}
+                disabled={!puedeResponder || nota || ventanaCerrada}
+                onEnviado={onRefrescar}
+                onOcupado={setGrabando}
               />
 
+              {!grabando && (
               <textarea
                 ref={cajaTexto}
                 value={texto}
@@ -1307,6 +1368,9 @@ export function Inbox({
                   resize: "vertical",
                 }}
               />
+              )}
+
+              {!grabando && (
               <button
                 type="button"
                 onClick={enviar}
@@ -1326,6 +1390,7 @@ export function Inbox({
                     ? "Guardar nota"
                     : "Enviar"}
               </button>
+              )}
             </div>
           </>
         )}
