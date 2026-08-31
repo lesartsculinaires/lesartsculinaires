@@ -6,7 +6,12 @@ import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 import { bajarMedia, rutaMedia } from "@/lib/whatsapp/media";
-import { leerWebhook, resumen, type MensajeEntrante } from "@/lib/whatsapp/mensajes";
+import {
+  leerWebhook,
+  resumen,
+  type MensajeEntrante,
+  type ReaccionEntrante,
+} from "@/lib/whatsapp/mensajes";
 
 /** Nunca cachear: cada llamada trae mensajes distintos. */
 export const dynamic = "force-dynamic";
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse("sin configurar", { status: 500 });
   }
 
-  const { mensajes, estados } = leerWebhook(carga);
+  const { mensajes, estados, reacciones } = leerWebhook(carga);
 
   for (const m of mensajes) {
     try {
@@ -99,8 +104,97 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  for (const r of reacciones) {
+    try {
+      await guardarReaccion(supabase, r);
+    } catch (e) {
+      console.error("[whatsapp] no se pudo guardar la reacción", r.waId, e);
+    }
+  }
+
   return NextResponse.json({ ok: true, recibidos: mensajes.length });
 }
+
+/**
+ * El cliente reaccionó a uno de nuestros mensajes, o le sacó la reacción.
+ *
+ * ------------------------------------------------------------------------
+ * NO CUENTA COMO MENSAJE SIN LEER, Y ES A PROPÓSITO
+ * ------------------------------------------------------------------------
+ *
+ * No sube `sin_leer` ni toca `ultimo_texto`. Un 👍 sobre la cotización que
+ * acabamos de mandar quiere decir «me llegó», no «contestame»: contarlo como
+ * pendiente mandaría a la asesora a un hilo donde nadie dijo nada, y el número
+ * rojo dejaría de significar «acá hay algo esperándote».
+ *
+ * La reacción se ve al abrir la conversación, que es donde sirve.
+ *
+ * ------------------------------------------------------------------------
+ * SI NO SE ENCUENTRA EL MENSAJE, SE IGNORA
+ * ------------------------------------------------------------------------
+ *
+ * Puede reaccionar a algo anterior a que existiera el CRM, o a un mensaje que
+ * nunca llegó a guardarse. No es un error: es una reacción sobre algo que acá
+ * no está, y no hay dónde ponerla.
+ *
+ * Como todo lo del webhook, no lanza hacia afuera sin que quede registro: Meta
+ * reintenta ante un error y termina desactivando la integración.
+ */
+async function guardarReaccion(supabase: Cliente, r: ReaccionEntrante) {
+  const { data: mensaje } = await supabase
+    .from("mensajes")
+    .select("id")
+    .eq("wa_id", r.sobreWaId)
+    .maybeSingle();
+
+  if (!mensaje) return;
+  const mensajeId = Number(mensaje.id);
+
+  /*
+   * Siempre se borra primero.
+   *
+   * Sacarla es sólo eso. Ponerla es borrar y volver a poner, porque WhatsApp
+   * admite una sola por persona y por mensaje: reemplazar un ❤️ por un 👍 no
+   * son dos reacciones sino una que cambió. El índice único lo impone igual;
+   * hacerlo así evita depender de un upsert sobre una restricción que podría
+   * no existir todavía.
+   */
+  const { error: errBorrado } = await supabase
+    .from("reacciones")
+    .delete()
+    .eq("mensaje_id", mensajeId)
+    .eq("direccion", "entrante");
+
+  if (errBorrado) {
+    if (faltaLaTabla(errBorrado)) {
+      console.error(
+        "[whatsapp] falta correr 20261012120000_reacciones.sql;" +
+          " la reacción del cliente se pierde",
+      );
+      return;
+    }
+    throw errBorrado;
+  }
+
+  if (!r.emoji) return;
+
+  const { error } = await supabase.from("reacciones").insert({
+    mensaje_id: mensajeId,
+    direccion: "entrante",
+    emoji: r.emoji,
+    creado_en: r.cuando.toISOString(),
+  });
+
+  // 23505: llegaron dos avisos de la misma reacción a la vez. Se queda la que
+  // ganó, que dice lo mismo.
+  if (error && error.code !== "23505") throw error;
+}
+
+/** La base no conoce esa tabla: falta correr la migración. */
+const faltaLaTabla = (e: { code?: string; message?: string }): boolean =>
+  e.code === "PGRST205" ||
+  e.code === "42P01" ||
+  /Could not find the table|does not exist/i.test(e.message ?? "");
 
 type Cliente = NonNullable<ReturnType<typeof getAdminClient>>;
 

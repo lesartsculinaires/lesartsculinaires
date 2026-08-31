@@ -457,6 +457,16 @@ export interface Conversacion {
   etiquetaIds: number[];
 }
 
+/** Una reacción sobre un mensaje: quién la puso y cuál es. */
+export interface ReaccionMensaje {
+  emoji: string;
+  /**
+   * De quién es: 'entrante' la puso el cliente, 'saliente' la pusimos
+   * nosotros. Es lo que decide de qué lado se dibuja y cuál se puede sacar.
+   */
+  direccion: "entrante" | "saliente";
+}
+
 export interface Mensaje {
   id: number;
   conversacionId: number;
@@ -470,6 +480,24 @@ export interface Mensaje {
   creadoEn: string;
   /** Nota interna: la ve el equipo, no el cliente. */
   privado: boolean;
+  /**
+   * Las reacciones puestas sobre este mensaje.
+   *
+   * Como mucho dos: WhatsApp deja una por persona, y en un chat de dos las
+   * personas son el cliente y la escuela.
+   */
+  reacciones: ReaccionMensaje[];
+  /**
+   * Si se le puede reaccionar: existe en WhatsApp y tiene id de Meta.
+   *
+   * Viene calculado del servidor en vez de mandar el `wa_id` al navegador. La
+   * pantalla no necesita el id para nada —quien reacciona es la acción del
+   * servidor, que lo busca ella— y lo único que haría acá sería viajar de más.
+   *
+   * Es false en una nota interna, que no existe en WhatsApp, y en un mensaje
+   * cuyo envío falló, que nunca llegó a tener id.
+   */
+  reaccionable: boolean;
   /**
    * El archivo que trajo el mensaje, ya guardado en el bucket «whatsapp».
    * Nulo cuando el mensaje no traía o cuando no se pudo bajar —en ese caso

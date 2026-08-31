@@ -216,6 +216,36 @@ async function mandar(
 }
 
 /**
+ * Reacciona a un mensaje, o le saca la reacción.
+ *
+ * ------------------------------------------------------------------------
+ * ES UN MENSAJE, AUNQUE NO LO PAREZCA
+ * ------------------------------------------------------------------------
+ *
+ * Para Meta una reacción es un mensaje más: viaja por la misma ruta, devuelve
+ * su propio id y —lo que importa— vive bajo la misma ventana de 24 horas. Un
+ * corazón sobre un mensaje de hace tres días se rechaza igual que un «hola».
+ *
+ * Quitar la reacción es mandar la cadena vacía, no borrar nada. Meta lo dice
+ * así y es lo que hace la aplicación del teléfono: por eso `emoji` acepta null
+ * y se traduce a `""`.
+ *
+ * `sobreWaId` es el id que Meta le puso al mensaje al que se reacciona, no el
+ * id nuestro de la tabla. Un mensaje sin `wa_id` —una nota interna, o uno cuyo
+ * envío falló— no se puede reaccionar, y eso se decide antes de llegar acá.
+ */
+export async function enviarReaccion(
+  telefono: string,
+  sobreWaId: string,
+  emoji: string | null,
+): Promise<ResultadoEnvio> {
+  return mandar(telefono, {
+    type: "reaction",
+    reaction: { message_id: sobreWaId, emoji: emoji ?? "" },
+  });
+}
+
+/**
  * Manda una plantilla aprobada.
  *
  * Es la única forma de escribirle a alguien cuando pasaron 24 horas desde su

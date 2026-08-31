@@ -47,6 +47,28 @@ export interface EstadoSaliente {
   error: string | null;
 }
 
+/**
+ * El cliente reaccionó a un mensaje, o le sacó la reacción.
+ *
+ * Meta las manda dentro de `messages`, con `type: "reaction"`, así que sin
+ * separarlas entrarían a la bandeja como un mensaje más: una burbuja vacía que
+ * dice «Mensaje» y no significa nada. Salen por su propia puerta.
+ *
+ * Quitar una reacción llega igual que ponerla pero sin emoji —o con la cadena
+ * vacía—, y por eso `emoji` puede ser null: es la diferencia entre «puso ❤️» y
+ * «sacó lo que había».
+ */
+export interface ReaccionEntrante {
+  /** Id del aviso en sí. Distinto del mensaje al que reacciona. */
+  waId: string;
+  telefono: string;
+  /** El mensaje sobre el que reaccionó. */
+  sobreWaId: string;
+  /** Null cuando lo que hizo fue sacarla. */
+  emoji: string | null;
+  cuando: Date;
+}
+
 const texto = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v : null;
 
@@ -69,12 +91,14 @@ const lista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 export function leerWebhook(carga: unknown): {
   mensajes: MensajeEntrante[];
   estados: EstadoSaliente[];
+  reacciones: ReaccionEntrante[];
 } {
   const mensajes: MensajeEntrante[] = [];
   const estados: EstadoSaliente[] = [];
+  const reacciones: ReaccionEntrante[] = [];
 
   const raiz = obj(carga);
-  if (!raiz) return { mensajes, estados };
+  if (!raiz) return { mensajes, estados, reacciones };
 
   for (const entrada of lista(raiz.entry)) {
     for (const cambio of lista(obj(entrada)?.changes)) {
@@ -99,6 +123,31 @@ export function leerWebhook(carga: unknown): {
 
         const tipo = texto(msg.type) ?? "desconocido";
         const marca = texto(msg.timestamp);
+        const cuando = marca ? new Date(Number(marca) * 1000) : new Date();
+
+        /*
+         * Las reacciones salen por su propia puerta.
+         *
+         * Vienen adentro de `messages` como cualquier otro, pero no son un
+         * mensaje: no tienen texto ni archivo, y guardarlas en la tabla de
+         * mensajes dejaría en el hilo una burbuja vacía por cada corazón. Se
+         * devuelven aparte y quien las use decide dónde van.
+         */
+        if (tipo === "reaction") {
+          const r = obj(msg.reaction);
+          const sobre = texto(r?.message_id);
+          if (sobre) {
+            reacciones.push({
+              waId,
+              telefono: de.replace(/\D/g, ""),
+              sobreWaId: sobre,
+              // Sin emoji —o vacío— es que la sacó, no que puso una vacía.
+              emoji: texto(r?.emoji),
+              cuando,
+            });
+          }
+          continue;
+        }
 
         mensajes.push({
           waId,
@@ -108,7 +157,7 @@ export function leerWebhook(carga: unknown): {
           texto: leerTexto(msg, tipo),
           media: leerMedia(msg, tipo),
           // Meta manda segundos desde epoch, no milisegundos.
-          enviadoEn: marca ? new Date(Number(marca) * 1000) : new Date(),
+          enviadoEn: cuando,
           crudo: m,
         });
       }
@@ -129,7 +178,7 @@ export function leerWebhook(carga: unknown): {
     }
   }
 
-  return { mensajes, estados };
+  return { mensajes, estados, reacciones };
 }
 
 /**

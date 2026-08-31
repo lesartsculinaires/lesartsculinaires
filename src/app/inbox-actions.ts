@@ -16,6 +16,7 @@ import {
 import {
   enviarDocumento,
   enviarImagen,
+  enviarReaccion,
   enviarTexto,
   hayWhatsapp,
 } from "@/lib/whatsapp/enviar";
@@ -108,6 +109,136 @@ export async function responderConversacion(
 
   revalidatePath("/");
   return { ok: true, error: null };
+}
+
+/**
+ * Reacciona a un mensaje del hilo, o le saca la reacción.
+ *
+ * ============================================================================
+ * PRIMERO META, DESPUÉS LA BASE
+ * ============================================================================
+ *
+ * Igual que responder, y por lo mismo: si se guardara primero, un envío
+ * fallido dejaría en pantalla un corazón que el cliente nunca vio. Acá importa
+ * más de lo que parece, porque una reacción no se relee: la asesora la pone,
+ * ve que quedó puesta, y da por hecho que del otro lado se enteró.
+ *
+ * ============================================================================
+ * LO QUE NO SE PUEDE REACCIONAR, Y POR QUÉ
+ * ============================================================================
+ *
+ *   UNA NOTA INTERNA      no existe en WhatsApp. No tiene a quién mandarle la
+ *                         reacción y el cliente no la vio nunca.
+ *
+ *   UN MENSAJE SIN wa_id  un envío que falló, o algo guardado antes de que
+ *                         hubiera integración. Meta identifica el mensaje por
+ *                         ese id: sin él no hay a qué reaccionar.
+ *
+ * Y la ventana de 24 horas vale igual que para un mensaje: un 👍 sobre algo de
+ * hace tres días lo rechaza Meta. Eso lo contesta el propio envío, con el
+ * mismo texto que ya explica la ventana en el resto de la bandeja.
+ */
+export async function reaccionar(
+  mensajeId: number,
+  /** Null saca la que haya puesta. */
+  emoji: string | null,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  const user = await getUser();
+  if (!supabase || !user) return SIN_SESION;
+
+  if (!hayWhatsapp()) {
+    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
+  }
+
+  const { data: mensaje, error } = await supabase
+    .from("mensajes")
+    .select("id, wa_id, privado, conversacion_id, conversaciones(telefono)")
+    .eq("id", mensajeId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!mensaje) return { ok: false, error: "No se encontró el mensaje." };
+
+  if (mensaje.privado) {
+    return {
+      ok: false,
+      error: "Una nota interna no existe en WhatsApp, así que no se le puede reaccionar.",
+    };
+  }
+
+  const waId = mensaje.wa_id ? String(mensaje.wa_id) : null;
+  if (!waId) {
+    return {
+      ok: false,
+      error: "Ese mensaje no llegó a salir por WhatsApp, así que no hay a qué reaccionar.",
+    };
+  }
+
+  // El teléfono viene anidado; PostgREST lo devuelve como objeto o como
+  // arreglo de uno según la relación, así que se aceptan las dos formas.
+  const anidado = (mensaje as { conversaciones?: unknown }).conversaciones;
+  const conv = (Array.isArray(anidado) ? anidado[0] : anidado) as
+    | { telefono?: string | number }
+    | null
+    | undefined;
+  const telefono = conv?.telefono == null ? null : String(conv.telefono);
+
+  if (!telefono) return { ok: false, error: "No se encontró la conversación del mensaje." };
+
+  const envio = await enviarReaccion(telefono, waId, emoji);
+  if (!envio.ok) return { ok: false, error: envio.error };
+
+  /*
+   * Borrar y volver a poner, no actualizar.
+   *
+   * WhatsApp admite una sola reacción por lado y por mensaje: cambiar un ❤️
+   * por un 👍 no son dos reacciones sino una que cambió. Hacerlo en dos pasos
+   * deja el índice único como única regla y no necesita una política de
+   * update, que sería una puerta más sobre una tabla que no la precisa.
+   */
+  const { error: errBorrado } = await supabase
+    .from("reacciones")
+    .delete()
+    .eq("mensaje_id", mensajeId)
+    .eq("direccion", "saliente");
+
+  if (errBorrado) return { ok: false, error: porQueNoSeGuardo(errBorrado) };
+
+  if (emoji) {
+    const { error: errAlta } = await supabase.from("reacciones").insert({
+      mensaje_id: mensajeId,
+      direccion: "saliente",
+      emoji,
+      puesta_por: user.id,
+    });
+
+    if (errAlta) return { ok: false, error: porQueNoSeGuardo(errAlta) };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
+ * Por qué no se pudo guardar la reacción.
+ *
+ * La reacción ya salió a WhatsApp cuando esto se llama, así que el texto tiene
+ * que decir las dos cosas: que del otro lado sí se vio, y qué falta acá. Sin
+ * eso, quien lo lea va a volver a apretar creyendo que no pasó nada.
+ */
+function porQueNoSeGuardo(e: { code?: string; message?: string }): string {
+  if (
+    e.code === "PGRST205" ||
+    e.code === "42P01" ||
+    /Could not find the table|does not exist/i.test(e.message ?? "")
+  ) {
+    return (
+      "La reacción le llegó al cliente, pero no se puede guardar en el CRM: falta " +
+      "correr supabase/migrations/20261012120000_reacciones.sql en Supabase → SQL Editor."
+    );
+  }
+  return `La reacción se envió, pero no se pudo guardar: ${e.message ?? "error desconocido"}`;
 }
 
 /**

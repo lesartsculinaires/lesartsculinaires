@@ -15,6 +15,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
+import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
@@ -1067,9 +1068,27 @@ export function Inbox({
                       marginBottom: 8,
                     }}
                   >
+                    {/*
+                      Una columna: la burbuja arriba y sus reacciones debajo.
+
+                      El tope de ancho pasó de la burbuja a esta columna, y por
+                      eso hace falta `alignItems`: sin él, la burbuja —que es un
+                      bloque— se estiraría al 74% completo aunque el mensaje
+                      diga «ok», y el hilo entero quedaría de cajas del mismo
+                      tamaño. Alineada al mismo borde que el mensaje, la fila de
+                      reacciones cae justo debajo de la burbuja.
+                    */}
                     <div
                       style={{
                         maxWidth: "74%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: mio ? "flex-end" : "flex-start",
+                      }}
+                    >
+                    <div
+                      style={{
+                        maxWidth: "100%",
                         padding: "8px 11px",
                         borderRadius: 10,
                         background: m.privado ? "#FFF6D6" : mio ? accent : T.surface,
@@ -1129,6 +1148,19 @@ export function Inbox({
                           {m.error}
                         </span>
                       )}
+                      </div>
+
+                      {/* Las reacciones van FUERA de la burbuja.
+                          Adentro heredarían su fondo —el azul de los nuestros—
+                          y un emoji sobre azul se lee como parte del mensaje.
+                          Afuera se leen como lo que son: algo puesto encima. */}
+                      <ReaccionesDelMensaje
+                        mensaje={m}
+                        mio={mio}
+                        accent={accent}
+                        ventanaAbierta={!ventanaCerrada}
+                        onCambio={onRefrescar}
+                      />
                     </div>
                   </div>
                 );
