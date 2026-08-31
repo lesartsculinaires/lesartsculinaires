@@ -76,6 +76,10 @@ export function BorrarBases({ elegidas, accent, onCerrar, onBorrado }: Props) {
   const leads = total("leads");
   const contactos = total("contactos");
   const trabajados = total("trabajados");
+  const conNotas = total("conNotas");
+  const conDinero = total("conDinero");
+  const conCierre = total("conCierre");
+  const conEtapa = total("conEtapa");
 
   const confirmar = async () => {
     setBorrando(true);
@@ -201,9 +205,41 @@ export function BorrarBases({ elegidas, accent, onCerrar, onBorrado }: Props) {
               <strong>
                 {trabajados} de esos leads ya se trabajaron.
               </strong>{" "}
-              Tienen notas, dinero anotado o avanzaron de etapa. Si borrás, ese
-              trabajo se pierde.
+              Si borrás, ese trabajo se pierde.
             </p>
+
+            {/*
+              El desglose, que es lo que vuelve útil el aviso.
+
+              Sin él decía «325 de 325 ya se trabajaron» y no había forma de
+              saber si eran 325 leads con notas y dinero —que sería gravísimo—
+              o 325 leads que la planilla cargó directamente en una etapa que
+              no es la primera, que no es trabajo de nadie. Son decisiones
+              opuestas y el número solo no las distingue.
+            */}
+            <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 12, lineHeight: 1.7 }}>
+              {conNotas > 0 && <li>{conNotas} con notas escritas</li>}
+              {conDinero > 0 && <li>{conDinero} con dinero anotado (reserva o venta)</li>}
+              {conCierre > 0 && <li>{conCierre} ya cerrados, ganados o perdidos</li>}
+              {conEtapa > 0 && (
+                <li>
+                  {conEtapa} sólo por estar en una etapa distinta de la primera
+                  {conNotas === 0 && conDinero === 0 && conCierre === 0 && (
+                    <span style={{ display: "block", color: "#8A7020" }}>
+                      No tienen notas, ni dinero, ni cierre. Si la planilla traía
+                      una columna de etapa, esto no es trabajo de nadie: es el
+                      dato que venía adentro del archivo.
+                    </span>
+                  )}
+                </li>
+              )}
+              {conNotas === 0 && conDinero === 0 && conCierre === 0 && conEtapa === 0 && (
+                <li>
+                  El detalle no está disponible: falta correr
+                  20261013120000_borrar_base_sin_tabla_temporal.sql.
+                </li>
+              )}
+            </ul>
             <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: "pointer" }}>
               <input
                 type="checkbox"

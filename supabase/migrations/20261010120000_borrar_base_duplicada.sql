@@ -165,7 +165,14 @@ begin
   -- las oportunidades: después ya no se sabe cuáles eran de esta base.
   create temporary table if not exists _huerfanos (id bigint primary key)
     on commit drop;
-  delete from _huerfanos;
+  -- `truncate` y no `delete`: Supabase deja encendida la extensión
+  -- `safeupdate` para el rol con el que habla la aplicación, y ésa prohíbe
+  -- cualquier `delete` sin `where`. Un `delete from _huerfanos;` acá hacía
+  -- fallar la función entera con «DELETE requires a WHERE clause», recién al
+  -- ejecutarla desde el CRM. La versión de 20261013120000 se saca de encima la
+  -- tabla temporal del todo; esto es para que este archivo tampoco falle si se
+  -- corre solo.
+  truncate _huerfanos;
 
   insert into _huerfanos (id)
   select c.id

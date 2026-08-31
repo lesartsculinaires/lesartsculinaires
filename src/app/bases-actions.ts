@@ -30,10 +30,22 @@ export interface Revision {
   leads: number;
   /** Contactos que quedarían sin ningún lead y también se van. */
   contactos: number;
-  /** De esos leads, cuántos ya tienen trabajo encima. */
+  /** De esos leads, cuántos ya tienen trabajo encima: cualquiera de los de abajo. */
   trabajados: number;
   conNotas: number;
   conDinero: number;
+  /** Ganados o perdidos: alguien llegó hasta el final con esa persona. */
+  conCierre: number;
+  /**
+   * Los que cuentan SÓLO por estar en una etapa distinta de la primera.
+   *
+   * Va aparte porque es el que suele explicar un número alarmante que no
+   * alarma: una planilla puede traer su propia columna de etapa, y entonces
+   * los trescientos leads entran directamente en «Contactado» sin que nadie
+   * los haya tocado. Sin separarlo, el cartel decía «325 de 325 ya se
+   * trabajaron» y ese aviso, encendido siempre, se aprende a ignorar.
+   */
+  conEtapa: number;
   /** La migración todavía no se corrió. */
   faltaMigracion: boolean;
 }
@@ -46,6 +58,8 @@ const SIN_REVISION: Revision = {
   trabajados: 0,
   conNotas: 0,
   conDinero: 0,
+  conCierre: 0,
+  conEtapa: 0,
   faltaMigracion: false,
 };
 
@@ -86,6 +100,11 @@ export async function revisarBase(importacionId: number): Promise<Revision> {
     trabajados: n(f.trabajados),
     conNotas: n(f.con_notas),
     conDinero: n(f.con_dinero),
+    // Las dos nuevas vienen de 20261013120000. Sin esa migración llegan
+    // indefinidas y quedan en cero, que es lo que corresponde: el cartel
+    // muestra el total y no el detalle, como antes.
+    conCierre: n(f.con_cierre),
+    conEtapa: n(f.con_etapa),
   };
 }
 
@@ -138,6 +157,23 @@ export async function borrarBase(
     }
     if (error.code === "42501") {
       return { ok: false, error: "Sólo dirección puede borrar una base." };
+    }
+    /*
+     * «DELETE requires a WHERE clause».
+     *
+     * Lo tira la extensión `safeupdate` que Supabase deja encendida, y lo
+     * causaba un `delete` sin `where` adentro de la primera versión de la
+     * función. Se traduce porque el mensaje crudo, en inglés y hablando de
+     * cláusulas SQL, no le dice nada a quien está tratando de borrar una base
+     * repetida —y sobre todo no dice qué hacer—.
+     */
+    if (/requires a WHERE clause/i.test(error.message ?? "")) {
+      return {
+        ok: false,
+        error:
+          "Falta correr la migración 20261013120000_borrar_base_sin_tabla_temporal.sql " +
+          "en Supabase → SQL Editor. Arregla justamente este error.",
+      };
     }
     return { ok: false, error: error.message };
   }
