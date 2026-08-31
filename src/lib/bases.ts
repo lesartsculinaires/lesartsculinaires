@@ -22,6 +22,15 @@ export interface Base {
   oportunidades: Oportunidad[];
   /** Filas que el registro dice haber cargado; puede diferir de las vivas. */
   filasDeclaradas: number | null;
+  /** Id de `importaciones`. Nulo en las cargas agrupadas por día. */
+  importacionId: number | null;
+  /**
+   * Esta base es una copia de otra: mismo archivo, subido el mismo día.
+   *
+   * Guarda el título de la que se considera «la buena» para poder decirlo en
+   * la pantalla. Nulo cuando no hay repetición o cuando ÉSTA es la buena.
+   */
+  duplicadaDe: string | null;
 }
 
 /** "2026-07-29T17:36:47Z" → "2026-07-29". */
@@ -60,7 +69,11 @@ export function agruparBases(
     registrada: true,
     oportunidades: porImportacion.get(imp.id) ?? [],
     filasDeclaradas: imp.filas,
+    importacionId: imp.id,
+    duplicadaDe: null, // se completa abajo, mirando el conjunto
   }));
+
+  marcarRepetidas(bases);
 
   // Lo que no pertenece a ninguna importación, por día de creación.
   const porDia = new Map<string, Oportunidad[]>();
@@ -87,11 +100,83 @@ export function agruparBases(
       registrada: false,
       oportunidades: lista,
       filasDeclaradas: null,
+      importacionId: null,
+      duplicadaDe: null,
     });
   }
 
   return bases.sort((a, b) => (b.momento ?? "").localeCompare(a.momento ?? ""));
 }
+
+/**
+ * Marca cuáles bases son copias de otra, y cuál es la que se queda.
+ *
+ * ==========================================================================
+ * QUÉ CUENTA COMO REPETIDA
+ * ==========================================================================
+ *
+ * Mismo nombre de archivo, subido el mismo día. Las dos condiciones juntas, y
+ * es a propósito: la escuela sube «Asalariados 2025-2026 CRM.xlsx» una vez al
+ * año, actualizado. Dos cargas de ese archivo con nueve meses de distancia son
+ * dos cargas legítimas, no un error; dos del mismo minuto son el doble clic
+ * que ya conocemos.
+ *
+ * ==========================================================================
+ * Y CUÁL SE QUEDA
+ * ==========================================================================
+ *
+ * La que tiene más leads trabajados —la que le costó tiempo a alguien—, y a
+ * igualdad, la primera que se subió.
+ *
+ * El orden importa más de lo que parece. Quien mire la pantalla va a borrar lo
+ * que esté marcado sin pensarlo mucho, así que la marca tiene que caer del
+ * lado correcto sola. Marcar «la segunda» a secas sería más simple y estaría
+ * mal justo cuando importa: si el doble clic pasó y alguien trabajó la segunda
+ * tanda, borrarla tira ese trabajo.
+ *
+ * Acá se mira lo que la pantalla tiene a mano —notas no, pero sí etapa, dinero
+ * y estado—; la comprobación que puede frenar el borrado la hace
+ * `revisar_base` en la base, que sí ve las notas y los recordatorios.
+ */
+function marcarRepetidas(bases: Base[]): void {
+  const porArchivo = new Map<string, Base[]>();
+
+  for (const b of bases) {
+    // Mismo archivo y mismo día. Sin el día, dos cargas anuales del mismo
+    // nombre se marcarían como repetidas.
+    const clave = `${b.titulo} ${b.fecha ?? ""}`;
+    const lista = porArchivo.get(clave) ?? [];
+    lista.push(b);
+    porArchivo.set(clave, lista);
+  }
+
+  for (const grupo of porArchivo.values()) {
+    if (grupo.length < 2) continue;
+
+    const trabajo = (b: Base) =>
+      b.oportunidades.filter(
+        (o) =>
+          (o.cerrada ?? 0) > 0 ||
+          (o.reserva ?? 0) > 0 ||
+          o.esFinal ||
+          (o.etapaOrden != null && o.etapaOrden > 1),
+      ).length;
+
+    const buena = [...grupo].sort((a, b) => {
+      const d = trabajo(b) - trabajo(a);
+      if (d !== 0) return d;
+      return (a.momento ?? "").localeCompare(b.momento ?? "");
+    })[0];
+
+    for (const b of grupo) {
+      if (b !== buena) b.duplicadaDe = buena.titulo;
+    }
+  }
+}
+
+/** Las que están marcadas como copia. Para el botón de borrar. */
+export const repetidas = (bases: readonly Base[]): Base[] =>
+  bases.filter((b) => b.duplicadaDe != null);
 
 /** Totales de una base, para su fila en la tabla. */
 export function resumirBase(b: Base): {

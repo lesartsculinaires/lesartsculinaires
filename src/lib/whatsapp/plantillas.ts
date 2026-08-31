@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cuantosHuecos } from "@/lib/whatsapp/huecos";
+
 /**
  * Las plantillas, leídas de Meta.
  *
@@ -129,20 +131,11 @@ function cuerpoDe(p: Record<string, unknown>): string | null {
  * pedir un valor que Meta no espera, y el envío fallaría.
  */
 export function cuantasVariables(cuerpo: string | null): number {
-  if (!cuerpo) return 0;
-  const vistas = new Set<string>();
-  for (const m of cuerpo.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) vistas.add(m[1]);
-  return vistas.size;
+  return cuantosHuecos(cuerpo);
 }
 
 /** Con los huecos llenos, para poder verla antes de mandarla. */
-export function conValores(cuerpo: string | null, valores: string[]): string {
-  if (!cuerpo) return "";
-  return cuerpo.replace(/\{\{\s*(\d+)\s*\}\}/g, (entero, n: string) => {
-    const v = valores[Number(n) - 1];
-    return v != null && v !== "" ? v : entero;
-  });
-}
+export { conValores } from "@/lib/whatsapp/huecos";
 
 function explicar(error: { message?: string; code?: number } | undefined, estado: number): string {
   if (error?.code === 190) {

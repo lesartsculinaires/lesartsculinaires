@@ -71,17 +71,110 @@ export async function responder(
   return { ok: true, error: null };
 }
 
-/** Deja de contar los no leídos al abrir la conversación. */
+/**
+ * Deja de contar los no leídos al abrir la conversación.
+ *
+ * Apaga también la marca de «pendiente» puesta a mano: abrir el hilo es
+ * atenderlo, y dejar el punto encendido sobre una conversación que está a la
+ * vista lo volvería un adorno que nadie apaga.
+ */
 export async function marcarLeida(conversacionId: number): Promise<ActionResult> {
   const supabase = await getServerClient();
   if (!supabase) return SIN_SESION;
 
   const { error } = await supabase
     .from("conversaciones")
-    .update({ sin_leer: 0 })
+    .update({ sin_leer: 0, no_leida: false })
     .eq("id", conversacionId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // 42703: falta `no_leida`, o sea la migración de las marcas. Se reintenta
+    // con lo de siempre: sin esto, no haber corrido una migración opcional
+    // rompería abrir cualquier conversación, que es la bandeja entera.
+    if (error.code === "42703") {
+      const { error: e2 } = await supabase
+        .from("conversaciones")
+        .update({ sin_leer: 0 })
+        .eq("id", conversacionId);
+      if (e2) return { ok: false, error: e2.message };
+      revalidatePath("/");
+      return { ok: true, error: null };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/** Lo que se puede marcar en un hilo sin que WhatsApp se entere. */
+export type Marca = "no_leida" | "fijada" | "silenciada";
+
+const COMO_SE_LLAMA: Record<Marca, string> = {
+  no_leida: "dejar pendiente una conversación",
+  fijada: "fijar una conversación",
+  silenciada: "silenciar una conversación",
+};
+
+/**
+ * Pone o quita una marca de la bandeja.
+ *
+ * Las tres son del CRM y de nadie más: no viajan a WhatsApp, el cliente no se
+ * entera y no gastan nada de la API de Meta.
+ *
+ * `no_leida` tiene una vuelta más. Marcarla sin poner `sin_leer` en uno sería
+ * encender un punto que el próximo refresco no sabría contar: el número rojo
+ * de la barra suma mensajes, no hilos. Se le pone un uno para que la
+ * conversación pese lo mismo que un mensaje sin abrir, que es lo que la
+ * persona quiso decir al marcarla.
+ */
+export async function marcar(
+  conversacionId: number,
+  marca: Marca,
+  puesta: boolean,
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  const cambio: Record<string, unknown> = { [marca]: puesta };
+
+  if (marca === "no_leida") {
+    if (!puesta) {
+      cambio.sin_leer = 0;
+    } else {
+      /*
+       * Un uno, salvo que ya hubiera más.
+       *
+       * Poner uno a secas parece inofensivo y borra información: un hilo con
+       * cinco mensajes sin abrir que alguien marca pendiente pasaría a decir
+       * «1», y esos cuatro no vuelven. Se lee lo que hay y se respeta.
+       */
+      const { data } = await supabase
+        .from("conversaciones")
+        .select("sin_leer")
+        .eq("id", conversacionId)
+        .maybeSingle();
+
+      cambio.sin_leer = Math.max(Number(data?.sin_leer ?? 0), 1);
+    }
+  }
+
+  const { error } = await supabase
+    .from("conversaciones")
+    .update(cambio)
+    .eq("id", conversacionId);
+
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") {
+      return {
+        ok: false,
+        error:
+          `Para ${COMO_SE_LLAMA[marca]} falta correr ` +
+          "supabase/migrations/20261011120000_bandeja_marcas.sql en Supabase → SQL Editor.",
+      };
+    }
+    return { ok: false, error: error.message };
+  }
+
   revalidatePath("/");
   return { ok: true, error: null };
 }

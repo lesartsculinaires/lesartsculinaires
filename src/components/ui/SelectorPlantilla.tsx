@@ -1,5 +1,6 @@
 "use client";
 
+import { conValores, huecosDe } from "@/lib/whatsapp/huecos";
 import { T } from "@/lib/theme";
 import type { Plantilla } from "@/lib/types";
 
@@ -28,15 +29,16 @@ export const listaParaMandar = (
   valores: readonly string[],
 ): boolean =>
   plantilla != null &&
-  Array.from({ length: plantilla.variables }).every((_, i) => (valores[i] ?? "").trim() !== "");
+  // Del cuerpo y no de `plantilla.variables`: esa columna se llenó al
+  // sincronizar con el contador viejo, que sólo veía `{{1}}` y decía cero para
+  // las plantillas con nombres. Con cero, el botón se encendía sin pedir nada
+  // y el envío fallaba en Meta.
+  huecosDe(plantilla.cuerpo).every((_, i) => (valores[i] ?? "").trim() !== "");
 
 /** El cuerpo con lo que se escribió puesto en su lugar. */
 export function vistaPrevia(cuerpo: string | null, valores: readonly string[]): string {
   if (!cuerpo) return "(esta plantilla no tiene texto)";
-  return cuerpo.replace(/\{\{\s*(\d+)\s*\}\}/g, (entero, n: string) => {
-    const v = valores[Number(n) - 1];
-    return v != null && v.trim() !== "" ? v : entero;
-  });
+  return conValores(cuerpo, valores);
 }
 
 export function SelectorPlantilla({
@@ -99,16 +101,20 @@ export function SelectorPlantilla({
         <div style={{ marginTop: 7 }}>
           {/* Los huecos, en el orden en que van. Se piden todos: Meta rechaza
               el envío si falta uno, y el error que devuelve no dice cuál. */}
-          {Array.from({ length: plantilla.variables }).map((_, i) => (
+          {huecosDe(plantilla.cuerpo).map((hueco, i) => (
             <input
-              key={i}
+              key={hueco.clave}
               value={valores[i] ?? ""}
               onChange={(e) => {
                 const copia = [...valores];
                 copia[i] = e.target.value;
                 onValores(copia);
               }}
-              placeholder={`Dato ${i + 1} (va donde dice {{${i + 1}}})`}
+              // La etiqueta sale del hueco: con posiciones dice «Dato 1», y
+              // con nombres dice el nombre que puso quien creó la plantilla,
+              // que es lo que de verdad le explica a la asesora qué escribir.
+              placeholder={hueco.etiqueta}
+              aria-label={hueco.etiqueta}
               style={{
                 display: "block",
                 width: "100%",

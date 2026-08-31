@@ -13,6 +13,9 @@ import {
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
+import { insertarEnCursor } from "@/lib/texto";
+import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
+import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
@@ -147,18 +150,34 @@ export function Inbox({
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement | null>(null);
+  /** Para meter el emoji donde está el cursor y no siempre al final. */
+  const cajaTexto = useRef<HTMLTextAreaElement | null>(null);
   const soft = softer(accent);
 
   const lista = useMemo(
     () =>
-      conversaciones.filter(
-        (c) =>
-          // `verTodas` ignora el archivado: es «todos los chats», que es
-          // distinto de las activas y de las archivadas por separado.
-          (verTodas || c.archivada === verArchivadas) &&
-          (!soloSinAsignar || c.vendedorId == null) &&
-          (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)),
-      ),
+      conversaciones
+        .filter(
+          (c) =>
+            // `verTodas` ignora el archivado: es «todos los chats», que es
+            // distinto de las activas y de las archivadas por separado.
+            (verTodas || c.archivada === verArchivadas) &&
+            (!soloSinAsignar || c.vendedorId == null) &&
+            (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)),
+        )
+        /*
+         * Las fijadas arriba, el resto por actividad.
+         *
+         * El orden por actividad lo trae la consulta y sigue valiendo para
+         * todo lo demás; acá sólo se levantan las fijadas. `sort` sobre una
+         * copia —`filter` ya devolvió una— así que no se toca el arreglo que
+         * llegó por props.
+         *
+         * Sin esto, fijar no serviría de nada: el lead que se está trabajando
+         * hoy pero no escribe desde ayer queda debajo de cualquier consulta
+         * nueva que no importa, que es justo el problema que fijar resuelve.
+         */
+        .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
     [conversaciones, verArchivadas, verTodas, soloSinAsignar, porEtiqueta],
   );
 
@@ -450,6 +469,29 @@ export function Inbox({
     setPorEnviar((p) => {
       if (p) URL.revokeObjectURL(p.url);
       return null;
+    });
+  };
+
+  /**
+   * Mete un emoji donde está el cursor.
+   *
+   * Al final del texto sería lo fácil y estaría mal la mitad de las veces: se
+   * escribe el mensaje entero, se relee y recién ahí se quiere poner la carita
+   * después del saludo. El cursor vuelve justo detrás de lo insertado para
+   * poder seguir escribiendo —o poner otro— sin tocar el mouse.
+   */
+  const ponerEmoji = (emoji: string) => {
+    const caja = cajaTexto.current;
+    const desde = caja?.selectionStart ?? texto.length;
+    const hasta = caja?.selectionEnd ?? texto.length;
+    const { valor, cursor } = insertarEnCursor(texto, desde, hasta, emoji);
+
+    setTexto(valor);
+    // En el siguiente cuadro: React todavía no escribió el valor nuevo, y
+    // mover el cursor antes lo dejaría donde estaba.
+    requestAnimationFrame(() => {
+      caja?.focus();
+      caja?.setSelectionRange(cursor, cursor);
     });
   };
 
@@ -748,23 +790,75 @@ export function Inbox({
           {lista.map((c) => {
             const activa = c.id === abierta;
             return (
-              <button
+              /*
+               * Un `div` con dos botones adentro, y no un botón con otro.
+               *
+               * La fila entera era un `<button>`. Meter el «⋮» adentro sería
+               * un botón dentro de un botón: HTML inválido, y el navegador
+               * reacomoda el árbol por su cuenta —saca el de adentro— así que
+               * React deja de reconocer lo que dibujó y el menú queda pintado
+               * pero muerto. Es exactamente el error que ya pasó con el aviso
+               * de las 24 horas, y está documentado más abajo.
+               */
+              <div
                 key={c.id}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 2,
+                  padding: "0 8px 0 0",
+                  borderBottom: `1px solid ${T.border}`,
+                  background: activa ? soft : "transparent",
+                }}
+              >
+              <button
                 type="button"
                 onClick={() => setAbierta(c.id)}
                 className="row"
                 style={{
                   display: "block",
-                  width: "100%",
+                  flex: 1,
+                  minWidth: 0,
                   textAlign: "left",
-                  padding: "10px 14px",
-                  borderBottom: `1px solid ${T.border}`,
-                  background: activa ? soft : "transparent",
+                  padding: "10px 6px 10px 14px",
+                  background: "transparent",
                 }}
               >
                 <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: c.sinLeer ? 600 : 400, color: T.ink }}>
-                    {c.nombrePerfil ?? c.telefono}
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      minWidth: 0,
+                      // Negrita también con la marca puesta a mano: para quien
+                      // recorre la lista, «pendiente» y «sin abrir» son lo
+                      // mismo —algo que todavía debe atenderse— y distinguirlos
+                      // con dos pesos de letra distintos no ayudaría a nadie.
+                      fontSize: 13,
+                      fontWeight: c.sinLeer || c.noLeida ? 600 : 400,
+                      color: T.ink,
+                    }}
+                  >
+                    {c.fijada && (
+                      <span title="Fijada arriba" style={{ fontSize: 10, flexShrink: 0 }}>
+                        📌
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.nombrePerfil ?? c.telefono}
+                    </span>
+                    {c.silenciada && (
+                      <span title="Silenciada: no cuenta para el número rojo" style={{ fontSize: 10, flexShrink: 0 }}>
+                        🔕
+                      </span>
+                    )}
                   </span>
                   <span className="mono" style={{ fontSize: 10.5, color: T.faint, flexShrink: 0 }}>
                     {dia(c.ultimoMensajeEn)}
@@ -804,11 +898,39 @@ export function Inbox({
                       {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? "asignada"}
                     </span>
                   )}
-                  {c.sinLeer > 0 && (
-                    <span className="pill" style={chip("#fff", accent)}>{c.sinLeer}</span>
+                  {/* Con la marca puesta a mano se dice con todas las letras.
+                      El número solo —«1»— se leería como un mensaje sin abrir,
+                      que es lo contrario de lo que pasó: alguien lo leyó y
+                      decidió dejarlo pendiente. */}
+                  {c.noLeida ? (
+                    <span className="pill" style={chip("#fff", accent)}>pendiente</span>
+                  ) : (
+                    c.sinLeer > 0 && (
+                      <span
+                        className="pill"
+                        style={chip("#fff", c.silenciada ? T.faint : accent)}
+                      >
+                        {c.sinLeer}
+                      </span>
+                    )
                   )}
                 </span>
               </button>
+
+              {/* A la altura del nombre, que es el primer renglón de la fila:
+                  el «⋮» centrado sobre tres renglones quedaría apuntando al
+                  texto de la vista previa, que no es lo que se acciona. */}
+              <div style={{ marginTop: 9 }}>
+                <AccionesDelHilo
+                  conversacion={c}
+                  accent={accent}
+                  abierta={activa}
+                  onCambio={onRefrescar}
+                  onCerrar={() => setAbierta(null)}
+                  onVerCliente={onVerCliente}
+                />
+              </div>
+              </div>
             );
           })}
         </div>
@@ -1133,7 +1255,19 @@ export function Inbox({
               >
                 {mandandoFoto ? "…" : "📎"}
               </button>
+
+              {/* Los emojis funcionan también en una nota interna y con la
+                  ventana de 24 horas cerrada: no salen a WhatsApp por sí
+                  mismos, son texto. Se apaga sólo cuando no hay dónde
+                  escribir. */}
+              <SelectorEmoji
+                accent={accent}
+                disabled={!nota && !puedeResponder}
+                onElegir={ponerEmoji}
+              />
+
               <textarea
+                ref={cajaTexto}
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={(e) => {
