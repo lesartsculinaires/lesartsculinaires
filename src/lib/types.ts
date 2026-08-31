@@ -438,6 +438,17 @@ export interface Conversacion {
   ultimoTexto: string | null;
   sinLeer: number;
   archivada: boolean;
+  /**
+   * Marcada a mano para dejarla pendiente.
+   *
+   * Distinta de `sinLeer`, que cuenta mensajes que nadie abrió. Ésta la pone
+   * una persona que sí leyó y decidió que todavía le debe algo al hilo.
+   */
+  noLeida: boolean;
+  /** Arriba de todo en la lista, sin importar cuándo escribió. */
+  fijada: boolean;
+  /** Sigue en la lista pero deja de contar para el número rojo de la barra. */
+  silenciada: boolean;
   /** open / pending / resolved: abierto, esperando algo, o terminado. */
   estado: string;
   /** Nulo = sin asignar, que es lo que el asesor resuelve. */

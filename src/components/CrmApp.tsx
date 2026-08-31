@@ -327,8 +327,16 @@ export default function CrmApp({
    * número que sigue contando lo archivado obliga a archivar y además entrar a
    * marcar leído para que baje.
    */
+  /*
+   * Las silenciadas no cuentan.
+   *
+   * Silenciar es «esto sigue vivo pero no me apura»: el proveedor que manda
+   * cinco mensajes por semana, el grupo de una vez. Archivarlo lo escondería,
+   * y no es que sobre. Si igual sumara al número rojo, silenciar no serviría
+   * para nada, que es lo único que se le pide.
+   */
   const sinLeer = conversaciones
-    .filter((c) => !c.archivada)
+    .filter((c) => !c.archivada && !c.silenciada)
     .reduce((s, c) => s + (c.sinLeer ?? 0), 0);
 
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));

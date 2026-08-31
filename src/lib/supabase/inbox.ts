@@ -33,11 +33,28 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   const supabase = await getServerClient();
   if (!supabase) return VACIO;
 
-  const { data: convs, error } = await supabase
-    .from("conversaciones")
-    .select("id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, sin_leer, archivada, estado, vendedor_id")
-    .order("ultimo_mensaje_en", { ascending: false })
-    .limit(300);
+  /**
+   * Las conversaciones, con las marcas de la bandeja si ya están.
+   *
+   * `conMarcas` existe por lo mismo que abajo con los archivos: mientras la
+   * escuela no haya corrido `20261011120000_bandeja_marcas.sql`, esas tres
+   * columnas no están, y pedirlas devuelve 42703 —el error se lleva la
+   * consulta entera y la bandeja se queda en blanco—. Se reintenta sin ellas
+   * para que siga funcionando todo menos fijar, silenciar y marcar sin leer.
+   */
+  const traerConvs = (conMarcas: boolean) =>
+    supabase
+      .from("conversaciones")
+      .select(
+        "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
+          "sin_leer, archivada, estado, vendedor_id" +
+          (conMarcas ? ", no_leida, fijada, silenciada" : ""),
+      )
+      .order("ultimo_mensaje_en", { ascending: false })
+      .limit(300);
+
+  let { data: convs, error } = await traerConvs(true);
+  if (error?.code === "42703") ({ data: convs, error } = await traerConvs(false));
 
   if (error) {
     // PGRST205: la tabla no existe en el esquema todavía.
@@ -45,7 +62,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
     return { ...VACIO, error: error.message };
   }
 
-  const ids = (convs ?? []).map((c) => Number(c.id));
+  const ids = ((convs ?? []) as unknown as Fila[]).map((c) => Number(c.id));
   let mensajes: Mensaje[] = [];
 
   // Las etiquetas puestas, agrupadas por conversación. Si falta la migración
@@ -104,7 +121,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   }
 
   return {
-    conversaciones: (convs ?? []).map((c) => ({
+    conversaciones: ((convs ?? []) as unknown as Fila[]).map((c) => ({
       id: Number(c.id),
       telefono: String(c.telefono),
       nombrePerfil: c.nombre_perfil ? String(c.nombre_perfil) : null,
@@ -113,6 +130,11 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       ultimoTexto: c.ultimo_texto ? String(c.ultimo_texto) : null,
       sinLeer: Number(c.sin_leer ?? 0),
       archivada: Boolean(c.archivada),
+      // Sin la migración estas tres no vienen, y `undefined` daría false, que
+      // es exactamente lo que corresponde: nada fijado, nada silenciado.
+      noLeida: Boolean(c.no_leida),
+      fijada: Boolean(c.fijada),
+      silenciada: Boolean(c.silenciada),
       estado: String(c.estado ?? "open"),
       vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
       etiquetaIds: etiquetasPorConv.get(Number(c.id)) ?? [],
