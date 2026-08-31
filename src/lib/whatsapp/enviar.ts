@@ -1,5 +1,7 @@
 import "server-only";
 
+import { componentesDe } from "@/lib/whatsapp/huecos";
+
 import {
   TOPE_DOCUMENTO_BYTES,
   esDocumentoAceptado,
@@ -226,6 +228,15 @@ export async function enviarPlantilla(
   nombre: string,
   idioma: string,
   valores: string[],
+  /**
+   * El cuerpo de la plantilla, para saber cómo marca sus huecos.
+   *
+   * Hace falta porque el formato de los parámetros depende de eso y no hay
+   * otra manera de averiguarlo: `{{1}}` va como lista, `{{order_id}}` va con
+   * el nombre al lado. Sin el cuerpo se cae a lo posicional, que es lo que
+   * hacía antes.
+   */
+  cuerpo?: string | null,
 ): Promise<ResultadoEnvio> {
   const token = process.env.WHATSAPP_TOKEN;
   const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -234,17 +245,21 @@ export async function enviarPlantilla(
     return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
   }
 
-  // Los huecos van todos juntos en el componente BODY, en el orden de {{1}},
-  // {{2}}… Una plantilla sin huecos no lleva `components` en absoluto: mandarlo
-  // vacío hace que Meta la rechace.
-  const componentes =
-    valores.length > 0
-      ? [
-          {
-            type: "body",
-            parameters: valores.map((v) => ({ type: "text", text: v })),
-          },
-        ]
+  /*
+   * Los huecos, con el formato que use ESTA plantilla.
+   *
+   * Antes se armaban acá a mano, siempre como lista posicional. Con una
+   * plantilla que usa nombres —`{{order_id}}`, que es la que tiene cargada la
+   * escuela— eso llegaba mal a Meta y el envío se rechazaba. Ahora lo decide
+   * `componentesDe` mirando el cuerpo, que es el único lugar donde se sabe.
+   *
+   * `cuerpo` puede venir nulo cuando la plantilla se guardó antes de que se
+   * sincronizara el texto; ahí se cae a lo de antes, que es lo que había.
+   */
+  const componentes = cuerpo
+    ? componentesDe(cuerpo, valores)
+    : valores.length > 0
+      ? [{ type: "body", parameters: valores.map((v) => ({ type: "text", text: v })) }]
       : undefined;
 
   try {

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla } from "@/lib/whatsapp/enviar";
+import { conValores, cuantosHuecos } from "@/lib/whatsapp/huecos";
 import { hayWaba, panelDeMeta, traerPlantillas } from "@/lib/whatsapp/plantillas";
 import type { Plantilla } from "@/lib/types";
 
@@ -196,7 +197,16 @@ export async function enviarPlantillaAConversacion(
     };
   }
 
-  const faltan = Number(plantilla.variables ?? 0);
+  /*
+   * Cuántos huecos tiene, contados del CUERPO y no de la columna.
+   *
+   * La columna `variables` se llenó cuando se sincronizó, con el contador
+   * viejo que sólo veía `{{1}}`. Para una plantilla con nombres —`{{order_id}}`,
+   * la que tiene cargada la escuela— dice cero, y con cero el envío salía sin
+   * parámetros y Meta lo rechazaba. Leerlo del cuerpo lo arregla sin tener que
+   * volver a sincronizar.
+   */
+  const faltan = cuantosHuecos(plantilla.cuerpo ? String(plantilla.cuerpo) : null);
   const dados = valores.filter((v) => v.trim() !== "").length;
   if (dados < faltan) {
     return { ok: false, error: `Faltan datos: la plantilla tiene ${faltan} y se dieron ${dados}.` };
@@ -207,13 +217,14 @@ export async function enviarPlantillaAConversacion(
     String(plantilla.nombre),
     String(plantilla.idioma),
     valores.slice(0, faltan),
+    plantilla.cuerpo ? String(plantilla.cuerpo) : null,
   );
 
   if (!envio.ok) return { ok: false, error: envio.error };
 
   // Se guarda el texto ya con los valores puestos: en el hilo hay que leer lo
   // que recibió la persona, no «{{1}}».
-  const texto = rellenar(plantilla.cuerpo ? String(plantilla.cuerpo) : "", valores);
+  const texto = conValores(plantilla.cuerpo ? String(plantilla.cuerpo) : "", valores);
 
   const { error: errGuardar } = await supabase.from("mensajes").insert({
     conversacion_id: conversacionId,
@@ -245,8 +256,8 @@ export async function enviarPlantillaAConversacion(
   return { ok: true, error: null };
 }
 
-/** Reemplaza los {{n}} por lo que se escribió. */
-function rellenar(cuerpo: string, valores: string[]): string {
+/** Reemplaza los huecos por lo que se escribió. */
+function rellenarViejo(cuerpo: string, valores: string[]): string {
   return cuerpo.replace(/\{\{\s*(\d+)\s*\}\}/g, (entero, n: string) => {
     const v = valores[Number(n) - 1];
     return v != null && v !== "" ? v : entero;
