@@ -3,7 +3,9 @@
  *
  *     npx esbuild src/lib/planImportacion.ts --bundle --format=esm \
  *       --platform=node --alias:@=./src --outfile=/tmp/plan.mjs
- *     node supabase/pruebas/lotesImportacion.test.mjs /tmp/plan.mjs
+ *     npx esbuild src/lib/crm/lotesImportacion.ts --bundle --format=esm \
+ *       --platform=node --alias:@=./src --outfile=/tmp/lotes.mjs
+ *     node supabase/pruebas/lotesImportacion.test.mjs /tmp/plan.mjs /tmp/lotes.mjs
  *
  * ============================================================================
  * EL CASO REAL
@@ -35,6 +37,9 @@
  * cumple, el servidor no puede duplicar; si se rompe, duplica siempre.
  */
 const { construirPlan, enLotes } = await import(process.argv[2] ?? "/tmp/plan.mjs");
+const { colgarDeLosQueYaEstan, repartir } = await import(
+  process.argv[3] ?? "/tmp/lotes.mjs"
+);
 
 let f = 0;
 const es = (t, r, e) => {
@@ -218,6 +223,120 @@ console.log("\n── una que ya está en el CRM no necesita grupo ──");
   // ya está en el CRM, que es de lo que se trata unificar.
   es("sólo se crea la ficha de la otra persona", plan.resumen.fichasNuevas, 1);
   es("y las dos de Marco se unen a la del CRM", plan.resumen.seUnenAlCrm, 2);
+}
+
+/* ==========================================================================
+ * La última red: la comprobación del servidor
+ * ==========================================================================
+ *
+ * La escuela lo dijo así: «cuando entra una base se repite, o si un vendedor
+ * agregó recientemente ese cliente».
+ *
+ * Las dos mitades de esa frase son el mismo agujero. La pantalla compara
+ * contra las oportunidades que el navegador tiene cargadas, y eso deja afuera:
+ * lo que no le toca ver a esa persona, lo que se cargó después de abrir la
+ * pantalla, y las fichas que no tienen ningún lead. Por cualquiera de las tres
+ * puertas entra un duplicado con la pantalla diciendo que está todo bien.
+ *
+ * `colgarDeLosQueYaEstan` corre en el servidor, contra la tabla de clientes
+ * entera y en el momento de importar. Es lo último que pasa antes de crear una
+ * ficha.
+ */
+
+/** Una fila como la que viaja al servidor. */
+const carga = (extra) => ({
+  unificar_con: null,
+  grupo: null,
+  nombre: "",
+  telefono: null,
+  correo: null,
+  ...extra,
+});
+
+const CONOCIDOS = [
+  { clienteId: 10, nombre: "Marco Tulio Castellanos", telefono: "7100-0001", correo: "marco@ejemplo.com" },
+  { clienteId: 11, nombre: "Ana Lucia Ramirez", telefono: "+503 7200 0002", correo: null },
+  { clienteId: 12, nombre: "Jose Rodriguez", telefono: null, correo: null },
+];
+
+console.log("\n── el servidor reconoce por correo ──");
+{
+  const filas = [carga({ nombre: "MARCO TULIO CASTELLANOS O.", correo: "MARCO@ejemplo.com" })];
+  const salida = colgarDeLosQueYaEstan(filas, CONOCIDOS);
+  es("SE CUELGA DE LA FICHA QUE YA ESTÁ", salida[0].unificar_con, 10);
+  es("y no crea ninguna", repartir(salida).grupos.length, 0);
+}
+
+console.log("\n── y por teléfono, escrito de cualquier forma ──");
+{
+  // En la base está «+503 7200 0002» y el archivo trae «7200-0002». Es el
+  // caso de todos los días: la planilla y el CRM nunca escriben igual un
+  // teléfono.
+  const filas = [carga({ nombre: "Ana L. Ramirez", telefono: "7200-0002" })];
+  es("se reconoce igual", colgarDeLosQueYaEstan(filas, CONOCIDOS)[0].unificar_con, 11);
+}
+
+console.log("\n── PERO NUNCA POR NOMBRE SOLO ──");
+{
+  /*
+   * Acá no hay nadie mirando. Dos alumnas se pueden llamar igual, y unir sus
+   * fichas sin preguntar mezcla dos historias que después no se separan. La
+   * pantalla sí lo propone, porque ahí hay una persona que puede decir que no.
+   */
+  const filas = [carga({ nombre: "Jose Rodriguez", telefono: "7999-9999", correo: "otro@ejemplo.com" })];
+  const salida = colgarDeLosQueYaEstan(filas, CONOCIDOS);
+  es("no se cuelga de la ficha del mismo nombre", salida[0].unificar_con, null);
+  es("entra como ficha nueva", repartir(salida).grupos.length, 1);
+}
+
+console.log("\n── un grupo entero se cuelga junto ──");
+{
+  /*
+   * Tres filas de la misma persona, y sólo UNA trae el correo. Si se buscara
+   * fila por fila, las otras dos no encontrarían nada: una se colgaría de la
+   * ficha vieja y las otras dos crearían una nueva, y la persona quedaría
+   * partida en dos igual.
+   */
+  const filas = [
+    carga({ grupo: "p0", nombre: "Marco Tulio", correo: "marco@ejemplo.com" }),
+    carga({ grupo: "p0", nombre: "Marco Tulio", telefono: null }),
+    carga({ grupo: "p0", nombre: "Marco Tulio", telefono: null }),
+  ];
+  const salida = colgarDeLosQueYaEstan(filas, CONOCIDOS);
+  es("LAS TRES VAN A LA MISMA FICHA", salida.map((f) => f.unificar_con), [10, 10, 10]);
+  es("y no se crea ninguna", repartir(salida).grupos.length, 0);
+}
+
+console.log("\n── lo que de verdad es nuevo entra igual ──");
+{
+  const filas = [
+    carga({ nombre: "Persona Nueva", correo: "nueva@ejemplo.com", telefono: "7333-3333" }),
+    carga({ nombre: "Otra Nueva", correo: "otra@ejemplo.com" }),
+  ];
+  const salida = colgarDeLosQueYaEstan(filas, CONOCIDOS);
+  es("ninguna se cuelga", salida.every((f) => f.unificar_con == null), true);
+  es("y son dos fichas distintas", repartir(salida).grupos.length, 2);
+}
+
+console.log("\n── lo que la pantalla ya decidió no se toca ──");
+{
+  // Si alguien miró y dijo «va a la ficha 99», eso manda: puede haber
+  // separado a mano un grupo que los datos juntaban.
+  const filas = [carga({ unificar_con: 99, nombre: "Marco Tulio", correo: "marco@ejemplo.com" })];
+  es("se respeta la decisión", colgarDeLosQueYaEstan(filas, CONOCIDOS)[0].unificar_con, 99);
+}
+
+console.log("\n── sin nada con qué comparar, no revienta ──");
+{
+  es("base vacía", colgarDeLosQueYaEstan([carga({ nombre: "Alguien" })], []).length, 1);
+  es("y sin filas tampoco", colgarDeLosQueYaEstan([], CONOCIDOS), []);
+  // Un teléfono demasiado corto no sirve para reconocer a nadie: emparejaría
+  // media base.
+  es(
+    "un teléfono de tres dígitos no empareja",
+    colgarDeLosQueYaEstan([carga({ nombre: "X", telefono: "001" })], CONOCIDOS)[0].unificar_con,
+    null,
+  );
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);

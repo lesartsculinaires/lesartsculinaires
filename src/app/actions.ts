@@ -14,7 +14,11 @@ import {
   numeroDeCodigo,
   type DatosLead,
 } from "@/lib/crm/altaLead";
-import { asignarClientes, repartir } from "@/lib/crm/lotesImportacion";
+import {
+  asignarClientes,
+  colgarDeLosQueYaEstan,
+  repartir,
+} from "@/lib/crm/lotesImportacion";
 import { anotarSeguimientoDeNota, filaDeSeguimiento } from "@/lib/crm/notaConSeguimiento";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import {
@@ -24,6 +28,7 @@ import {
   type Choque,
   type DatosCliente,
 } from "@/lib/fusion";
+import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import { COOKIE_MODULO } from "@/lib/ultimoModulo";
 import type { ClientePatch, EventoPatch, OportunidadPatch } from "@/lib/types";
@@ -790,6 +795,8 @@ export interface ResultadoImportacion {
  * cargada sin forma de saber cuál.
  */
 export async function importarClientes(
+  // `let` porque acá abajo se vuelve a armar: las filas de gente que ya está
+  // en el CRM salen apuntando a su ficha en vez de creando una nueva.
   filas: FilaParaImportar[],
   /** Nombre del archivo, para poder encontrar la base después. */
   archivo?: string,
@@ -856,6 +863,40 @@ export async function importarClientes(
       .single();
     baseId = (base?.id as number | undefined) ?? null;
   }
+
+  /*
+   * La última comprobación contra duplicados, y la única que ve todo.
+   *
+   * La pantalla ya comparó, pero contra las oportunidades que el navegador
+   * tenía cargadas: le faltan las que no le tocan a esa persona, las que
+   * alguien dio de alta mientras se preparaba el archivo, y las fichas sin
+   * ningún lead. Acá se lee la tabla de clientes entera, en el momento de
+   * importar, así que el resultado no depende de quién esté mirando.
+   *
+   * Si la lectura falla se sigue sin ella: la pantalla ya hizo su parte, y
+   * dejar de importar una base de trescientas filas por no poder cotejar sería
+   * peor que arriesgar un repetido que se fusiona después.
+   */
+  const { data: yaEstan, error: errConocidos } = await traerTodo<{
+    id: number;
+    nombre: string | null;
+    telefono: string | null;
+    correo: string | null;
+  }>(() => supabase.from("clientes").select("id, nombre, telefono, correo").order("id"));
+
+  if (errConocidos) {
+    console.error("[importar] no se pudo cotejar contra los contactos que ya están", errConocidos);
+  }
+
+  filas = colgarDeLosQueYaEstan(
+    filas,
+    yaEstan.map((c) => ({
+      clienteId: Number(c.id),
+      nombre: String(c.nombre ?? ""),
+      telefono: c.telefono,
+      correo: c.correo,
+    })),
+  );
 
   // Las filas que se unifican no crean cliente: usan el que ya existe. Las
   // demás se juntan por `grupo`, de modo que tres filas de la misma persona
