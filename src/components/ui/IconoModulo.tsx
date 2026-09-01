@@ -36,6 +36,9 @@ const TRAZOS: Record<string, string> = {
   // Una bandeja con la boca abierta.
   Inbox: "M3.5 13.5h4l1.5 2.5h6l1.5-2.5h4M3.5 13.5 6 5.5h12l2.5 8v4a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z",
 
+  // Un avión de papel: lo que sale hacia afuera, a mucha gente a la vez.
+  "Envíos": "M21 3 10.5 13.5M21 3l-6.5 18-4-7.5-7.5-4L21 3Z",
+
   // Una persona.
   Clientes: "M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM4.5 20c0-3.6 3.4-5.5 7.5-5.5s7.5 1.9 7.5 5.5",
 

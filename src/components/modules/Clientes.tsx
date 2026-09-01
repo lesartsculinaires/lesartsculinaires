@@ -12,12 +12,13 @@ import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
 import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
+import { EnvioMasivo } from "@/components/modules/EnvioMasivo";
 import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
 import { definirFiltros, pasa } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
-import type { Importacion, Oportunidad } from "@/lib/types";
+import type { Importacion, Oportunidad, Plantilla } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -45,6 +46,16 @@ interface Props {
   onLimpiar: () => void;
   /** Recarga los datos del servidor tras dar de alta un cliente. */
   onRefresh: () => void;
+  /**
+   * Las plantillas de WhatsApp, para poder escribirle a los marcados.
+   *
+   * El envío masivo se arma desde acá y no desde su propio módulo a propósito:
+   * elegir a quién escribirle es un trabajo de filtrar —por programa, por
+   * etapa, por vendedor— y esos filtros ya están en esta pantalla. Repetirlos
+   * en otra sería mantener dos buscadores que se van a ir pareciendo cada vez
+   * menos.
+   */
+  plantillas: Plantilla[];
 }
 
 export function Clientes({
@@ -63,6 +74,7 @@ export function Clientes({
   onSelect,
   onLimpiar,
   onRefresh,
+  plantillas,
 }: Props) {
   const cat = useCatalogo();
   const [alta, setAlta] = useState(false);
@@ -76,6 +88,8 @@ export function Clientes({
    * el filtro movería la selección a otras fichas sin que nadie lo pida.
    */
   const [marcadas, setMarcadas] = useState<number[]>([]);
+  /** Está abierta la ventana de escribirle a los marcados. */
+  const [enviando, setEnviando] = useState(false);
 
   /**
    * Selección con teclado.
@@ -339,6 +353,21 @@ export function Clientes({
         </p>
       )}
 
+      {enviando && (
+        <EnvioMasivo
+          oportunidadIds={marcadas}
+          plantillas={plantillas}
+          accent={accent}
+          onCerrar={() => setEnviando(false)}
+          onListo={(resumen) => {
+            setEnviando(false);
+            setMarcadas([]);
+            setAvisoLote({ texto: resumen, malo: false });
+            onRefresh();
+          }}
+        />
+      )}
+
       {marcadas.length > 0 && (
         <div style={{ position: "sticky", top: 0, zIndex: 20 }}>
           <AccionesEnLote
@@ -347,6 +376,7 @@ export function Clientes({
             cambiando={cambiando}
             aviso={avisoLote}
             esAdmin={esAdmin}
+            onWhatsapp={() => setEnviando(true)}
             onAplicar={aplicarALasMarcadas}
             onBorrar={() =>
               setPorBorrar(oportunidades.filter((o) => marcadas.includes(o.id)))

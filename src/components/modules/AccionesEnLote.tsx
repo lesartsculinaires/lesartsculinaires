@@ -27,6 +27,7 @@ export function AccionesEnLote({
   cambiando,
   aviso,
   esAdmin,
+  onWhatsapp,
   onAplicar,
   onBorrar,
   onLimpiar,
@@ -45,6 +46,8 @@ export function AccionesEnLote({
    * antes, no una segunda regla.
    */
   esAdmin: boolean;
+  /** Abre la ventana de escribirle a los marcados por WhatsApp. */
+  onWhatsapp: () => void;
   onAplicar: (campo: CampoEnLote, valorId: number, etiqueta: string, nombre: string) => void;
   onBorrar: () => void;
   onLimpiar: () => void;
@@ -105,6 +108,39 @@ export function AccionesEnLote({
             </select>
           </label>
         ))}
+
+        {/*
+          Escribirles.
+
+          Va antes del borrar y separado de los desplegables: los cuatro de la
+          izquierda cambian un dato de las fichas marcadas, esto le manda un
+          mensaje a las personas. Son cosas de distinta naturaleza y la
+          segunda no se deshace.
+        */}
+        <button
+          type="button"
+          onClick={onWhatsapp}
+          title={
+            ids.length === 1
+              ? "Mandarle una plantilla de WhatsApp"
+              : `Mandarles una plantilla de WhatsApp a los ${ids.length} marcados`
+          }
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            height: 28,
+            padding: "0 11px",
+            fontSize: 12,
+            fontWeight: 600,
+            borderRadius: 6,
+            background: accent,
+            color: "#fff",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Escribirles por WhatsApp
+        </button>
 
         {esAdmin && (
           <button

@@ -99,6 +99,8 @@ export async function POST(req: NextRequest) {
         .from("mensajes")
         .update({ estado: s.estado, error: s.error })
         .eq("wa_id", s.waId);
+
+      await acusarEnvio(supabase, s.waId, s.estado);
     } catch (e) {
       console.error("[whatsapp] no se pudo actualizar el estado", s.waId, e);
     }
@@ -245,7 +247,94 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   });
 
   await anotarQueEscribioPorWhatsapp(supabase, conversacion, m);
+  await contestoUnEnvio(supabase, m.telefono);
   await abrirLeadSiEsNuevo(supabase, conversacion);
+}
+
+/**
+ * Si esta persona recibió un envío masivo hace poco, queda anotado que
+ * contestó.
+ *
+ * ------------------------------------------------------------------------
+ * ES LA MÉTRICA QUE PIDIÓ LA ESCUELA
+ * ------------------------------------------------------------------------
+ *
+ * «Necesito un total análisis y métricas de quiénes contestaron a ese mensaje
+ * masivo.» Entregado y leído los informa Meta; contestado, no: es un mensaje
+ * entrante cualquiera, y sólo se sabe que es una respuesta porque llega
+ * después de haberle mandado algo.
+ *
+ * Siete días es el corte. Más allá de eso, alguien que escribe no está
+ * contestando la campaña: está escribiendo por otra cosa, y contarlo como
+ * respuesta inflaría el resultado de todos los envíos viejos.
+ *
+ * Se marca sólo el más reciente y sólo una vez —`respondio_en is null`— para
+ * que el segundo mensaje de la misma persona no cuente como una respuesta más.
+ *
+ * Como todo lo del webhook, no lanza hacia afuera: que no se pueda anotar una
+ * métrica no puede costar el mensaje, que es lo que la persona escribió.
+ */
+async function contestoUnEnvio(supabase: Cliente, telefono: string) {
+  try {
+    const hace7 = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+    const { data: fila } = await supabase
+      .from("envio_destinatarios")
+      .select("id")
+      // El teléfono se guardó normalizado al armar el envío, en el mismo
+      // formato en que lo manda Meta: sólo dígitos y con código de país.
+      .eq("telefono", telefono)
+      .is("respondio_en", null)
+      .gt("enviado_en", hace7)
+      .order("enviado_en", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!fila) return;
+
+    await supabase
+      .from("envio_destinatarios")
+      .update({ estado: "respondio", respondio_en: new Date().toISOString() })
+      .eq("id", Number(fila.id));
+  } catch {
+    // Ver arriba.
+  }
+}
+
+/**
+ * El acuse de Meta sobre un mensaje de un envío.
+ *
+ * Sólo hacia adelante: entregado no puede volver a enviado, y leído no puede
+ * volver a entregado. Meta a veces manda los acuses desordenados —el de
+ * lectura antes que el de entrega— y sin esta condición un envío terminaría
+ * mostrando menos leídos de los que hubo.
+ *
+ * «Respondió» no se toca nunca desde acá: es lo más avanzado que puede estar
+ * un destinatario y lo pone el mensaje entrante, no un acuse.
+ */
+async function acusarEnvio(supabase: Cliente, waId: string, estado: string) {
+  const COMO_SE_DICE: Record<string, string> = {
+    sent: "enviado",
+    delivered: "entregado",
+    read: "leido",
+    failed: "fallido",
+  };
+  const nuevo = COMO_SE_DICE[estado];
+  if (!nuevo) return;
+
+  // Desde qué estados se puede pasar a éste. Fuera de esta lista, se ignora.
+  const desde: Record<string, string[]> = {
+    enviado: ["pendiente"],
+    entregado: ["pendiente", "enviado"],
+    leido: ["pendiente", "enviado", "entregado"],
+    fallido: ["pendiente", "enviado"],
+  };
+
+  await supabase
+    .from("envio_destinatarios")
+    .update({ estado: nuevo })
+    .eq("wa_id", waId)
+    .in("estado", desde[nuevo]);
 }
 
 /**
