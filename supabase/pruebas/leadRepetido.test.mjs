@@ -321,5 +321,74 @@ console.log("\n── y se puede contar qué se completó ──");
   console.log(`   (se completan ${p.completados.length} campos de una vez)`);
 }
 
+console.log("\n── VARIOS PROGRAMAS EN UN SOLO LEAD ──");
+{
+  /*
+   * Lo que pidió la escuela: «un lead puede preguntar por varios programas a
+   * la vez, y que no afecte al momento de hacer un lead duplicado».
+   *
+   * Una persona que consultó Pastelería (3) y Barismo (9) tiene UN lead con
+   * los dos anotados. Cuando entra una base que la trae por cualquiera de los
+   * dos, tiene que caer sobre ese lead y no abrirle otro.
+   */
+  const conDos = lead({ producto_id: 3, programas: [3, 9] });
+
+  es(
+    "entra por el principal: se junta",
+    cualAbsorbe([conDos], entra({ producto_id: 3 }), FINALES).lead?.codigo,
+    "CRM-2625",
+  );
+  es(
+    "ENTRA POR EL SEGUNDO: TAMBIÉN SE JUNTA",
+    cualAbsorbe([conDos], entra({ producto_id: 9 }), FINALES).lead?.codigo,
+    "CRM-2625",
+  );
+
+  // Y uno que no está entre los que preguntó sigue abriendo lead aparte: son
+  // dos ventas distintas, que es la regla que protege los montos.
+  const otro = cualAbsorbe([conDos], entra({ producto_id: 7 }), FINALES);
+  es("PERO UNO QUE NO CONSULTÓ, NO", otro.lead, null);
+  es("y se dice por qué", otro.porQueNo, "otro_programa");
+}
+
+console.log("\n── sin la lista, se comporta como antes ──");
+{
+  /*
+   * Los leads viejos no tienen intereses anotados. La regla tiene que seguir
+   * mirando el programa principal en ese caso, o la migración rompería el
+   * comportamiento de las 1604 oportunidades que ya están.
+   */
+  const viejo = lead({ producto_id: 3 });
+  es("el mismo programa se junta", cualAbsorbe([viejo], entra({ producto_id: 3 }), FINALES).lead?.codigo, "CRM-2625");
+  es("y otro no", cualAbsorbe([viejo], entra({ producto_id: 9 }), FINALES).lead, null);
+
+  // Una lista vacía es lo mismo que no tenerla.
+  const vacia = lead({ producto_id: 3, programas: [] });
+  es("lista vacía: igual que sin lista", cualAbsorbe([vacia], entra({ producto_id: 3 }), FINALES).lead?.codigo, "CRM-2625");
+}
+
+console.log("\n── entre varios, gana el que ya lo tenía anotado ──");
+{
+  // Uno sin programa y otro que consultó Barismo. Entra Barismo: va al que lo
+  // consultó, no al vacío, aunque el vacío sea más nuevo.
+  const sinPrograma = lead({ id: 1, codigo: "CRM-0100", fecha_registro: "2026-08-01" });
+  const conBarismo = lead({ id: 2, codigo: "CRM-0200", producto_id: 3, programas: [3, 9], fecha_registro: "2026-01-01" });
+
+  es(
+    "gana el que ya preguntó por ese programa",
+    cualAbsorbe([sinPrograma, conBarismo], entra({ producto_id: 9 }), FINALES).lead?.codigo,
+    "CRM-0200",
+  );
+}
+
+console.log("\n── y una cerrada con intereses tampoco se toca ──");
+{
+  // La regla de lo cerrado manda sobre la de los intereses: un trato ganado
+  // sigue siendo historia aunque el programa esté entre los que consultó.
+  const ganada = lead({ producto_id: 3, programas: [3, 9], estado_id: GANADO });
+  es("no se junta", cualAbsorbe([ganada], entra({ producto_id: 9 }), FINALES).lead, null);
+  es("por estar cerrada", cualAbsorbe([ganada], entra({ producto_id: 9 }), FINALES).porQueNo, "todas_cerradas");
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

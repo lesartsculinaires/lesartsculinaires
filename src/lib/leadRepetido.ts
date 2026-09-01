@@ -83,6 +83,15 @@ export interface LeadExistente {
   valor_oportunidad: number | null;
   venta_cerrada: number | null;
   descuento_promocion: string | null;
+  /**
+   * Todos los programas por los que preguntó, `producto_id` incluido.
+   *
+   * Es lo que deja que una base nueva que trae a la misma persona por un
+   * programa que ya consultó caiga sobre el lead que tiene, en vez de abrirle
+   * otro. Opcional: quien no lo pase se comporta como antes, mirando sólo el
+   * programa principal.
+   */
+  programas?: readonly number[];
 }
 
 /** Lo que trae el lead que entra. Las claves son nombres de columna. */
@@ -208,6 +217,20 @@ export function cualAbsorbe(
   if (abiertas.length === 0) return { lead: null, porQueNo: "todas_cerradas" };
 
   /*
+   * Todos los programas por los que preguntó ese lead, no sólo el que se le
+   * está vendiendo.
+   *
+   * Es lo que hace que preguntar por varios programas deje UN lead. Alguien
+   * que consultó Pastelería y Barismo tiene los dos anotados; cuando entra una
+   * base que la trae por Barismo, cae sobre ese lead en vez de abrirle otro.
+   *
+   * Sin la lista se usa el principal, que es como se comportaba antes de que
+   * existiera: los leads viejos siguen funcionando igual.
+   */
+  const preguntoPor = (l: LeadExistente): (number | null)[] =>
+    l.programas && l.programas.length > 0 ? [...l.programas] : [l.producto_id];
+
+  /*
    * Un lead sin programa no contradice a ninguno: se suma al que haya. Es el
    * caso más común de todos —los formularios de Meta no preguntan el programa—
    * y es exactamente el de Yolanda.
@@ -215,8 +238,8 @@ export function cualAbsorbe(
   const compatibles =
     entrante.producto_id == null
       ? abiertas
-      : abiertas.filter(
-          (l) => l.producto_id == null || l.producto_id === entrante.producto_id,
+      : abiertas.filter((l) =>
+          preguntoPor(l).some((p) => p == null || p === entrante.producto_id),
         );
 
   if (compatibles.length === 0) return { lead: null, porQueNo: "otro_programa" };
@@ -229,7 +252,7 @@ export function cualAbsorbe(
    * Entre iguales, el más nuevo: es el que se está trabajando.
    */
   const puntaje = (l: LeadExistente): number =>
-    entrante.producto_id != null && l.producto_id === entrante.producto_id ? 1 : 0;
+    entrante.producto_id != null && preguntoPor(l).includes(entrante.producto_id) ? 1 : 0;
 
   const elegido = [...compatibles].sort(
     (a, b) =>

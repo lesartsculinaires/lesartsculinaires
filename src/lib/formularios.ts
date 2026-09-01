@@ -155,6 +155,20 @@ export interface DatosDelLead {
   responsable_correo: string | null;
   producto_id: number | null;
   territorio_id: number | null;
+  /**
+   * Todos los programas que marcó, cuando la pregunta admite varios.
+   *
+   * La escuela lo pidió así: «en la opción de formulario, donde aparecen los
+   * tipos de diplomados, que pueda seleccionar varios si está interesado en
+   * varios». Antes una pregunta de elegir-varias que alimentaba el programa
+   * guardaba sólo la primera marca y las demás se perdían sin aviso.
+   *
+   * `producto_id` sigue siendo uno —el primero que marcó— porque es el que
+   * lleva la plata del trato. Los demás quedan acá y van a
+   * `oportunidad_programas`, que es lo que después evita que una base nueva
+   * por el segundo programa le abra un lead aparte.
+   */
+  programas_interes: number[];
 }
 
 const VACIO: DatosDelLead = {
@@ -167,6 +181,7 @@ const VACIO: DatosDelLead = {
   responsable_correo: null,
   producto_id: null,
   territorio_id: null,
+  programas_interes: [],
 };
 
 /**
@@ -178,13 +193,32 @@ const VACIO: DatosDelLead = {
  * campo que casi encaja es peor que dejarlas escritas donde se leen.
  */
 export function armarLead(campos: readonly Campo[], respuestas: Respuestas): DatosDelLead {
-  const lead: DatosDelLead = { ...VACIO };
+  /*
+   * El arreglo se crea acá, no se copia de `VACIO`.
+   *
+   * `{ ...VACIO }` copia la referencia, así que todas las llamadas
+   * compartirían el mismo arreglo y los programas de un formulario aparecerían
+   * en el siguiente. Con dos personas llenando en la misma feria, la segunda
+   * habría heredado los intereses de la primera.
+   */
+  const lead: DatosDelLead = { ...VACIO, programas_interes: [] };
 
   for (const campo of campos) {
     if (!campo.mapeaA) continue;
 
     const cruda = respuestas[campo.id];
-    const texto = (Array.isArray(cruda) ? cruda[0] : cruda)?.trim() ?? "";
+    /*
+     * Todas las marcas, no sólo la primera.
+     *
+     * Acá se hacía `cruda[0]`, y con una pregunta de elegir-varias eso tiraba
+     * en silencio todo lo que la persona hubiera marcado además de lo primero.
+     * En una feria, alguien interesado en Pastelería Y Barismo entraba como si
+     * sólo hubiera preguntado por Pastelería.
+     */
+    const todas = (Array.isArray(cruda) ? cruda : [cruda])
+      .map((t) => t?.trim() ?? "")
+      .filter((t) => t !== "");
+    const texto = todas[0] ?? "";
     if (texto === "") continue;
 
     switch (campo.mapeaA) {
@@ -201,8 +235,26 @@ export function armarLead(campos: readonly Campo[], respuestas: Respuestas): Dat
         // De un catálogo no se guarda el texto sino el id que trae la opción.
         // Sin eso, «Mixología» sería una cadena suelta que no engancha con
         // Programas ni con el Dashboard, que es todo el punto de conectarlo.
-        const opcion = campo.opciones.find((o) => o.texto === texto);
-        lead[campo.mapeaA] = opcion?.valor ?? null;
+        const idDe = (t: string): number | null =>
+          campo.opciones.find((o) => o.texto === t)?.valor ?? null;
+
+        lead[campo.mapeaA] = idDe(texto);
+
+        /*
+         * Las demás marcas, cuando la pregunta admite varias.
+         *
+         * Sólo del programa: territorio es uno solo por definición —nadie vive
+         * en dos lugares— y una pregunta de elegir-varias mapeada ahí sería un
+         * error de quien armó el formulario, no algo que haya que soportar.
+         */
+        if (campo.mapeaA === "producto_id") {
+          for (const t of todas) {
+            const id = idDe(t);
+            if (id != null && !lead.programas_interes.includes(id)) {
+              lead.programas_interes.push(id);
+            }
+          }
+        }
         break;
       }
       default:

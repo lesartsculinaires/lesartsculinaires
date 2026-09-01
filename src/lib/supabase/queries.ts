@@ -60,6 +60,9 @@ function toOportunidad(r: Row): Oportunidad {
     vendedorId: numOrNull(r.vendedor_id),
     vendedor: str(r.vendedor, SIN_ASIGNAR),
     productoId: numOrNull(r.producto_id),
+    // Se completa después, de `oportunidad_programas`. Vacío mientras tanto:
+    // la vista no los trae y la ficha tiene que poder dibujarse igual.
+    programasInteres: [],
     producto: str(r.producto, SIN_DATO),
     categoria: r.categoria ? (str(r.categoria) as ProductoCategoria) : null,
     territorioId: numOrNull(r.territorio_id),
@@ -148,6 +151,42 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
         fechas.map((r) => [num(r.id), r.created_at ? str(r.created_at) : null]),
       );
       for (const f of filas) f.creadoEn = porId.get(f.id) ?? null;
+    }
+  }
+
+  /*
+   * Los programas por los que preguntó cada lead.
+   *
+   * Se piden aparte y no desde `vw_pipeline` por dos razones. Una fila por
+   * programa no cabe en una vista que devuelve una fila por lead sin inventar
+   * una agregación que después hay que mantener en la vista. Y la otra es la
+   * de siempre en este CRM: si la migración no se corrió todavía, la tabla no
+   * existe, y eso no puede tumbar la pantalla entera. Sin ella cada lead
+   * queda con su lista vacía y todo lo demás anda igual.
+   */
+  {
+    const { data: intereses, error: errIntereses } = await traerTodo<{
+      oportunidad_id: number;
+      producto_id: number;
+    }>(() =>
+      supabase
+        .from("oportunidad_programas")
+        .select("oportunidad_id, producto_id")
+        .order("oportunidad_id"),
+    );
+
+    if (errIntereses) {
+      // PGRST205 es «esa tabla no existe». Cualquier otro error tampoco vale
+      // una pantalla en blanco: se anota y se sigue.
+      console.warn("[queries] sin programas de interés:", errIntereses);
+    } else if (intereses.length > 0) {
+      const porLead = new Map<number, number[]>();
+      for (const i of intereses) {
+        const suyos = porLead.get(i.oportunidad_id);
+        if (suyos) suyos.push(i.producto_id);
+        else porLead.set(i.oportunidad_id, [i.producto_id]);
+      }
+      for (const f of filas) f.programasInteres = porLead.get(f.id) ?? [];
     }
   }
 

@@ -12,6 +12,7 @@ import { CanalesDelContacto } from "@/components/modules/CanalesDelContacto";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { OtrosLeadsDelContacto } from "@/components/modules/OtrosLeadsDelContacto";
+import { ProgramasDeInteres } from "@/components/modules/ProgramasDeInteres";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
@@ -726,6 +727,19 @@ export function ClienteDrawer({
           );
         })}
       </div>
+
+      {/*
+        Los demás programas por los que preguntó.
+
+        Va justo debajo de «Programa» porque sólo se entiende en contraste con
+        él: arriba, el que se está vendiendo; acá, todo lo que consultó.
+      */}
+      <ProgramasDeInteres
+        oportunidadId={o.id}
+        principalId={o.productoId}
+        puestos={o.programasInteres}
+        accent={accent}
+      />
 
       {/*
         Por qué se perdió: aparece sólo cuando el estado es «Perdido».

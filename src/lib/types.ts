@@ -181,6 +181,18 @@ export interface Oportunidad {
   vendedorId: number | null;
   vendedor: string;
   productoId: number | null;
+  /**
+   * Todos los programas por los que preguntó, `productoId` incluido.
+   *
+   * Una persona compara antes de decidir: pregunta por Pastelería y por
+   * Barismo en la misma conversación. Hasta ahora eso obligaba a abrirle un
+   * lead por programa, y en la pantalla de Clientes se leía como la misma
+   * persona repetida. Acá van todos juntos, en un solo lead.
+   *
+   * `productoId` sigue siendo el que se está vendiendo —el que cuenta en el
+   * Dashboard y en los montos— y está siempre también en esta lista.
+   */
+  programasInteres: number[];
   producto: string;
   categoria: ProductoCategoria | null;
   territorioId: number | null;

@@ -159,6 +159,28 @@ export async function responderFormulario(
     });
   }
 
+  /*
+   * Los demás programas que marcó.
+   *
+   * En una feria alguien dice que le interesan Pastelería y Barismo. El
+   * primero va en `producto_id` —es el que lleva la plata del trato— y los
+   * demás quedan anotados acá. Con eso, la próxima base que la traiga por
+   * Barismo cae sobre este mismo lead en vez de abrirle otro.
+   *
+   * No frena el alta si falla: la persona ya está guardada, que es lo que
+   * importa, y lo marcado queda igual en la nota y en la respuesta cruda.
+   */
+  if (alta.oportunidadId != null && lead.programas_interes.length > 0) {
+    await supabase
+      .from("oportunidad_programas")
+      .insert(
+        lead.programas_interes.map((producto_id) => ({
+          oportunidad_id: alta.oportunidadId as number,
+          producto_id,
+        })),
+      );
+  }
+
   const { error } = await supabase.from("formulario_respuestas").insert({
     formulario_id: formulario.id,
     cliente_id: alta.clienteId ?? null,

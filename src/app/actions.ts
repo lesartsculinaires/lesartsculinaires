@@ -79,6 +79,87 @@ export async function updateOportunidad(
 }
 
 /**
+ * Guardar por qué programas preguntó un lead.
+ *
+ * ---------------------------------------------------------------------------
+ * POR QUÉ ESTO NO TOCA `producto_id`
+ * ---------------------------------------------------------------------------
+ *
+ * Son dos preguntas distintas y se contestan por separado. `producto_id` es
+ * qué se está vendiendo —uno solo, el que cuenta en el Dashboard y en los
+ * montos— y se cambia con `updateOportunidad` como siempre. Esto es por qué
+ * preguntó la persona, que pueden ser varios y no mueve ninguna cuenta.
+ *
+ * Mezclarlos haría que marcar un interés más cambiara sin querer el programa
+ * de la venta, y con él el reporte del mes.
+ *
+ * ---------------------------------------------------------------------------
+ * Y POR QUÉ EL PRINCIPAL NO SE PUEDE SACAR
+ * ---------------------------------------------------------------------------
+ *
+ * Porque si se pudiera, un lead quedaría vendiendo Pastelería y diciendo que
+ * nunca preguntó por Pastelería. Se filtra acá y además lo sostiene un
+ * disparador en la base, que es el que vale cuando el lead se toca desde la
+ * importación, el formulario público o el webhook.
+ */
+export async function guardarProgramasDeInteres(
+  oportunidadId: number,
+  productoIds: readonly number[],
+): Promise<ActionResult> {
+  const supabase = await getServerClient();
+  if (!supabase) return NO_SESSION;
+
+  const { data: lead, error: errLead } = await supabase
+    .from("oportunidades")
+    .select("producto_id")
+    .eq("id", oportunidadId)
+    .maybeSingle();
+
+  if (errLead) return { ok: false, error: errLead.message };
+  if (!lead) return { ok: false, error: "Ese lead ya no existe. Recargá la página." };
+
+  const principal = (lead as { producto_id: number | null }).producto_id;
+  const quedan = [...new Set(productoIds.filter((id) => Number.isFinite(id)))];
+  if (principal != null && !quedan.includes(principal)) quedan.push(principal);
+
+  /*
+   * Se borra lo que sobra y se agrega lo que falta, en vez de borrar todo y
+   * volver a escribir. Borrar todo dejaría al lead sin ningún programa
+   * durante un instante, y en ese instante el disparador de la base y
+   * cualquier consulta que pase verían un lead que no preguntó por nada.
+   */
+  const { data: ahora, error: errAhora } = await supabase
+    .from("oportunidad_programas")
+    .select("producto_id")
+    .eq("oportunidad_id", oportunidadId);
+
+  if (errAhora) return { ok: false, error: errAhora.message };
+
+  const previos = ((ahora ?? []) as { producto_id: number }[]).map((r) => r.producto_id);
+  const sobran = previos.filter((id) => !quedan.includes(id));
+  const faltan = quedan.filter((id) => !previos.includes(id));
+
+  if (sobran.length > 0) {
+    const { error } = await supabase
+      .from("oportunidad_programas")
+      .delete()
+      .eq("oportunidad_id", oportunidadId)
+      .in("producto_id", sobran);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  if (faltan.length > 0) {
+    const { error } = await supabase
+      .from("oportunidad_programas")
+      .insert(faltan.map((producto_id) => ({ oportunidad_id: oportunidadId, producto_id })));
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}
+
+/**
  * Update the client record behind an opportunity.
  *
  * `clientes` is shared across opportunities, so renaming a client or fixing a
@@ -1075,10 +1156,23 @@ export async function importarClientes(
         .select(COLUMNAS_DE_LEAD + ", cliente_id")
         .in("cliente_id", ids);
 
-      for (const o of (data ?? []) as unknown as (LeadExistente & { cliente_id: number })[]) {
-        const suyos = yaTenian.get(o.cliente_id) ?? [];
+      const conProgramas = await conSusProgramas(
+        supabase,
+        (data ?? []) as unknown as LeadExistente[],
+      );
+      const clienteDe = new Map(
+        ((data ?? []) as unknown as { id: number; cliente_id: number }[]).map((o) => [
+          o.id,
+          o.cliente_id,
+        ]),
+      );
+
+      for (const o of conProgramas) {
+        const cliente = clienteDe.get(o.id);
+        if (cliente == null) continue;
+        const suyos = yaTenian.get(cliente) ?? [];
         suyos.push(o);
-        yaTenian.set(o.cliente_id, suyos);
+        yaTenian.set(cliente, suyos);
       }
     }
   }
@@ -1260,6 +1354,40 @@ export async function importarClientes(
  * se arregla. Al revés —dar todo por cerrado— abriría leads nuevos en silencio,
  * que es el problema que se está arreglando.
  */
+/**
+ * Colgarle a cada lead los programas por los que preguntó.
+ *
+ * Sin esto, `cualAbsorbe` sólo ve el programa principal y una base que trae a
+ * alguien por el segundo programa que consultó le abriría un lead nuevo —que
+ * es el duplicado que la escuela viene señalando—.
+ *
+ * Si la tabla no existe todavía —falta correr la migración— los leads vuelven
+ * tal cual y la regla se comporta como antes. Es preferible a no poder
+ * importar hasta que se corra el SQL.
+ */
+async function conSusProgramas(
+  supabase: SupabaseClient,
+  leads: LeadExistente[],
+): Promise<LeadExistente[]> {
+  if (leads.length === 0) return leads;
+
+  const { data, error } = await supabase
+    .from("oportunidad_programas")
+    .select("oportunidad_id, producto_id")
+    .in("oportunidad_id", leads.map((l) => l.id));
+
+  if (error) return leads;
+
+  const porLead = new Map<number, number[]>();
+  for (const r of (data ?? []) as { oportunidad_id: number; producto_id: number }[]) {
+    const suyos = porLead.get(r.oportunidad_id);
+    if (suyos) suyos.push(r.producto_id);
+    else porLead.set(r.oportunidad_id, [r.producto_id]);
+  }
+
+  return leads.map((l) => ({ ...l, programas: porLead.get(l.id) ?? [] }));
+}
+
 async function estadosFinales(supabase: SupabaseClient): Promise<Set<number>> {
   const { data } = await supabase.from("estados").select("id, es_final");
   return new Set(
@@ -1441,7 +1569,7 @@ export async function unificarCliente(
   if (errSuyas) return { ok: false, error: errSuyas.message };
 
   const { lead, porQueNo } = cualAbsorbe(
-    (suyas ?? []) as unknown as LeadExistente[],
+    await conSusProgramas(supabase, (suyas ?? []) as unknown as LeadExistente[]),
     entrante,
     await estadosFinales(supabase),
   );
