@@ -7,6 +7,7 @@
  */
 
 import { agrupar, type Persona, type Sospecha } from "@/lib/agrupar";
+import { agruparEnLeads } from "@/lib/crm/lotesImportacion";
 import type { ContactoConocido } from "@/lib/duplicados";
 import type { FilaImportada } from "@/lib/importar";
 
@@ -269,6 +270,37 @@ export function construirPlan({
 
   destinos.sort((a, b) => dondeVa(a) - dondeVa(b) || a.fila.linea - b.fila.linea);
 
+  /*
+   * Cuántos leads salen, que ya no es «uno por fila».
+   *
+   * Las filas de una misma persona se funden en un lead por programa, con la
+   * misma regla que aplica el servidor. Contar filas acá prometería trescientos
+   * leads y aparecerían doscientos ochenta, y la diferencia se leería como
+   * filas perdidas.
+   *
+   * Es un piso, no el número exacto: el servidor ve además los leads que esas
+   * personas ya tienen en el CRM y puede fundir con alguno de ésos, así que
+   * puede terminar creando menos. Lo que no puede es crear más.
+   */
+  const persona = new Map<Destino, number>();
+  personas.forEach((p, i) => {
+    for (const d of destinos) {
+      // `unificarCon` identifica a la persona cuando ya está en el CRM; el
+      // índice del grupo, cuando es nueva.
+      if (p.clienteId != null ? d.unificarCon === p.clienteId : d.grupo === `p${i}`) {
+        persona.set(d, i);
+      }
+    }
+  });
+
+  let suelta = personas.length;
+  const dePersona = destinos.map((d) => persona.get(d) ?? suelta++);
+
+  const leads = agruparEnLeads(
+    dePersona,
+    destinos.map((d) => d.fila.producto_id),
+  );
+
   return {
     personas,
     destinos,
@@ -276,7 +308,7 @@ export function construirPlan({
       validas: validas.length,
       conError,
       fichasNuevas,
-      oportunidades: destinos.length,
+      oportunidades: leads.length,
       seUnenAlCrm,
       seJuntanEntreSi,
       omitidas,

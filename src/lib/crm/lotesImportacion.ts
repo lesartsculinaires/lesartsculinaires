@@ -79,6 +79,104 @@ export function asignarClientes(
   });
 }
 
+/** Un lead del lote: las filas que lo forman y de quién es. */
+export interface LeadDelLote {
+  /**
+   * Índices de las filas que se funden en este lead, en el orden del archivo.
+   * La primera es la que manda; las demás llenan huecos.
+   */
+  filas: number[];
+  clienteId: number;
+  /** El programa que quedó. Null cuando ninguna fila trajo uno. */
+  productoId: number | null;
+}
+
+/**
+ * Cuántos leads salen de un lote, y qué filas van en cada uno.
+ *
+ * ============================================================================
+ * POR QUÉ ESTO NO ES «UNA OPORTUNIDAD POR FILA»
+ * ============================================================================
+ *
+ * Porque era eso, y por eso se duplicaban. La pantalla de importación ya junta
+ * bien a las personas —tres filas de la misma señora crean UNA ficha—, pero
+ * después se le colgaba una oportunidad a cada fila. La ficha quedaba una y los
+ * leads tres, y en la pantalla de Clientes, que lista leads, eso se ve como
+ * tres veces la misma persona. Es el mismo defecto que tenía el botón
+ * «Unificar», del otro lado del CRM.
+ *
+ * ============================================================================
+ * LA REGLA, QUE ES LA MISMA QUE EN `leadRepetido.ts`
+ * ============================================================================
+ *
+ * El programa es lo que separa un trato de otro:
+ *
+ *   MISMO PROGRAMA         una sola oportunidad, con los datos de todas las
+ *                          filas fundidos.
+ *
+ *   PROGRAMAS DISTINTOS    dos oportunidades, porque son dos ventas con dos
+ *                          montos. Juntarlas perdería una, que es peor que el
+ *                          duplicado que se está arreglando.
+ *
+ *   SIN PROGRAMA           no contradice a nadie: se suma al lead que haya. Es
+ *                          el caso más común —las planillas de contactos no
+ *                          traen esa columna— y si esto abriera un lead aparte
+ *                          no se habría arreglado nada.
+ *
+ * Se trabaja con índices y no con las filas para que la función no dependa de
+ * la forma de una fila de importación, que tiene quince campos y cambia.
+ */
+export function agruparEnLeads(
+  clientePorFila: readonly number[],
+  productoPorFila: readonly (number | null)[],
+): LeadDelLote[] {
+  /** Los leads que va juntando cada cliente, en el orden en que aparecen. */
+  const porCliente = new Map<number, LeadDelLote[]>();
+  const salida: LeadDelLote[] = [];
+
+  clientePorFila.forEach((clienteId, i) => {
+    const producto = productoPorFila[i] ?? null;
+    let suyos = porCliente.get(clienteId);
+    if (!suyos) {
+      suyos = [];
+      porCliente.set(clienteId, suyos);
+    }
+
+    if (producto == null) {
+      // Sin programa: al primero que tenga, y si no hay ninguno, uno nuevo.
+      if (suyos.length > 0) {
+        suyos[0].filas.push(i);
+        return;
+      }
+    } else {
+      const mismo = suyos.find((l) => l.productoId === producto);
+      if (mismo) {
+        mismo.filas.push(i);
+        return;
+      }
+      /*
+       * Un lead que todavía no tiene programa adopta el que llega.
+       *
+       * Es el orden inverso del caso de arriba y hace falta igual: si la
+       * primera fila de la persona venía sin programa y la segunda trae
+       * Panadería, son la misma inscripción escrita en dos renglones, no dos.
+       */
+      const huerfano = suyos.find((l) => l.productoId == null);
+      if (huerfano) {
+        huerfano.productoId = producto;
+        huerfano.filas.push(i);
+        return;
+      }
+    }
+
+    const nuevo: LeadDelLote = { filas: [i], clienteId, productoId: producto };
+    suyos.push(nuevo);
+    salida.push(nuevo);
+  });
+
+  return salida;
+}
+
 /**
  * Lo que hace falta de una fila para saber si esa persona ya está en el CRM.
  *

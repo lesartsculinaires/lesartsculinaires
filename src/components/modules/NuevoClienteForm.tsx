@@ -13,6 +13,7 @@ import {
   type ContactoConocido,
 } from "@/lib/duplicados";
 import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
+import { ETIQUETA_LEAD, type CampoLead } from "@/lib/leadRepetido";
 import { promocionesUsadas } from "@/lib/promociones";
 import { activos, esMenor } from "@/lib/types";
 import { T } from "@/lib/theme";
@@ -33,6 +34,21 @@ interface Props {
   onCerrar: () => void;
   /** Se llama al terminar, con el mensaje ya redactado para la pantalla. */
   onCreado: (mensaje: string) => void;
+}
+
+/**
+ * Cómo terminó la unificación.
+ *
+ * `etiqueta` va en paralelo a `conservados` y dice de dónde salió cada choque:
+ * los campos de la persona y los del trato se llaman distinto —«Correo» contra
+ * «Programa»— y se leen de dos diccionarios, así que hay que saber cuál usar
+ * para cada renglón.
+ */
+interface Resultado {
+  titulo: string;
+  detalle: string;
+  conservados: Choque[];
+  etiqueta: ("cliente" | "lead")[];
 }
 
 /** Hoy en formato ISO, en hora local — no UTC, que en El Salvador va un día atrás. */
@@ -179,8 +195,14 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
    * regañar a alguien por no haber hecho algo que estaba haciendo.
    */
   const [intentado, setIntentado] = useState(false);
-  /** Datos que la fusión conservó porque ya existían distintos. */
-  const [conservados, setConservados] = useState<Choque[] | null>(null);
+  /**
+   * Cómo terminó la unificación, para contarlo antes de cerrar.
+   *
+   * Reemplaza a la lista suelta de datos conservados que había acá: ahora lo
+   * primero que hay que decir es si quedó UN lead o dos, que es la pregunta
+   * que trajo todo esto. Los datos conservados son el segundo renglón.
+   */
+  const [resultado, setResultado] = useState<Resultado | null>(null);
 
   // Un contacto puede tener varias oportunidades; interesa una sola vez.
   const conocidos: ContactoConocido[] = useMemo(() => {
@@ -245,17 +267,45 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
       return;
     }
 
-    // Si algo no se pudo completar por estar ya ocupado, se muestra antes de
-    // cerrar: enterarse después, revisando la ficha, es peor.
-    if (r.choques && r.choques.length > 0) {
-      setConservados(r.choques);
+    /*
+     * Qué pasó de verdad, dicho como pasó.
+     *
+     * Antes esto decía siempre «se agregó con el código CRM-xxxx», que era la
+     * frase de crear una oportunidad nueva —porque eso era lo que hacía, y por
+     * eso quedaban dos leads—. Ahora hay dos finales distintos y se nota cuál
+     * fue: o quedó uno solo, o se abrió otro y se dice por qué.
+     */
+    const completado = [r.completados, r.completadosDelLead]
+      .filter((s) => s && s.length > 0)
+      .join(", ");
+
+    if (r.seJunto) {
+      setResultado({
+        titulo: `Quedó un solo lead: ${r.codigo ?? "el que ya tenía"}.`,
+        detalle: completado
+          ? `No se creó ninguno nuevo. Se completó ${completado}.`
+          : "No se creó ninguno nuevo; ya tenía todos estos datos.",
+        conservados: [...(r.choques ?? []), ...(r.choquesDelLead ?? [])],
+        etiqueta: [
+          ...(r.choques ?? []).map(() => "cliente" as const),
+          ...(r.choquesDelLead ?? []).map(() => "lead" as const),
+        ],
+      });
       return;
     }
 
-    onCreado(
-      `Se agregó al contacto existente con el código ${r.codigo}` +
-        (r.completados ? `, completando ${r.completados}.` : "."),
-    );
+    setResultado({
+      titulo: `Se abrió un lead aparte: ${r.codigo ?? "—"}.`,
+      detalle:
+        (r.porQueNo === "otro_programa"
+          ? "No se juntó con el que ya tenía porque es de otro programa, así que son dos tratos distintos."
+          : r.porQueNo === "todas_cerradas"
+            ? "Los leads que ya tenía están cerrados y no se tocan, así que éste va aparte."
+            : "El contacto no tenía ningún lead abierto.") +
+        (completado ? ` Del contacto se completó ${completado}.` : ""),
+      conservados: r.choques ?? [],
+      etiqueta: (r.choques ?? []).map(() => "cliente" as const),
+    });
   };
 
   const guardar = async (forzar = false) => {
@@ -525,7 +575,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             />
           </div>
 
-          {conservados && (
+          {resultado && (
             <div
               role="alert"
               style={{
@@ -537,23 +587,40 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 color: "#6B5200",
               }}
             >
-              <p style={{ margin: "0 0 7px", fontSize: 12.5, fontWeight: 600 }}>
-                Se unificó, pero algunos datos ya estaban ocupados y se conservaron.
+              <p style={{ margin: "0 0 5px", fontSize: 12.5, fontWeight: 600 }}>
+                {resultado.titulo}
               </p>
-              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55 }}>
-                {conservados.map((c) => (
-                  <li key={c.campo}>
-                    <strong>{ETIQUETA_CAMPO[c.campo]}</strong>: quedó «{c.actual}»; no se
-                    guardó «{c.entrante}».
-                  </li>
-                ))}
-              </ul>
-              <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
-                Si el dato nuevo es el correcto, cambialo desde la ficha del cliente.
+              <p style={{ margin: "0 0 7px", fontSize: 12.5, lineHeight: 1.5 }}>
+                {resultado.detalle}
               </p>
+
+              {resultado.conservados.length > 0 && (
+                <>
+                  <p style={{ margin: "0 0 5px", fontSize: 12.5, fontWeight: 600 }}>
+                    Datos que llegaron distintos y se conservaron como estaban:
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55 }}>
+                    {resultado.conservados.map((c, i) => (
+                      <li key={`${resultado.etiqueta[i]}-${c.campo}`}>
+                        <strong>
+                          {resultado.etiqueta[i] === "lead"
+                            ? ETIQUETA_LEAD[c.campo as unknown as CampoLead]
+                            : ETIQUETA_CAMPO[c.campo]}
+                        </strong>
+                        : quedó «{c.actual}»; no se guardó «{c.entrante}».
+                      </li>
+                    ))}
+                  </ul>
+                  <p style={{ margin: "8px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                    Quedaron anotados en la bitácora del lead. Si el dato nuevo es el
+                    correcto, cambialo desde la ficha.
+                  </p>
+                </>
+              )}
+
               <button
                 type="button"
-                onClick={() => onCreado("Oportunidad agregada al contacto existente.")}
+                onClick={() => onCreado(resultado.titulo)}
                 style={{
                   marginTop: 9,
                   height: 30,
