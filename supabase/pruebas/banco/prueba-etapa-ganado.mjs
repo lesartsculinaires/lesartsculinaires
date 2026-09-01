@@ -30,7 +30,10 @@ console.log("── dónde quedó la etapa ──");
   const orden = sql("select string_agg(nombre, ' · ' order by orden) from etapas");
   console.log(`   (${orden})`);
   es("AL FINAL DEL TABLERO", orden.endsWith("Ganado"), true);
-  es("y Cierre sigue antes", /Cierre · Ganado$/.test(orden), true);
+  // La penúltima se llamaba «Cierre» y ahora se llama «Perdido»: lo pidió la
+  // escuela. Lo que esta prueba cuida es que «Ganado» siga siendo la ÚLTIMA y
+  // que la de antes no haya desaparecido en el renombre.
+  es("y Perdido sigue antes", /Perdido · Ganado$/.test(orden), true);
 }
 
 console.log("\n── mover la tarjeta pone el estado ──");
@@ -58,8 +61,8 @@ console.log("\n── salir de Ganado no revierte nada ──");
 {
   poner("Pago", "Activo");
   poner("Ganado", null);
-  poner("Cierre", null);
-  es("sigue Ganado después de moverla", mirar(), "Cierre / Ganado / —");
+  poner("Perdido", null);
+  es("sigue Ganado después de moverla", mirar(), "Perdido / Ganado / —");
 }
 
 console.log("\n── un alta que nace en Ganado ──");
@@ -103,7 +106,7 @@ console.log("\n── y la columna se ve en el tablero ──");
   await p.waitForTimeout(2200);
   const t = (await p.locator("main").innerText()).replace(/\s+/g," ").trim();
   es("la columna Ganado está en el tablero", /Ganado/.test(t), true);
-  es("y sigue estando Cierre", /Cierre/.test(t), true);
+  es("y también la de Perdido", /Perdido/.test(t), true);
   es("sin errores en la página", errores, []);
   await p.screenshot({path: (process.env.SP ?? "/tmp") + "/pipeline-ganado.png"});
   await nav.close();

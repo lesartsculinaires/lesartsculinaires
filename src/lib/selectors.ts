@@ -96,9 +96,20 @@ export function estadoTone(nombre: string, accent: string): Tone {
   }
 }
 
-/** The stage colour: won and lost read apart from the rest of the funnel. */
+/**
+ * El color de una etapa: las dos puntas del embudo se leen aparte del resto.
+ *
+ * Acá decía que «Cierre» iba en verde. Esa etapa ahora se llama «Perdido» —lo
+ * pidió la escuela— y dejarlo como estaba pintaría de verde, el color de lo
+ * ganado, justo la columna de lo que no se vendió.
+ *
+ * Se decide por nombre y no por posición porque son dos ideas distintas:
+ * «Ganado» es la última del embudo y va en verde, «Perdido» está en el medio
+ * —donde estaba «Cierre»— y va en rojo. Lo demás es camino y va en el color de
+ * la casa.
+ */
 export const etapaTone = (nombre: string, accent: string): string =>
-  nombre === "Cierre" ? "#2F6B4F" : accent;
+  nombre === "Ganado" ? "#2F6B4F" : nombre === "Perdido" ? "#B85042" : accent;
 
 /** True when this state means the deal was lost. */
 export const esPerdida = (e: Estado): boolean =>

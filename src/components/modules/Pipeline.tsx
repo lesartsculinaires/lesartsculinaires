@@ -6,6 +6,7 @@ import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { cuantosPuestos, definirFiltros, pasa } from "@/lib/filtros";
 import { leadCount, money } from "@/lib/format";
+import { etapaTone } from "@/lib/selectors";
 import { T, soft } from "@/lib/theme";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type { Importacion, Oportunidad, OportunidadPatch } from "@/lib/types";
@@ -336,9 +337,20 @@ export function Pipeline({
       {etapas.map((etapa) => {
         const enEtapa = enTablero.filter((o) => o.etapaId === etapa.id);
         const isOver = over === etapa.id;
-        // The last stage in the funnel is the close.
-        const esCierre = etapa.orden === Math.max(...etapas.map((e) => e.orden));
-        const tone = esCierre ? "#2F6B4F" : accent;
+        /*
+         * El color de la columna.
+         *
+         * Acá se pintaba de verde la última etapa por `orden`, y alcanzaba
+         * mientras la última fuera la única especial. Ahora hay dos puntas que
+         * se leen distinto —«Ganado» en verde y «Perdido» en rojo— y la
+         * posición ya no las distingue: «Perdido» está en el medio del embudo,
+         * donde antes estaba «Cierre».
+         *
+         * `etapaTone` decide por nombre, y es la misma que usa el resto del
+         * CRM, así que la columna y la pastilla de la ficha no pueden
+         * discrepar.
+         */
+        const tone = etapaTone(etapa.nombre, accent);
 
         return (
           <div key={etapa.id}>

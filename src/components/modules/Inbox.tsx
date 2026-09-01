@@ -15,6 +15,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
 import { canalDe } from "@/lib/canales";
+import { coincideHilo, hayBusqueda } from "@/lib/buscarEnBandeja";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
 import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
@@ -164,19 +165,51 @@ export function Inbox({
   const cajaTexto = useRef<HTMLTextAreaElement | null>(null);
   /** El grabador está ocupando la fila del mensaje. */
   const [grabando, setGrabando] = useState(false);
+  /** Lo escrito en la barra de búsqueda de la lista de hilos. */
+  const [busqueda, setBusqueda] = useState("");
   const soft = softer(accent);
+
+  /**
+   * Cómo se llama en el CRM la persona de cada hilo.
+   *
+   * El nombre del CRM es por el que se busca más seguido: en la ficha dice
+   * «María José Retana Hernández» y su WhatsApp dice «Majo». Sin esto, buscar
+   * lo que se tiene a la vista no encontraría nada.
+   */
+  const nombreEnElCrm = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const o of oportunidades) if (!m.has(o.clienteId)) m.set(o.clienteId, o.cliente);
+    return (clienteId: number | null) => (clienteId == null ? null : m.get(clienteId) ?? null);
+  }, [oportunidades]);
+
+  const buscando = hayBusqueda(busqueda);
 
   const lista = useMemo(
     () =>
       conversaciones
         .filter(
           (c) =>
-            // `verTodas` ignora el archivado: es «todos los chats», que es
-            // distinto de las activas y de las archivadas por separado.
-            (verTodas || c.archivada === verArchivadas) &&
-            (!soloSinAsignar || c.vendedorId == null) &&
-            (porCanal == null || c.canal === porCanal) &&
-            (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)),
+            /*
+             * Con algo escrito, los filtros se apagan.
+             *
+             * La escuela lo pidió como «buscar un cliente en todos los
+             * canales», y son cuatro los filtros que estorban, no uno: red,
+             * etiqueta, archivadas y sin asignar. Si la búsqueda los
+             * respetara, no encontrar a alguien no querría decir que no está
+             * —querría decir que está detrás de un filtro que nadie recuerda
+             * haber puesto—, y eso es una respuesta falsa a una pregunta que
+             * se hace con el cliente al teléfono.
+             *
+             * Al borrar el texto, los filtros vuelven a mandar.
+             */
+            (buscando ||
+              // `verTodas` ignora el archivado: es «todos los chats», que es
+              // distinto de las activas y de las archivadas por separado.
+              ((verTodas || c.archivada === verArchivadas) &&
+                (!soloSinAsignar || c.vendedorId == null) &&
+                (porCanal == null || c.canal === porCanal) &&
+                (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
+            (!buscando || coincideHilo(c, busqueda, nombreEnElCrm(c.clienteId))),
         )
         /*
          * Las fijadas arriba, el resto por actividad.
@@ -191,7 +224,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porCanal, porEtiqueta],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porCanal, porEtiqueta, buscando, busqueda, nombreEnElCrm],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -773,6 +806,87 @@ export function Inbox({
           }
         />
       )}
+
+        {/*
+          La barra de búsqueda.
+
+          Va arriba de todo, y arriba de los filtros a propósito: mientras hay
+          algo escrito los filtros no se aplican —se busca en las cuatro redes,
+          en las archivadas y en las de cualquier asesora— y verla por encima
+          deja claro que manda ella.
+        */}
+        <div style={{ padding: "9px 12px 8px", borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ position: "relative" }}>
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 9,
+                top: "50%",
+                transform: "translateY(-50%)",
+                fontSize: 12,
+                color: T.faint,
+                pointerEvents: "none",
+              }}
+            >
+              🔍
+            </span>
+            <input
+              type="search"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por nombre, teléfono o mensaje"
+              aria-label="Buscar una conversación"
+              style={{
+                width: "100%",
+                height: 32,
+                boxSizing: "border-box",
+                padding: "0 30px 0 27px",
+                fontSize: 12.5,
+                borderRadius: 7,
+                border: `1px solid ${buscando ? accent : T.border}`,
+                background: T.surface,
+                color: T.ink,
+              }}
+            />
+            {buscando && (
+              <button
+                type="button"
+                onClick={() => setBusqueda("")}
+                aria-label="Limpiar la búsqueda"
+                title="Limpiar la búsqueda"
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: 14,
+                  lineHeight: 1,
+                  color: T.faint,
+                  padding: "2px 4px",
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {/*
+            Decir que se está buscando en todo.
+
+            Sin este renglón, alguien que tenía puesto el filtro «sin asignar»
+            ve aparecer hilos asignados y cree que el filtro se rompió. Con él,
+            entiende que la búsqueda es a propósito más amplia.
+          */}
+          {buscando && (
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: T.muted }}>
+              {lista.length === 0
+                ? "No hay ninguna conversación con eso."
+                : `${lista.length} ${lista.length === 1 ? "conversación" : "conversaciones"}, buscando en todas las redes y también en las archivadas.`}
+            </p>
+          )}
+        </div>
 
         {/*
           Las redes.
