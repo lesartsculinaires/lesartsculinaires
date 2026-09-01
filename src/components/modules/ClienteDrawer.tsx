@@ -245,14 +245,18 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditar(o.id, { fecha_cierre: oNull(v) }, { fechaCierre: oNull(v) }),
     },
+    // La venta cerrada va arriba y el valor de la oportunidad abajo, con la
+    // reserva en el medio. Es el orden que pidió la escuela: primero lo que
+    // de verdad entró, después lo que se había estimado. Nada más cambia de
+    // lugar; cada casilla sigue escribiendo su misma columna.
     {
-      clave: "valor_oportunidad",
-      label: "Valor oportunidad",
-      value: o.valor == null ? "" : String(o.valor),
+      clave: "venta_cerrada",
+      label: "Venta cerrada",
+      value: o.cerrada == null ? "" : String(o.cerrada),
       tipo: "monto" as const,
       requerido: false,
       guardar: (v: string) =>
-        onEditar(o.id, { valor_oportunidad: oMonto(v) }, { valor: oMonto(v) }),
+        onEditar(o.id, { venta_cerrada: oMonto(v) }, { cerrada: oMonto(v) }),
     },
     {
       clave: "reserva",
@@ -263,13 +267,13 @@ export function ClienteDrawer({
       guardar: (v: string) => onEditar(o.id, { reserva: oMonto(v) }, { reserva: oMonto(v) }),
     },
     {
-      clave: "venta_cerrada",
-      label: "Venta cerrada",
-      value: o.cerrada == null ? "" : String(o.cerrada),
+      clave: "valor_oportunidad",
+      label: "Valor oportunidad",
+      value: o.valor == null ? "" : String(o.valor),
       tipo: "monto" as const,
       requerido: false,
       guardar: (v: string) =>
-        onEditar(o.id, { venta_cerrada: oMonto(v) }, { cerrada: oMonto(v) }),
+        onEditar(o.id, { valor_oportunidad: oMonto(v) }, { valor: oMonto(v) }),
     },
     {
       clave: "descuento_promocion",
@@ -656,9 +660,11 @@ export function ClienteDrawer({
         }}
       >
         {[
-          { label: "Valor oportunidad", value: money(o.valor), bg: T.paper, color: undefined as string | undefined },
-          { label: "Reserva", value: money(o.reserva), bg: o.reserva ? soft : T.paper, color: o.reserva ? accent : T.faint },
+          // Mismo orden que las casillas de abajo. Verlas al revés dentro de la
+          // misma ficha haría dudar de cuál número es cuál.
           { label: "Venta cerrada", value: money(o.cerrada), bg: o.cerrada ? soft : T.paper, color: o.cerrada ? accent : T.faint },
+          { label: "Reserva", value: money(o.reserva), bg: o.reserva ? soft : T.paper, color: o.reserva ? accent : T.faint },
+          { label: "Valor oportunidad", value: money(o.valor), bg: T.paper, color: undefined as string | undefined },
           { label: "Descuento", value: o.descuento ?? "—", bg: T.paper, color: undefined },
         ].map((m) => (
           <div key={m.label} style={{ background: m.bg, borderRadius: 8, padding: "11px 12px" }}>
