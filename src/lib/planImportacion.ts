@@ -68,6 +68,21 @@ export interface Resumen {
   seJuntanEntreSi: number;
   /** Filas que no se importan. */
   omitidas: number;
+  /**
+   * Filas que caen sobre alguien que YA está en el CRM y le abren un lead
+   * nuevo igual, por ser de otro programa.
+   *
+   * Es correcto que pase —dos programas son dos ventas— pero hay que decirlo
+   * antes de importar y no después. La escuela lo pidió con estas palabras:
+   * «si una misma persona pregunta en distintas fechas distintos productos,
+   * ésa es otra razón por la que se pueden duplicar los leads cuando
+   * ingresamos nueva base de datos». No se duplican: se abre un segundo trato.
+   * Pero visto de golpe en la lista de Clientes se lee igual que un duplicado,
+   * y verlo acá antes evita la sorpresa.
+   */
+  abrenOtroLead: number;
+  /** A quiénes, para poder nombrarlas en vez de dar sólo un número. */
+  aQuienesAbrenOtro: string[];
   /** Grupos que se unieron pero cuyos nombres no se parecen. Mirar. */
   aRevisar: Persona[];
   /** Se llaman igual pero no comparten teléfono ni correo. No se unieron. */
@@ -102,6 +117,37 @@ export interface OpcionesPlan {
    * el parecido de los datos no alcanza para contradecirlo.
    */
   separados?: readonly string[];
+  /**
+   * Los programas de los leads ABIERTOS que ya tiene cada contacto del CRM.
+   *
+   * Con esto el resumen puede decir cuántas filas le van a abrir un segundo
+   * lead a alguien que ya está. Sin esto no cambia nada: el número sale en
+   * cero y la pantalla no muestra el aviso.
+   *
+   * Sólo los abiertos: un lead cerrado no recibe nada, así que una fila que
+   * cae en alguien que sólo tiene cerrados abre uno nuevo por otro motivo y no
+   * es el caso del que habla este aviso.
+   */
+  leadsAbiertos?: ReadonlyMap<number, readonly (number | null)[]>;
+}
+
+/**
+ * ¿Este lead que entra se suma a alguno que la persona ya tiene abierto?
+ *
+ * Es la misma regla que aplica el servidor en `cualAbsorbe`, escrita chiquita
+ * para la vista previa: sin programa no contradice a ninguno y se suma al que
+ * haya; con programa, se suma al del mismo programa o a uno que no tenga.
+ *
+ * Si acá dijera que sí y el servidor que no, la pantalla prometería un lead y
+ * entrarían dos. Por eso está probada contra los mismos casos.
+ */
+export function seSumaAUnoAbierto(
+  programaQueEntra: number | null,
+  programasAbiertos: readonly (number | null)[],
+): boolean {
+  if (programasAbiertos.length === 0) return false;
+  if (programaQueEntra == null) return true;
+  return programasAbiertos.some((p) => p == null || p === programaQueEntra);
 }
 
 export function construirPlan({
@@ -109,6 +155,7 @@ export function construirPlan({
   existentes,
   modo,
   separados = [],
+  leadsAbiertos,
 }: OpcionesPlan): Plan {
   const validas = filas.filter((f) => f.errores.length === 0);
   const conError = filas.length - validas.length;
@@ -139,6 +186,10 @@ export function construirPlan({
         seUnenAlCrm: 0,
         seJuntanEntreSi: 0,
         omitidas: 0,
+        // «Crear» mete todo tal cual y no se cuelga de nadie, así que no hay
+        // ningún contacto al que se le esté abriendo un lead de más.
+        abrenOtroLead: 0,
+        aQuienesAbrenOtro: [],
         aRevisar: [],
         sospechas,
       },
@@ -301,6 +352,30 @@ export function construirPlan({
     destinos.map((d) => d.fila.producto_id),
   );
 
+  /*
+   * A quiénes de las que YA están en el CRM les vamos a abrir un lead más.
+   *
+   * Se cuenta por lead y no por fila: dos filas del mismo programa son un solo
+   * lead nuevo, y decir «2» ahí sería contar dos veces la misma sorpresa.
+   */
+  const aQuienesAbrenOtro: string[] = [];
+  if (leadsAbiertos && leadsAbiertos.size > 0) {
+    for (const l of leads) {
+      const primera = destinos[l.filas[0]];
+      // Persona nueva: no le abre un segundo lead a nadie, le abre el primero.
+      if (primera?.unificarCon == null) continue;
+
+      const abiertos = leadsAbiertos.get(primera.unificarCon);
+      // Sin leads abiertos no es el caso del que habla el aviso: no hay un
+      // «segundo» lead, hay uno donde antes sólo había cerrados.
+      if (!abiertos || abiertos.length === 0) continue;
+
+      if (!seSumaAUnoAbierto(l.productoId, abiertos)) {
+        aQuienesAbrenOtro.push(primera.nombre);
+      }
+    }
+  }
+
   return {
     personas,
     destinos,
@@ -312,6 +387,8 @@ export function construirPlan({
       seUnenAlCrm,
       seJuntanEntreSi,
       omitidas,
+      abrenOtroLead: aQuienesAbrenOtro.length,
+      aQuienesAbrenOtro,
       aRevisar: personas.filter((p) => p.certeza === "revisar"),
       sospechas,
     },

@@ -731,6 +731,9 @@ export default function CrmApp({
               onEditar={actions.editar}
               onEditarCliente={actions.editarCliente}
               onClose={() => actions.select(null)}
+              // Saltar de un lead al otro de la misma persona sin cerrar la
+              // ficha: es lo que se hace apenas se ve que hay otro.
+              onIrALead={(id) => actions.select(id)}
             />
           )}
 

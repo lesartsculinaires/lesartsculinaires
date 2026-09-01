@@ -11,6 +11,7 @@ import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
 import { CanalesDelContacto } from "@/components/modules/CanalesDelContacto";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
+import { OtrosLeadsDelContacto } from "@/components/modules/OtrosLeadsDelContacto";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
@@ -60,6 +61,13 @@ interface Props {
     display: Partial<Oportunidad>,
   ) => void;
   onClose: () => void;
+  /**
+   * Saltar a otro lead de la misma persona.
+   *
+   * Va como prop y no como un `select` importado porque quién está mirando qué
+   * lo lleva `CrmApp`: la ficha no sabe abrirse sola.
+   */
+  onIrALead: (id: number) => void;
 }
 
 /** Text box → the value a nullable column should store. */
@@ -97,6 +105,7 @@ export function ClienteDrawer({
   onEditar,
   onEditarCliente,
   onClose,
+  onIrALead,
 }: Props) {
   const cat = useCatalogo();
   const soft = softer(accent);
@@ -588,6 +597,19 @@ export function ClienteDrawer({
       {o.clienteId != null && (
         <CanalesDelContacto clienteId={o.clienteId} accent={accent} />
       )}
+
+      {/*
+        Los otros leads de la misma persona.
+        Va acá, pegado a los canales, porque las dos cosas contestan la misma
+        pregunta —quién es esta persona, además de este trato— y porque queda
+        arriba de los campos editables: se lee antes de tocar nada.
+      */}
+      <OtrosLeadsDelContacto
+        oportunidad={o}
+        todas={todas}
+        accent={accent}
+        onIr={onIrALead}
+      />
 
       <BotonLinkRegistro
         oportunidadId={o.id}

@@ -36,7 +36,7 @@
  * Que ninguna clave de grupo aparezca en dos lotes. Esa es la condición: si se
  * cumple, el servidor no puede duplicar; si se rompe, duplica siempre.
  */
-const { construirPlan, enLotes } = await import(process.argv[2] ?? "/tmp/plan.mjs");
+const { construirPlan, enLotes, seSumaAUnoAbierto } = await import(process.argv[2] ?? "/tmp/plan.mjs");
 const { agruparEnLeads, colgarDeLosQueYaEstan, repartir } = await import(
   process.argv[3] ?? "/tmp/lotes.mjs"
 );
@@ -412,6 +412,44 @@ console.log("\n── el caso completo ──");
 console.log("\n── sin filas no revienta ──");
 {
   es("lote vacío", agruparEnLeads([], []), []);
+}
+
+/*
+ * ============================================================================
+ * AVISAR ANTES DE IMPORTAR QUE SE ABRE UN SEGUNDO LEAD
+ * ============================================================================
+ *
+ * La escuela lo planteó así: «si una misma persona pregunta en distintas
+ * fechas distintos productos, ésa es otra razón por la que se pueden duplicar
+ * los leads cuando ingresamos nueva base».
+ *
+ * No se duplican —dos programas son dos ventas, con dos montos— pero en la
+ * lista de Clientes esa persona pasa a ocupar dos filas y se lee como un
+ * repetido recién importado. El arreglo no es unirlos: es decirlo antes.
+ *
+ * Esta regla tiene que dar lo MISMO que `cualAbsorbe` del servidor. Si la
+ * pantalla dijera que se une y el servidor abriera otro, la vista previa
+ * prometería un lead y entrarían dos.
+ */
+console.log("\n── cuándo una fila se suma a un lead abierto ──");
+{
+  es("mismo programa: se suma", seSumaAUnoAbierto(3, [3]), true);
+  es("OTRO PROGRAMA: ABRE UNO NUEVO", seSumaAUnoAbierto(9, [3]), false);
+
+  // Sin programa no contradice a nadie: es el caso más común, porque las
+  // planillas de contactos no traen esa columna.
+  es("sin programa: se suma al que haya", seSumaAUnoAbierto(null, [3]), true);
+  // Y al revés: el lead abierto sin programa recibe al que sí lo trae.
+  es("el abierto sin programa recibe", seSumaAUnoAbierto(9, [null]), true);
+
+  // Con varios abiertos, alcanza con que uno sirva.
+  es("entre varios, basta con uno", seSumaAUnoAbierto(9, [3, 9]), true);
+  es("y si ninguno sirve, abre", seSumaAUnoAbierto(9, [3, 5]), false);
+
+  // Sin leads abiertos no hay a qué sumarse: se crea, pero eso no es el caso
+  // del aviso —no hay un «segundo» lead— y por eso da falso acá.
+  es("sin abiertos, no se suma a nada", seSumaAUnoAbierto(3, []), false);
+  es("ni sin programa", seSumaAUnoAbierto(null, []), false);
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);

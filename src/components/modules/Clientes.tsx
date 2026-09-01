@@ -9,6 +9,7 @@ import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
+import { cuantosPorCliente, posicionEntreLosSuyos } from "@/lib/otrosLeads";
 import { T, softer } from "@/lib/theme";
 import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
@@ -132,6 +133,17 @@ export function Clientes({
    * ordenar quinientas noventa y cinco que nadie va a ver.
    */
   const list = useMemo(() => ordenar(filtradas, orden), [filtradas, orden]);
+
+  /*
+   * Cuántos leads tiene cada persona, y qué número es cada uno.
+   *
+   * Sobre `oportunidades` y NO sobre `list`: si se contara sobre lo filtrado,
+   * buscar «Barismo» dejaría a alguien con dos leads mostrando «1 de 1», que es
+   * exactamente la afirmación falsa que esto viene a arreglar. El marcador
+   * habla de la persona, no de lo que se está mirando.
+   */
+  const leadsPorCliente = useMemo(() => cuantosPorCliente(oportunidades), [oportunidades]);
+  const posicionDelLead = useMemo(() => posicionEntreLosSuyos(oportunidades), [oportunidades]);
 
   const cambiarOrden = (columna: Columna) => {
     setOrden((antes) => siguienteOrden(antes, columna));
@@ -654,7 +666,39 @@ export function Clientes({
                         }}
                       />
                     </td>
-                    <td className="mono" style={td}>{o.codigo}</td>
+                    <td className="mono" style={td}>
+                      {o.codigo}
+                      {/*
+                        «1 de 2» debajo del código.
+
+                        Esta tabla lista leads, no personas, así que alguien que
+                        preguntó por dos programas ocupa dos filas y se lee como
+                        un repetido. Casi nunca lo es —son dos tratos, con dos
+                        montos— pero no había nada en la pantalla que lo dijera.
+
+                        Con la posición, las dos filas se leen como una persona
+                        con dos consultas. Sólo con «2 leads» en las dos se
+                        seguiría leyendo como un duplicado.
+                      */}
+                      {(() => {
+                        const cuantos = leadsPorCliente.get(o.clienteId) ?? 1;
+                        if (cuantos < 2) return null;
+                        return (
+                          <span
+                            title={`${o.cliente} tiene ${cuantos} leads: son programas distintos, no un duplicado.`}
+                            style={{
+                              display: "block",
+                              marginTop: 2,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: T.faint,
+                            }}
+                          >
+                            {posicionDelLead.get(o.id) ?? 1} de {cuantos}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="mono" style={td}>{fechaCorta(o.fechaRegistro)}</td>
                     <td style={{ ...td, padding: "9px 14px", color: T.ink }}>
                       <span style={{ display: "block", fontSize: 13 }}>{o.cliente}</span>

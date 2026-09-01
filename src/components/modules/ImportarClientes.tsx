@@ -128,9 +128,30 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
 
   // Quién es quién: junta las filas del archivo entre sí y contra el CRM, y
   // deja dicho qué se crea, qué se completa y qué se omite.
+  /*
+   * Los programas de los leads ABIERTOS de cada contacto.
+   *
+   * Con esto el resumen puede avisar antes de importar cuántas filas le van a
+   * abrir un segundo lead a alguien que ya está, por ser de otro programa. Es
+   * lo que la escuela vio como duplicado sin serlo.
+   *
+   * Los cerrados se dejan afuera: no reciben nada, así que no cambian la
+   * respuesta.
+   */
+  const leadsAbiertos = useMemo(() => {
+    const m = new Map<number, (number | null)[]>();
+    for (const o of oportunidades) {
+      if (o.estado === "Ganado" || o.estado === "Perdido") continue;
+      const suyos = m.get(o.clienteId);
+      if (suyos) suyos.push(o.productoId);
+      else m.set(o.clienteId, [o.productoId]);
+    }
+    return m;
+  }, [oportunidades]);
+
   const plan = useMemo(
-    () => construirPlan({ filas, existentes, modo: modoDuplicados, separados }),
-    [filas, existentes, modoDuplicados, separados],
+    () => construirPlan({ filas, existentes, modo: modoDuplicados, separados, leadsAbiertos }),
+    [filas, existentes, modoDuplicados, separados, leadsAbiertos],
   );
 
   const aImportar = plan.destinos;
@@ -641,7 +662,11 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     {([
                       ["omitir", "Omitirlas", "No se importan. La base queda como está."],
-                      ["unificar", "Unificarlas", "La oportunidad se agrega al contacto que ya existe y se completan sus datos vacíos. No se crea una ficha repetida."],
+                      // Antes decía «la oportunidad se agrega al contacto que ya
+                      // existe», y eso era exactamente el problema: agregaba una
+                      // oportunidad más y quedaban dos leads. Ahora completa el
+                      // que ya está, y la frase tiene que decir eso.
+                      ["unificar", "Unificarlas", "Se completa el lead que la persona ya tiene, sin crear otro. Sólo se abre uno nuevo si es de otro programa, porque ahí son dos ventas distintas."],
                       ["crear", "Crearlas igual", "Se crea un contacto nuevo. Sólo si de verdad son personas distintas."],
                     ] as const).map(([valor, titulo, detalle]) => (
                       <label
@@ -667,6 +692,44 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                       {duplicadas - seUnifican === 1 ? "fila se repite" : "filas se repiten"}{" "}
                       dentro del propio archivo, así que no hay con quién unificarlas: esas
                       se omiten.
+                    </p>
+                  )}
+
+                  {/*
+                    El aviso que faltaba.
+
+                    Una fila de alguien que ya está pero por OTRO programa no se
+                    une a su lead: le abre un segundo, y está bien que lo haga
+                    —son dos ventas, con dos montos—. Pero en la lista de
+                    Clientes esa persona pasa a ocupar dos filas, y eso se lee
+                    como un duplicado recién importado.
+
+                    Decirlo acá lo convierte en algo esperado en vez de una
+                    sorpresa. Y con los nombres, no sólo el número: así se puede
+                    mirar uno y confirmar que es lo que se quería.
+                  */}
+                  {modoDuplicados === "unificar" && plan.resumen.abrenOtroLead > 0 && (
+                    <p style={{ margin: "9px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                      Ojo: a{" "}
+                      <strong>
+                        {plan.resumen.abrenOtroLead}{" "}
+                        {plan.resumen.abrenOtroLead === 1 ? "persona" : "personas"}
+                      </strong>{" "}
+                      que ya {plan.resumen.abrenOtroLead === 1 ? "está" : "están"} en el CRM
+                      se le abre un lead nuevo igual, porque el programa es otro. No es un
+                      duplicado —son dos ventas distintas— pero {plan.resumen.abrenOtroLead === 1
+                        ? "va a aparecer"
+                        : "van a aparecer"}{" "}
+                      dos veces en la lista de Clientes, marcadas «1 de 2».
+                      {plan.resumen.aQuienesAbrenOtro.length > 0 && (
+                        <>
+                          {" "}
+                          {plan.resumen.aQuienesAbrenOtro.slice(0, 3).join(", ")}
+                          {plan.resumen.aQuienesAbrenOtro.length > 3 &&
+                            ` y ${plan.resumen.aQuienesAbrenOtro.length - 3} más`}
+                          .
+                        </>
+                      )}
                     </p>
                   )}
                 </div>
