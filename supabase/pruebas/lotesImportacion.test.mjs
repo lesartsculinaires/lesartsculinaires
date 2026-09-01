@@ -37,7 +37,7 @@
  * cumple, el servidor no puede duplicar; si se rompe, duplica siempre.
  */
 const { construirPlan, enLotes } = await import(process.argv[2] ?? "/tmp/plan.mjs");
-const { colgarDeLosQueYaEstan, repartir } = await import(
+const { agruparEnLeads, colgarDeLosQueYaEstan, repartir } = await import(
   process.argv[3] ?? "/tmp/lotes.mjs"
 );
 
@@ -337,6 +337,81 @@ console.log("\n── sin nada con qué comparar, no revienta ──");
     colgarDeLosQueYaEstan([carga({ nombre: "X", telefono: "001" })], CONOCIDOS)[0].unificar_con,
     null,
   );
+}
+
+/*
+ * ============================================================================
+ * DE FILAS A LEADS
+ * ============================================================================
+ *
+ * Lo de arriba prueba que la misma persona no cree dos FICHAS. Esto prueba lo
+ * que faltaba y que la escuela siguió viendo repetido: que tampoco cree dos
+ * LEADS. Una ficha con tres oportunidades iguales colgando se ve, en la
+ * pantalla de Clientes, exactamente igual que tres duplicados.
+ */
+console.log("\n── LA MISMA PERSONA DOS VECES ES UN LEAD ──");
+{
+  // Dos filas, el mismo cliente, ninguna con programa. Es el caso de Yolanda.
+  const leads = agruparEnLeads([7, 7], [null, null]);
+  es("QUEDA UNO SOLO", leads.length, 1);
+  es("con las dos filas adentro", leads[0].filas, [0, 1]);
+  es("y de su dueño", leads[0].clienteId, 7);
+}
+
+console.log("\n── pero dos programas son dos leads ──");
+{
+  /*
+   * La regla que protege lo contrario. Panadería y Pastelería son dos ventas
+   * con dos montos: juntarlas perdería una, que es peor que el duplicado.
+   */
+  const leads = agruparEnLeads([7, 7], [3, 9]);
+  es("no se juntan", leads.length, 2);
+  es(
+    "cada uno con su programa",
+    leads.map((l) => l.productoId),
+    [3, 9],
+  );
+}
+
+console.log("\n── una fila sin programa se suma a la que hay ──");
+{
+  // El caso más común: las planillas de contactos no traen esa columna.
+  const leads = agruparEnLeads([7, 7], [3, null]);
+  es("un solo lead", leads.length, 1);
+  es("que conserva el programa", leads[0].productoId, 3);
+  es("con las dos filas", leads[0].filas, [0, 1]);
+
+  // Y al revés, que es el orden en que suele venir: primero la fila floja.
+  const alReves = agruparEnLeads([7, 7], [null, 3]);
+  es("y al revés también", alReves.length, 1);
+  es("ADOPTANDO EL PROGRAMA QUE LLEGÓ", alReves[0].productoId, 3);
+}
+
+console.log("\n── personas distintas no se mezclan nunca ──");
+{
+  const leads = agruparEnLeads([7, 8, 7], [null, null, null]);
+  es("son dos leads", leads.length, 2);
+  es("las dos filas de la 7 juntas", leads[0].filas, [0, 2]);
+  es("y la de la 8 aparte", leads[1].filas, [1]);
+}
+
+console.log("\n── el caso completo ──");
+{
+  /*
+   * Una persona con Panadería, Pastelería y dos filas sin programa. Las sin
+   * programa no se pueden repartir sin adivinar, así que van a la primera:
+   * como sólo llenan huecos, lo peor que pueden hacer es completar un dato en
+   * el lead de al lado. Abrirles uno propio devolvería el duplicado.
+   */
+  const leads = agruparEnLeads([1, 1, 1, 1], [3, 9, null, null]);
+  es("dos leads, no cuatro", leads.length, 2);
+  es("el de Panadería se lleva las sueltas", leads[0].filas, [0, 2, 3]);
+  es("y el de Pastelería queda solo", leads[1].filas, [1]);
+}
+
+console.log("\n── sin filas no revienta ──");
+{
+  es("lote vacío", agruparEnLeads([], []), []);
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);

@@ -15,6 +15,7 @@ import {
   type DatosLead,
 } from "@/lib/crm/altaLead";
 import {
+  agruparEnLeads,
   asignarClientes,
   colgarDeLosQueYaEstan,
   repartir,
@@ -28,6 +29,17 @@ import {
   type Choque,
   type DatosCliente,
 } from "@/lib/fusion";
+import {
+  COLUMNAS_DE_LEAD,
+  ETIQUETA_LEAD,
+  cualAbsorbe,
+  fundirEntrantes,
+  listarCamposDeLead,
+  planificarLead,
+  type CampoLead,
+  type LeadExistente,
+  type PorQueNoSeJunta,
+} from "@/lib/leadRepetido";
 import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import { COOKIE_MODULO } from "@/lib/ultimoModulo";
@@ -710,8 +722,15 @@ interface OportunidadCreada {
 async function guardarNotasDeLaBase(
   supabase: SupabaseClient,
   filas: readonly FilaParaImportar[],
-  codigos: readonly string[],
-  creadas: readonly OportunidadCreada[],
+  /*
+   * De qué oportunidad es cada fila.
+   *
+   * Lo arma quien importa y llega hecho. Antes se resolvía acá por posición
+   * —la fila `i` era la oportunidad `i`—, y eso dejó de ser cierto cuando
+   * varias filas empezaron a fundirse en un solo lead: la nota de la segunda
+   * fila de una persona habría ido a parar al lead de otra.
+   */
+  porFila: ReadonlyMap<number, number>,
 ): Promise<void> {
   const conNota = filas
     .map((f, i) => ({ texto: (f.nota ?? "").trim(), i }))
@@ -719,32 +738,31 @@ async function guardarNotasDeLaBase(
   if (conNota.length === 0) return;
 
   /*
-   * De qué fila es cada oportunidad.
+   * Una nota por lead, aunque hayan venido varias filas.
    *
-   * Lo normal es que vuelvan todas y en orden, y ahí el índice alcanza. Pero
-   * pueden volver menos: quien importa ve sólo las oportunidades que le tocan,
-   * así que una asesora subiendo una base repartida entre varios recibiría de
-   * vuelta nada más las suyas. En ese caso se busca por código, que es lo
-   * único que sigue siendo de la fila.
+   * Desde que las filas de una misma persona se funden en un solo lead, dos
+   * filas con comentario caen en la misma oportunidad. Insertarlas por
+   * separado dejaría dos notas —lo que no se pierde está bien— pero rompería
+   * lo de abajo, que busca el texto por oportunidad para armar el
+   * recordatorio: se quedaría con una y agendaría por la que no era.
+   *
+   * Se juntan con un punto medio, y las repetidas se dicen una sola vez: la
+   * misma planilla suele traer el mismo comentario en las dos filas.
    */
-  const porFila = new Map<number, number>();
-  if (creadas.length === filas.length) {
-    creadas.forEach((op, i) => porFila.set(i, op.id));
-  } else {
-    const porCodigo = new Map(creadas.map((op) => [op.codigo ?? "", op.id]));
-    codigos.forEach((c, i) => {
-      const id = porCodigo.get(c);
-      if (id != null) porFila.set(i, id);
-    });
+  const textos = new Map<number, string[]>();
+  for (const x of conNota) {
+    const id = porFila.get(x.i);
+    if (id == null) continue;
+    const previos = textos.get(id) ?? [];
+    if (!previos.includes(x.texto)) previos.push(x.texto);
+    textos.set(id, previos);
   }
 
-  const aInsertar = conNota
-    .filter((x) => porFila.has(x.i))
-    .map((x) => ({
-      oportunidad_id: porFila.get(x.i) as number,
-      nota: x.texto,
-      origen: "importacion",
-    }));
+  const aInsertar = [...textos].map(([oportunidad_id, partes]) => ({
+    oportunidad_id,
+    nota: partes.join(" · "),
+    origen: "importacion",
+  }));
   if (aInsertar.length === 0) return;
 
   const { data: notas, error } = await supabase
@@ -778,8 +796,15 @@ async function guardarNotasDeLaBase(
 export interface ResultadoImportacion {
   ok: boolean;
   error: string | null;
-  /** Cuántos clientes con su oportunidad quedaron creados. */
+  /** Cuántos leads quedaron creados. Puede ser menos que las filas enviadas. */
   creados: number;
+  /**
+   * Filas que no crearon nada porque cayeron sobre un lead que ya existía.
+   *
+   * Se cuenta aparte para que la pantalla lo pueda decir: sin esto, «300 filas
+   * → 280 leads» parece que se perdieron veinte.
+   */
+  juntados?: number;
   /** Códigos asignados, para que la pantalla los muestre. */
   desde: string | null;
   hasta: string | null;
@@ -805,6 +830,15 @@ export async function importarClientes(
    * un archivo grande aparecería como varias bases distintas.
    */
   importacionId?: number | null,
+  /**
+   * Qué hacer con lo repetido, tal como lo eligió la pantalla.
+   *
+   * Hace falta acá porque el servidor vuelve a cotejar contra la tabla de
+   * clientes entera —ve fichas que la pantalla no ve— y ese cotejo tiene que
+   * apagarse cuando alguien eligió «crear». Si no, la salida de emergencia no
+   * existiría: se pediría meter la fila tal cual y el servidor la uniría igual.
+   */
+  modo: "unificar" | "omitir" | "crear" = "unificar",
 ): Promise<ResultadoImportacion> {
   const vacio = { creados: 0, desde: null, hasta: null };
 
@@ -877,26 +911,28 @@ export async function importarClientes(
    * dejar de importar una base de trescientas filas por no poder cotejar sería
    * peor que arriesgar un repetido que se fusiona después.
    */
-  const { data: yaEstan, error: errConocidos } = await traerTodo<{
-    id: number;
-    nombre: string | null;
-    telefono: string | null;
-    correo: string | null;
-  }>(() => supabase.from("clientes").select("id, nombre, telefono, correo").order("id"));
+  if (modo !== "crear") {
+    const { data: yaEstan, error: errConocidos } = await traerTodo<{
+      id: number;
+      nombre: string | null;
+      telefono: string | null;
+      correo: string | null;
+    }>(() => supabase.from("clientes").select("id, nombre, telefono, correo").order("id"));
 
-  if (errConocidos) {
-    console.error("[importar] no se pudo cotejar contra los contactos que ya están", errConocidos);
+    if (errConocidos) {
+      console.error("[importar] no se pudo cotejar contra los contactos que ya están", errConocidos);
+    }
+
+    filas = colgarDeLosQueYaEstan(
+      filas,
+      yaEstan.map((c) => ({
+        clienteId: Number(c.id),
+        nombre: String(c.nombre ?? ""),
+        telefono: c.telefono,
+        correo: c.correo,
+      })),
+    );
   }
-
-  filas = colgarDeLosQueYaEstan(
-    filas,
-    yaEstan.map((c) => ({
-      clienteId: Number(c.id),
-      nombre: String(c.nombre ?? ""),
-      telefono: c.telefono,
-      correo: c.correo,
-    })),
-  );
 
   // Las filas que se unifican no crean cliente: usan el que ya existe. Las
   // demás se juntan por `grupo`, de modo que tres filas de la misma persona
@@ -1000,22 +1036,96 @@ export async function importarClientes(
   const base = numeroDeCodigo(previo?.codigo ?? null);
   const codigo = (i: number) => `CRM-${String(base + 1 + i).padStart(4, "0")}`;
 
+  /*
+   * ---------------------------------------------------------------------
+   * DE FILAS A LEADS
+   * ---------------------------------------------------------------------
+   *
+   * Acá estaba el duplicado de la importación: se insertaba una oportunidad
+   * por FILA. Tres filas de la misma persona creaban una ficha —eso andaba— y
+   * tres leads colgando de ella, que es lo que la escuela veía repetido.
+   *
+   * Ahora las filas se juntan primero en leads por persona y programa, se
+   * funden sus datos, y recién entonces se escribe. Una fila que se une a un
+   * contacto que ya estaba puede además caer sobre un lead que ese contacto ya
+   * tenía, y ahí no se crea nada: se completa el que hay.
+   */
+  const leads =
+    modo === "crear"
+      ? // «Crear» es meter todo tal cual: una fila, un lead, sin juntar nada.
+        // Hoy en ese modo cada fila es además su propia ficha, así que agrupar
+        // no juntaría nada igual; se dice explícito para que siga siendo
+        // cierto si mañana la pantalla manda grupos en este modo.
+        filas.map((f, i) => ({ filas: [i], clienteId: clientes[i].id, productoId: f.producto_id }))
+      : agruparEnLeads(
+          clientes.map((c) => c.id),
+          filas.map((f) => f.producto_id),
+        );
+
+  const comoSeLee = await comoSeLeeUnLead(supabase);
+  const finales = await estadosFinales(supabase);
+
+  /** Los leads que ya tienen los contactos a los que se une este lote. */
+  const yaTenian = new Map<number, LeadExistente[]>();
+  {
+    const ids = [...new Set(filas.map((f) => f.unificar_con).filter((v): v is number => v != null))];
+    if (ids.length > 0) {
+      const { data } = await supabase
+        .from("oportunidades")
+        .select(COLUMNAS_DE_LEAD + ", cliente_id")
+        .in("cliente_id", ids);
+
+      for (const o of (data ?? []) as unknown as (LeadExistente & { cliente_id: number })[]) {
+        const suyos = yaTenian.get(o.cliente_id) ?? [];
+        suyos.push(o);
+        yaTenian.set(o.cliente_id, suyos);
+      }
+    }
+  }
+
+  const comoEntrante = (f: FilaParaImportar) => ({
+    vendedor_id: f.vendedor_id,
+    producto_id: f.producto_id,
+    territorio_id: f.territorio_id,
+    canal_id: f.canal_id,
+    etapa_id: f.etapa_id,
+    estado_id: f.estado_id,
+    fecha_registro: f.fecha_registro,
+    fecha_cierre: f.fecha_cierre,
+    valor_oportunidad: f.valor_oportunidad,
+    descuento_promocion: f.descuento_promocion,
+  });
+
+  /** Para cada lead: sus valores fundidos y con qué se junta, si con algo. */
+  const resueltos = leads.map((l) => {
+    const fundido = fundirEntrantes(
+      l.filas.map((i) => comoEntrante(filas[i])),
+      comoSeLee,
+    );
+    const { lead: absorbe } = cualAbsorbe(
+      yaTenian.get(l.clienteId) ?? [],
+      fundido.valores,
+      finales,
+    );
+    return { ...l, ...fundido, absorbe };
+  });
+
+  /** De qué fila salió cada lead que hay que crear, para el `venta_cerrada`. */
+  const aCrear = resueltos.filter((r) => r.absorbe == null);
+
   const { data: opsCreadas, error: errOps } = await supabase.from("oportunidades").insert(
-    filas.map((f, i) => ({
+    aCrear.map((r, i) => ({
       codigo: codigo(i),
       importacion_id: baseId,
-      cliente_id: clientes[i].id,
-      vendedor_id: f.vendedor_id,
-      producto_id: f.producto_id,
-      territorio_id: f.territorio_id,
-      canal_id: f.canal_id,
-      etapa_id: f.etapa_id,
-      estado_id: f.estado_id,
-      fecha_registro: f.fecha_registro,
-      fecha_cierre: f.fecha_cierre,
-      valor_oportunidad: f.valor_oportunidad,
-      venta_cerrada: f.venta_cerrada,
-      descuento_promocion: f.descuento_promocion,
+      cliente_id: r.clienteId,
+      ...r.valores,
+      // No se funde con las reglas de los otros campos: es plata cobrada, y lo
+      // que corresponde entre varias filas del mismo trato es la suma, no la
+      // primera. Un lote sin esta columna deja null, como antes.
+      venta_cerrada: r.filas.reduce<number | null>((a, i) => {
+        const v = filas[i].venta_cerrada;
+        return v == null ? a : (a ?? 0) + v;
+      }, null),
     })),
   )
     // Hacen falta los ids para colgarles la nota. Se piden en el mismo viaje:
@@ -1038,12 +1148,74 @@ export async function importarClientes(
     return { ok: false, error: errOps.message, ...vacio };
   }
 
-  await guardarNotasDeLaBase(
-    supabase,
-    filas,
-    filas.map((_, i) => codigo(i)),
-    (opsCreadas ?? []) as unknown as OportunidadCreada[],
-  );
+  /*
+   * Los leads que se juntaron con uno que el contacto ya tenía.
+   *
+   * No crean nada: completan los huecos del que está. Va de a uno porque cada
+   * parche es distinto, y son pocos comparados con el lote.
+   */
+  for (const r of resueltos) {
+    if (!r.absorbe) continue;
+
+    const p = planificarLead(r.absorbe, r.valores, comoSeLee);
+    if (Object.keys(p.parche).length > 0) {
+      await supabase.from("oportunidades").update(p.parche).eq("id", r.absorbe.id);
+    }
+
+    // Lo que llegó distinto no se aplica, pero tampoco se tira: queda en la
+    // bitácora del lead para que alguien lo mire.
+    const choques = [...r.choques, ...p.choques];
+    if (choques.length > 0) {
+      await supabase.from("oportunidad_notas").insert({
+        oportunidad_id: r.absorbe.id,
+        origen: "importacion",
+        nota:
+          "Una base importada traía este mismo lead. Datos que llegaron distintos " +
+          "y no se aplicaron: " +
+          choques
+            .map(
+              (c) =>
+                `${ETIQUETA_LEAD[c.campo as unknown as CampoLead]}: llegó «${c.entrante}», ` +
+                `quedó «${c.actual}»`,
+            )
+            .join("; ") +
+          ".",
+      });
+    }
+  }
+
+  /*
+   * De qué oportunidad es cada fila del archivo.
+   *
+   * Antes era la posición: la fila `i` tenía la oportunidad `i`. Ya no, porque
+   * varias filas pueden terminar en el mismo lead y otras en uno que ya
+   * existía. Sin este mapa, las notas del archivo se colgarían del lead
+   * equivocado.
+   */
+  const porFila = new Map<number, number>();
+  {
+    const creadasEnOrden = (opsCreadas ?? []) as unknown as OportunidadCreada[];
+    const porCodigo = new Map(creadasEnOrden.map((op) => [op.codigo ?? "", op.id]));
+
+    aCrear.forEach((r, i) => {
+      // Lo normal es que vuelvan todas y en orden. Pueden volver menos: quien
+      // importa ve sólo las oportunidades que le tocan, así que una asesora
+      // subiendo una base repartida entre varios recibiría de vuelta nada más
+      // las suyas. Ahí se busca por código, que es lo único que sigue siendo
+      // de la fila.
+      const id =
+        creadasEnOrden.length === aCrear.length
+          ? creadasEnOrden[i].id
+          : porCodigo.get(codigo(i));
+      if (id != null) for (const f of r.filas) porFila.set(f, id);
+    });
+
+    for (const r of resueltos) {
+      if (r.absorbe) for (const f of r.filas) porFila.set(f, r.absorbe.id);
+    }
+  }
+
+  await guardarNotasDeLaBase(supabase, filas, porFila);
 
   // El contador de la base se acumula lote a lote.
   if (baseId != null) {
@@ -1063,9 +1235,14 @@ export async function importarClientes(
   return {
     ok: true,
     error: null,
-    creados: filas.length,
-    desde: codigo(0),
-    hasta: codigo(filas.length - 1),
+    // Los leads que quedaron, no las filas que entraron: son distintos desde
+    // que las filas repetidas de una persona se funden, y decir «300 creados»
+    // cuando quedaron 280 leads es la clase de número que después no cuadra
+    // con lo que se ve en la pantalla.
+    creados: aCrear.length,
+    juntados: resueltos.length - aCrear.length,
+    desde: aCrear.length > 0 ? codigo(0) : null,
+    hasta: aCrear.length > 0 ? codigo(aCrear.length - 1) : null,
     importacionId: baseId,
   };
 }
@@ -1073,22 +1250,122 @@ export async function importarClientes(
 
 // ----------------------------------------------------------------- unificar
 
-export interface ResultadoFusion extends ActionResult {
-  /** Código de la oportunidad que se agregó al contacto existente. */
-  codigo?: string;
-  /** Resumen en castellano de qué se completó. */
-  completados?: string;
-  /** Datos distintos que se conservaron como estaban. */
-  choques?: Choque[];
+/**
+ * Los estados que dan por terminada una oportunidad: Ganado y Perdido.
+ *
+ * Se lee de la tabla y no de una lista de nombres acá porque la escuela puede
+ * agregar estados desde el CRM, y `es_final` es la casilla que marca cuando lo
+ * hace. Si la consulta falla, el conjunto vuelve vacío: nada se considera
+ * cerrado y el peor caso es que se junte con un lead que no debía, que se ve y
+ * se arregla. Al revés —dar todo por cerrado— abriría leads nuevos en silencio,
+ * que es el problema que se está arreglando.
+ */
+async function estadosFinales(supabase: SupabaseClient): Promise<Set<number>> {
+  const { data } = await supabase.from("estados").select("id, es_final");
+  return new Set(
+    ((data ?? []) as { id: number; es_final: boolean }[])
+      .filter((e) => e.es_final)
+      .map((e) => e.id),
+  );
 }
 
 /**
- * Sumar una oportunidad a un contacto que ya existe, en vez de duplicarlo.
+ * Cómo se lee cada campo del lead en la pantalla, y el orden de las etapas.
  *
- * El esquema ya contempla que una persona tenga varias oportunidades —una por
- * programa que le interesa—, así que unificar no es un parche: es usar el
- * modelo como corresponde. Lo que se agrega es la oportunidad; del cliente
- * sólo se completan los campos que estaban vacíos.
+ * Los choques se muestran con lo que la persona ve —«Programa: quedó
+ * Panadería»— y no con el id de la fila, que no le dice nada a nadie. Y el
+ * orden de las etapas es lo que deja saber si la que entra va más adelante que
+ * la que está, para no devolver un lead de Propuesta al principio del embudo.
+ */
+async function comoSeLeeUnLead(supabase: SupabaseClient): Promise<{
+  ordenDeEtapa: Map<number, number>;
+  comoSeLee: (campo: CampoLead, valor: unknown) => string;
+}> {
+  const [vend, prod, terr, can, eta, est] = await Promise.all([
+    supabase.from("vendedores").select("id, nombre"),
+    supabase.from("productos").select("id, nombre"),
+    supabase.from("territorios").select("id, nombre"),
+    supabase.from("canales").select("id, nombre"),
+    supabase.from("etapas").select("id, nombre, orden"),
+    supabase.from("estados").select("id, nombre"),
+  ]);
+
+  const mapa = (r: { data: unknown }): Map<number, string> =>
+    new Map(
+      ((r.data ?? []) as { id: number; nombre: string | null }[]).map((x) => [
+        x.id,
+        x.nombre ?? String(x.id),
+      ]),
+    );
+
+  const nombres: Partial<Record<CampoLead, Map<number, string>>> = {
+    vendedor_id: mapa(vend),
+    producto_id: mapa(prod),
+    territorio_id: mapa(terr),
+    canal_id: mapa(can),
+    etapa_id: mapa(eta),
+    estado_id: mapa(est),
+  };
+
+  return {
+    ordenDeEtapa: new Map(
+      ((eta.data ?? []) as { id: number; orden: number | null }[]).map((e) => [
+        e.id,
+        e.orden ?? 0,
+      ]),
+    ),
+    comoSeLee: (campo, valor) =>
+      nombres[campo]?.get(Number(valor)) ?? String(valor),
+  };
+}
+
+export interface ResultadoFusion extends ActionResult {
+  /** Código de la oportunidad donde quedó todo. */
+  codigo?: string;
+  /**
+   * Se juntó con un lead que ya existía en vez de abrir uno nuevo.
+   *
+   * Es lo que la pantalla necesita para no decir «se creó» cuando no se creó
+   * nada: el mensaje cambia entero según esto.
+   */
+  seJunto?: boolean;
+  /** Cuando hubo que abrir uno nuevo igual, por qué. */
+  porQueNo?: PorQueNoSeJunta | null;
+  /** Resumen en castellano de qué se completó de la persona. */
+  completados?: string;
+  /** Y qué se completó del lead. */
+  completadosDelLead?: string;
+  /** Datos distintos que se conservaron como estaban. */
+  choques?: Choque[];
+  /** Los del lead, con sus propias etiquetas. */
+  choquesDelLead?: Choque[];
+}
+
+/**
+ * Juntar un alta con un contacto que ya existe, sin dejar dos leads.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE HACÍA ANTES, Y POR QUÉ ESTABA MAL
+ * ---------------------------------------------------------------------------
+ *
+ * Unificaba la ficha de la persona —eso siempre anduvo— y después abría una
+ * oportunidad NUEVA. Quedaba una ficha con dos leads colgando, que en la
+ * pantalla de Clientes se ve idéntico a un duplicado porque lo es: CRM-2625 y
+ * CRM-2626, la misma persona, el mismo día, los dos vacíos.
+ *
+ * El comentario que estaba acá decía que el esquema contempla varias
+ * oportunidades por persona, y es cierto —una por programa—, pero eso no
+ * convierte en dos tratos a la misma carga hecha dos veces.
+ *
+ * ---------------------------------------------------------------------------
+ * LO QUE HACE AHORA
+ * ---------------------------------------------------------------------------
+ *
+ * Le pregunta a `leadRepetido.ts` cuál de los leads que ya tiene el contacto
+ * se queda con éste. Si hay uno, lo completa y no crea nada: queda uno solo.
+ * Si no lo hay —porque el que tiene es de otro programa, o porque ya está
+ * cerrado— abre uno nuevo como antes, pero devuelve el motivo para que la
+ * pantalla lo pueda decir en vez de dejar aparecer un código de la nada.
  */
 export async function unificarCliente(
   clienteId: number,
@@ -1139,6 +1416,88 @@ export async function unificarCliente(
     if (error) return { ok: false, error: error.message };
   }
 
+  /*
+   * Acá está el arreglo del duplicado: antes de abrir nada, se mira si alguno
+   * de los leads que ya tiene el contacto es este mismo lead.
+   */
+  const entrante = {
+    vendedor_id: datos.vendedor_id,
+    producto_id: datos.producto_id,
+    territorio_id: datos.territorio_id,
+    canal_id: datos.canal_id,
+    etapa_id: datos.etapa_id,
+    estado_id: datos.estado_id,
+    fecha_registro: datos.fecha_registro,
+    fecha_cierre: datos.fecha_cierre,
+    valor_oportunidad: datos.valor_oportunidad,
+    descuento_promocion: datos.descuento_promocion,
+  };
+
+  const { data: suyas, error: errSuyas } = await supabase
+    .from("oportunidades")
+    .select(COLUMNAS_DE_LEAD)
+    .eq("cliente_id", clienteId);
+
+  if (errSuyas) return { ok: false, error: errSuyas.message };
+
+  const { lead, porQueNo } = cualAbsorbe(
+    (suyas ?? []) as unknown as LeadExistente[],
+    entrante,
+    await estadosFinales(supabase),
+  );
+
+  if (lead) {
+    const p = planificarLead(lead, entrante, await comoSeLeeUnLead(supabase));
+
+    if (Object.keys(p.parche).length > 0) {
+      const { error } = await supabase
+        .from("oportunidades")
+        .update(p.parche)
+        .eq("id", lead.id);
+      if (error) return { ok: false, error: error.message };
+    }
+
+    await anotarCanal(supabase, clienteId, datos.canal_id, datos.fecha_registro);
+
+    /*
+     * Lo que no entró queda escrito en la bitácora del lead.
+     *
+     * Es la otra mitad de «que la información adicional se agregue»: un dato
+     * que choca no se aplica —completar nunca borra— pero tampoco se tira. Se
+     * anota, y queda en la ficha para que alguien lo mire.
+     */
+    if (p.choques.length > 0) {
+      await supabase.from("oportunidad_notas").insert({
+        oportunidad_id: lead.id,
+        origen: "unificacion",
+        nota:
+          "Se unificó otra carga de este mismo lead. Datos que llegaron distintos " +
+          "y no se aplicaron: " +
+          p.choques
+            .map(
+              (c) =>
+                `${ETIQUETA_LEAD[c.campo as unknown as CampoLead]}: llegó «${c.entrante}», ` +
+                `quedó «${c.actual}»`,
+            )
+            .join("; ") +
+          ".",
+      });
+    }
+
+    revalidatePath("/");
+    return {
+      ok: true,
+      error: null,
+      codigo: lead.codigo ?? undefined,
+      seJunto: true,
+      porQueNo: null,
+      completados: listarCampos(plan.completados),
+      completadosDelLead: listarCamposDeLead(p.completados),
+      choques: plan.choques,
+      choquesDelLead: p.choques,
+    };
+  }
+
   // Mismo cálculo de código y mismo reintento que el alta normal.
   let ultimoError = "No se pudo asignar un código.";
 
@@ -1183,6 +1542,10 @@ export async function unificarCliente(
         ok: true,
         error: null,
         codigo: (op as { codigo: string | null } | null)?.codigo ?? codigo,
+        // Se abrió uno nuevo: la pantalla tiene que decir por qué, o el código
+        // que aparece se lee como el duplicado que se venía de arreglar.
+        seJunto: false,
+        porQueNo,
         completados: listarCampos(plan.completados),
         choques: plan.choques,
       };

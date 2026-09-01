@@ -278,13 +278,19 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     });
 
     let creados = 0;
+    /** Filas que no crearon un lead porque cayeron sobre uno que ya existía. */
+    let juntados = 0;
     let primero: string | null = null;
     let ultimo: string | null = null;
     // Todos los lotes del mismo archivo cuelgan de una sola base.
     let base: number | null = null;
 
     for (const lote of enLotes(aImportar, LOTE).map((l) => l.map(cargaDe))) {
-      const r = await importarClientes(lote, archivo ?? "sin nombre", base);
+      // El modo viaja porque el servidor vuelve a cotejar contra la base
+      // entera —ve cosas que la pantalla no ve— y tiene que saber cuándo NO
+      // hacerlo: «crear» es la salida de emergencia para meter algo tal cual,
+      // y si el servidor unificara igual, esa salida no existiría.
+      const r = await importarClientes(lote, archivo ?? "sin nombre", base, modoDuplicados);
 
       if (!r.ok) {
         setProgreso(null);
@@ -297,8 +303,9 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       }
 
       creados += r.creados;
+      juntados += r.juntados ?? 0;
       primero = primero ?? r.desde;
-      ultimo = r.hasta;
+      ultimo = r.hasta ?? ultimo;
       base = base ?? r.importacionId ?? null;
       setProgreso({ hechas: creados, total: aImportar.length });
     }

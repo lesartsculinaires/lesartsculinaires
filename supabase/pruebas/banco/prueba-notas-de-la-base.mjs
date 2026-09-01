@@ -241,14 +241,33 @@ console.log("\n── LA FICHA QUE YA ESTABA SE COMPLETÓ ──");
     sql(`select telefono from public.clientes where nombre = '${VIEJA}';`),
     "70880001",
   );
+  /*
+   * ------------------------------------------------------------------------
+   * ACÁ SE ESPERABAN DOS LEADS, Y ESOS DOS ERAN EL DUPLICADO
+   * ------------------------------------------------------------------------
+   *
+   * Esta persona ya tenía un lead sin programa, y este archivo —una planilla
+   * de contactos, sin columna de programa— le traía otro igual. Antes se le
+   * colgaba un segundo lead, y en la pantalla de Clientes, que lista leads,
+   * aparecía dos veces. Es lo que la escuela reportó: «todavía se siguen
+   * duplicando leads a pesar de que di la opción de unificar».
+   *
+   * Ahora la fila cae sobre el lead que ya tenía y lo completa. Sigue siendo
+   * uno, y todo lo de arriba —el correo, el cumpleaños— entró igual: esa es la
+   * parte que había que conservar y que sigue probada tal cual.
+   *
+   * Si el archivo trajera un PROGRAMA distinto al del lead viejo sí se abriría
+   * un segundo, porque serían dos ventas. Ese caso lo cubre
+   * `prueba-unificar-un-solo-lead.mjs`.
+   */
   es(
-    "y se le sumó el lead de esta base, sin perder el que tenía",
+    "Y SIGUE SIENDO UN SOLO LEAD, COMPLETADO",
     sql(`
       select count(*) from public.oportunidades o
         join public.clientes c on c.id = o.cliente_id
        where c.nombre = '${VIEJA}';
     `),
-    "2",
+    "1",
   );
 }
 

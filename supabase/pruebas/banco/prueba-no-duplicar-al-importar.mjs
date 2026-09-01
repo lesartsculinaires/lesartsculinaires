@@ -166,7 +166,26 @@ console.log("\n── segunda carga del MISMO archivo ──");
   await foto("2-segunda");
 
   es("SIGUEN SIENDO CINCO FICHAS", fichas(), "5");
-  es("y ahora tienen dos leads cada una", leads(), "10");
+
+  /*
+   * ------------------------------------------------------------------------
+   * ACÁ ESTA PRUEBA ESPERABA DIEZ, Y ESTABA ESPERANDO EL PROBLEMA
+   * ------------------------------------------------------------------------
+   *
+   * La ficha no se duplicaba —eso era lo que se estaba arreglando entonces—
+   * pero cada carga le colgaba un lead más. Con dos cargas del mismo archivo
+   * quedaban cinco personas con dos leads cada una, y la pantalla de Clientes,
+   * que lista leads y no fichas, seguía mostrando a cada una dos veces.
+   *
+   * Para quien mira el CRM eso ES el duplicado, y es lo que la escuela siguió
+   * viendo: «todavía se siguen duplicando leads a pesar de que di la opción de
+   * unificar». Que la ficha fuera una sola no se notaba desde ninguna pantalla.
+   *
+   * Ahora la segunda carga cae sobre el lead que ya existe y lo completa. Cinco
+   * personas, cinco leads: subir el mismo archivo dos veces no deja rastro, que
+   * es lo que uno espera de volver a subir lo mismo.
+   */
+  es("Y SIGUEN SIENDO CINCO LEADS", leads(), "5");
 }
 
 console.log("\n── y el caso del vendedor que la agregó recién ──");
