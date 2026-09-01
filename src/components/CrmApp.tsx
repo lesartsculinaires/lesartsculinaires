@@ -11,6 +11,7 @@ import { Clientes } from "@/components/modules/Clientes";
 import { Dashboard } from "@/components/modules/Dashboard";
 import { Equipos } from "@/components/modules/Equipos";
 import { Formularios } from "@/components/modules/Formularios";
+import { Envios } from "@/components/modules/Envios";
 import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
@@ -47,6 +48,7 @@ import { MOD_BASES, MOD_FORMULARIOS, permisosDeModulo } from "@/lib/permisos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
+import type { Envio } from "@/lib/supabase/envios";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type {
   Accesos,
@@ -98,6 +100,10 @@ interface Props {
   formularios: FormularioDeFeria[];
   /** Las tablas de formularios todavía no existen. */
   faltaMigracionFormularios: boolean;
+  /** Los envíos masivos, con sus resultados ya contados. */
+  envios: Envio[];
+  /** Las tablas de envíos todavía no existen. */
+  faltaMigracionEnvios: boolean;
   /**
    * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
    * estuvo esta persona, o el modo elegido en el login la primera vez.
@@ -132,6 +138,8 @@ export default function CrmApp({
   actividadSinVer,
   formularios,
   faltaMigracionFormularios,
+  envios,
+  faltaMigracionEnvios,
   modInicial,
   loadError,
 }: Props) {
@@ -514,6 +522,16 @@ export default function CrmApp({
               onSelect={actions.select}
               onLimpiar={actions.limpiarFiltros}
               onRefresh={() => router.refresh()}
+              plantillas={plantillas.plantillas}
+            />
+          )}
+
+          {mod === "Envíos" && (
+            <Envios
+              envios={envios}
+              faltaMigracion={faltaMigracionEnvios}
+              accent={accent}
+              onRefrescar={() => router.refresh()}
             />
           )}
 

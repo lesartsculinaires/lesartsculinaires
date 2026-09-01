@@ -6,6 +6,7 @@ import { MODULOS, MOD_USUARIOS } from "@/lib/modulos";
 import { COOKIE_MODULO, moduloInicial } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
+import { fetchEnvios } from "@/lib/supabase/envios";
 import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
 import { listarEtiquetas } from "@/app/etiquetas-actions";
@@ -35,7 +36,7 @@ export default async function Page({
   const user = await getUser();
   if (!user) redirect("/login");
 
-  const [ops, catalogo, eventos, accesos, bases, inbox, etiquetas, plantillas, pospuestos, formularios, seguimientos] =
+  const [ops, catalogo, eventos, accesos, bases, inbox, etiquetas, plantillas, pospuestos, formularios, seguimientos, envios] =
     await Promise.all([
       fetchOportunidades(),
       fetchCatalogo(),
@@ -48,6 +49,7 @@ export default async function Page({
       fetchPospuestos(),
       fetchFormularios(),
       fetchSeguimientos(),
+      fetchEnvios(),
     ]);
 
   // Para el globito de la barra. Va suelto y no dentro del `Promise.all`
@@ -103,6 +105,8 @@ export default async function Page({
       faltaMigracionSeguimientos={seguimientos.faltaMigracion}
       formularios={formularios.data}
       faltaMigracionFormularios={formularios.faltaMigracion}
+      envios={envios.envios}
+      faltaMigracionEnvios={envios.faltaMigracion}
       puedeCrearCuentas={hayServiceRole()}
       modInicial={modulo}
       loadError={loadError}

@@ -11,6 +11,7 @@
 export const MODULOS = [
   "Dashboard",
   "Inbox",
+  "Envíos",
   "Clientes",
   "Bases",
   "Pipeline",
