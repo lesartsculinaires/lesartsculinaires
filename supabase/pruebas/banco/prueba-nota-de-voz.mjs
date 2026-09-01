@@ -256,7 +256,9 @@ console.log("\n── pasadas las 24 horas no se ofrece ──");
   await foto("6-ventana-cerrada");
 
   const t = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
-  es("la bandeja avisa de la ventana", /Pasaron más de 24 horas/.test(t), true);
+  // El aviso lo arma ahora el canal: WhatsApp dice sus 24 horas, Instagram
+  // diría siete días. Se comprueba la frase que no depende de la red.
+  es("la bandeja avisa de la ventana", /Se pasó la ventana para contestarle por WhatsApp/.test(t), true);
   es("EL MICRÓFONO ESTÁ APAGADO", await micro().isDisabled(), true);
 }
 
