@@ -451,6 +451,16 @@ export interface Conversacion {
   silenciada: boolean;
   /** open / pending / resolved: abierto, esperando algo, o terminado. */
   estado: string;
+  /**
+   * Por dónde entró: whatsapp, instagram, messenger, tiktok.
+   *
+   * La columna existe desde la primera migración de la bandeja, con WhatsApp
+   * por omisión. Se empieza a leer ahora porque la pantalla ya distingue: qué
+   * se puede hacer en cada hilo depende del canal —Instagram no tiene
+   * plantillas, su ventana dura siete días— y suponerlo llevaría a ofrecer
+   * botones que fallan.
+   */
+  canal: string;
   /** Nulo = sin asignar, que es lo que el asesor resuelve. */
   vendedorId: number | null;
   /** Etiquetas puestas a mano. No incluye la etapa ni el estado de la venta. */

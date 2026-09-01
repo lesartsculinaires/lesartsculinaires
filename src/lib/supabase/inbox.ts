@@ -47,7 +47,7 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       .from("conversaciones")
       .select(
         "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
-          "sin_leer, archivada, estado, vendedor_id" +
+          "sin_leer, archivada, estado, vendedor_id, canal" +
           (conMarcas ? ", no_leida, fijada, silenciada" : ""),
       )
       .order("ultimo_mensaje_en", { ascending: false })
@@ -167,6 +167,9 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       fijada: Boolean(c.fijada),
       silenciada: Boolean(c.silenciada),
       estado: String(c.estado ?? "open"),
+      // Por omisión WhatsApp: es lo que dice la columna y lo que son todas
+      // las conversaciones que hay hasta hoy.
+      canal: String(c.canal ?? "whatsapp"),
       vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
       etiquetaIds: etiquetasPorConv.get(Number(c.id)) ?? [],
     })),

@@ -179,10 +179,18 @@ console.log("\n── se elige la plantilla y se aprieta Mandar ──");
    * En el banco no hay token de WhatsApp, así que la respuesta correcta es
    * decir que no está configurado. Un botón muerto no diría nada.
    */
+  /*
+   * Las dos respuestas correctas, según cómo esté el banco.
+   *
+   * Sin token en `.env.local`, el CRM dice que WhatsApp no está configurado.
+   * Con un token de mentira, llega hasta Meta y vuelve con que es inválido.
+   * Las dos son «pasó algo y se dijo», que es lo que se está probando; lo que
+   * no puede pasar es que el botón se apriete y no diga nada.
+   */
   const despues = await texto();
   es(
-    "APRETARLO HACE ALGO: contesta que falta configurar WhatsApp",
-    /no está configurado en el servidor/i.test(despues),
+    "APRETARLO HACE ALGO: contesta por qué no salió",
+    /no está configurado en el servidor|token de WhatsApp venció o es inválido/i.test(despues),
     true,
   );
   await foto("2-despues-de-mandar");

@@ -14,7 +14,9 @@ import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
+import { canalDe } from "@/lib/canales";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
+import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
 import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
@@ -86,8 +88,12 @@ function horasDesdeEntrante(msgs: Mensaje[]): number | null {
 /**
  * ¿Se le puede escribir libremente a esta conversación?
  *
- * WhatsApp abre una ventana de 24 horas cada vez que la persona escribe. Hay
- * dos formas de estar afuera y las dos importan:
+ * Cada red abre una ventana cada vez que la persona escribe, y NO duran lo
+ * mismo: WhatsApp da 24 horas, Instagram y Messenger dan siete días cuando
+ * contesta una persona de verdad —que en esta bandeja es siempre—. Cuánto dura
+ * cada una está en `@/lib/canales`; acá sólo se cuenta.
+ *
+ * Hay dos formas de estar afuera y las dos importan:
  *
  *   escribió hace más de 24 horas   la ventana se cerró.
  *   nunca escribió                  nunca se abrió. Es el caso de un chat que
@@ -97,9 +103,9 @@ function horasDesdeEntrante(msgs: Mensaje[]): number | null {
  * que contar, y tratar eso como «ventana abierta» mostraría el cuadro de texto
  * para que el mensaje falle recién en Meta, con un error que no explica nada.
  */
-function ventanaAbierta(msgs: Mensaje[]): boolean {
+function ventanaAbierta(msgs: Mensaje[], horasDeLaVentana: number): boolean {
   const horas = horasDesdeEntrante(msgs);
-  return horas != null && horas < 24;
+  return horas != null && horas < horasDeLaVentana;
 }
 
 /**
@@ -128,6 +134,8 @@ export function Inbox({
   const [soloSinAsignar, setSoloSinAsignar] = useState(false);
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
+  /** Null = todas las redes juntas, que es como se trabaja hoy. */
+  const [porCanal, setPorCanal] = useState<string | null>(null);
   const [nuevoChat, setNuevoChat] = useState(false);
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
@@ -167,6 +175,7 @@ export function Inbox({
             // distinto de las activas y de las archivadas por separado.
             (verTodas || c.archivada === verArchivadas) &&
             (!soloSinAsignar || c.vendedorId == null) &&
+            (porCanal == null || c.canal === porCanal) &&
             (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)),
         )
         /*
@@ -182,8 +191,21 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porEtiqueta],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porCanal, porEtiqueta],
   );
+
+  /** Cuántos hilos hay de cada red, para la fila de pestañas. */
+  const porRed = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of conversaciones) {
+      if (c.archivada) continue;
+      m[c.canal] = (m[c.canal] ?? 0) + 1;
+    }
+    return m;
+  }, [conversaciones]);
+
+  /** Hay conversaciones de más de una red: recién ahí sirve marcarlas. */
+  const variasRedes = Object.keys(porRed).length > 1;
 
   const sinAsignar = useMemo(
     () => conversaciones.filter((c) => !c.archivada && c.vendedorId == null).length,
@@ -271,7 +293,16 @@ export function Inbox({
     return suyas.find((o) => o.fechaCierre == null) ?? suyas[0] ?? null;
   }, [oportunidades, actual]);
 
-  const ventanaCerrada = !ventanaAbierta(delHilo);
+  /**
+   * De qué red es el hilo abierto.
+   *
+   * De acá sale todo lo que cambia entre una red y otra: cuánto dura la
+   * ventana, si hay plantillas para reabrir, si se puede reaccionar. Antes eso
+   * estaba escrito fijo en esta pantalla, que es lo que había que sacar para
+   * que agregar Instagram no sea rehacerla.
+   */
+  const canal = canalDe(actual?.canal);
+  const ventanaCerrada = !ventanaAbierta(delHilo, canal.ventanaHoras);
   /** Nunca escribió: el aviso tiene que decir otra cosa. */
   const nuncaEscribio = horasDesdeEntrante(delHilo) == null;
 
@@ -743,6 +774,22 @@ export function Inbox({
         />
       )}
 
+        {/*
+          Las redes.
+
+          Va arriba de las etiquetas porque es un corte más grueso: primero por
+          dónde llegó, después cómo está marcada. Y a diferencia de las
+          etiquetas, esta fila aparece siempre —aunque hoy todo sea WhatsApp—
+          porque además de filtrar dice qué redes están previstas y qué le
+          falta a cada una.
+        */}
+        <CanalesDeLaBandeja
+          cuantos={porRed}
+          elegido={porCanal}
+          accent={accent}
+          onElegir={setPorCanal}
+        />
+
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
             de controles vacía en una bandeja recién estrenada es ruido. */}
         {etiquetas.some((e) => e.activa) && (
@@ -847,6 +894,22 @@ export function Inbox({
                     {c.fijada && (
                       <span title="Fijada arriba" style={{ fontSize: 10, flexShrink: 0 }}>
                         📌
+                      </span>
+                    )}
+                    {/*
+                      La red, sólo cuando hay más de una.
+
+                      Hoy todo es WhatsApp: poner el mismo icono verde en las
+                      cuarenta filas no distinguiría nada y sería ruido. En
+                      cuanto entre la primera conversación de Instagram, la
+                      marca aparece sola en todas.
+                    */}
+                    {variasRedes && (
+                      <span
+                        title={canalDe(c.canal).nombre}
+                        style={{ fontSize: 10, flexShrink: 0 }}
+                      >
+                        {canalDe(c.canal).icono}
                       </span>
                     )}
                     <span
@@ -962,8 +1025,23 @@ export function Inbox({
                 <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>
                   {actual.nombrePerfil ?? actual.telefono}
                 </span>
-                <span className="mono" style={{ fontSize: 11, color: T.faint }}>
-                  +{actual.telefono}
+                <span
+                  className="mono"
+                  style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.faint }}
+                >
+                  {/*
+                    Acá sí va siempre, aunque haya una sola red.
+
+                    Es donde se decide qué escribir, y qué se puede escribir
+                    depende de por dónde sale: las plantillas son de WhatsApp,
+                    la ventana de Instagram dura siete días. Saber por dónde se
+                    está contestando no puede depender de mirar el ícono de la
+                    fila de la izquierda.
+                  */}
+                  <span aria-hidden>{canal.icono}</span>
+                  <span style={{ color: canal.color, fontWeight: 600 }}>{canal.nombre}</span>
+                  <span>·</span>
+                  <span>+{actual.telefono}</span>
                 </span>
               </span>
 
@@ -1157,13 +1235,15 @@ export function Inbox({
                           Adentro heredarían su fondo —el azul de los nuestros—
                           y un emoji sobre azul se lee como parte del mensaje.
                           Afuera se leen como lo que son: algo puesto encima. */}
-                      <ReaccionesDelMensaje
-                        mensaje={m}
-                        mio={mio}
-                        accent={accent}
-                        ventanaAbierta={!ventanaCerrada}
-                        onCambio={onRefrescar}
-                      />
+                      {canal.puede.reaccionar === "si" && (
+                        <ReaccionesDelMensaje
+                          mensaje={m}
+                          mio={mio}
+                          accent={accent}
+                          ventanaAbierta={!ventanaCerrada}
+                          onCambio={onRefrescar}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -1210,17 +1290,49 @@ export function Inbox({
                   borderTop: `1px solid ${T.border}`,
                 }}
               >
+                {/*
+                  El aviso se arma con lo que dice el canal, no con «24 horas»
+                  escrito acá. En Instagram y Messenger la ventana dura siete
+                  días, y un aviso que dijera 24 horas haría dejar de contestar
+                  conversaciones que todavía se pueden contestar.
+                */}
                 <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
-                  {nuncaEscribio
-                    ? "Esta persona todavía no le escribió al WhatsApp de la escuela. Hasta que lo haga, WhatsApp sólo deja llegarle con una plantilla aprobada."
-                    : "Pasaron más de 24 horas desde su último mensaje. WhatsApp ya no deja escribirle libremente hasta que vuelva a escribir."}
+                  {nuncaEscribio ? (
+                    /*
+                     * Nunca escribió: no hay ventana que se haya pasado.
+                     *
+                     * Se dice aparte y no con la explicación de la ventana,
+                     * que habla del «último mensaje de la persona»: no hay
+                     * ninguno. Sonaría a que se dejó pasar un plazo cuando en
+                     * realidad nunca empezó a correr.
+                     */
+                    <>
+                      Esta persona todavía no le escribió al {canal.nombre} de la escuela.{" "}
+                      {canal.puede.plantillas === "si"
+                        ? "Hasta que lo haga, sólo deja llegarle con una plantilla aprobada."
+                        : `Hasta que lo haga no hay forma de escribirle: ${canal.nombre} no deja escribir primero.`}
+                    </>
+                  ) : (
+                    <>
+                      Se pasó la ventana para contestarle por {canal.nombre}. {canal.laVentana}
+                    </>
+                  )}
                 </p>
-                <MandarPlantilla
-                  conversacionId={actual.id}
-                  plantillas={plantillas}
-                  accent={accent}
-                  onEnviado={onRefrescar}
-                />
+
+                {/*
+                  Las plantillas son de WhatsApp y de nadie más.
+                  Instagram y Messenger no tienen nada equivalente: pasada la
+                  ventana no hay forma de escribir primero, hay que esperar.
+                  Ofrecer el selector ahí sería ofrecer algo que no existe.
+                */}
+                {canal.puede.plantillas === "si" && (
+                  <MandarPlantilla
+                    conversacionId={actual.id}
+                    plantillas={plantillas}
+                    accent={accent}
+                    onEnviado={onRefrescar}
+                  />
+                )}
               </div>
             )}
 
@@ -1314,17 +1426,23 @@ export function Inbox({
                   nota de voz no lleva pie —Meta no lo acepta en un audio— y
                   dejarlo a la vista invitaría a escribir algo que no va a
                   salir. */}
-              <GrabadorDeVoz
-                // Cambiar de conversación desmonta el grabador, y eso suelta el
-                // micrófono. Sin esto se seguiría grabando sobre un hilo que ya
-                // no está a la vista, y la nota saldría al cliente equivocado.
-                key={actual.id}
-                conversacionId={actual.id}
-                accent={accent}
-                disabled={!puedeResponder || nota || ventanaCerrada}
-                onEnviado={onRefrescar}
-                onOcupado={setGrabando}
-              />
+              {/* Sólo en las redes que aceptan audio. Hoy es WhatsApp; el día
+                  que se conecte Instagram, su ficha dice si acepta y esto se
+                  enciende solo. */}
+              {canal.puede.notaDeVoz === "si" && (
+                <GrabadorDeVoz
+                  // Cambiar de conversación desmonta el grabador, y eso suelta
+                  // el micrófono. Sin esto se seguiría grabando sobre un hilo
+                  // que ya no está a la vista, y la nota saldría al cliente
+                  // equivocado.
+                  key={actual.id}
+                  conversacionId={actual.id}
+                  accent={accent}
+                  disabled={!puedeResponder || nota || ventanaCerrada}
+                  onEnviado={onRefrescar}
+                  onOcupado={setGrabando}
+                />
+              )}
 
               {!grabando && (
               <textarea
