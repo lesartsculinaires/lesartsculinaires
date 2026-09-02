@@ -164,15 +164,57 @@ export function paraMeta(telefono: string): string {
 /**
  * Cuántos se pueden mandar todavía hoy.
  *
- * Meta le pone a cada número un tope de destinatarios únicos cada 24 horas
- * —1.000, 10.000 o 100.000 según el nivel— y pasarse no da un error claro: los
- * mensajes empiezan a fallar y la calificación baja. Se deja un margen para lo
- * que salga por el chat normal, que también cuenta.
+ * Meta le pone a cada número un tope de conversaciones iniciadas por la
+ * empresa cada 24 horas, y pasarse no da un error claro: los mensajes empiezan
+ * a fallar y la calificación del número baja.
+ *
+ * El margen es para lo que salga por el chat normal, que cuenta contra el
+ * mismo tope: una asesora contestando por la bandeja también inicia
+ * conversaciones. Sin él, una campaña que usara el tope entero dejaría al
+ * equipo sin poder escribirle a nadie el resto del día.
  */
 export const MARGEN = 0.9;
 
 export const cuantosQuedan = (tope: number, mandadosHoy: number): number =>
   Math.max(0, Math.floor(tope * MARGEN) - mandadosHoy);
 
-/** Los niveles que usa Meta, para poder elegirlo en la pantalla. */
-export const NIVELES = [1000, 10000, 100000] as const;
+/**
+ * La escalera de Meta, tal como la muestra hoy WhatsApp Manager.
+ *
+ * Acá decía `[1000, 10000, 100000]`, y el 1.000 ya no existe: Meta cambió ese
+ * escalón a 2.000. La escuela está justo en ése, así que la lista vieja no
+ * tenía su nivel y cualquier cuenta que se hiciera con ella iba a quedar corta
+ * a la mitad.
+ */
+export const NIVELES = [250, 2000, 10_000, 100_000] as const;
+
+/**
+ * En qué escalón está el número de la escuela.
+ *
+ * ---------------------------------------------------------------------------
+ * POR QUÉ ES UNA CONSTANTE Y NO UNA VARIABLE DE ENTORNO
+ * ---------------------------------------------------------------------------
+ *
+ * Porque no es un secreto —es un número público de WhatsApp Manager— y porque
+ * ponerlo en Netlify obligaría a tocar la configuración del despliegue para
+ * cambiar un dato que se lee de una pantalla. Acá se ve, se cambia en una
+ * línea y queda en el historial junto con la fecha en que se comprobó.
+ *
+ * ---------------------------------------------------------------------------
+ * CUÁNDO HAY QUE CAMBIARLO
+ * ---------------------------------------------------------------------------
+ *
+ * Cuando Meta suba el nivel. Se ve en WhatsApp Manager → Números de teléfono →
+ * Límites de mensajes. Comprobado el 2 de septiembre de 2026: 2.000
+ * conversaciones iniciadas por la empresa en 24 horas.
+ *
+ * El siguiente escalón son 10.000, y para llegar hay que iniciar
+ * conversaciones de calidad con 1.000 clientes únicos en 7 días seguidos. Ese
+ * mismo día la escuela llevaba 43, así que por ahora el número que vale es
+ * éste.
+ *
+ * Dejarlo alto de más es lo peligroso: el CRM dejaría mandar de más y los
+ * mensajes empezarían a fallar sin decir por qué. Bajo de más sólo hace que
+ * una campaña grande tenga que terminarse al día siguiente.
+ */
+export const TOPE_DIARIO = 2_000;

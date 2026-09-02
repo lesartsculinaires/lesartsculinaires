@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { mandarTanda, prepararEnvio, type Preparado } from "@/app/envios-actions";
 import { aprobadas } from "@/components/ui/SelectorPlantilla";
-import { POR_QUE, type Valor } from "@/lib/envios";
+import { MARGEN, POR_QUE, TOPE_DIARIO, cuantosQuedan, type Valor } from "@/lib/envios";
 import { T } from "@/lib/theme";
 import { conValores, huecosDe } from "@/lib/whatsapp/huecos";
 import type { Plantilla } from "@/lib/types";
@@ -94,6 +94,16 @@ export function EnvioMasivo({
     valores.length === huecos.length &&
     valores.every((v) => v.de === "nombre" || v.texto.trim() !== "");
 
+  /*
+   * Cuántas conversaciones quedan hoy, y si esta campaña se pasa.
+   *
+   * `mandadosHoy` cuenta TODO lo que salió del número —campañas y chat
+   * normal—, porque Meta cuenta lo mismo: el tope es de conversaciones
+   * iniciadas por la empresa, venga de donde venga.
+   */
+  const quedanHoy = cuantosQuedan(TOPE_DIARIO, prep?.mandadosHoy ?? 0);
+  const seDesborda = prep != null && prep.van > quedanHoy;
+
   const preparar = async () => {
     setError(null);
     const r = await prepararEnvio(oportunidadIds, nombre);
@@ -125,6 +135,20 @@ export function EnvioMasivo({
 
     let hechos = 0;
     let fallidos = 0;
+    /*
+     * Cuántas quedan hoy, congelado al arrancar.
+     *
+     * El bucle SE PARA acá, y no sólo lo avisa la pantalla: mandar de más no
+     * da un error claro —Meta empieza a rechazar y la calificación del número
+     * baja— así que el corte tiene que estar en el código y no en la buena
+     * memoria de quien lanza la campaña.
+     *
+     * Lo que no sale queda «pendiente» en el mismo envío, con los
+     * destinatarios ya anotados, así que mañana se reanuda sin volver a
+     * elegir a nadie ni arriesgar escribirle dos veces al mismo.
+     */
+    const topeDeHoy = quedanHoy;
+    let cortadoPorElTope = false;
 
     try {
       // Un tope de vueltas por si algo devolviera siempre lo mismo: sin esto,
@@ -142,6 +166,14 @@ export function EnvioMasivo({
         }
         if (r.faltan === 0) break;
         if (r.enviados === 0 && r.fallidos === 0) break;
+
+        // Se corta ANTES de pedir la tanda siguiente. Puede pasarse por unos
+        // pocos —la tanda es de veinte y no se parte— y para eso está el
+        // margen del 10%.
+        if (hechos >= topeDeHoy) {
+          cortadoPorElTope = true;
+          break;
+        }
       }
     } finally {
       corriendo.current = false;
@@ -150,7 +182,11 @@ export function EnvioMasivo({
     setResumen(
       `${hechos} ${hechos === 1 ? "mensaje enviado" : "mensajes enviados"}` +
         (fallidos > 0 ? `, ${fallidos} no llegaron` : "") +
-        ".",
+        "." +
+        (cortadoPorElTope
+          ? " Se llegó al tope que Meta deja por día, así que el resto quedó" +
+            " pendiente: volvé mañana y reanudá este mismo envío."
+          : ""),
     );
   };
 
@@ -227,10 +263,41 @@ export function EnvioMasivo({
               <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700, color: T.ink }}>
                 Le llega a {prep.van} {prep.van === 1 ? "persona" : "personas"}
               </p>
-              {prep.mandadosHoy > 0 && (
-                <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
-                  Hoy ya salieron {prep.mandadosHoy} en total. Meta le pone un tope diario
-                  a cada número; pasarse hace que los mensajes empiecen a fallar.
+              {/*
+                El tope del día, con el número de verdad.
+
+                Antes acá decía «Meta le pone un tope diario» sin decir cuál, y
+                el cálculo que lo sabía —`cuantosQuedan`— estaba escrito pero no
+                lo usaba nadie. Así que la pantalla avisaba de un límite que no
+                mostraba y no hacía cumplir: se podía lanzar una campaña de mil
+                y descubrir a la mitad que Meta empezó a rechazar.
+              */}
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted }}>
+                {prep.mandadosHoy > 0 && `Hoy ya salieron ${prep.mandadosHoy}. `}
+                Quedan <strong>{quedanHoy}</strong> de las {TOPE_DIARIO.toLocaleString("es-SV")}{" "}
+                conversaciones que Meta deja iniciar por día, menos un{" "}
+                {Math.round((1 - MARGEN) * 100)}% que se reserva para lo que salga por el
+                chat normal.
+              </p>
+
+              {seDesborda && (
+                <p
+                  role="alert"
+                  style={{
+                    margin: "7px 0 0",
+                    padding: "8px 10px",
+                    fontSize: 11.5,
+                    lineHeight: 1.5,
+                    borderRadius: 6,
+                    background: "#FFF6D6",
+                    color: "#6B5200",
+                  }}
+                >
+                  Esta campaña no entra hoy: son {prep.van} y quedan {quedanHoy}. Van a
+                  salir {quedanHoy} y el resto queda pendiente; volvé mañana y seguí desde
+                  el mismo envío, que se acuerda a quién ya le escribió. Pasarse del tope
+                  no da un error claro: los mensajes empiezan a fallar y la calificación
+                  del número baja.
                 </p>
               )}
             </div>

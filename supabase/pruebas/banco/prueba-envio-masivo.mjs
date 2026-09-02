@@ -202,6 +202,23 @@ console.log("\n── el servidor decide, y lo explica ──");
   es("uno sin teléfono", /1 sin teléfono/.test(t), true);
   es("y uno que estaba dos veces", /1 estaba dos veces en la selección/.test(t), true);
 
+  /*
+   * EL TOPE DEL DÍA, CON EL NÚMERO DE VERDAD.
+   *
+   * Antes esta pantalla decía «Meta le pone un tope diario» sin decir cuál, y
+   * el cálculo que lo sabía estaba escrito pero no lo llamaba nadie. Así que
+   * avisaba de un límite que no mostraba y no hacía cumplir: se podía lanzar
+   * una campaña de mil y descubrir a la mitad que Meta empezó a rechazar.
+   *
+   * El número sale de WhatsApp Manager —2.000 conversaciones iniciadas por la
+   * empresa en 24 horas, comprobado el 2/9/2026— menos el 10% que se reserva
+   * para lo que salga por el chat normal, que cuenta contra el mismo tope.
+   */
+  es("DICE CUÁNTAS QUEDAN HOY", /Quedan 1.?800 de las 2.?000/.test(t), true);
+  es("y explica el margen que se reserva", /se reserva para lo que salga por el chat/.test(t), true);
+  // Tres destinatarios contra mil ochocientos: no hay desborde que avisar.
+  es("sin aviso de desborde, que no lo hay", /no entra hoy/.test(t), false);
+
   es(
     "en la base quedaron tres destinatarios",
     sql(`select count(*) from public.envio_destinatarios d

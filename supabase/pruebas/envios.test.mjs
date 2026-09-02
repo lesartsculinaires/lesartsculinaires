@@ -19,7 +19,8 @@
  * conflicto con Meta como bloquear la cuenta o que no se puedan enviar los
  * mensajes».
  */
-const { repartir, paraMeta, nombreDePila, valoresPara, telefonoUtil, cuantosQuedan } =
+const { repartir, paraMeta, nombreDePila, valoresPara, telefonoUtil, cuantosQuedan,
+        NIVELES, TOPE_DIARIO, MARGEN } =
   await import(process.argv[2] ?? "/tmp/envios.mjs");
 
 let f = 0;
@@ -169,6 +170,38 @@ console.log("\n── el tope diario ──");
   es("descontando lo de hoy", cuantosQuedan(1000, 300), 600);
   es("NUNCA NEGATIVO", cuantosQuedan(1000, 5000), 0);
   es("en el nivel de diez mil", cuantosQuedan(10000, 1000), 8000);
+
+  /*
+   * El nivel de la escuela, comprobado en WhatsApp Manager el 2/9/2026: 2.000
+   * conversaciones iniciadas por la empresa en 24 horas.
+   *
+   * El número está en el código y no en una variable de entorno —no es un
+   * secreto y se lee de una pantalla— así que lo que hay que cuidar es que no
+   * se quede viejo sin que nadie lo note. Estas dos comprobaciones fallan si
+   * alguien lo mueve sin pensar.
+   */
+  es("EL TOPE DE LA ESCUELA SON 2.000", TOPE_DIARIO, 2000);
+  es("y está en la escalera de Meta", NIVELES.includes(TOPE_DIARIO), true);
+  es("con su margen, quedan 1.800", cuantosQuedan(TOPE_DIARIO, 0), 1800);
+  es("y descontando lo que ya salió", cuantosQuedan(TOPE_DIARIO, 500), 1300);
+}
+
+console.log("\n── LA ESCALERA DE META ──");
+{
+  /*
+   * Acá decía `[1000, 10000, 100000]`. El escalón de 1.000 ya no existe: Meta
+   * lo cambió a 2.000, que es justo donde está la escuela. Con la lista vieja,
+   * su nivel no figuraba y cualquier cuenta hecha con ella quedaba a la mitad.
+   */
+  es("son los cuatro escalones de hoy", [...NIVELES], [250, 2000, 10000, 100000]);
+  es("EL 1.000 YA NO ESTÁ", NIVELES.includes(1000), false);
+  es("y van de menor a mayor", [...NIVELES].sort((a, b) => a - b), [...NIVELES]);
+
+  // El margen deja lugar para lo que salga por el chat normal, que cuenta
+  // contra el mismo tope. Sin él, una campaña dejaría al equipo sin poder
+  // escribirle a nadie el resto del día.
+  es("el margen es del 10%", MARGEN, 0.9);
+  es("nunca se usa el tope entero", cuantosQuedan(2000, 0) < 2000, true);
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
