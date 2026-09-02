@@ -151,6 +151,18 @@ export interface Campanita {
   sonar: (aviso: Aviso) => void;
   /** Suena una vez con lo que se le pase, sin cambiar lo elegido. Para probar. */
   probar: (ajustes: Ajustes, aviso?: Aviso) => void;
+  /**
+   * Empieza a repicar como un teléfono, y no para hasta que se le diga.
+   *
+   * Es lo único que se repite. Un aviso de mensaje suena una vez porque el
+   * mensaje ya llegó y va a seguir ahí; una llamada suena hasta que alguien
+   * atiende, porque si nadie la escucha se pierde y no queda nada.
+   *
+   * Llamarla dos veces no encima dos repiques.
+   */
+  repicar: () => void;
+  /** Corta el repique. Se llama al atender, al rechazar y al cortarse sola. */
+  parar: () => void;
   ajustar: (ajustes: Partial<Ajustes>) => void;
   cerrar: () => void;
 }
@@ -234,16 +246,88 @@ export function crearCampanita(): Campanita {
     }
   };
 
+  /**
+   * El repique de una llamada.
+   *
+   * ------------------------------------------------------------------------
+   * POR QUÉ NO ES UNO DE LOS SONIDOS DE ARRIBA REPETIDO
+   * ------------------------------------------------------------------------
+   *
+   * Porque tiene que decir otra cosa. Los cinco de arriba son avisos: algo
+   * pasó y está anotado. Una llamada no está anotada en ningún lado: si nadie
+   * la escucha, se pierde. Se distingue por las dos cosas con las que el oído
+   * reconoce un teléfono sin pensarlo —dos notas iguales seguidas, y silencio
+   * largo entre repiques— y no por sonar más fuerte, que sería la manera de
+   * volverlo insoportable.
+   *
+   * Respeta el volumen elegido y el timbre elegido: quien puso «Alerta»
+   * porque trabaja al lado de la freidora necesita que la llamada también
+   * atraviese, y quien tiene el sonido apagado no quiere que un teléfono le
+   * suene en una reunión.
+   */
+  let repique: ReturnType<typeof setInterval> | null = null;
+
+  const unRepique = () => {
+    const c = conseguirCtx();
+    if (!c || c.state !== "running") return;
+
+    const sonido = SONIDOS[ajustes.timbre] ?? SONIDOS[TIMBRE_POR_OMISION];
+    const pico = GANANCIA[ajustes.volumen] ?? GANANCIA[VOLUMEN_POR_OMISION];
+    // La nota más aguda del timbre elegido, que es la que corta el ruido.
+    const hz = Math.max(...sonido.mensaje.map((n) => n.hz));
+
+    // Dos golpes y a callar, como un teléfono.
+    for (const en of [0, 0.42]) {
+      const osc = c.createOscillator();
+      const vol = c.createGain();
+      osc.type = sonido.onda;
+      osc.frequency.value = hz;
+
+      const t0 = c.currentTime + en;
+      vol.gain.setValueAtTime(0.0001, t0);
+      vol.gain.exponentialRampToValueAtTime(pico, t0 + 0.02);
+      vol.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+
+      osc.connect(vol).connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.34);
+    }
+  };
+
+  /**
+   * Cada cuánto se repite.
+   *
+   * Dos segundos es el hueco de un teléfono de escritorio. Más corto se vuelve
+   * una alarma y la gente lo apaga; más largo y quien está en otra pestaña
+   * llega tarde, porque el plazo de Meta para atender es de menos de un minuto.
+   */
+  const CADA_MS = 2_000;
+
   return {
     despertar,
     listo: () => ctx?.state === "running",
     sonar: (aviso) => tocar(aviso, ajustes),
     probar: (con, aviso = "mensaje") => tocar(aviso, con),
+
+    repicar() {
+      if (repique != null) return; // Ya está sonando: no se encima otro.
+      unRepique();
+      repique = setInterval(unRepique, CADA_MS);
+    },
+
+    parar() {
+      if (repique == null) return;
+      clearInterval(repique);
+      repique = null;
+    },
+
     ajustar: (cambios) => {
       ajustes = { ...ajustes, ...cambios };
     },
 
     cerrar() {
+      if (repique != null) clearInterval(repique);
+      repique = null;
       void ctx?.close();
       ctx = null;
     },

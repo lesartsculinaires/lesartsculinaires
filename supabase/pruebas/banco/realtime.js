@@ -79,4 +79,70 @@ process.stdin.on("data", (d) => {
   if (tabla) avisar(tabla, tipo || "UPDATE", { id: 1 });
 });
 
+/*
+ * ===========================================================================
+ * LAS LLAMADAS SÍ SE MIRAN EN LA BASE
+ * ===========================================================================
+ *
+ * Todo lo de arriba alcanza para las demás tablas porque al CRM sólo le
+ * importa QUE algo cambió: con el aviso vuelve a pedir la pantalla al
+ * servidor, y el contenido del aviso da igual.
+ *
+ * Con las llamadas no. Ahí el aviso ES el dato —el SDP, quién la atendió, en
+ * qué estado está— porque el CRM no recarga nada al recibirlo: recargar en el
+ * medio de una llamada cortaría lo que se está escribiendo, que es justo lo
+ * que la escuela pidió evitar. Un aviso de mentira con `{id:1}` adentro
+ * probaría que el websocket llega y nada más.
+ *
+ * Así que para esta tabla el falso Realtime hace lo que hace el de verdad:
+ * mira la base y manda la fila. Cada 600 ms, que para una prueba es
+ * instantáneo y no le cuesta nada a nadie.
+ */
+import { execFileSync } from "node:child_process";
+
+const visto = new Map();
+let primeraVuelta = true;
+
+function mirarLlamadas() {
+  let filas;
+  try {
+    const salida = execFileSync(
+      "su",
+      [
+        "postgres",
+        "-c",
+        "psql -h /tmp -p 5511 -d crm -A -t -c \"select coalesce(json_agg(row_to_json(l)), '[]'::json) " +
+          "from public.llamadas l where l.creado_en > now() - interval '1 hour'\"",
+      ],
+      { encoding: "utf8" },
+    ).trim();
+    filas = JSON.parse(salida || "[]");
+  } catch {
+    // La base todavía no está, o no existe la tabla. Se prueba en la próxima
+    // vuelta en vez de tumbar el servidor de pruebas.
+    return;
+  }
+
+  for (const fila of filas) {
+    const huella = JSON.stringify(fila);
+    const antes = visto.get(fila.id);
+    visto.set(fila.id, huella);
+    if (antes === huella) continue;
+
+    /*
+     * En la primera vuelta se anota todo sin avisar. Si no, al arrancar el
+     * banco se dispararían de golpe todas las llamadas de la última hora y el
+     * CRM mostraría sonando una que terminó hace rato.
+     */
+    if (primeraVuelta) continue;
+
+    avisar("llamadas", antes === undefined ? "INSERT" : "UPDATE", fila);
+  }
+
+  primeraVuelta = false;
+}
+
+setInterval(mirarLlamadas, 600);
+mirarLlamadas();
+
 console.log(`realtime de prueba en ws://127.0.0.1:${PUERTO}/realtime/v1/websocket`);

@@ -1,10 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { abrirOportunidad } from "@/lib/crm/altaLead";
+import { comoSeLee, type EstadoLlamada } from "@/lib/llamadas";
 import { sortear, yaEsLead } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
+import {
+  comoTermino,
+  leerLlamadas,
+  type AvisoDeLlamada,
+} from "@/lib/whatsapp/llamadas";
 import { bajarMedia, rutaMedia } from "@/lib/whatsapp/media";
 import {
   leerWebhook,
@@ -82,6 +88,24 @@ export async function POST(req: NextRequest) {
     return new NextResponse("sin configurar", { status: 500 });
   }
 
+  /*
+   * Las llamadas van primero, y no es un detalle de orden.
+   *
+   * Bajar una foto puede llevarse ocho segundos, y un mensaje puede traer
+   * varias. Si una llamada entrante quedara detrás de eso en la misma carga,
+   * el teléfono empezaría a sonar cuando ya se gastó medio plazo, o después de
+   * que Meta la dio por no contestada. Guardar la fila de una llamada es un
+   * insert y nada más: cuesta milisegundos y compra los segundos que la
+   * persona necesita para decidir si atiende.
+   */
+  for (const ll of leerLlamadas(carga)) {
+    try {
+      await guardarLlamada(supabase, ll);
+    } catch (e) {
+      console.error("[whatsapp] no se pudo guardar la llamada", ll.callId, e);
+    }
+  }
+
   const { mensajes, estados, reacciones } = leerWebhook(carga);
 
   for (const m of mensajes) {
@@ -115,6 +139,219 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, recibidos: mensajes.length });
+}
+
+/**
+ * Una llamada: la que entra, la que se contesta, la que se corta.
+ *
+ * ----------------------------------------------------------------------------
+ * ESTO ES LO QUE HACE SONAR EL TELÉFONO
+ * ----------------------------------------------------------------------------
+ *
+ * El webhook corre en el servidor y no tiene forma de hablarle a un navegador.
+ * La fila es el puente: se escribe acá, Supabase la publica por websocket, y a
+ * las pantallas abiertas les suena.
+ *
+ * Por eso lo primero que se hace es escribirla, y todo lo demás —el cliente, el
+ * lead, la nota en el hilo— va después. Meta da entre 30 y 60 segundos antes de
+ * darla por no contestada, y cada consulta que se meta antes del insert se le
+ * resta al tiempo que tiene la persona para decidir si atiende.
+ *
+ * ----------------------------------------------------------------------------
+ * NADA DE ACÁ LANZA HACIA AFUERA SIN QUEDAR REGISTRADO
+ * ----------------------------------------------------------------------------
+ *
+ * Como el resto del webhook. Meta reintenta ante un error y termina
+ * desactivando la integración entera: por una llamada rara se perderían
+ * también los mensajes.
+ */
+async function guardarLlamada(supabase: Cliente, ll: AvisoDeLlamada) {
+  if (ll.evento === "terminate") return cerrarLlamada(supabase, ll);
+
+  /*
+   * Una llamada que empezamos nosotros.
+   *
+   * Lo que llega es la RESPUESTA de Meta a la oferta que mandó el navegador, y
+   * la fila ya existe: la escribió `llamarA` con el id que devolvió Meta. Acá
+   * sólo se le pega la respuesta, que es lo que el navegador está esperando por
+   * websocket para terminar de armar el audio.
+   */
+  if (!ll.laEmpezoElCliente) {
+    await supabase
+      .from("llamadas")
+      .update({
+        sdp_remoto: ll.sdp?.texto ?? null,
+        sdp_tipo: ll.sdp?.tipo ?? null,
+        estado: "en_curso",
+      })
+      .eq("call_id", ll.callId)
+      .in("estado", ["sonando", "contestando"]);
+    return;
+  }
+
+  // Entrante. El hilo primero, porque la fila cuelga de él y sin eso la
+  // llamada no se podría atribuir a nadie.
+  const conversacion = await conversacionDe(supabase, ll);
+  const suyo = await deQuienEsElHilo(supabase, conversacion);
+
+  const { error } = await supabase.from("llamadas").insert({
+    call_id: ll.callId,
+    conversacion_id: conversacion,
+    telefono: ll.telefono,
+    /*
+     * El dueño y el nombre se copian en la fila y no se dejan para que los
+     * busque el navegador.
+     *
+     * `conversaciones` no se ve entera: una asesora no ve los hilos de otra.
+     * En la pantalla de quien no puede ver el hilo, la llamada aparecería sin
+     * dueño —o sea, «de todos»— y le saltaría el pop-up encima a todo el
+     * equipo, que es exactamente lo que la escuela pidió evitar.
+     */
+    vendedor_id: suyo.vendedorId,
+    nombre: suyo.nombre ?? ll.nombrePerfil,
+    direccion: "entrante",
+    estado: "sonando",
+    sdp_remoto: ll.sdp?.texto ?? null,
+    sdp_tipo: ll.sdp?.tipo ?? null,
+    creado_en: ll.cuando.toISOString(),
+  });
+
+  if (error) {
+    if (faltaLaTabla(error)) {
+      console.error(
+        "[whatsapp] falta correr 20261017120000_llamadas.sql;" +
+          " la llamada entrante no va a sonar en el CRM",
+      );
+      return;
+    }
+    // 23505: la misma llamada dos veces, que es un reintento de Meta. Ya está
+    // sonando; volver a insertarla haría sonar dos veces la misma.
+    if (error.code !== "23505") throw error;
+    return;
+  }
+
+  if (conversacion == null) return;
+
+  /*
+   * Y recién ahora, con el teléfono ya sonando, lo demás.
+   *
+   * Alguien que llama sin haber escrito nunca es un lead igual —de hecho es de
+   * los más calientes que hay—, así que se le abre uno y se le sortea asesora
+   * con las mismas reglas que si hubiera escrito. Si algo de esto falla, la
+   * llamada suena lo mismo, que es lo que importa en este segundo.
+   */
+  await anotarElCanal(supabase, conversacion, ll.telefono, ll.cuando);
+  await abrirLeadSiEsNuevo(supabase, conversacion);
+}
+
+/**
+ * La llamada terminó.
+ *
+ * ----------------------------------------------------------------------------
+ * PERDIDA Y RECHAZADA NO SON LO MISMO
+ * ----------------------------------------------------------------------------
+ *
+ * Para Meta las dos son «no hubo audio». Para quien abre la bandeja al otro
+ * día no: una perdida es trabajo pendiente —hay que devolverla— y una
+ * rechazada ya la decidió alguien. La diferencia la sabe el CRM, porque tiene
+ * anotado si alguien llegó a agarrarla, y por eso hay que leer la fila antes
+ * de cerrarla.
+ *
+ * El cierre va sólo hacia adelante. Meta manda los avisos desordenados, y sin
+ * eso una llamada ya cerrada volvería a «sonando» y el teléfono sonaría de
+ * nuevo en todas las pantallas por algo que terminó hace rato.
+ */
+async function cerrarLlamada(supabase: Cliente, ll: AvisoDeLlamada) {
+  const { data: fila, error: errLectura } = await supabase
+    .from("llamadas")
+    .select("id, conversacion_id, direccion, estado, atendida_por")
+    .eq("call_id", ll.callId)
+    .maybeSingle();
+
+  if (errLectura && faltaLaTabla(errLectura)) {
+    console.error("[whatsapp] falta correr 20261017120000_llamadas.sql");
+    return;
+  }
+  // Una llamada que nunca llegó a entrar —el `connect` se perdió, o es de
+  // antes de que existiera todo esto—. No hay fila que cerrar.
+  if (!fila) return;
+
+  // Rechazada es una decisión nuestra y ya quedó anotada al apretar el botón:
+  // no la pisa el aviso de Meta, que sólo sabe que no hubo audio.
+  const estado =
+    fila.estado === "rechazada"
+      ? "rechazada"
+      : comoTermino(ll.cierre?.resultado ?? null, fila.atendida_por != null);
+
+  await supabase
+    .from("llamadas")
+    .update({
+      estado,
+      termino_en: ll.cuando.toISOString(),
+      duracion_seg: ll.cierre?.duracionSeg ?? null,
+      motivo: ll.cierre?.motivo ?? null,
+    })
+    .eq("call_id", ll.callId)
+    .in("estado", ["sonando", "contestando", "en_curso", "rechazada"]);
+
+  await dejarlaEnElHilo(supabase, ll, fila, estado);
+}
+
+/**
+ * Deja la llamada anotada en el hilo, como una burbuja más.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ NO ALCANZA CON LA TABLA DE LLAMADAS
+ * ----------------------------------------------------------------------------
+ *
+ * Porque nadie abre una tabla de llamadas. La bandeja es donde el equipo mira,
+ * y una llamada perdida que sólo existiera en otro lado es una llamada que
+ * nadie devuelve. Puesta en el hilo aparece donde corresponde —entre el último
+ * mensaje y el siguiente— y una perdida sube el contador de sin leer, que es
+ * lo que la pone arriba de la lista al otro día.
+ *
+ * Sólo las perdidas suben el contador. Una que se atendió no es nada
+ * pendiente: se habló, y marcarla como no leída mandaría a alguien a un hilo
+ * donde no hay nada que hacer.
+ */
+async function dejarlaEnElHilo(
+  supabase: Cliente,
+  ll: AvisoDeLlamada,
+  fila: { conversacion_id: number | null; direccion: string },
+  estado: EstadoLlamada,
+) {
+  const conversacion = fila.conversacion_id;
+  if (conversacion == null) return;
+
+  const entrante = fila.direccion === "entrante";
+  const texto = comoSeLee({ estado, direccion: entrante ? "entrante" : "saliente" }, ll.cierre?.duracionSeg ?? null);
+
+  const { error } = await supabase.from("mensajes").insert({
+    conversacion_id: conversacion,
+    // El id de la llamada sirve de id de mensaje: es único, y hace que un
+    // reintento de Meta no deje dos burbujas iguales.
+    wa_id: `call:${ll.callId}`,
+    direccion: entrante ? "entrante" : "saliente",
+    tipo: "llamada",
+    texto,
+    payload: ll.crudo,
+    creado_en: ll.cuando.toISOString(),
+  });
+
+  if (error && error.code !== "23505") {
+    console.error("[whatsapp] no se pudo anotar la llamada en el hilo", ll.callId, error.message);
+    return;
+  }
+  if (error) return;
+
+  // Sólo lo que quedó pendiente sube el contador. Ver el comentario de arriba.
+  if (estado !== "perdida") return;
+
+  await supabase.rpc("marcar_mensaje_entrante", {
+    p_conversacion: conversacion,
+    p_texto: texto.slice(0, 200),
+    p_cuando: ll.cuando.toISOString(),
+  });
 }
 
 /**
@@ -360,10 +597,25 @@ async function acusarEnvio(supabase: Cliente, waId: string, estado: string) {
  * Como todo lo de acá, no lanza. Que no se pueda anotar el canal no puede
  * costar el mensaje, que es lo que la persona mandó.
  */
-async function anotarQueEscribioPorWhatsapp(
+const anotarQueEscribioPorWhatsapp = (
   supabase: Cliente,
   conversacionId: number,
   m: MensajeEntrante,
+) => anotarElCanal(supabase, conversacionId, m.telefono, m.enviadoEn);
+
+/**
+ * El trabajo de arriba, sin depender de que el contacto haya sido un mensaje.
+ *
+ * Una llamada entrante es un contacto por WhatsApp igual que un mensaje —de
+ * hecho es más fuerte—, y `contactos_canal` guarda por dónde apareció una
+ * persona, no si escribió o marcó. Que las dos puertas pasen por acá es lo que
+ * evita que un lead que llamó pero nunca escribió quede sin canal anotado.
+ */
+async function anotarElCanal(
+  supabase: Cliente,
+  conversacionId: number,
+  telefono: string,
+  cuando: Date,
 ) {
   try {
     const { data: conv } = await supabase
@@ -381,8 +633,8 @@ async function anotarQueEscribioPorWhatsapp(
     await supabase.rpc("anotar_canal", {
       p_cliente: clienteId,
       p_canal: canal,
-      p_identificador: m.telefono || null,
-      p_cuando: m.enviadoEn.toISOString(),
+      p_identificador: telefono || null,
+      p_cuando: cuando.toISOString(),
     });
   } catch (e) {
     console.error("[whatsapp] no se pudo anotar el canal", e);
@@ -600,6 +852,48 @@ async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
   }
 }
 
+/**
+ * De quién es un hilo y cómo se llama su gente.
+ *
+ * Dos datos que ya están en la base pero que hay que COPIAR en la llamada. El
+ * porqué está arriba, donde se usan: la tabla de conversaciones no se ve
+ * entera, y una llamada tiene que sonar bien en la pantalla de todo el equipo.
+ *
+ * El nombre del CRM le gana al del WhatsApp cuando existe: en la ficha dice
+ * «María José Retana» y su WhatsApp dice «Majo», y quien atiende un teléfono
+ * necesita el nombre por el que va a buscar la ficha.
+ */
+async function deQuienEsElHilo(
+  supabase: Cliente,
+  conversacionId: number | null,
+): Promise<{ vendedorId: number | null; nombre: string | null }> {
+  if (conversacionId == null) return { vendedorId: null, nombre: null };
+
+  const { data: conv } = await supabase
+    .from("conversaciones")
+    .select("vendedor_id, cliente_id, nombre_perfil")
+    .eq("id", conversacionId)
+    .maybeSingle();
+
+  if (!conv) return { vendedorId: null, nombre: null };
+
+  let nombre = conv.nombre_perfil == null ? null : String(conv.nombre_perfil);
+
+  if (conv.cliente_id != null) {
+    const { data: cli } = await supabase
+      .from("clientes")
+      .select("nombre")
+      .eq("id", Number(conv.cliente_id))
+      .maybeSingle();
+    if (cli?.nombre) nombre = String(cli.nombre);
+  }
+
+  return {
+    vendedorId: conv.vendedor_id == null ? null : Number(conv.vendedor_id),
+    nombre,
+  };
+}
+
 /** La base no conoce esa función: falta correr la migración. */
 const faltaLaFuncion = (e: { code?: string; message?: string }): boolean =>
   e.code === "PGRST202" || /Could not find the function|does not exist/i.test(e.message ?? "");
@@ -643,8 +937,21 @@ async function idDeEtapaProspectos(supabase: Cliente): Promise<number | null> {
   return primera ? Number(primera.id) : null;
 }
 
+/**
+ * Lo mínimo para saber de quién es un hilo.
+ *
+ * Un mensaje trae mucho más que esto, pero el hilo se resuelve sólo con el
+ * número y el nombre de perfil, y una llamada trae exactamente esos dos. Pedir
+ * un `MensajeEntrante` obligaría a fabricar un mensaje falso para poder atender
+ * una llamada de alguien que nunca escribió.
+ */
+interface QuienEs {
+  telefono: string;
+  nombrePerfil: string | null;
+}
+
 /** La conversación de este número, creándola si es la primera vez. */
-async function conversacionDe(supabase: Cliente, m: MensajeEntrante): Promise<number | null> {
+async function conversacionDe(supabase: Cliente, m: QuienEs): Promise<number | null> {
   const { data: existente } = await supabase
     .from("conversaciones")
     .select("id")
@@ -702,7 +1009,7 @@ async function conversacionDe(supabase: Cliente, m: MensajeEntrante): Promise<nu
  * `buscarDuplicados`, que es la regla del resto del CRM— y hace la búsqueda y
  * el alta en una sola llamada con candado.
  */
-async function clienteDe(supabase: Cliente, m: MensajeEntrante): Promise<number | null> {
+async function clienteDe(supabase: Cliente, m: QuienEs): Promise<number | null> {
   const { data, error } = await supabase.rpc("cliente_de_whatsapp", {
     p_telefono: m.telefono,
     p_nombre: m.nombrePerfil ?? null,

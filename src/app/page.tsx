@@ -9,6 +9,7 @@ import { fetchAccesos } from "@/lib/supabase/accesos";
 import { fetchEnvios } from "@/lib/supabase/envios";
 import { fetchInbox } from "@/lib/supabase/inbox";
 import { salidaDisponible } from "@/app/inbox-actions";
+import { llamadasDisponibles } from "@/app/llamadas-actions";
 import { listarEtiquetas } from "@/app/etiquetas-actions";
 import { estadoPlantillas } from "@/app/plantillas-actions";
 import { contarActividadSinVer } from "@/app/actividad-actions";
@@ -59,6 +60,10 @@ export default async function Page({
   const actividadSinVer = await contarActividadSinVer();
 
   const puedeResponder = await salidaDisponible();
+  // Las llamadas usan el mismo token que los mensajes, pero se preguntan
+  // aparte: puede haber token y no estar habilitadas las llamadas para el
+  // número, y ahí el botón no tiene que aparecer.
+  const puedeLlamar = await llamadasDisponibles();
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
 
@@ -94,6 +99,7 @@ export default async function Page({
       mensajes={inbox.mensajes}
       faltaMigracionInbox={inbox.faltaMigracion}
       puedeResponderWhatsapp={puedeResponder}
+      puedeLlamarPorWhatsapp={puedeLlamar}
       userEmail={user.email ?? ""}
       accesos={accesos.data}
       etiquetas={etiquetas.etiquetas}

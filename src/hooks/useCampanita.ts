@@ -48,6 +48,11 @@ export interface Campanita {
   bloqueado: boolean;
   /** Toca el aviso, si corresponde. Acepta null para no obligar a preguntar afuera. */
   avisar: (aviso: Aviso | null) => void;
+  /**
+   * Prende o apaga el repique de una llamada entrante. `true` mientras esté
+   * sonando; `false` al atender, al rechazar y al cortarse sola.
+   */
+  repicar: (sonando: boolean) => void;
   /** Qué sonido y a qué volumen, para que la pantalla lo muestre elegido. */
   ajustes: Ajustes;
   /** Cambia uno de los dos, lo guarda y lo hace sonar para escucharlo. */
@@ -209,5 +214,30 @@ export function useCampanita(): Campanita {
     });
   }, []);
 
-  return { encendido, alternar, bloqueado, avisar, ajustes, cambiarAjuste };
+  /**
+   * El repique de una llamada entrante.
+   *
+   * ------------------------------------------------------------------------
+   * NO PASA POR LA PAUSA NI POR LA JUNTA DE AVISOS
+   * ------------------------------------------------------------------------
+   *
+   * Todo lo de arriba existe para que una tanda de mensajes no se vuelva una
+   * alarma: se juntan, se espera medio segundo, y no se repite antes de la
+   * pausa. Un teléfono es lo contrario: tiene que empezar YA y seguir hasta
+   * que alguien atienda. Pasarlo por ese camino lo haría empezar tarde y
+   * callarse solo a la mitad.
+   *
+   * Lo que sí respeta es el interruptor. Quien apagó el sonido porque está en
+   * una reunión no quiere que un teléfono le suene igual, y la llamada se ve
+   * en pantalla de todas formas.
+   */
+  const repicar = useCallback((sonando: boolean) => {
+    if (!sonando || !prendidoRef.current) {
+      campana.current?.parar();
+      return;
+    }
+    campana.current?.repicar();
+  }, []);
+
+  return { encendido, alternar, bloqueado, avisar, repicar, ajustes, cambiarAjuste };
 }

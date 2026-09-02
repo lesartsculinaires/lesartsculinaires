@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Autorizaciones } from "@/components/modules/Autorizaciones";
@@ -17,6 +17,7 @@ import { Pipeline } from "@/components/modules/Pipeline";
 import { Programas } from "@/components/modules/Programas";
 import { UsuariosRoles } from "@/components/modules/UsuariosRoles";
 import { AvisoReservas } from "@/components/AvisoReservas";
+import { Llamada } from "@/components/Llamada";
 import { Notificaciones } from "@/components/Notificaciones";
 import { Recordatorios as RelojRecordatorios } from "@/components/Recordatorios";
 import { Recordatorios } from "@/components/modules/Recordatorios";
@@ -32,6 +33,7 @@ import { useAvisoDiario } from "@/hooks/useAvisoDiario";
 import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
 import { useEnVivo } from "@/hooks/useEnVivo";
+import { useLlamadaEnVivo } from "@/hooks/useLlamadaEnVivo";
 import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
 import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
@@ -74,6 +76,8 @@ interface Props {
   faltaMigracionInbox: boolean;
   /** False cuando el servidor no tiene token de WhatsApp. */
   puedeResponderWhatsapp: boolean;
+  /** False cuando el servidor no tiene las llamadas de WhatsApp configuradas. */
+  puedeLlamarPorWhatsapp: boolean;
   userEmail: string;
   accesos: Accesos;
   /** Catálogo de etiquetas de la bandeja. Vacío si falta su migración. */
@@ -124,6 +128,7 @@ export default function CrmApp({
   mensajes,
   faltaMigracionInbox,
   puedeResponderWhatsapp,
+  puedeLlamarPorWhatsapp,
   userEmail,
   accesos,
   etiquetas,
@@ -166,6 +171,48 @@ export default function CrmApp({
   const campanita = useCampanita();
   const yo = accesos.yo?.id ?? null;
   const enVivo = useEnVivo((c) => campanita.avisar(queSuena(c, yo)));
+
+  /*
+   * Las llamadas van por su propio canal y no por el de arriba.
+   *
+   * El de arriba termina en `router.refresh()` con cada aviso, y un refresco
+   * en el medio de una frase la corta: es justo lo que la escuela pidió que no
+   * pasara. Éste no refresca nada —lee la fila del aviso y la deja en un
+   * estado local—, así que lo que se está escribiendo no se entera.
+   */
+  const llamadas = useLlamadaEnVivo();
+  /*
+   * El pedido de llamar, con un número que SÓLO SUBE.
+   *
+   * El número no es decorado: es lo que distingue «llamar otra vez al mismo
+   * hilo» de «el mismo pedido dibujándose de nuevo». Si se reiniciara al
+   * atenderlo, el segundo intento después de un error de permiso volvería a
+   * valer 1, el componente lo reconocería como el que ya hizo, y el botón
+   * parecería roto justo cuando la persona está reintentando.
+   */
+  const [pedidoDeLlamada, setPedidoDeLlamada] = useState<{
+    conversacionId: number;
+    n: number;
+  } | null>(null);
+  const cuantasVecesPidio = useRef(0);
+
+  /*
+   * El repique. Suena sólo cuando la llamada está sonando de verdad y esta
+   * pantalla la está mostrando: si sonara con la tarjeta de la esquina de
+   * alguien que ya la vio atender, el equipo escucharía teléfonos fantasma.
+   */
+  const suena = llamadas.llamada?.estado === "sonando";
+  const repicar = campanita.repicar;
+  useEffect(() => {
+    repicar(Boolean(suena));
+    return () => repicar(false);
+  }, [suena, repicar]);
+
+  /** El hilo de la llamada, para saber de quién es y cómo se llama quien llama. */
+  const hiloDeLaLlamada =
+    llamadas.llamada?.conversacionId == null
+      ? null
+      : (conversaciones.find((c) => c.id === llamadas.llamada!.conversacionId) ?? null);
 
   // Y por debajo sigue el refresco solo. No sobra: un websocket se cae en
   // silencio —wifi de hotel, laptop suspendida, proxy de oficina— y sin esto
@@ -376,6 +423,34 @@ export default function CrmApp({
   return (
     <CatalogoProvider value={catalogo}>
       <SinCopiar />
+
+      {/*
+        La llamada, encima de todo y fuera de cualquier pantalla.
+
+        Va acá y no dentro de la bandeja a propósito: una llamada entra
+        mientras alguien está en el Pipeline, en una ficha o en el Dashboard, y
+        metida en la bandeja sólo la vería quien ya estaba mirando la bandeja
+        —que es justamente quien menos falta le hace—.
+      */}
+      <Llamada
+        llamada={llamadas.llamada}
+        yo={{ usuarioId: accesos.yo?.id ?? null, vendedorId: accesos.yo?.vendedorId ?? null }}
+        nombreDeQuienLlama={
+          hiloDeLaLlamada?.nombrePerfil ??
+          (hiloDeLaLlamada?.telefono ? `+${hiloDeLaLlamada.telefono}` : null)
+        }
+        nombreDelDueno={
+          // El catálogo de asesoras sí lo ve todo el equipo, así que el dueño
+          // de la llamada se puede nombrar aunque el hilo no se pueda ver.
+          catalogo.vendedores.find((v) => v.id === llamadas.llamada?.vendedorId)?.nombre ?? null
+        }
+        haciendo={{ tecleoHaceMs: llamadas.tecleoHaceMs, arrastrando: llamadas.arrastrando }}
+        pedido={pedidoDeLlamada}
+        accent={accent}
+        onSoltar={llamadas.soltar}
+        onPoner={llamadas.poner}
+        onVerHilo={() => actions.setMod("Inbox")}
+      />
       <div
         className="lac"
         style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
@@ -544,6 +619,14 @@ export default function CrmApp({
               plantillas={plantillas.plantillas}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
+              onLlamar={
+                puedeLlamarPorWhatsapp
+                  ? (conversacionId) => {
+                      cuantasVecesPidio.current += 1;
+                      setPedidoDeLlamada({ conversacionId, n: cuantasVecesPidio.current });
+                    }
+                  : null
+              }
               accent={accent}
               onRefrescar={() => router.refresh()}
               onVerCliente={(clienteId) => {

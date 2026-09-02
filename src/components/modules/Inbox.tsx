@@ -46,6 +46,16 @@ interface Props {
   plantillas: Plantilla[];
   onRefrescar: () => void;
   onVerCliente: (clienteId: number) => void;
+  /**
+   * Llamar por WhatsApp a la conversación abierta.
+   *
+   * La bandeja no llama: pide que se llame. El micrófono y la conexión de
+   * audio viven en un solo lugar —el componente de la llamada— y no acá, que
+   * es lo que evita terminar con dos llamadas abiertas y ninguna que se pueda
+   * colgar. Nulo cuando el servidor no tiene las llamadas configuradas: ahí no
+   * se muestra el botón, en vez de mostrarlo y que falle al apretarlo.
+   */
+  onLlamar: ((conversacionId: number) => void) | null;
 }
 
 /** Etiqueta legible de un mensaje sin texto. */
@@ -68,6 +78,10 @@ const ETIQUETA: Record<string, string> = {
  * de una ubicación, un sticker o un archivo que no se pudo bajar.
  */
 const contenido = (m: Mensaje): string => {
+  // Una llamada no es un mensaje que alguien escribió, y en un hilo de texto
+  // hay que poder distinguirla de un vistazo: es lo que separa «me dijo que
+  // no» de «no le contestamos el teléfono».
+  if (m.tipo === "llamada") return `📞 ${m.texto ?? "Llamada"}`;
   if (m.texto) return m.texto;
   if (m.mediaRuta) return "";
   return ETIQUETA[m.tipo] ?? "Mensaje";
@@ -127,6 +141,7 @@ export function Inbox({
   plantillas,
   onRefrescar,
   onVerCliente,
+  onLlamar,
 }: Props) {
   const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
@@ -1183,6 +1198,26 @@ export function Inbox({
                     <option key={v.id} value={v.id}>{v.nombre}</option>
                   ))}
                 </select>
+
+                {/*
+                  Llamar, y sólo por WhatsApp.
+
+                  El botón no aparece en un hilo de Instagram —ahí no existen
+                  las llamadas— ni cuando el servidor no las tiene
+                  configuradas. Mostrarlo igual y que falle al apretarlo sería
+                  peor que no mostrarlo: quien atiende se enteraría de que no
+                  se puede recién con el cliente esperando.
+                */}
+                {onLlamar && canal.clave === "whatsapp" && (
+                  <button
+                    type="button"
+                    onClick={() => onLlamar(actual.id)}
+                    title="Llamar por WhatsApp. Hace falta que el cliente haya dado permiso."
+                    style={boton("#2F6B4F")}
+                  >
+                    📞 Llamar
+                  </button>
+                )}
 
                 {actual.clienteId != null && (
                   <button
