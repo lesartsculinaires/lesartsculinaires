@@ -16,6 +16,7 @@ import {
   leerWebhook,
   resumen,
   type MensajeEntrante,
+  type PermisoDeLlamada,
   type ReaccionEntrante,
 } from "@/lib/whatsapp/mensajes";
 
@@ -106,7 +107,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { mensajes, estados, reacciones } = leerWebhook(carga);
+  const { mensajes, estados, reacciones, permisos } = leerWebhook(carga);
+
+  /*
+   * El permiso va antes que los mensajes, y por la misma razón que las
+   * llamadas: es lo que decide si el botón «Llamar» sirve. Detrás de la
+   * descarga de una foto podría tardar diez segundos en quedar anotado, y en
+   * ese rato alguien del equipo estaría mirando un hilo que dice «hay que
+   * pedirle permiso» a alguien que ya lo dio.
+   */
+  for (const pp of permisos) {
+    try {
+      await anotarPermiso(supabase, pp);
+    } catch (e) {
+      console.error("[whatsapp] no se pudo anotar el permiso de llamada", pp.waId, e);
+    }
+  }
 
   for (const m of mensajes) {
     try {
@@ -140,6 +156,63 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, recibidos: mensajes.length });
 }
+
+/**
+ * El cliente contestó si nos deja llamarlo.
+ *
+ * ----------------------------------------------------------------------------
+ * ES LO QUE HACE QUE EL BOTÓN «LLAMAR» SIRVA
+ * ----------------------------------------------------------------------------
+ *
+ * WhatsApp no deja llamarle a nadie que no haya aceptado antes. Sin guardar
+ * esto, la única forma de saber si se puede llamar sería llamar: apretar el
+ * botón, que el navegador pida el micrófono, esperar, y recibir un error con
+ * el cliente del otro lado esperando.
+ *
+ * Guardado, la bandeja muestra de entrada el botón que va a funcionar.
+ *
+ * ----------------------------------------------------------------------------
+ * SIN FECHA NO HAY PERMISO
+ * ----------------------------------------------------------------------------
+ *
+ * Si Meta acepta pero no manda hasta cuándo vale, no se inventa un plazo. Se
+ * guarda que aceptó —para no volver a pedírselo— pero `hasta` queda en nulo,
+ * y el CRM sigue ofreciendo pedirlo. Suponer una semana y equivocarse sería
+ * mostrar un botón de llamar que falla, que es lo que esto viene a evitar.
+ */
+async function anotarPermiso(supabase: Cliente, pp: PermisoDeLlamada) {
+  const { data: conv } = await supabase
+    .from("conversaciones")
+    .select("id")
+    .eq("telefono", pp.telefono)
+    .maybeSingle();
+
+  if (!conv) return;
+
+  const { error } = await supabase
+    .from("conversaciones")
+    .update({
+      llamada_permiso_respuesta: pp.acepto ? "acepto" : "rechazo",
+      // Un «no» borra el permiso que hubiera: la última palabra es la que vale.
+      llamada_permiso_hasta: pp.acepto ? (pp.vence?.toISOString() ?? null) : null,
+    })
+    .eq("id", Number(conv.id));
+
+  if (error && faltaLaColumna(error)) {
+    console.error(
+      "[whatsapp] falta correr 20261018120000_permiso_de_llamada.sql;" +
+        " el permiso del cliente no se guarda y el botón de llamar no va a aparecer",
+    );
+    return;
+  }
+  if (error) throw error;
+}
+
+/** La base no conoce esa columna: falta correr la migración. */
+const faltaLaColumna = (e: { code?: string; message?: string }): boolean =>
+  e.code === "42703" ||
+  e.code === "PGRST204" ||
+  /Could not find the .* column|does not exist/i.test(e.message ?? "");
 
 /**
  * Una llamada: la que entra, la que se contesta, la que se corta.

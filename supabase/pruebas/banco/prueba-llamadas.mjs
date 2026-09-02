@@ -321,11 +321,82 @@ console.log("\n── EL BOTÓN DE LLAMAR ESTÁ EN EL HILO ──");
   await p.waitForTimeout(2000);
   await foto("5-boton-llamar");
 
-  const llamar = p.getByRole("button", { name: /Llamar/ });
-  es("HAY UN BOTÓN DE LLAMAR", await llamar.count(), 1);
+  /*
+   * Sin permiso del cliente, el botón NO dice «Llamar»: dice «Pedir permiso».
+   *
+   * WhatsApp no deja llamarle a nadie que no lo haya aceptado antes. Un botón
+   * «Llamar» acá fallaría siempre, y quien atiende se enteraría después de
+   * abrir el micrófono y esperar, con el cliente del otro lado.
+   */
+  const boton = p.getByRole("button", { name: /📞/ });
+  es("hay un botón de teléfono", await boton.count(), 1);
+  es("Y PIDE PERMISO, NO LLAMA", (await boton.innerText()).includes("Pedir permiso"), true);
+
+  const explicacion = (await p.locator("main").innerText()).replace(/\s+/g, " ");
   es(
-    "que explica que hace falta permiso",
-    /permiso/i.test((await llamar.getAttribute("title")) ?? ""),
+    "y explica por qué",
+    /hace falta que él lo acepte/i.test(explicacion),
+    true,
+  );
+}
+
+console.log("\n── CON PERMISO, EL BOTÓN LLAMA ──");
+{
+  /*
+   * El cliente aceptó. Es lo que hace que todo el asunto sirva: con permiso
+   * vigente se le puede llamar aunque haga días que no escribe, que es
+   * justamente el lead enfriado al que hay que recuperar.
+   */
+  sql(`update public.conversaciones
+          set llamada_permiso_hasta = now() + interval '6 days',
+              llamada_permiso_respuesta = 'acepto'
+        where telefono = '${TEL}';`);
+
+  await p.reload({ waitUntil: "networkidle" });
+  await p.waitForTimeout(2500);
+  await p.locator('aside button[data-mod="Inbox"]').click();
+  await p.waitForTimeout(1800);
+  await p.getByPlaceholder(/Buscar/).first().fill("Doña Prueba");
+  await p.waitForTimeout(1200);
+  await p.locator('button:has-text("Doña Prueba Llamada")').first().click();
+  await p.waitForTimeout(2000);
+  await foto("8-con-permiso");
+
+  const boton = p.getByRole("button", { name: /📞/ });
+  es("AHORA SÍ LLAMA", (await boton.innerText()).includes("Llamar"), true);
+
+  const texto = (await p.locator("main").innerText()).replace(/\s+/g, " ");
+  es("y avisa que el permiso se vence", /vale \d+ días? más/i.test(texto), true);
+}
+
+console.log("\n── SI YA SE LE PIDIÓ, NO SE LE PIDE OTRA VEZ ──");
+{
+  /*
+   * Varias asesoras miran la misma bandeja. Sin este freno, la misma señora
+   * recibe tres solicitudes iguales en una tarde de tres personas distintas, y
+   * eso no se lee como interés: se lee como que le escriben de más.
+   */
+  sql(`update public.conversaciones
+          set llamada_permiso_hasta = null,
+              llamada_permiso_respuesta = null,
+              llamada_permiso_pedido_en = now() - interval '2 hours'
+        where telefono = '${TEL}';`);
+
+  await p.reload({ waitUntil: "networkidle" });
+  await p.waitForTimeout(2500);
+  await p.locator('aside button[data-mod="Inbox"]').click();
+  await p.waitForTimeout(1800);
+  await p.getByPlaceholder(/Buscar/).first().fill("Doña Prueba");
+  await p.waitForTimeout(1200);
+  await p.locator('button:has-text("Doña Prueba Llamada")').first().click();
+  await p.waitForTimeout(2000);
+  await foto("9-ya-se-pidio");
+
+  es("NO HAY BOTÓN QUE APRETAR", await p.getByRole("button", { name: /📞/ }).count(), 0);
+  const texto = (await p.locator("main").innerText()).replace(/\s+/g, " ");
+  es(
+    "pero dice por qué no lo hay",
+    /ya se le mandó la solicitud/i.test(texto),
     true,
   );
 }

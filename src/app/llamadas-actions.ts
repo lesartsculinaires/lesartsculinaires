@@ -292,7 +292,31 @@ export async function pedirPermisoDeLlamada(conversacionId: number): Promise<Act
   if (!telefono) return { ok: false, error: "No se encontró el teléfono de esta conversación." };
 
   const r = await pedirPermisoParaLlamar(telefono);
-  return { ok: r.ok, error: r.error };
+  if (!r.ok) return { ok: false, error: r.error };
+
+  /*
+   * Queda anotado CUÁNDO se pidió, y eso es lo que impide pedírselo de más.
+   *
+   * En la escuela hay varias asesoras sobre la misma bandeja. Sin esta marca,
+   * la misma señora recibe tres solicitudes iguales en una tarde de tres
+   * personas distintas —cada una viendo un botón que dice «pedir permiso»—.
+   * Para el cliente eso no se lee como interés: se lee como que le escriben de
+   * más, y lo que hace es bloquear el número.
+   *
+   * Si esto falla, el permiso ya salió igual: no se devuelve error, porque
+   * decirle a quien lo mandó que no se mandó sería mentirle y haría que lo
+   * mandara otra vez.
+   */
+  const { error } = await supabase
+    .from("conversaciones")
+    .update({ llamada_permiso_pedido_en: new Date().toISOString() })
+    .eq("id", conversacionId);
+
+  if (error) {
+    console.error("[llamadas] no se pudo anotar cuándo se pidió el permiso", error.message);
+  }
+
+  return { ok: true, error: null };
 }
 
 /**

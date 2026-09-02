@@ -40,6 +40,30 @@ export interface MediaEntrante {
   nombre: string | null;
 }
 
+/**
+ * El cliente contestó a la solicitud de permiso para llamarlo.
+ *
+ * WhatsApp no deja llamarle a nadie sin que lo haya aceptado antes. La
+ * solicitud se le manda como un mensaje con un botón, y esto es lo que llega
+ * cuando aprieta.
+ *
+ * Sale por su propia puerta, igual que las reacciones, porque no es un mensaje
+ * que la persona escribió: dejarlo caer en el hilo como uno más pondría una
+ * burbuja vacía que dice «Mensaje» y no significa nada.
+ */
+export interface PermisoDeLlamada {
+  waId: string;
+  telefono: string;
+  /** `true` si aceptó que lo llamemos. */
+  acepto: boolean;
+  /**
+   * Hasta cuándo vale, según Meta. Nulo cuando no lo manda —o cuando dijo que
+   * no—, y ahí el CRM no inventa un plazo: sin fecha, no se puede llamar.
+   */
+  vence: Date | null;
+  cuando: Date;
+}
+
 /** Aviso de que un mensaje que mandamos cambió de estado. */
 export interface EstadoSaliente {
   waId: string;
@@ -92,13 +116,15 @@ export function leerWebhook(carga: unknown): {
   mensajes: MensajeEntrante[];
   estados: EstadoSaliente[];
   reacciones: ReaccionEntrante[];
+  permisos: PermisoDeLlamada[];
 } {
   const mensajes: MensajeEntrante[] = [];
   const estados: EstadoSaliente[] = [];
   const reacciones: ReaccionEntrante[] = [];
+  const permisos: PermisoDeLlamada[] = [];
 
   const raiz = obj(carga);
-  if (!raiz) return { mensajes, estados, reacciones };
+  if (!raiz) return { mensajes, estados, reacciones, permisos };
 
   for (const entrada of lista(raiz.entry)) {
     for (const cambio of lista(obj(entrada)?.changes)) {
@@ -149,6 +175,29 @@ export function leerWebhook(carga: unknown): {
           continue;
         }
 
+        /*
+         * La respuesta al pedido de permiso para llamar.
+         *
+         * Se saca de la fila antes de que entre como mensaje: aparte de no
+         * significar nada como burbuja, es lo único que le dice al CRM si a
+         * esta persona se le puede llamar o no, y eso hay que guardarlo en el
+         * hilo y no en la lista de mensajes.
+         *
+         * Se anota igual en el hilo, pero con texto propio —ver `leerTexto`—
+         * porque «aceptó que la llamemos» es justo lo que quiere ver quien
+         * abre la conversación al otro día.
+         */
+        const permiso = leerPermiso(msg, tipo);
+        if (permiso) {
+          permisos.push({
+            waId,
+            telefono: de.replace(/\D/g, ""),
+            acepto: permiso.acepto,
+            vence: permiso.vence,
+            cuando,
+          });
+        }
+
         mensajes.push({
           waId,
           telefono: de.replace(/\D/g, ""),
@@ -178,7 +227,7 @@ export function leerWebhook(carga: unknown): {
     }
   }
 
-  return { mensajes, estados, reacciones };
+  return { mensajes, estados, reacciones, permisos };
 }
 
 /**
@@ -195,6 +244,21 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
     // Los botones y listas de un menú llegan como respuestas interactivas.
     case "interactive": {
       const inter = obj(msg.interactive);
+
+      /*
+       * La respuesta al permiso de llamada no trae título: trae un «accept» o
+       * un «reject» en inglés y nada más. Sin esto quedaría en el hilo una
+       * burbuja vacía justo en el momento más importante de la conversación
+       * —cuando la persona acepta que la llamen— y quien abriera el chat al
+       * otro día no tendría forma de saber que puede llamarla.
+       */
+      const permiso = leerPermiso(msg, tipo);
+      if (permiso) {
+        return permiso.acepto
+          ? "Aceptó que lo llamemos por WhatsApp"
+          : "No aceptó que lo llamemos por WhatsApp";
+      }
+
       return (
         texto(obj(inter?.button_reply)?.title) ?? texto(obj(inter?.list_reply)?.title)
       );
@@ -229,6 +293,38 @@ function leerMedia(msg: Record<string, unknown>, tipo: string): MediaEntrante | 
     id,
     mime: texto(cuerpo?.mime_type),
     nombre: texto(cuerpo?.filename),
+  };
+}
+
+/**
+ * ¿Este mensaje es la respuesta al pedido de permiso para llamar?
+ *
+ * Devuelve null para todo lo demás, que es casi todo. La fecha de vencimiento
+ * viene en segundos desde epoch, como todas las de Meta; si no viene, se
+ * devuelve null y NO se inventa un plazo: un permiso sin fecha es un permiso
+ * que no se puede comprobar, y llamar creyendo que se puede es peor que no
+ * llamar.
+ */
+function leerPermiso(
+  msg: Record<string, unknown>,
+  tipo: string,
+): { acepto: boolean; vence: Date | null } | null {
+  if (tipo !== "interactive") return null;
+
+  const inter = obj(msg.interactive);
+  if (texto(inter?.type) !== "call_permission_reply") return null;
+
+  const cuerpo = obj(inter?.call_permission_reply);
+  const respuesta = texto(cuerpo?.response)?.toLowerCase();
+  if (!respuesta) return null;
+
+  const marca = cuerpo?.expiration_timestamp;
+  const segundos =
+    typeof marca === "number" ? marca : typeof marca === "string" ? Number(marca) : NaN;
+
+  return {
+    acepto: respuesta === "accept" || respuesta === "accepted",
+    vence: Number.isFinite(segundos) && segundos > 0 ? new Date(segundos * 1000) : null,
   };
 }
 

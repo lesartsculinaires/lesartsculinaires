@@ -475,6 +475,18 @@ export interface Conversacion {
   canal: string;
   /** Nulo = sin asignar, que es lo que el asesor resuelve. */
   vendedorId: number | null;
+  /**
+   * Hasta cuándo se le puede llamar por WhatsApp.
+   *
+   * WhatsApp no deja llamarle a nadie que no lo haya aceptado antes, y el
+   * permiso se vence. Sin esto, la bandeja mostraría un botón «Llamar» que
+   * para casi todos falla. Nulo = nunca aceptó, o ya se venció.
+   */
+  permisoLlamadaHasta: string | null;
+  /** Cuándo se le mandó la última solicitud, para no pedírselo tres veces. */
+  permisoLlamadaPedidoEn: string | null;
+  /** Qué contestó. Distingue «nunca contestó» de «dijo que no». */
+  permisoLlamadaRespuesta: "acepto" | "rechazo" | null;
   /** Etiquetas puestas a mano. No incluye la etapa ni el estado de la venta. */
   etiquetaIds: number[];
 }

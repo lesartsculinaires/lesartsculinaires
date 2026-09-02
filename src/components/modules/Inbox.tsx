@@ -14,7 +14,13 @@ import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
+import { pedirPermisoDeLlamada } from "@/app/llamadas-actions";
 import { canalDe } from "@/lib/canales";
+import {
+  comoSeExplica,
+  comoSeLlamaElBoton,
+  queOfrecer,
+} from "@/lib/permisoDeLlamada";
 import { coincideHilo, hayBusqueda } from "@/lib/buscarEnBandeja";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
 import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
@@ -182,6 +188,8 @@ export function Inbox({
   const [grabando, setGrabando] = useState(false);
   /** Lo escrito en la barra de búsqueda de la lista de hilos. */
   const [busqueda, setBusqueda] = useState("");
+  /** Se está mandando la solicitud de permiso para llamar. */
+  const [pidiendoPermiso, setPidiendoPermiso] = useState(false);
   const soft = softer(accent);
 
   /**
@@ -353,6 +361,47 @@ export function Inbox({
   const ventanaCerrada = !ventanaAbierta(delHilo, canal.ventanaHoras);
   /** Nunca escribió: el aviso tiene que decir otra cosa. */
   const nuncaEscribio = horasDesdeEntrante(delHilo) == null;
+
+  /*
+   * Qué se puede hacer con el teléfono en este hilo.
+   *
+   * WhatsApp no deja llamarle a nadie que no lo haya aceptado antes, así que
+   * el botón no es siempre el mismo: a veces llama, a veces pide el permiso, y
+   * a veces no hay nada que ofrecer porque cualquier cosa fallaría. La regla
+   * está en `lib/permisoDeLlamada.ts` y se prueba sin navegador.
+   */
+  const ultimoEntrante = useMemo(() => {
+    const m = [...delHilo].reverse().find((x) => x.direccion === "entrante");
+    return m?.creadoEn ?? null;
+  }, [delHilo]);
+
+  const permiso = {
+    hasta: actual?.permisoLlamadaHasta ?? null,
+    pedidoEn: actual?.permisoLlamadaPedidoEn ?? null,
+    respuesta: actual?.permisoLlamadaRespuesta ?? null,
+  };
+  const conElTelefono = queOfrecer(permiso, ultimoEntrante);
+  const textoDelBoton = comoSeLlamaElBoton(conElTelefono);
+
+  /**
+   * Manda la solicitud de permiso.
+   *
+   * Se refresca al terminar aunque haya salido bien: lo que cambia es la fecha
+   * del último pedido, y de ella depende que el botón pase a decir «ya se le
+   * pidió». Sin el refresco, quien lo apretó seguiría viendo el mismo botón y
+   * se lo mandaría dos veces a la misma persona.
+   */
+  const pedirElPermiso = async (conversacionId: number) => {
+    setPidiendoPermiso(true);
+    const r = await pedirPermisoDeLlamada(conversacionId);
+    setPidiendoPermiso(false);
+    setAviso(
+      r.ok
+        ? "Se le mandó la solicitud. Cuando la acepte vas a poder llamarlo."
+        : (r.error ?? "No se pudo mandar la solicitud."),
+    );
+    onRefrescar();
+  };
 
   /**
    * Manda el archivo elegido.
@@ -1200,22 +1249,32 @@ export function Inbox({
                 </select>
 
                 {/*
-                  Llamar, y sólo por WhatsApp.
+                  El teléfono: llamar, o pedir permiso para poder.
 
-                  El botón no aparece en un hilo de Instagram —ahí no existen
-                  las llamadas— ni cuando el servidor no las tiene
-                  configuradas. Mostrarlo igual y que falle al apretarlo sería
-                  peor que no mostrarlo: quien atiende se enteraría de que no
-                  se puede recién con el cliente esperando.
+                  Un solo botón y no dos, y cuál es lo decide la regla. WhatsApp
+                  no deja llamarle a nadie que no lo haya aceptado antes, así
+                  que un botón «Llamar» siempre visible fallaría para casi
+                  todos los clientes —y quien atiende se enteraría con el
+                  cliente del otro lado esperando—.
+
+                  Cuando no hay nada que ofrecer no hay botón: ni «Llamar» que
+                  va a fallar, ni «Pedir permiso» a alguien que ya dijo que no.
+                  El porqué se lee abajo, en la línea de estado.
+
+                  Sólo por WhatsApp: en Instagram no existen las llamadas.
                 */}
-                {onLlamar && canal.clave === "whatsapp" && (
+                {onLlamar && canal.clave === "whatsapp" && textoDelBoton && (
                   <button
                     type="button"
-                    onClick={() => onLlamar(actual.id)}
-                    title="Llamar por WhatsApp. Hace falta que el cliente haya dado permiso."
-                    style={boton("#2F6B4F")}
+                    onClick={() => {
+                      if (conElTelefono === "llamar") return onLlamar(actual.id);
+                      void pedirElPermiso(actual.id);
+                    }}
+                    disabled={pidiendoPermiso}
+                    title={comoSeExplica(conElTelefono, permiso)}
+                    style={boton(conElTelefono === "llamar" ? "#2F6B4F" : accent)}
                   >
-                    📞 Llamar
+                    📞 {pidiendoPermiso ? "Mandando…" : textoDelBoton}
                   </button>
                 )}
 
@@ -1281,6 +1340,24 @@ export function Inbox({
                 accent={accent}
                 onCambio={onRefrescar}
               />
+
+              {/*
+                En qué anda el permiso para llamar.
+
+                Va escrito y no sólo en el «title» del botón porque los tres
+                estados sin botón —ya se le pidió, dijo que no, hace más de 24 h
+                que no escribe— no tienen dónde mostrarse: sin esta línea, el
+                botón simplemente no estaría y nadie sabría por qué.
+
+                Cuando ya se puede llamar también se dice, porque el permiso se
+                vence: quien ve «Llamar» tiene que poder saber que eso no dura
+                para siempre.
+              */}
+              {onLlamar && canal.clave === "whatsapp" && (
+                <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
+                  📞 {comoSeExplica(conElTelefono, permiso)}
+                </span>
+              )}
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", background: T.paper }}>

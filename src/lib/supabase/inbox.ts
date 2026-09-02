@@ -42,19 +42,40 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    * consulta entera y la bandeja se queda en blanco—. Se reintenta sin ellas
    * para que siga funcionando todo menos fijar, silenciar y marcar sin leer.
    */
-  const traerConvs = (conMarcas: boolean) =>
+  const MARCAS = ", no_leida, fijada, silenciada";
+  const PERMISO =
+    ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta";
+
+  const traerConvs = (extras: string) =>
     supabase
       .from("conversaciones")
       .select(
         "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
           "sin_leer, archivada, estado, vendedor_id, canal" +
-          (conMarcas ? ", no_leida, fijada, silenciada" : ""),
+          extras,
       )
       .order("ultimo_mensaje_en", { ascending: false })
       .limit(300);
 
-  let { data: convs, error } = await traerConvs(true);
-  if (error?.code === "42703") ({ data: convs, error } = await traerConvs(false));
+  /*
+   * Se va soltando lo opcional hasta que la consulta entra.
+   *
+   * Pedir una columna que no existe devuelve 42703, y ese error se lleva la
+   * consulta entera: la bandeja quedaría en blanco. Con esto, entre que se
+   * despliega el código y se corre el SQL, lo único que falta es la función
+   * nueva —fijar y silenciar, o el permiso de llamada—; todo lo demás sigue
+   * andando.
+   *
+   * El orden va de más a menos, y se prueban las combinaciones que existen de
+   * verdad: las migraciones se corren en orden, así que nadie tiene el permiso
+   * sin tener las marcas.
+   */
+  let convs = null;
+  let error = null;
+  for (const extras of [MARCAS + PERMISO, MARCAS, ""]) {
+    ({ data: convs, error } = await traerConvs(extras));
+    if (error?.code !== "42703") break;
+  }
 
   if (error) {
     // PGRST205: la tabla no existe en el esquema todavía.
@@ -171,6 +192,17 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       // las conversaciones que hay hasta hoy.
       canal: String(c.canal ?? "whatsapp"),
       vendedorId: c.vendedor_id == null ? null : Number(c.vendedor_id),
+      // Sin la migración del permiso estas tres vienen `undefined`, y quedan
+      // en null: el CRM ofrece pedir el permiso, que es lo correcto cuando no
+      // hay forma de saber si lo dio.
+      permisoLlamadaHasta: c.llamada_permiso_hasta ? String(c.llamada_permiso_hasta) : null,
+      permisoLlamadaPedidoEn: c.llamada_permiso_pedido_en
+        ? String(c.llamada_permiso_pedido_en)
+        : null,
+      permisoLlamadaRespuesta:
+        c.llamada_permiso_respuesta === "acepto" || c.llamada_permiso_respuesta === "rechazo"
+          ? c.llamada_permiso_respuesta
+          : null,
       etiquetaIds: etiquetasPorConv.get(Number(c.id)) ?? [],
     })),
     mensajes,
