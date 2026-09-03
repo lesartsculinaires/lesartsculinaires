@@ -33,7 +33,13 @@
  *                    alguien del otro lado. Eso queda para la prueba con un
  *                    cliente real.
  *
- * Necesita el banco armado y la aplicación en 3142.
+ * Necesita el banco armado y la aplicación en 3142, y que el `.env.local` del
+ * banco tenga las variables de WhatsApp —cualquier valor sirve, no se llama a
+ * Meta—: sin ellas el CRM esconde el botón de llamar a propósito, y la prueba
+ * falla en «hay un botón de teléfono» sin que haya nada roto.
+ *
+ *     WHATSAPP_TOKEN=banco-de-pruebas-no-sirve
+ *     WHATSAPP_PHONE_NUMBER_ID=000000000000000
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
