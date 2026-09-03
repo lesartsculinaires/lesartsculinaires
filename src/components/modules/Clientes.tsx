@@ -17,6 +17,7 @@ import { EnvioMasivo } from "@/components/modules/EnvioMasivo";
 import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
+import { mesesComoOpciones } from "@/lib/periodoDelTablero";
 import { definirFiltros, pasa } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { Importacion, Oportunidad, Plantilla } from "@/lib/types";
@@ -112,7 +113,13 @@ export function Clientes({
   const soft = softer(accent);
   const q = query.trim().toLowerCase();
 
-  const filtros_def = definirFiltros(cat, importaciones);
+  /*
+   * Los meses salen de las oportunidades que se están listando, no de un
+   * catálogo: así la lista ofrece los meses que de verdad existen, y no
+   * doce opciones de las que ocho no tienen ni un lead.
+   */
+  const meses = useMemo(() => mesesComoOpciones(oportunidades), [oportunidades]);
+  const filtros_def = definirFiltros(cat, importaciones, [], meses);
 
   const filtradas = oportunidades.filter(
     (o) =>

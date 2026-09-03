@@ -324,7 +324,7 @@ function VistaComparativa({
         }}
       >
         {meses.map((m) => (
-          <div key={m.clave} style={{ minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <div key={m.clave} data-mes={m.clave} style={{ minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 4, height: "100%" }}>
               <div
                 title={`${m.etiquetaLarga} · ${money(m.cerrado || null)} cerrado`}

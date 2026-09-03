@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
 import { cuantosPuestos, definirFiltros, pasa } from "@/lib/filtros";
 import { leadCount, money } from "@/lib/format";
+import { mesesComoOpciones } from "@/lib/periodoDelTablero";
 import { etapaTone } from "@/lib/selectors";
 import { T, soft } from "@/lib/theme";
 import { SIN_DUENO, activos } from "@/lib/types";
@@ -92,7 +93,19 @@ export function Pipeline({
    * programa, el de una feria, el de un territorio— y ésa es justo la pregunta
    * que el tablero contesta bien y una tabla no.
    */
-  const defs = definirFiltros(cat, importaciones, ["etapa", "vendedor"]);
+  /*
+   * El mes, como un filtro más y NO como el modo por omisión del tablero.
+   *
+   * A propósito: el Pipeline es trabajo pendiente, no una medición. Un lead
+   * que entró en mayo y sigue en Negociación hay que trabajarlo hoy, y un
+   * tablero que arrancara mostrando sólo el mes en curso lo escondería. Quien
+   * quiera ver el embudo de una camada —«¿en qué quedaron los de la feria de
+   * agosto?»— lo pone acá y lo saca cuando termina.
+   *
+   * La medición mes a mes es el Dashboard, que sí abre en el mes en curso.
+   */
+  const meses = useMemo(() => mesesComoOpciones(oportunidades), [oportunidades]);
+  const defs = definirFiltros(cat, importaciones, ["etapa", "vendedor"], meses);
   const puestos = cuantosPuestos(defs, filtros);
 
   const filtradas = puestos === 0 ? oportunidades : oportunidades.filter((o) => pasa(o, defs, filtros));
@@ -351,9 +364,11 @@ export function Pipeline({
          * discrepar.
          */
         const tone = etapaTone(etapa.nombre, accent);
+        /* La columna de lo ganado suma otra cosa: ver el comentario de abajo. */
+        const columnaDeGanado = etapa.nombre.trim().toLowerCase() === "ganado";
 
         return (
-          <div key={etapa.id}>
+          <div key={etapa.id} data-etapa={etapa.nombre}>
             <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: `2px solid ${tone}` }}>
               <span style={{ display: "block", fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}>
                 {etapa.nombre}
@@ -370,6 +385,30 @@ export function Pipeline({
                 <span className="mono" style={{ fontSize: 11, color: T.muted }}>
                   {leadCount(enEtapa.length)}
                 </span>
+                {/*
+                  La plata de la columna, y cuál es depende de la columna.
+
+                  En las etapas abiertas es el VALOR de las oportunidades: lo
+                  que hay en juego si se cierran. En «Ganado» es la VENTA
+                  CERRADA: lo que se cobró de verdad.
+
+                  No es un adorno. Antes esta columna sumaba el valor de LISTA
+                  de lo ganado, así que decía una cifra más alta que la venta
+                  cerrada del Dashboard por los mismos leads: la diferencia era
+                  todo lo que se había descontado al cerrar, y no había nada en
+                  pantalla que lo explicara. Ahora las dos hablan de la misma
+                  plata: la cobrada.
+
+                  Pueden seguir sin coincidir, y eso es otra cosa: el Dashboard
+                  suma la venta cerrada de TODOS los leads del período, y acá
+                  sólo están los que además quedaron en esta columna. Un lead
+                  con plata anotada que nadie movió a «Ganado» entra en uno y
+                  no en el otro. Eso no es un error de la pantalla: es un lead
+                  que hay que acomodar.
+
+                  «Perdido» se queda en el valor a propósito: es lo que se dejó
+                  de ganar, y ahí no hay venta cerrada que sumar.
+                */}
                 <span
                   className="mono"
                   style={{
@@ -377,8 +416,18 @@ export function Pipeline({
                     fontWeight: 500,
                     color: enEtapa.length ? T.ink : T.faint,
                   }}
+                  title={
+                    columnaDeGanado
+                      ? "Venta cerrada: lo que se cobró por estos leads, no su valor de lista"
+                      : "Valor de las oportunidades de esta etapa"
+                  }
                 >
-                  {money(enEtapa.reduce((a, o) => a + (o.valor ?? 0), 0) || null)}
+                  {money(
+                    enEtapa.reduce(
+                      (a, o) => a + (columnaDeGanado ? (o.cerrada ?? o.valor ?? 0) : (o.valor ?? 0)),
+                      0,
+                    ) || null,
+                  )}
                 </span>
               </div>
             </div>
@@ -419,6 +468,7 @@ export function Pipeline({
                 <div
                   key={o.id}
                   className="card"
+                  data-ficha={o.codigo}
                   draggable
                   onClick={() => onOpen(o.id)}
                   onDragStart={(e) => {

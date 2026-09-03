@@ -274,12 +274,18 @@ export default function CrmApp({
   const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
 
   /**
-   * Las oportunidades que se muestran en el tablero.
+   * Las oportunidades que se muestran en los tableros.
    *
    * Casi siempre son todas las que llegaron, porque la base ya devolvió las
    * que esta persona puede ver. La excepción es el rol que ve todos los
    * clientes pero trabaja su propio tablero: ahí se filtra acá, y sólo acá,
    * para que Clientes las siga listando enteras.
+   *
+   * Vale para el Dashboard Y para el Pipeline, y eso no es un detalle: antes
+   * el Pipeline lo usaba y el Dashboard no, así que un rol que sólo trabaja lo
+   * suyo veía su embudo en el Pipeline y los números de TODO EL EQUIPO en el
+   * tablero. Dos pantallas del mismo CRM contestando distinto a la misma
+   * pregunta —«¿cómo voy?»— y ninguna de las dos diciendo cuál era cuál.
    *
    * Si la persona no tiene ficha de vendedor no se filtra nada. Filtrar contra
    * un vendedor que no existe dejaría el tablero vacío sin explicación, y un
@@ -577,7 +583,7 @@ export default function CrmApp({
           />
 
           {mod === "Dashboard" && (
-            <Dashboard oportunidades={oportunidades} accent={accent} />
+            <Dashboard oportunidades={delTablero} accent={accent} />
           )}
 
           {mod === "Clientes" && (
