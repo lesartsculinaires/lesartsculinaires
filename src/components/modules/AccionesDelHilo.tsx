@@ -41,7 +41,15 @@ interface Props {
   abierta: boolean;
   onCambio: () => void;
   onCerrar: () => void;
-  onVerCliente: (clienteId: number) => void;
+  /**
+   * Abrir la ficha del lead de este hilo.
+   *
+   * Nulo cuando esa persona todavía no tiene lead. El menú entonces no ofrece
+   * la opción, en vez de ofrecerla y llevar a otra pantalla: lo que hace falta
+   * en ese caso es abrirle el lead, y eso se hace desde el hilo abierto, donde
+   * se ve de quién se trata.
+   */
+  onVerFicha: (() => void) | null;
 }
 
 export function AccionesDelHilo({
@@ -50,7 +58,7 @@ export function AccionesDelHilo({
   abierta,
   onCambio,
   onCerrar,
-  onVerCliente,
+  onVerFicha,
 }: Props) {
   const [menu, setMenu] = useState(false);
   const [haciaArriba, setHaciaArriba] = useState(false);
@@ -211,13 +219,13 @@ export function AccionesDelHilo({
             {c.archivada ? "↩ Desarchivar" : "📁 Archivar"}
           </button>
 
-          {c.clienteId != null && (
+          {onVerFicha && (
             <button
               type="button"
               role="menuitem"
               onClick={() => {
                 setMenu(false);
-                onVerCliente(c.clienteId!);
+                onVerFicha();
               }}
               style={item}
             >

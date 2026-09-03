@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 
-import { altaLead } from "@/lib/crm/altaLead";
+import { abrirOportunidad, altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
@@ -810,6 +810,186 @@ async function porDefecto(
       ? Number(estados.data.find((e) => e.es_final !== true)!.id)
       : null,
   };
+}
+
+export interface ResultadoAbrirLead extends ActionResult {
+  /** La oportunidad que quedó abierta. Es lo que la bandeja necesita para
+   *  mostrar la ficha sin cambiar de pantalla. */
+  oportunidadId: number | null;
+}
+
+/**
+ * Le abre el lead a un hilo que tiene contacto pero no oportunidad.
+ *
+ * ============================================================================
+ * POR QUÉ HACE FALTA UN BOTÓN PARA ESTO
+ * ============================================================================
+ *
+ * El webhook abre el lead solo cuando entra el primer mensaje de un número
+ * nuevo, y está escrito para no tumbarse si eso falla: guarda el mensaje,
+ * abre la conversación y sigue. El comentario de ahí dice que el lead «se
+ * arregla con un clic desde la bandeja». Ese clic no existía.
+ *
+ * Cuando falta, la persona queda a medio camino: aparece en la bandeja —la
+ * conversación tiene su contacto— pero no en Clientes, ni en el Pipeline, ni
+ * en el tablero, porque todas esas pantallas listan oportunidades. Hoy hay dos
+ * así en la base de la escuela.
+ *
+ * Y era justo lo que se veía al apretar «Ver ficha»: no había ficha que abrir,
+ * así que la bandeja saltaba a Clientes… donde esa persona tampoco está. El
+ * hilo abierto se perdía y no se ganaba nada a cambio.
+ *
+ * ----------------------------------------------------------------------------
+ * VOLVER A APRETARLO NO DUPLICA
+ * ----------------------------------------------------------------------------
+ *
+ * Si el contacto ya tiene una oportunidad se devuelve ésa y no se escribe
+ * nada. Dos asesoras mirando el mismo hilo pueden apretar a la vez y las dos
+ * terminan en la misma ficha.
+ */
+export async function abrirLeadDelHilo(
+  conversacionId: number,
+): Promise<ResultadoAbrirLead> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ...SIN_SESION, oportunidadId: null };
+
+  const { data: conv, error: errConv } = await supabase
+    .from("conversaciones")
+    .select("id, telefono, nombre_perfil, cliente_id, vendedor_id")
+    .eq("id", conversacionId)
+    .maybeSingle();
+
+  if (errConv) return { ok: false, error: errConv.message, oportunidadId: null };
+  if (!conv) return { ok: false, error: "No se encontró la conversación.", oportunidadId: null };
+
+  const telefono = String(conv.telefono ?? "");
+  const nombre = (conv.nombre_perfil ? String(conv.nombre_perfil) : "").trim() || telefono;
+  /*
+   * De quién es el lead: de quien ya tiene el hilo.
+   *
+   * No se sortea. El reparto es para los que entran, y éste ya entró: si
+   * alguien viene atendiendo la conversación, mandársela a otra persona al
+   * abrirle el lead sería quitárselo sin avisar. Sin dueño, queda sin dueño,
+   * que es lo que todo el equipo puede ver y agarrar.
+   */
+  const vendedorId = conv.vendedor_id == null ? null : Number(conv.vendedor_id);
+  const catalogo = await porDefecto(supabase);
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  /*
+   * Sin contacto hay que resolverlo primero, y buscándolo antes de crearlo.
+   *
+   * El número es el dato que dice si esta persona ya está en el CRM, y se
+   * compara por los últimos ocho dígitos porque los teléfonos guardados están
+   * escritos de todas las formas —«7797-2598», «+503 7797 2598»,
+   * «50377972598»—. Es el mismo criterio que usa el webhook.
+   *
+   * Encontrarla no es un problema a resolver: es el caso bueno. La
+   * conversación se le cuelga a la ficha que ya tiene, en vez de abrirle una
+   * segunda al lado.
+   */
+  let clienteId: number;
+
+  if (conv.cliente_id != null) {
+    clienteId = Number(conv.cliente_id);
+  } else {
+    const soloDigitos = telefono.replace(/\D/g, "");
+    const { data: yaEsta } =
+      soloDigitos.length >= 8
+        ? await supabase
+            .from("clientes")
+            .select("id")
+            .like("telefono", `%${soloDigitos.slice(-8)}`)
+            .limit(1)
+            .maybeSingle()
+        : { data: null };
+
+    if (yaEsta) {
+      clienteId = Number(yaEsta.id);
+    } else {
+      /*
+       * Y si no está, se crea por `altaLead` —el mismo camino del alta de
+       * Clientes, de la importación y de la API—, que crea la persona y su
+       * oportunidad juntas y le asigna el código CRM.
+       *
+       * Va forzado a propósito. La búsqueda por número de acá arriba ya
+       * descartó que sea alguien que está; lo que `altaLead` frenaría a esta
+       * altura es un tocayo, y dejar sin lead a una segunda «Karla» porque ya
+       * hay una es peor que tener dos Karlas distintas, que es lo que son.
+       */
+      const alta = await altaLead(
+        supabase,
+        {
+          nombre,
+          telefono: soloDigitos,
+          correo: null,
+          vendedor_id: vendedorId,
+          producto_id: null,
+          territorio_id: null,
+          canal_id: catalogo.canalId,
+          etapa_id: catalogo.etapaId,
+          estado_id: catalogo.estadoId,
+          fecha_registro: hoy,
+          fecha_cierre: null,
+          valor_oportunidad: null,
+          descuento_promocion: null,
+        },
+        true,
+      );
+
+      if (!alta.ok || alta.clienteId == null || alta.oportunidadId == null) {
+        return { ok: false, error: alta.error, oportunidadId: null };
+      }
+
+      const { error: errVinculo } = await supabase
+        .from("conversaciones")
+        .update({ cliente_id: alta.clienteId })
+        .eq("id", conversacionId);
+
+      if (errVinculo) return { ok: false, error: errVinculo.message, oportunidadId: null };
+
+      revalidatePath("/");
+      return { ok: true, error: null, oportunidadId: alta.oportunidadId };
+    }
+
+    const { error: errVinculo } = await supabase
+      .from("conversaciones")
+      .update({ cliente_id: clienteId })
+      .eq("id", conversacionId);
+
+    if (errVinculo) return { ok: false, error: errVinculo.message, oportunidadId: null };
+  }
+
+  // La que ya tiene, si tiene. La más nueva, que es la que se está hablando.
+  const { data: ya } = await supabase
+    .from("oportunidades")
+    .select("id")
+    .eq("cliente_id", clienteId)
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (ya) return { ok: true, error: null, oportunidadId: Number(ya.id) };
+
+  const r = await abrirOportunidad(supabase, clienteId, {
+    vendedor_id: vendedorId,
+    producto_id: null,
+    territorio_id: null,
+    canal_id: catalogo.canalId,
+    etapa_id: catalogo.etapaId,
+    estado_id: catalogo.estadoId,
+    fecha_registro: hoy,
+    fecha_cierre: null,
+    valor_oportunidad: null,
+    descuento_promocion: null,
+  });
+
+  if (!r.ok || r.oportunidadId == null) {
+    return { ok: false, error: r.error, oportunidadId: null };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null, oportunidadId: r.oportunidadId };
 }
 
 /** Lo que hace falta saber de un archivo ya subido al bucket. */

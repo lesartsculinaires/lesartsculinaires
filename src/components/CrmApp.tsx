@@ -655,29 +655,25 @@ export default function CrmApp({
               }
               accent={accent}
               onRefrescar={() => router.refresh()}
-              onVerCliente={(clienteId) => {
-                /*
-                 * La ficha se abre encima de la bandeja, sin irse a Clientes.
-                 *
-                 * Antes esto saltaba de pantalla. Quien está atendiendo un
-                 * chat abre la ficha para mirar un dato —qué programa quería,
-                 * cuánto le cotizaron— y tiene que volver a contestar: el
-                 * salto le costaba perder el hilo abierto y buscarlo otra vez
-                 * entre todos.
-                 *
-                 * La ficha se dibuja fuera de todos los módulos, así que
-                 * alcanza con marcar cuál está abierta. Es lo mismo que ya se
-                 * hizo en el Pipeline.
-                 *
-                 * Las pantallas listan oportunidades, no clientes, así que se
-                 * abre la primera de esa persona. Si no tiene ninguna no hay
-                 * ficha que mostrar, y ahí sí se va a Clientes, que es donde
-                 * se le puede crear una.
-                 */
-                const suya = oportunidades.find((o) => o.clienteId === clienteId);
-                if (suya) actions.select(suya.id);
-                else actions.setMod("Clientes");
-              }}
+              /*
+               * La ficha se abre encima de la bandeja, sin irse a Clientes.
+               *
+               * Quien está atendiendo un chat abre la ficha para mirar un dato
+               * —qué programa quería, cuánto le cotizaron— y tiene que volver
+               * a contestar: cambiar de pantalla le cuesta perder el hilo
+               * abierto y buscarlo otra vez entre todos. La ficha se dibuja
+               * fuera de todos los módulos, así que alcanza con marcar cuál
+               * está abierta. Es lo mismo que ya se hizo en el Pipeline.
+               *
+               * Acá llega la oportunidad, no el cliente, y por eso esto es una
+               * línea. Antes llegaba el cliente y había que buscarle el lead
+               * con una regla propia; cuando no lo encontraba —una persona de
+               * WhatsApp sin lead abierto— la única salida era saltar a
+               * Clientes, donde esa persona tampoco está porque esa pantalla
+               * también lista oportunidades. La bandeja ya sabe cuál es el
+               * lead de cada hilo: lo muestra debajo del nombre.
+               */
+              onVerFicha={actions.select}
             />
           )}
 

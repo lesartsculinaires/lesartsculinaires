@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
-import { asignar, enviarArchivo, noEraLead, responderConversacion, urlsDeMedia } from "@/app/inbox-actions";
+import {
+  abrirLeadDelHilo,
+  asignar,
+  enviarArchivo,
+  noEraLead,
+  responderConversacion,
+  urlsDeMedia,
+} from "@/app/inbox-actions";
 import {
   ACEPTA_ADJUNTOS,
   BALDE_WHATSAPP,
@@ -51,7 +58,16 @@ interface Props {
   /** Para poder reabrir un hilo dormido. Sólo se ofrecen las aprobadas. */
   plantillas: Plantilla[];
   onRefrescar: () => void;
-  onVerCliente: (clienteId: number) => void;
+  /**
+   * Abre la ficha de un lead encima de la bandeja.
+   *
+   * Recibe la oportunidad, no el cliente, y eso es lo que arregla el salto a
+   * Clientes. Quien sabe qué lead corresponde a cada hilo es esta pantalla
+   * —ya lo calcula para mostrar la etapa y el estado—, así que resolverlo
+   * afuera obligaba a repetir la búsqueda con otra regla, y cuando no
+   * encontraba nada la única salida que le quedaba era cambiar de pantalla.
+   */
+  onVerFicha: (oportunidadId: number) => void;
   /**
    * Llamar por WhatsApp a la conversación abierta.
    *
@@ -160,7 +176,7 @@ export function Inbox({
   etiquetas,
   plantillas,
   onRefrescar,
-  onVerCliente,
+  onVerFicha,
   onLlamar,
   abrirHilo,
 }: Props) {
@@ -206,6 +222,8 @@ export function Inbox({
   const [busqueda, setBusqueda] = useState("");
   /** Se está mandando la solicitud de permiso para llamar. */
   const [pidiendoPermiso, setPidiendoPermiso] = useState(false);
+  /** Se le está abriendo el lead a un hilo que no lo tenía. */
+  const [abriendoLead, setAbriendoLead] = useState(false);
   /*
    * Abrir el hilo que pidió la tarjeta de llamada.
    *
@@ -237,6 +255,29 @@ export function Inbox({
   const nombreEnElCrm = useMemo(() => {
     const m = new Map<number, string>();
     for (const o of oportunidades) if (!m.has(o.clienteId)) m.set(o.clienteId, o.cliente);
+    return (clienteId: number | null) => (clienteId == null ? null : m.get(clienteId) ?? null);
+  }, [oportunidades]);
+
+  /**
+   * El lead de cada persona: el que abre la ficha desde acá.
+   *
+   * Una sola regla para toda la bandeja —la abierta más reciente, y si no hay
+   * ninguna abierta la más reciente— y una sola lista, la que ya está en
+   * pantalla. Cuando esto se resolvía afuera se usaba otra regla, «la primera
+   * del arreglo», y el hilo podía estar mostrando la etapa de un lead mientras
+   * «Ver ficha» abría otro.
+   *
+   * Devuelve null cuando esa persona no tiene ninguno. No es un error: es el
+   * caso en que el webhook no llegó a abrirle el lead, y lo que corresponde
+   * entonces es ofrecer abrirlo, no mandar a nadie a otra pantalla.
+   */
+  const leadDe = useMemo(() => {
+    const m = new Map<number, Oportunidad>();
+    for (const o of oportunidades) {
+      const previo = m.get(o.clienteId);
+      if (!previo) m.set(o.clienteId, o);
+      else if (previo.fechaCierre != null && o.fechaCierre == null) m.set(o.clienteId, o);
+    }
     return (clienteId: number | null) => (clienteId == null ? null : m.get(clienteId) ?? null);
   }, [oportunidades]);
 
@@ -378,11 +419,10 @@ export function Inbox({
    * pregunta por otro, lo que importa es en qué anda ahora, no lo que cerró el
    * año pasado.
    */
-  const suOportunidad = useMemo(() => {
-    if (!actual?.clienteId) return null;
-    const suyas = oportunidades.filter((o) => o.clienteId === actual.clienteId);
-    return suyas.find((o) => o.fechaCierre == null) ?? suyas[0] ?? null;
-  }, [oportunidades, actual]);
+  const suOportunidad = useMemo(
+    () => leadDe(actual?.clienteId ?? null),
+    [leadDe, actual],
+  );
 
   /**
    * De qué red es el hilo abierto.
@@ -436,6 +476,29 @@ export function Inbox({
         : (r.error ?? "No se pudo mandar la solicitud."),
     );
     onRefrescar();
+  };
+
+  /**
+   * Le abre el lead a esta persona y le muestra la ficha en el acto.
+   *
+   * La ficha se abre con el id que devolvió el servidor y no esperando a que
+   * el refresco traiga la fila nueva: son dos viajes distintos y el segundo
+   * puede tardar, y quien apretó el botón se quedaría mirando la bandeja sin
+   * saber si pasó algo. El refresco va igual, para que la etapa y el estado
+   * aparezcan debajo del nombre.
+   */
+  const abrirElLead = async (conversacionId: number) => {
+    setAbriendoLead(true);
+    const r = await abrirLeadDelHilo(conversacionId);
+    setAbriendoLead(false);
+
+    if (!r.ok || r.oportunidadId == null) {
+      setAviso(r.error ?? "No se pudo abrir el lead.");
+      return;
+    }
+
+    onRefrescar();
+    onVerFicha(r.oportunidadId);
   };
 
   /**
@@ -1053,6 +1116,7 @@ export function Inbox({
 
           {lista.map((c) => {
             const activa = c.id === abierta;
+            const lead = leadDe(c.clienteId);
             return (
               /*
                * Un `div` con dos botones adentro, y no un botón con otro.
@@ -1207,7 +1271,12 @@ export function Inbox({
                   abierta={activa}
                   onCambio={onRefrescar}
                   onCerrar={() => setAbierta(null)}
-                  onVerCliente={onVerCliente}
+                  /* Nulo cuando esa persona no tiene lead: el menú no ofrece
+                     una ficha que no existe. Abrirlo se hace desde el hilo,
+                     que es donde se ve de quién se trata. */
+                  onVerFicha={
+                    lead ? () => onVerFicha(lead.id) : null
+                  }
                 />
               </div>
               </div>
@@ -1313,13 +1382,37 @@ export function Inbox({
                   </button>
                 )}
 
-                {actual.clienteId != null && (
+                {/*
+                  La ficha, o abrirla si todavía no hay.
+
+                  Nunca lleva a otra pantalla. Antes, cuando esta persona no
+                  tenía lead, «Ver ficha» saltaba a Clientes —donde tampoco
+                  está, porque esa pantalla lista oportunidades— y el hilo
+                  abierto se perdía por nada.
+
+                  Que no tenga lead pasa cuando el webhook no llegó a abrirlo:
+                  guarda el mensaje y sigue aunque el alta falle, a propósito,
+                  para no perder lo que escribió el cliente. Éste es el clic
+                  que lo completa.
+                */}
+                {suOportunidad ? (
                   <button
                     type="button"
-                    onClick={() => onVerCliente(actual.clienteId!)}
+                    onClick={() => onVerFicha(suOportunidad.id)}
+                    title={`Ver la ficha de ${suOportunidad.codigo}, sin salir de la bandeja`}
                     style={boton(accent)}
                   >
                     Ver ficha
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void abrirElLead(actual.id)}
+                    disabled={abriendoLead}
+                    title="Esta persona todavía no tiene lead: se le abre uno y se ve su ficha"
+                    style={boton(accent)}
+                  >
+                    {abriendoLead ? "Abriendo…" : "Abrir lead"}
                   </button>
                 )}
                 <button
@@ -1359,12 +1452,13 @@ export function Inbox({
                   oportunidad={suOportunidad}
                   accent={accent}
                   onCambio={onRefrescar}
-                  onVerFicha={() => onVerCliente(actual.clienteId!)}
+                  onVerFicha={() => onVerFicha(suOportunidad.id)}
                 />
               ) : (
                 <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
                   Todavía no tiene una oportunidad abierta, así que no hay etapa ni
-                  estado que mostrar.
+                  estado que mostrar. Con «Abrir lead», acá arriba, entra al
+                  Pipeline y al tablero.
                 </span>
               )}
 

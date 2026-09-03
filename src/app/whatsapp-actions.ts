@@ -196,76 +196,19 @@ export async function archivar(
   return { ok: true, error: null };
 }
 
-export interface ResultadoLead extends ActionResult {
-  clienteId: number | null;
-}
-
-/**
- * Convierte una conversación en cliente del CRM.
+/*
+ * Acá vivía `crearLeadDesdeConversacion`, y se fue por lo que NO hacía.
  *
- * Esto es lo que el webhook deliberadamente no hace solo. Acá hay una persona
- * que leyó el mensaje y decidió que es un lead de verdad, no un número
- * equivocado ni un proveedor.
+ * Se llamaba «crear lead» y creaba nada más la fila de `clientes`. Un cliente
+ * sin oportunidad no aparece en Clientes, ni en el Pipeline, ni en el tablero
+ * —esas pantallas listan oportunidades—, así que la persona quedaba existiendo
+ * sólo en la bandeja: justo el estado que después hacía que «Ver ficha» no
+ * tuviera ficha que abrir.
  *
- * Si el teléfono ya está en la base se vincula al cliente existente en vez de
- * crear otro: la conversación se le suma a su ficha, que es justo lo que se
- * quiere y no un duplicado.
+ * No la llamaba nadie, lo que evitó que hiciera daño, y ese es el motivo de
+ * borrarla y no de dejarla: la próxima pantalla que necesitara esto la habría
+ * encontrado por el nombre y habría heredado el hueco.
+ *
+ * Lo que hace falta está en `abrirLeadDelHilo`, en `inbox-actions.ts`, que
+ * crea las dos cosas por el mismo camino que el resto del CRM.
  */
-export async function crearLeadDesdeConversacion(
-  conversacionId: number,
-  nombre: string,
-): Promise<ResultadoLead> {
-  const limpio = nombre.trim();
-  if (!limpio) {
-    return { ok: false, error: "Poné un nombre para el cliente.", clienteId: null };
-  }
-
-  const supabase = await getServerClient();
-  if (!supabase) return { ...SIN_SESION, clienteId: null };
-
-  const { data: conv, error: errConv } = await supabase
-    .from("conversaciones")
-    .select("id, telefono, cliente_id")
-    .eq("id", conversacionId)
-    .maybeSingle();
-
-  if (errConv) return { ok: false, error: errConv.message, clienteId: null };
-  if (!conv) return { ok: false, error: "No se encontró la conversación.", clienteId: null };
-  if (conv.cliente_id) {
-    return { ok: true, error: null, clienteId: Number(conv.cliente_id) };
-  }
-
-  const telefono = String(conv.telefono);
-
-  // Mismo criterio que el resto del CRM: los últimos 8 dígitos, porque los
-  // teléfonos guardados no tienen un formato uniforme.
-  const { data: yaEsta } = await supabase
-    .from("clientes")
-    .select("id")
-    .like("telefono", `%${telefono.slice(-8)}`)
-    .limit(1)
-    .maybeSingle();
-
-  let clienteId = yaEsta ? Number(yaEsta.id) : null;
-
-  if (clienteId == null) {
-    const { data: creado, error } = await supabase
-      .from("clientes")
-      .insert({ nombre: limpio, telefono })
-      .select("id")
-      .single();
-
-    if (error) return { ok: false, error: error.message, clienteId: null };
-    clienteId = Number(creado.id);
-  }
-
-  const { error: errVinculo } = await supabase
-    .from("conversaciones")
-    .update({ cliente_id: clienteId })
-    .eq("id", conversacionId);
-
-  if (errVinculo) return { ok: false, error: errVinculo.message, clienteId: null };
-
-  revalidatePath("/");
-  return { ok: true, error: null, clienteId };
-}
