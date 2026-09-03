@@ -35,7 +35,7 @@
 -- PASO 1 no escribe: dice cuántas tarjetas se van a mover y a dónde.
 -- PASO 2 muestra una por una, para reconocerlas antes de tocarlas.
 -- PASO 3 mueve las ganadas y las perdidas. Es el que hay que correr.
--- PASO 4 es aparte y hay que decidirlo: las que siguen VIVAS.
+-- PASO 4 mueve a «Pago» las que siguen VIVAS y estaban en «Perdido».
 -- PASO 5 comprueba.
 --
 -- Conviene correr antes la migración `20261019120000_etapa_y_estado_de_acuerdo`,
@@ -145,51 +145,56 @@ end $$;
 
 
 -- ===========================================================================
--- PASO 4 — LAS QUE SIGUEN VIVAS (ESCRIBE, Y HAY QUE DECIDIRLO)
+-- PASO 4 — LAS QUE SIGUEN VIVAS, A «PAGO» (ESTE SÍ ESCRIBE)
 -- ===========================================================================
 --
--- Son los leads que estaban «en Cierre» y no terminaron: estado Activo, o con
--- Reserva pagada. Hoy están en una columna que dice «Perdido» y no lo están.
+-- Son los leads que estaban «en Cierre» y no terminaron: estado Activo, con
+-- Reserva pagada, o en pausa. Estaban en una columna que dice «Perdido» sin
+-- estarlo, y el equipo los veía como perdidos.
 --
--- El problema es que la etapa donde estaban ya no existe con ese significado,
--- así que hay que elegirles una. «Pago» es la que queda antes: es donde estaba
--- «Cierre» en el embudo y lo que mejor describe un trato que se está cerrando.
+-- La etapa donde estaban ya no existe con ese significado, así que había que
+-- elegirles una y no había una respuesta obvia. Se le plantearon las dos a la
+-- escuela y eligió ésta:
 --
--- SE CORRE APARTE PORQUE NO ES UN ARREGLO, ES UNA DECISIÓN. Si en el paso 2
--- estas fichas se ven mejor en otro lado —o si conviene repartirlas a mano
--- entre «Negociación» y «Pago»— es preferible hacerlo desde el tablero,
--- arrastrando, y saltear este paso.
+--   A · «Pago»            ELEGIDA. Es la etapa inmediatamente anterior a donde
+--                         estaba «Cierre» en el embudo, y lo que mejor describe
+--                         un trato que se está cerrando. Sin columnas nuevas.
 --
--- Para correrlo, sacarle los guiones de comentario a las líneas de abajo.
+--   B · devolver «Cierre» Más fiel a lo que esos leads son, pero agrega una
+--                         columna al tablero. La escuela prefirió no tenerla.
+--
+-- Lo que NO se toca: los que están en «Perdido» con estado Perdido. Ésos están
+-- donde tienen que estar, y la condición `es_final` los deja afuera.
+--
+-- Volver a correrlo es seguro: cuando ya no queda ninguno vivo ahí, no mueve
+-- nada.
 -- ===========================================================================
--- do $$
--- declare destino bigint; movidas int;
--- begin
---   select id into destino from public.etapas where nombre = 'Pago' limit 1;
---   if destino is null then
---     raise notice 'No hay etapa «Pago»; no se movió nada.';
---     return;
---   end if;
---
---   update public.oportunidades o
---      set etapa_id = destino
---     from public.etapas e, public.estados s
---    where e.id = o.etapa_id and s.id = o.estado_id
---      and e.nombre = 'Perdido'
---      and not coalesce(s.es_final, false);
---   get diagnostics movidas = row_count;
---
---   raise notice '% tarjetas vivas salieron de «Perdido» y quedaron en «Pago».', movidas;
--- end $$;
+do $$
+declare destino bigint; movidas int;
+begin
+  select id into destino from public.etapas where nombre = 'Pago' limit 1;
+  if destino is null then
+    raise notice 'No hay etapa «Pago» en el catálogo; no se movió nada.';
+    return;
+  end if;
+
+  update public.oportunidades o
+     set etapa_id = destino
+    from public.etapas e, public.estados s
+   where e.id = o.etapa_id and s.id = o.estado_id
+     and e.nombre = 'Perdido'
+     and not coalesce(s.es_final, false);
+  get diagnostics movidas = row_count;
+
+  raise notice '% tarjetas vivas salieron de «Perdido» y quedaron en «Pago».', movidas;
+end $$;
 
 
 -- ===========================================================================
 -- PASO 5 — COMPROBAR (no cambia nada)
 -- ===========================================================================
 --
--- `ganadas_mal` y `perdidas_mal` tienen que dar cero. `vivas_en_perdido` da
--- cero sólo si se corrió el paso 4; si se decidió acomodarlas a mano desde el
--- tablero, va a ir bajando a medida que se muevan.
+-- Los tres primeros tienen que dar cero.
 --
 -- `plata_en_ganado` es la que ahora suma la columna «Ganado» del Pipeline, y
 -- tiene que coincidir con «Venta cerrada» del Dashboard mirando el mismo
