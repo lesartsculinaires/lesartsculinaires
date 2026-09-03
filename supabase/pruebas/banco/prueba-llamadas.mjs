@@ -407,6 +407,38 @@ console.log("\n── SI YA SE LE PIDIÓ, NO SE LE PIDE OTRA VEZ ──");
   );
 }
 
+console.log("\n── «VER EL CHAT» ABRE EL HILO DEL CLIENTE ──");
+{
+  /*
+   * En la prueba con un cliente real: «el botón de "Ver chat" del cliente no
+   * lo redirige al chat del cliente». Cambiaba de módulo y dejaba la bandeja
+   * sin conversación elegida, así que quien atendía una llamada llegaba a una
+   * lista de cien hilos y tenía que buscar el del cliente que tenía en la
+   * oreja.
+   */
+  entraLlamada("wacid.PRUEBA.4");
+  await tarjeta.waitFor({ timeout: 15_000 }).catch(() => {});
+  await p.waitForTimeout(700);
+
+  await p.getByRole("button", { name: "Ver el chat" }).click();
+  await p.waitForTimeout(2500);
+  await foto("10-ver-el-chat");
+
+  // La bandeja, con ESE hilo abierto: la cabecera de la conversación tiene
+  // que decir el nombre de quien llama, no «Elegí una conversación».
+  const abierto = (await p.locator("main").innerText()).replace(/\s+/g, " ");
+  es("se fue a la bandeja", abierto.includes("Nuevo chat"), true);
+  es("Y EL HILO ESTÁ ABIERTO", abierto.includes("Doña Prueba Llamada"), true);
+  es(
+    "no quedó en «elegí una conversación»",
+    /Elegí una conversación/i.test(abierto),
+    false,
+  );
+
+  sql(`update public.llamadas set estado='terminada' where call_id='wacid.PRUEBA.4';`);
+  await p.waitForTimeout(1500);
+}
+
 console.log("\n── una llamada vieja colgada no suena ──");
 {
   /*

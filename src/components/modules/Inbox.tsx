@@ -62,6 +62,20 @@ interface Props {
    * se muestra el botón, en vez de mostrarlo y que falle al apretarlo.
    */
   onLlamar: ((conversacionId: number) => void) | null;
+  /**
+   * Un hilo que hay que abrir apenas se entra a la bandeja.
+   *
+   * Lo usa «Ver el chat» de la tarjeta de llamada: quien está atendiendo una
+   * llamada aprieta ahí para leer de qué venían hablando, y llegar a una
+   * bandeja sin conversación elegida —que es lo que pasaba— le obliga a
+   * buscarla en la lista con el cliente en la oreja.
+   *
+   * Va con un número de pedido y no sólo con el id porque el mismo hilo se
+   * puede pedir dos veces seguidas: sin el número, el segundo pedido no se
+   * distinguiría del primero y no volvería a abrirlo si mientras tanto la
+   * persona cerró el hilo.
+   */
+  abrirHilo: { conversacionId: number; n: number } | null;
 }
 
 /** Etiqueta legible de un mensaje sin texto. */
@@ -148,9 +162,11 @@ export function Inbox({
   onRefrescar,
   onVerCliente,
   onLlamar,
+  abrirHilo,
 }: Props) {
   const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
+
   const [verArchivadas, setVerArchivadas] = useState(false);
   const [verTodas, setVerTodas] = useState(false);
   const [soloSinAsignar, setSoloSinAsignar] = useState(false);
@@ -190,6 +206,25 @@ export function Inbox({
   const [busqueda, setBusqueda] = useState("");
   /** Se está mandando la solicitud de permiso para llamar. */
   const [pidiendoPermiso, setPidiendoPermiso] = useState(false);
+  /*
+   * Abrir el hilo que pidió la tarjeta de llamada.
+   *
+   * Se sale de cualquier filtro puesto —archivadas, sin asignar, una etiqueta,
+   * una red— porque el hilo pedido puede no estar en lo que se está mirando, y
+   * abrirlo sin que aparezca en la lista dejaría la pantalla contradiciéndose.
+   */
+  const ultimoPedido = useRef<number>(0);
+  useEffect(() => {
+    if (abrirHilo == null || abrirHilo.n <= ultimoPedido.current) return;
+    ultimoPedido.current = abrirHilo.n;
+    setAbierta(abrirHilo.conversacionId);
+    setBusqueda("");
+    setPorEtiqueta(null);
+    setPorCanal(null);
+    setSoloSinAsignar(false);
+    setVerArchivadas(false);
+    setVerTodas(true);
+  }, [abrirHilo]);
   const soft = softer(accent);
 
   /**

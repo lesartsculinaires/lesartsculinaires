@@ -203,6 +203,20 @@ export async function pedirPermisoParaLlamar(telefono: string): Promise<Resultad
         type: "interactive",
         interactive: {
           type: "call_permission_request",
+          /*
+           * `action` es obligatorio y va vacío salvo el nombre.
+           *
+           * No sobra: sin él Meta rechaza el mensaje entero con
+           * «violated JSON schema constraint 'required' for the JSON field
+           * 'interactive' [...] missing: 'action'», y el error no dice cuál
+           * de todos los campos falta. Lo descubrió la escuela apretando el
+           * botón con un cliente real del otro lado.
+           *
+           * Repite el mismo texto que `type` porque así lo pide el esquema de
+           * Meta para este tipo de mensaje interactivo; no es un error de
+           * copiado.
+           */
+          action: { name: "call_permission_request" },
           body: {
             text:
               "Para poder explicarte el programa por llamada necesitamos tu permiso. " +

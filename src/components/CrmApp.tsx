@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Autorizaciones } from "@/components/modules/Autorizaciones";
@@ -195,6 +195,25 @@ export default function CrmApp({
     n: number;
   } | null>(null);
   const cuantasVecesPidio = useRef(0);
+
+  /*
+   * El hilo que hay que abrir en la bandeja, pedido desde otra pantalla.
+   *
+   * Hoy lo pide «Ver el chat» de la tarjeta de llamada. Antes ese botón sólo
+   * cambiaba de módulo y dejaba la bandeja sin conversación elegida: quien
+   * atendía una llamada llegaba a una lista de cien hilos y tenía que buscar
+   * el del cliente que tenía en la oreja.
+   *
+   * El número sube en cada pedido para que abrir el mismo hilo dos veces
+   * seguidas vuelva a abrirlo, aunque en el medio la persona lo haya cerrado.
+   */
+  const [hiloAAbrir, setHiloAAbrir] = useState<{ conversacionId: number; n: number } | null>(null);
+  const cuantosHilosPidio = useRef(0);
+  const abrirElHilo = useCallback((conversacionId: number) => {
+    cuantosHilosPidio.current += 1;
+    setHiloAAbrir({ conversacionId, n: cuantosHilosPidio.current });
+    actions.setMod("Inbox");
+  }, [actions]);
 
   /*
    * El repique. Suena sólo cuando la llamada está sonando de verdad y esta
@@ -455,7 +474,7 @@ export default function CrmApp({
         accent={accent}
         onSoltar={llamadas.soltar}
         onPoner={llamadas.poner}
-        onVerHilo={() => actions.setMod("Inbox")}
+        onVerHilo={abrirElHilo}
       />
       <div
         className="lac"
@@ -625,6 +644,7 @@ export default function CrmApp({
               plantillas={plantillas.plantillas}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
+              abrirHilo={hiloAAbrir}
               onLlamar={
                 puedeLlamarPorWhatsapp
                   ? (conversacionId) => {

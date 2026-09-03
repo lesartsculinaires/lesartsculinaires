@@ -100,6 +100,15 @@ export interface EnVivoDeLlamadas {
  */
 const CADA_MS = 500;
 
+/**
+ * Cada cuánto se le pregunta a la base si hay una llamada.
+ *
+ * Ver la explicación larga en el efecto que lo usa. En resumen: el websocket
+ * es el camino rápido, esto es el piso. Tres segundos contra los treinta que
+ * da Meta para atender.
+ */
+const CADA_PREGUNTA_MS = 3_000;
+
 export function useLlamadaEnVivo(): EnVivoDeLlamadas {
   const [llamada, setLlamada] = useState<LlamadaConSdp | null>(null);
   const [tecleoHaceMs, setTecleoHaceMs] = useState<number | null>(null);
@@ -222,33 +231,126 @@ export function useLlamadaEnVivo(): EnVivoDeLlamadas {
   }, []);
 
   /*
-   * Al recargar la pantalla puede haber una sonando: el aviso del websocket ya
-   * pasó y no vuelve. Sin esta consulta, quien recarga justo cuando entra una
-   * llamada no la ve nunca.
+   * ==========================================================================
+   * LA RED DE SEGURIDAD: SE PREGUNTA, NO SÓLO SE ESPERA
+   * ==========================================================================
+   *
+   * El websocket es el camino rápido y sigue siendo el primero. Pero en la
+   * prueba real con un cliente de verdad pasó esto:
+   *
+   *   «La segunda vez que llamé, hasta que refresqué la página no salió la
+   *    notificación de llamada, y hay demasiada tardanza en que salga en cada
+   *    dispositivo.»
+   *
+   * Un aviso por websocket se manda UNA vez y no se guarda. Si la pestaña
+   * estaba dormida, si el wifi parpadeó, si el canal se estaba reconectando —o
+   * si el proxy de la oficina cortó el socket sin avisar—, ese aviso no llega
+   * y no vuelve a llegar nunca. Para un lead que se movió eso se arregla solo
+   * en el próximo refresco; para una llamada no: el cliente cuelga.
+   *
+   * Por eso acá se PREGUNTA cada pocos segundos. No reemplaza al websocket
+   * —cuando anda, la llamada aparece al instante— sino que le pone un piso: en
+   * el peor caso el teléfono suena unos segundos tarde, y nunca «recién cuando
+   * alguien recarga».
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ ESTE RITMO Y NO OTRO
+   * --------------------------------------------------------------------------
+   *
+   * Meta da entre 30 y 60 segundos antes de dar la llamada por no contestada.
+   * Preguntando cada tres segundos, lo peor que puede pasar es perder tres de
+   * esos treinta: queda tiempo de sobra para que alguien decida.
+   *
+   * Y sólo con la pestaña A LA VISTA. Una asesora tiene el CRM abierto en una
+   * pestaña entre otras diez todo el día; preguntar en todas, todo el tiempo,
+   * sería multiplicar la consulta por pestañas que nadie está mirando —y en
+   * una pestaña que nadie mira, tampoco hay quien atienda—. Al volver a ella
+   * se pregunta de inmediato, así que no se pierde nada.
+   *
+   * La consulta es de una fila con índice propio (`ix_llamadas_vivas`) y casi
+   * siempre devuelve vacío, que es lo normal: la escuela no vive en llamada.
    */
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    let vivo = true;
 
-    void getBrowserClient()
-      .from("llamadas")
-      .select(
-        "call_id, telefono, conversacion_id, vendedor_id, nombre, direccion, " +
-          "estado, atendida_por, sdp_remoto, sdp_tipo, creado_en",
-      )
-      .in("estado", ["sonando", "contestando", "en_curso"])
-      .order("creado_en", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!vivo || !data) return;
-        const l = leerFila(data as FilaCruda);
-        // No pisa lo que ya haya llegado por el websocket, que es más nuevo.
-        if (l) setLlamada((antes) => antes ?? l);
+    let vivo = true;
+    let reloj: number | null = null;
+
+    const preguntar = async () => {
+      const { data, error } = await getBrowserClient()
+        .from("llamadas")
+        .select(
+          "call_id, telefono, conversacion_id, vendedor_id, nombre, direccion, " +
+            "estado, atendida_por, sdp_remoto, sdp_tipo, creado_en",
+        )
+        .in("estado", ["sonando", "contestando", "en_curso"])
+        .order("creado_en", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!vivo) return;
+
+      const l = data ? leerFila(data as FilaCruda) : null;
+
+      if (!l) {
+        /*
+         * No hay ninguna llamada viva. Se suelta lo que hubiera en pantalla.
+         *
+         * Es la otra mitad de la red de seguridad: si el aviso de que la
+         * llamada terminó se pierde igual que se perdía el de que empezó, la
+         * tarjeta se quedaría sonando contra nadie hasta que venciera el plazo
+         * de los 75 segundos.
+         *
+         * SÓLO si la consulta contestó bien. Con `error` no se toca nada: una
+         * caída de red de un segundo se ve igual que «no hay llamadas», y
+         * soltar ahí le cortaría la tarjeta a alguien que está hablando.
+         */
+        if (!error) setLlamada(null);
+        return;
+      }
+
+      setLlamada((antes) => {
+        /*
+         * Lo que ya está en pantalla manda, salvo que esto traiga la MISMA
+         * llamada más adelantada.
+         *
+         * Dos razones. La primera: el websocket llega antes y con la fila
+         * entera, así que pisarlo con esto sería ir para atrás. La segunda, y
+         * la que importa: mientras se está hablando, esta consulta no puede
+         * reemplazar la llamada en curso por otra que entró —quien está
+         * hablando se quedaría sin botón para colgar, con el micrófono
+         * abierto—.
+         */
+        if (antes == null) return l;
+        if (antes.callId !== l.callId) return antes;
+        // La misma: se acepta lo nuevo, que puede traer el SDP o quién la agarró.
+        return l;
       });
+    };
+
+    const alaVista = () => document.visibilityState === "visible";
+
+    const arrancar = () => {
+      if (reloj != null) return;
+      void preguntar();
+      reloj = window.setInterval(() => void preguntar(), CADA_PREGUNTA_MS);
+    };
+
+    const parar = () => {
+      if (reloj == null) return;
+      window.clearInterval(reloj);
+      reloj = null;
+    };
+
+    const segunSeVea = () => (alaVista() ? arrancar() : parar());
+
+    segunSeVea();
+    document.addEventListener("visibilitychange", segunSeVea);
 
     return () => {
       vivo = false;
+      parar();
+      document.removeEventListener("visibilitychange", segunSeVea);
     };
   }, []);
 
