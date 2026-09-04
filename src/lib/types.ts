@@ -194,6 +194,18 @@ export interface Oportunidad {
    */
   programasInteres: number[];
   /**
+   * Cuándo fue la última vez que alguien tocó este lead.
+   *
+   * Una nota escrita, un cambio guardado, o —si no hubo ninguna de las dos—
+   * el día que entró. Lo calcula `vw_ultimo_toque`, y de acá sale la pantalla
+   * de leads fríos.
+   *
+   * Nulo si la vista todavía no existe. No es lo mismo que «hace mucho»: sin
+   * el dato no se puede afirmar nada, y `friosDe` lo deja afuera de la lista
+   * en vez de contarlo como abandonado.
+   */
+  ultimoToque: string | null;
+  /**
    * Las etiquetas puestas en este lead.
    *
    * Son las mismas del catálogo que usa la bandeja —«pidió beca», «viene de

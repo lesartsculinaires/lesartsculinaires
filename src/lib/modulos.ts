@@ -21,6 +21,10 @@ export const MODULOS = [
   "Formularios",
   "Plantillas",
   "Recordatorios",
+  // La cartera que se está enfriando. Va pegada a Recordatorios porque
+  // contestan la misma pregunta con distinto alcance: aquélla dice «a quién
+  // llamo hoy», ésta «a quién dejamos de llamar».
+  "Fríos",
   "Notificaciones",
   "Autorizaciones",
 ] as const;

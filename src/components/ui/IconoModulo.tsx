@@ -66,6 +66,9 @@ const TRAZOS: Record<string, string> = {
   // El reloj, el mismo de la cabecera.
   Recordatorios: "M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17ZM12 7.5V12l3.2 2",
 
+  // Un copo: la cartera que se enfrió.
+  "Fríos": "M12 3.5v17M4.6 7.75l14.8 8.5M4.6 16.25l14.8-8.5M12 7.2 9.6 5.4M12 7.2l2.4-1.8M12 16.8l-2.4 1.8M12 16.8l2.4 1.8",
+
   // La campana.
   Notificaciones: "M12 3.5a5.5 5.5 0 0 0-5.5 5.5c0 5-2 6.5-2 6.5h15s-2-1.5-2-6.5A5.5 5.5 0 0 0 12 3.5ZM10.3 19a2 2 0 0 0 3.4 0",
 

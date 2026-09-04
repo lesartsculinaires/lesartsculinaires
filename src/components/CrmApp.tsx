@@ -21,6 +21,7 @@ import { Llamada } from "@/components/Llamada";
 import { Notificaciones } from "@/components/Notificaciones";
 import { Recordatorios as RelojRecordatorios } from "@/components/Recordatorios";
 import { Recordatorios } from "@/components/modules/Recordatorios";
+import { Frios } from "@/components/modules/Frios";
 import { SinCopiar } from "@/components/SinCopiar";
 import { Sonido } from "@/components/Sonido";
 import { Plantillas } from "@/components/modules/Plantillas";
@@ -794,6 +795,35 @@ export default function CrmApp({
               accent={accent}
               onAbrirFicha={abrirFicha}
               onRefrescar={() => router.refresh()}
+            />
+          )}
+
+          {mod === "Fríos" && (
+            /*
+             * Mira TODAS las oportunidades, no `delTablero`.
+             *
+             * `delTablero` está recortado por el filtro «sólo los míos» de los
+             * roles que lo tienen puesto, y acá eso sobra: la pantalla ya trae
+             * su propio filtro por asesora, con el contador de cuántos le
+             * tocan a cada una, que es justamente lo que se viene a mirar.
+             * Aplicar los dos dejaría a la gerencia eligiendo entre asesoras y
+             * viendo siempre la misma lista.
+             *
+             * Lo que no se puede saltear —y no se saltea— es lo que la base no
+             * manda: una asesora recibe nada más sus leads, así que acá ve su
+             * cartera y nada más, sin que esta pantalla tenga que saberlo.
+             */
+            <Frios
+              oportunidades={oportunidades}
+              puedeElegirAsesor={veTodoElEquipo}
+              accent={accent}
+              /* La ficha se abre ENCIMA de esta lista, como en el Pipeline y
+                 en la bandeja, y no con `abrirFicha`, que salta a Clientes.
+                 Acá importa más que en ningún lado: se entra a repasar una
+                 cartera de cuarenta leads, y si abrir el primero cambiara de
+                 pantalla habría que volver a Fríos y buscar dónde se iba
+                 después de cada uno. */
+              onAbrirFicha={actions.select}
             />
           )}
 

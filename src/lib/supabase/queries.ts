@@ -64,6 +64,7 @@ function toOportunidad(r: Row): Oportunidad {
     // la vista no los trae y la ficha tiene que poder dibujarse igual.
     programasInteres: [],
     etiquetaIds: [],
+    ultimoToque: null,
     producto: str(r.producto, SIN_DATO),
     categoria: r.categoria ? (str(r.categoria) as ProductoCategoria) : null,
     territorioId: numOrNull(r.territorio_id),
@@ -225,6 +226,34 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
         else porLead.set(e.oportunidad_id, [e.etiqueta_id]);
       }
       for (const f of filas) f.etiquetaIds = porLead.get(f.id) ?? [];
+    }
+  }
+
+  /*
+   * Cuándo tocó alguien cada lead por última vez.
+   *
+   * Una fila por lead, ya resuelta por la vista. Se pide aparte y no desde
+   * `vw_pipeline` para no tocar la vista de la que cuelga el CRM entero por
+   * un dato que usa una sola pantalla, y porque sin la migración corrida la
+   * vista no existe: acá eso deja los leads sin fecha y todo lo demás anda
+   * igual, mientras que dentro de `vw_pipeline` tumbaría todas las pantallas.
+   */
+  {
+    const { data: toques, error: errToques } = await traerTodo<{
+      oportunidad_id: number;
+      ultimo_toque: string | null;
+    }>(() =>
+      supabase
+        .from("vw_ultimo_toque")
+        .select("oportunidad_id, ultimo_toque")
+        .order("oportunidad_id"),
+    );
+
+    if (errToques) {
+      console.warn("[queries] sin fechas de último toque:", errToques);
+    } else if (toques.length > 0) {
+      const porLead = new Map(toques.map((t) => [t.oportunidad_id, t.ultimo_toque]));
+      for (const f of filas) f.ultimoToque = porLead.get(f.id) ?? null;
     }
   }
 
