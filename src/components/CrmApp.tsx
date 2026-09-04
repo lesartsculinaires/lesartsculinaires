@@ -38,6 +38,7 @@ import { useLlamadaEnVivo } from "@/hooks/useLlamadaEnVivo";
 import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
 import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
+import { friosDe } from "@/lib/frios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
 import {
   hoyEnSalvador,
@@ -431,8 +432,15 @@ export default function CrmApp({
    */
   const avisos = avisosDeLaBarra({
     mensajesSinLeer: sinLeer,
-    reservasUrgentes: urgentes,
+    // Todas las de la pantalla, no sólo las de hoy: el globito tiene que
+    // decir lo mismo que se ve al abrir el módulo. Las pospuestas las
+    // descuenta `avisosDeLaBarra`, que es donde vive esa regla.
+    reservas: recordatorios,
     seguimientos: pendientes,
+    // La cartera fría. Se cuenta sobre TODAS las oportunidades y no sobre
+    // `delTablero`, igual que la pantalla: lo que la base no manda no se
+    // cuenta, y eso ya deja a cada asesora con lo suyo.
+    frios: friosDe(oportunidades).length,
     autorizacionesPendientes,
     // Se apaga solo al abrir el módulo: `Notificaciones` marca lo visto, y el
     // próximo refresco de la pantalla trae el número ya en cero.

@@ -28,14 +28,20 @@ const es = (t, r, e) => {
 
 /** Un seguimiento con la urgencia que haga falta. */
 const seg = (urgencia) => ({ seguimiento: { id: 1 }, urgencia, diasRestantes: 0 });
-const reserva = () => ({ oportunidad: { id: 1 }, urgencia: "vencido" });
+const reserva = (extra = {}) => ({
+  oportunidad: { id: 1 },
+  urgencia: "vencido",
+  pospuesto: false,
+  ...extra,
+});
 
 const nada = {
   mensajesSinLeer: 0,
-  reservasUrgentes: [],
+  reservas: [],
   seguimientos: [],
   autorizacionesPendientes: 0,
   actividadSinVer: 0,
+  frios: 0,
 };
 
 console.log("── sin nada pendiente, la barra va limpia ──");
@@ -60,6 +66,11 @@ console.log("\n── cada uno cuenta lo suyo ──");
     avisosDeLaBarra({ ...nada, actividadSinVer: 9 }),
     { Notificaciones: 9 },
   );
+  es(
+    "y los leads fríos van a Fríos",
+    avisosDeLaBarra({ ...nada, frios: 410 }),
+    { "Fríos": 410 },
+  );
 }
 
 console.log("\n── Notificaciones también baja a cero ──");
@@ -81,43 +92,66 @@ console.log("\n── Notificaciones también baja a cero ──");
   );
 }
 
-console.log("\n── Recordatorios junta las dos cosas que muestra ──");
+console.log("\n── RECORDATORIOS DICE LO MISMO QUE SE VE AL ABRIRLO ──");
 {
   /*
-   * Una reserva por vencer y un seguimiento de una nota son de origen
-   * distinto, pero para quien mira la barra son lo mismo: cosas de hoy sin
-   * hacer. Dos números separados obligarían a sumarlos de cabeza.
+   * Esto cambió a pedido de la escuela, y es el cambio que hay que cuidar.
+   *
+   * Antes contaba sólo lo vencido y lo de hoy. Miró su CRM, vio el módulo sin
+   * globito y pidió tenerlo igual; se le explicó que un número que casi nunca
+   * baja a cero se deja de mirar, y eligió que se viera.
+   *
+   * Entonces la regla nueva es: el globito es exactamente lo que hay adentro.
+   * Que dijera 3 y adentro hubiera 11 es peor que no tener número, porque
+   * enseña a no creerle.
    */
   es(
-    "una reserva urgente y dos seguimientos de hoy suman tres",
+    "una reserva y dos seguimientos suman tres",
     avisosDeLaBarra({
       ...nada,
-      reservasUrgentes: [reserva()],
+      reservas: [reserva()],
       seguimientos: [seg("hoy"), seg("vencido")],
     }),
     { Recordatorios: 3 },
   );
-}
 
-console.log("\n── lo que NO se cuenta ──");
-{
   es(
-    "lo que vence pronto no enciende nada",
+    "LO QUE VENCE PRONTO AHORA TAMBIÉN CUENTA",
     avisosDeLaBarra({ ...nada, seguimientos: [seg("pronto"), seg("pronto")] }),
-    {},
+    { Recordatorios: 2 },
   );
   es(
-    "ni lo que está en curso",
+    "y lo que está en curso también",
     avisosDeLaBarra({ ...nada, seguimientos: [seg("en curso")] }),
-    {},
+    { Recordatorios: 1 },
   );
-
-  // Y lo mezclado: de cinco seguimientos, sólo los dos que apremian.
   es(
-    "de una lista mezclada, sólo lo vencido y lo de hoy",
+    "de una lista mezclada, los cinco",
     avisosDeLaBarra({
       ...nada,
       seguimientos: [seg("en curso"), seg("vencido"), seg("pronto"), seg("hoy"), seg("pronto")],
+    }),
+    { Recordatorios: 5 },
+  );
+}
+
+console.log("\n── LO POSPUESTO SIGUE SIN CONTAR ──");
+{
+  /*
+   * Lo único que se conservó de la regla vieja, y lo que evita que el globito
+   * quede encendido para siempre. Apretar «recordar más adelante» es decir
+   * «esto no es para hoy»; volver a contarlo sería no haberle hecho caso.
+   */
+  es(
+    "una reserva pospuesta no enciende nada",
+    avisosDeLaBarra({ ...nada, reservas: [reserva({ pospuesto: true })] }),
+    {},
+  );
+  es(
+    "y de tres, sólo cuentan las dos que no se pospusieron",
+    avisosDeLaBarra({
+      ...nada,
+      reservas: [reserva(), reserva({ pospuesto: true }), reserva()],
     }),
     { Recordatorios: 2 },
   );
@@ -135,15 +169,16 @@ console.log("\n── un cero nunca queda en el mapa ──");
 console.log("\n── todo junto ──");
 {
   es(
-    "los cuatro módulos, cada uno con lo suyo",
+    "los cinco módulos, cada uno con lo suyo",
     avisosDeLaBarra({
       mensajesSinLeer: 7,
-      reservasUrgentes: [reserva(), reserva()],
+      reservas: [reserva(), reserva()],
       seguimientos: [seg("hoy"), seg("pronto")],
       autorizacionesPendientes: 1,
       actividadSinVer: 12,
+      frios: 38,
     }),
-    { Inbox: 7, Recordatorios: 3, Autorizaciones: 1, Notificaciones: 12 },
+    { Inbox: 7, Recordatorios: 4, "Fríos": 38, Autorizaciones: 1, Notificaciones: 12 },
   );
 }
 
