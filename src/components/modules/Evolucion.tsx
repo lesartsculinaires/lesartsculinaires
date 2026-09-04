@@ -12,6 +12,7 @@ import {
   type ResumenPeriodo,
 } from "@/lib/periodos";
 import { T, openTone, softer } from "@/lib/theme";
+import { CORTO_VENTA_CERRADA, ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -191,7 +192,7 @@ function VistaMes({
   const kpis = [
     { label: "Leads registrados", valor: String(mes.leads), pct: previo ? variacion(mes.leads, previo.leads) : null },
     { label: "Ganados", valor: String(mes.ganados), pct: previo ? variacion(mes.ganados, previo.ganados) : null },
-    { label: "Venta cerrada", valor: money(mes.cerrado || null), pct: previo ? variacion(mes.cerrado, previo.cerrado) : null },
+    { label: ROTULO_VENTA_CERRADA, valor: money(mes.cerrado || null), pct: previo ? variacion(mes.cerrado, previo.cerrado) : null },
     { label: "Pipeline abierto", valor: money(mes.pipeline || null), pct: previo ? variacion(mes.pipeline, previo.pipeline) : null },
   ];
 
@@ -290,7 +291,7 @@ function VistaMes({
 
       <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
         <Leyenda color={accent} texto="Leads registrados" />
-        <Leyenda color="#2F6B4F" texto="Día con venta cerrada" />
+        <Leyenda color="#2F6B4F" texto={`Día con ${ROTULO_VENTA_CERRADA.toLowerCase()}`} />
         <span style={{ fontSize: 11, color: T.faint }}>
           Pasá el cursor sobre una barra para ver el detalle del día.
         </span>
@@ -368,7 +369,7 @@ function VistaComparativa({
       </div>
 
       <div style={{ display: "flex", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-        <Leyenda color={accent} texto="Venta cerrada" />
+        <Leyenda color={accent} texto={ROTULO_VENTA_CERRADA} />
         <Leyenda color={open} texto="Pipeline abierto" />
       </div>
 
@@ -376,7 +377,7 @@ function VistaComparativa({
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
           <thead>
             <tr>
-              {["Mes", "Leads", "Ganados", "Venta cerrada", "Pipeline", "Cerrada vs mes anterior"].map(
+              {["Mes", "Leads", "Ganados", ROTULO_VENTA_CERRADA, "Pipeline", `${CORTO_VENTA_CERRADA} vs mes anterior`].map(
                 (h, i) => (
                   <th
                     key={h}
@@ -509,7 +510,7 @@ function VistaAnual({
       </div>
 
       <div style={{ display: "flex", gap: 16, margin: "16px 0", flexWrap: "wrap" }}>
-        <Leyenda color={accent} texto="Venta cerrada" />
+        <Leyenda color={accent} texto={ROTULO_VENTA_CERRADA} />
         <Leyenda color={open} texto="Pipeline abierto" />
       </div>
 
@@ -517,7 +518,7 @@ function VistaAnual({
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
           <thead>
             <tr>
-              {["Año", "Leads", "Ganados", "Tasa de cierre", "Venta cerrada", "Interanual"].map(
+              {["Año", "Leads", "Ganados", "Tasa de cierre", ROTULO_VENTA_CERRADA, "Interanual"].map(
                 (h, i) => (
                   <th
                     key={h}

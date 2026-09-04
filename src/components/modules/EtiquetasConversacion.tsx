@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { crearEtiqueta, marcarConversacion } from "@/app/etiquetas-actions";
+import { crearEtiqueta, marcarConversacion, marcarLead } from "@/app/etiquetas-actions";
 import { T } from "@/lib/theme";
 import type { Etiqueta } from "@/lib/types";
 
@@ -13,8 +13,19 @@ const COLORES = [
 ];
 
 interface Props {
-  conversacionId: number;
-  /** Las que ya tiene puestas esta conversación. */
+  /**
+   * Cómo se pone y se saca una etiqueta de esta cosa.
+   *
+   * Es lo único que cambia entre las etiquetas de una conversación y las de un
+   * lead: el dibujo, los colores, el crear una nueva en el momento y el
+   * cerrarse al hacer clic afuera son iguales, y tenerlos escritos dos veces
+   * garantizaba que se fueran pareciendo cada vez menos.
+   *
+   * Las dos tablas y sus permisos siguen separados del otro lado, en
+   * `etiquetas-actions`, que es donde tienen que estar.
+   */
+  marcar: (etiquetaId: number, puesta: boolean) => Promise<{ ok: boolean; error: string | null }>;
+  /** Las que ya están puestas. */
   puestas: number[];
   /** El catálogo entero. */
   etiquetas: Etiqueta[];
@@ -33,8 +44,8 @@ interface Props {
  * Crear una etiqueta nueva se hace desde acá, en el momento: obligar a ir a
  * otra pantalla a darla de alta haría que nadie las use.
  */
-export function EtiquetasConversacion({
-  conversacionId,
+function Etiquetas({
+  marcar,
   puestas,
   etiquetas,
   accent,
@@ -52,7 +63,7 @@ export function EtiquetasConversacion({
   const alternar = async (id: number, poner: boolean) => {
     setTrabajando(true);
     setError(null);
-    const r = await marcarConversacion(conversacionId, id, poner);
+    const r = await marcar(id, poner);
     setTrabajando(false);
     if (!r.ok) {
       setError(r.error);
@@ -76,7 +87,7 @@ export function EtiquetasConversacion({
     }
 
     // Recién creada, se pone sola: nadie crea una etiqueta para no usarla.
-    const puesta = await marcarConversacion(conversacionId, r.etiqueta.id, true);
+    const puesta = await marcar(r.etiqueta.id, true);
     setTrabajando(false);
     if (!puesta.ok) {
       setError(puesta.error);
@@ -258,5 +269,52 @@ export function EtiquetasConversacion({
         <span style={{ fontSize: 11, color: T.warn }}>{error}</span>
       )}
     </div>
+  );
+}
+
+/**
+ * Las etiquetas de una conversación.
+ *
+ * Son de la conversación, no de la venta: acá va «pidió beca», «no contesta»,
+ * «pago pendiente». La etapa y el estado del pipeline se muestran aparte y
+ * salen de la oportunidad misma —a propósito, para que no haya dos versiones
+ * de lo mismo que puedan discrepar.
+ *
+ * Crear una etiqueta nueva se hace desde acá, en el momento: obligar a ir a
+ * otra pantalla a darla de alta haría que nadie las use.
+ */
+export function EtiquetasConversacion({
+  conversacionId,
+  ...resto
+}: Omit<Props, "marcar"> & { conversacionId: number }) {
+  return (
+    <Etiquetas
+      {...resto}
+      marcar={(etiquetaId, puesta) => marcarConversacion(conversacionId, etiquetaId, puesta)}
+    />
+  );
+}
+
+/**
+ * Las etiquetas de un lead.
+ *
+ * Mismo catálogo que las de la bandeja y a propósito: «viene de feria» es lo
+ * mismo escrito en el chat que en la ficha, y dos catálogos separados
+ * terminarían con la misma etiqueta dos veces y filtros que devuelven la mitad
+ * de la gente según por dónde se pregunte.
+ *
+ * Lo que cambia es para qué sirven acá: agrupar gente a la que escribirle. Un
+ * lead que entró por una base y nunca escribió no tiene conversación que
+ * etiquetar, y es justamente al que la escuela quiere poder meter en un envío.
+ */
+export function EtiquetasDelLead({
+  oportunidadId,
+  ...resto
+}: Omit<Props, "marcar"> & { oportunidadId: number }) {
+  return (
+    <Etiquetas
+      {...resto}
+      marcar={(etiquetaId, puesta) => marcarLead(oportunidadId, etiquetaId, puesta)}
+    />
   );
 }

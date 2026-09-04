@@ -9,6 +9,7 @@ import { leadCount, money } from "@/lib/format";
 import { mesesComoOpciones } from "@/lib/periodoDelTablero";
 import { etapaTone } from "@/lib/selectors";
 import { T, soft } from "@/lib/theme";
+import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type { Importacion, Oportunidad, OportunidadPatch } from "@/lib/types";
 
@@ -418,7 +419,7 @@ export function Pipeline({
                   }}
                   title={
                     columnaDeGanado
-                      ? "Venta cerrada: lo que se cobró por estos leads, no su valor de lista"
+                      ? `${ROTULO_VENTA_CERRADA}: lo que se cobró por estos leads, no su valor de lista`
                       : "Valor de las oportunidades de esta etapa"
                   }
                 >

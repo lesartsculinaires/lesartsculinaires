@@ -10,6 +10,7 @@
  */
 
 import type { Catalogo } from "@/lib/types";
+import { ROTULO_VALOR_OPORTUNIDAD, ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 
 export type EntidadActividad = "oportunidad" | "cliente" | "nota" | "adjunto";
 export type AccionActividad = "creo" | "edito" | "borro";
@@ -43,8 +44,10 @@ const ETIQUETAS: Record<string, string> = {
   producto_id: "el programa",
   territorio_id: "el territorio",
   canal_id: "el canal",
-  valor_oportunidad: "el valor",
-  venta_cerrada: "la venta cerrada",
+  // Intercambiados junto con el resto del CRM: la columna es la misma, el
+  // nombre con que se cuenta el cambio sale de `montosDelLead`.
+  valor_oportunidad: `la ${ROTULO_VALOR_OPORTUNIDAD.toLowerCase()}`,
+  venta_cerrada: `el ${ROTULO_VENTA_CERRADA.toLowerCase()}`,
   fecha_cierre: "la fecha de cierre",
   descuento_promocion: "el descuento",
   nombre: "el nombre",

@@ -8,6 +8,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { estaAbierta, esGanada, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
+import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Oportunidad, Producto } from "@/lib/types";
 
 interface Props {
@@ -56,7 +57,7 @@ export function Programas({
       ),
     },
     { label: "Valor en pipeline", value: money(valorPipeline(oportunidades) || null) },
-    { label: "Venta cerrada", value: money(totalCerrado(oportunidades) || null) },
+    { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(oportunidades) || null) },
   ];
 
   return (

@@ -8,6 +8,7 @@
 
 import { buscarDuplicados, type ContactoConocido } from "@/lib/duplicados";
 import { acomodarNombre } from "@/lib/texto";
+import { ROTULO_VALOR_OPORTUNIDAD, ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Catalogo, CatalogItem } from "@/lib/types";
 
 /** Minúsculas, sin acentos, sin espacios de más. Para comparar encabezados y catálogos. */
@@ -47,9 +48,24 @@ export const CAMPOS = [
     alias: ["fecha", "fecha de registro", "fecha registro", "fecha de ingreso", "creado", "alta"] },
   { clave: "fecha_cierre", etiqueta: "Fecha de cierre", obligatorio: false,
     alias: ["fecha de cierre", "fecha cierre", "cierre", "fecha de matricula"] },
-  { clave: "valor", etiqueta: "Valor", obligatorio: false,
+  /*
+   * Los dos montos: el rótulo es el del CRM, los alias son los de la planilla.
+   *
+   * No se tocan juntos, y ahí está la trampa que conviene no pisar. El
+   * `etiqueta` es cómo llama el CRM a ese campo —y esos dos nombres se
+   * intercambiaron, así que salen de `montosDelLead`—, mientras que los
+   * `alias` son los encabezados que la escuela viene escribiendo en sus
+   * planillas desde siempre. Cambiar los alias para que «se vean parejos»
+   * haría que un archivo de los que ya existen dejara de reconocerse, o peor,
+   * que su columna entrara en el campo equivocado sin avisar.
+   *
+   * Tampoco se cruzan: «valor de la oportunidad» sigue siendo alias de
+   * `valor` y de ninguno más. Dos campos peleándose el mismo encabezado los
+   * resolvería el orden de esta lista, en silencio.
+   */
+  { clave: "valor", etiqueta: ROTULO_VALOR_OPORTUNIDAD, obligatorio: false,
     alias: ["valor", "monto", "precio", "valor de la oportunidad", "cotizado", "inversion"] },
-  { clave: "cerrada", etiqueta: "Venta cerrada", obligatorio: false,
+  { clave: "cerrada", etiqueta: ROTULO_VENTA_CERRADA, obligatorio: false,
     alias: ["venta cerrada", "cerrada", "monto cerrado", "pagado", "matricula"] },
   { clave: "descuento", etiqueta: "Descuento o promoción", obligatorio: false,
     alias: ["descuento", "promocion", "descuento o promocion", "beca", "oferta"] },

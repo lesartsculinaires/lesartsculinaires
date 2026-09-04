@@ -1,4 +1,5 @@
 import { money } from "@/lib/format";
+import { normalizarPais } from "@/lib/paises";
 import { openTone } from "@/lib/theme";
 import type { Estado, Oportunidad, Tone } from "@/lib/types";
 
@@ -34,6 +35,9 @@ export const totalCerrado = (list: readonly Oportunidad[]): number =>
 export const cerradoEnMes = (list: readonly Oportunidad[], mes: string): number =>
   list.filter((o) => o.mes === mes).reduce((a, o) => a + (o.cerrada ?? 0), 0);
 
+/** Cómo se llama en los gráficos el lead al que nadie le cargó el país. */
+export const SIN_PAIS = "Sin país cargado";
+
 export interface GroupedBar {
   label: string;
   count: string;
@@ -50,12 +54,28 @@ export interface GroupedBar {
  */
 export function groupBars(
   list: readonly Oportunidad[],
-  key: "vendedor" | "canal" | "territorio" | "producto" | "etapa" | "estado",
+  key: "vendedor" | "canal" | "territorio" | "producto" | "etapa" | "estado" | "pais",
   limit = 20,
 ): GroupedBar[] {
   const map = new Map<string, { n: number; val: number; won: number }>();
   for (const o of list) {
-    const k = o[key];
+    /*
+     * El país es el único que puede venir vacío o escrito de dos formas.
+     *
+     * Vacío porque sólo se carga cuando el territorio es «Extranjero»: hoy
+     * mil de las mil quinientas fichas no lo tienen, y esconderlas dejaría un
+     * gráfico que dice «cuatro de Estados Unidos» como si eso fuera el
+     * reparto entero. Se cuentan aparte y con su nombre, que además es la
+     * manera de que se vea cuánto falta por cargar.
+     *
+     * Y de dos formas porque se escribió a mano antes de que fuera una
+     * lista: en la base conviven «Panama» y «Panamá», que son el mismo país
+     * y harían dos barras. `normalizarPais` los junta contra el catálogo.
+     */
+    const k =
+      key === "pais"
+        ? (normalizarPais(o.pais ?? null) ?? SIN_PAIS)
+        : o[key];
     const g = map.get(k) ?? { n: 0, val: 0, won: 0 };
     g.n += 1;
     g.val += o.valor ?? 0;

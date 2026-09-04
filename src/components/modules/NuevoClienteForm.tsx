@@ -14,9 +14,11 @@ import {
 } from "@/lib/duplicados";
 import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
 import { ETIQUETA_LEAD, type CampoLead } from "@/lib/leadRepetido";
+import { PAISES_POR_GRUPO } from "@/lib/paises";
 import { promocionesUsadas } from "@/lib/promociones";
 import { activos, esMenor } from "@/lib/types";
 import { T } from "@/lib/theme";
+import { ROTULO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
 import {
   OBLIGATORIOS,
   bloqueantes,
@@ -66,6 +68,8 @@ const vacio = (): NuevoCliente => ({
   responsable_nombre: null,
   responsable_telefono: null,
   responsable_correo: null,
+  pais: null,
+  programas_interes: [],
   vendedor_id: null,
   producto_id: null,
   territorio_id: null,
@@ -496,6 +500,51 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             </>
           )}
 
+          {/*
+            El país.
+
+            Va acá, con los datos de la persona, y no abajo con el territorio,
+            porque es de ella y no del trato: si esta misma persona pregunta
+            después por otro programa, sigue siendo del mismo país.
+
+            En la ficha aparece sólo cuando el territorio dice «Extranjero».
+            Acá se ofrece siempre, y a propósito: en el alta todavía no está
+            elegido el territorio —se elige más abajo, en la misma pantalla— y
+            esconder la casilla hasta entonces obligaría a llenar el formulario
+            en un orden determinado sin decirlo en ningún lado.
+
+            Vacío es la respuesta normal para alguien de El Salvador, así que
+            no se pide.
+          */}
+          <div style={{ ...grid, marginBottom: 20 }}>
+            <Etiqueta texto="País">
+              <select
+                value={d.pais ?? ""}
+                onChange={(e) => set("pais", e.target.value === "" ? null : e.target.value)}
+                style={{
+                  width: "100%",
+                  height: 34,
+                  boxSizing: "border-box",
+                  padding: "0 8px",
+                  fontSize: 13,
+                  borderRadius: 7,
+                  border: `1px solid ${T.border}`,
+                  background: "#fff",
+                  color: T.ink,
+                }}
+              >
+                <option value="">Sin especificar</option>
+                {PAISES_POR_GRUPO.map((g) => (
+                  <optgroup key={g.grupo} label={g.grupo}>
+                    {g.paises.map((nombre) => (
+                      <option key={nombre} value={nombre}>{nombre}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </Etiqueta>
+          </div>
+
           <p className="mono" style={seccion}>
             Oportunidad
           </p>
@@ -520,6 +569,71 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
             </Etiqueta>
           </div>
 
+          {/*
+            Los OTROS programas por los que preguntó.
+
+            Es el mismo control que ya vive en la ficha, traído al alta: quien
+            carga un lead recién salido de una feria sabe en ese momento que
+            preguntó por tres, y anotarlo después significa volver a abrir la
+            ficha, que es cuando se pierde.
+
+            Y son DOS cosas distintas de arriba, no una repetida. «Programa»
+            es el que se está vendiendo: uno solo, con su precio y su venta
+            cerrada. Esto es por qué preguntó: varios, sin monto. Si «Programa»
+            aceptara varios habría que contestar cuánto de los $495 es de
+            Pastelería y cuánto de Barismo, y no tiene respuesta.
+
+            El principal no se marca acá: se agrega solo al guardar. Marcarlo
+            además dejaría dos maneras de decir lo mismo, y una de ellas se
+            desincroniza el día que alguien cambie el de arriba.
+          */}
+          {cat.productos.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ margin: "0 0 7px", fontSize: 11, color: T.muted }}>
+                ¿Preguntó por más de un programa? Marcá los demás.
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {cat.productos.map((prod) => {
+                  const esPrincipal = prod.id === d.producto_id;
+                  const puesto = esPrincipal || (d.programas_interes ?? []).includes(prod.id);
+                  return (
+                    <button
+                      key={prod.id}
+                      type="button"
+                      disabled={esPrincipal}
+                      title={
+                        esPrincipal
+                          ? "Es el programa que se está vendiendo: se anota solo"
+                          : undefined
+                      }
+                      onClick={() => {
+                        const antes = d.programas_interes ?? [];
+                        set(
+                          "programas_interes",
+                          antes.includes(prod.id)
+                            ? antes.filter((x) => x !== prod.id)
+                            : [...antes, prod.id],
+                        );
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        fontSize: 11.5,
+                        borderRadius: 14,
+                        border: `1px solid ${puesto ? accent : T.border}`,
+                        background: puesto ? accent : "#fff",
+                        color: puesto ? "#fff" : T.muted,
+                        cursor: esPrincipal ? "default" : "pointer",
+                        opacity: esPrincipal ? 0.75 : 1,
+                      }}
+                    >
+                      {prod.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <p className="mono" style={seccion}>
             Fechas y montos
           </p>
@@ -540,7 +654,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 onChange={(e) => set("fecha_cierre", e.target.value || null)}
               />
             </Etiqueta>
-            <Etiqueta texto="Valor de la oportunidad" campo="valor_oportunidad" problema={problemaDe("valor_oportunidad")}>
+            <Etiqueta texto={ROTULO_VALOR_OPORTUNIDAD} campo="valor_oportunidad" problema={problemaDe("valor_oportunidad")}>
               <input
                 {...marco("valor_oportunidad")}
                 type="number"

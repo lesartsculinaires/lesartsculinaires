@@ -609,6 +609,7 @@ export default function CrmApp({
             <Clientes
               oportunidades={oportunidades}
               importaciones={importaciones}
+              etiquetas={etiquetas}
               esAdmin={accesos.esAdmin}
               puedeSubirBases={casillas.bases.crear}
               accent={accent}
@@ -829,6 +830,7 @@ export default function CrmApp({
           {seleccionada && (
             <ClienteDrawer
               oportunidad={seleccionada}
+              etiquetas={etiquetas}
               todas={oportunidades}
               accent={accent}
               menu={state.menu}

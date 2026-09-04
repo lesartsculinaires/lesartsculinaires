@@ -40,6 +40,16 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+/*
+ * Cómo se rotula hoy la columna `venta_cerrada`.
+ *
+ * Se copia de `src/lib/montosDelLead.ts` en vez de importarse porque esto es
+ * un .mjs y aquello TypeScript. Se llama por su COLUMNA, igual que allá: es
+ * lo que evita cruzarlos al leer, ahora que el rótulo y la columna dicen
+ * cosas distintas a propósito.
+ */
+const ROTULO_CERRADA = "Valor de oportunidad";
+
 const sql = (q) => {
   const ruta = path.join(os.tmpdir(), `prueba-con-${process.pid}-${Math.random()}.sql`);
   fs.writeFileSync(ruta, q, "utf8");
@@ -132,7 +142,7 @@ await p.waitForTimeout(2500);
 
 console.log("── de dónde se parte ──");
 const antes = {
-  cerrada: await indicador("Venta cerrada"),
+  cerrada: await indicador(ROTULO_CERRADA),
   pipeline: await indicador("En pipeline"),
 };
 await foto("1-antes");
@@ -165,8 +175,15 @@ console.log("\n── SE CIERRA LA VENTA DESDE LA FICHA DE CLIENTES ──");
   await p.getByRole("button", { name: "Ganado", exact: true }).last().click();
   await p.waitForTimeout(700);
 
-  // Y el monto cobrado, en la fila de «Venta cerrada» del registro.
-  const fila = p.locator('tr:has-text("Venta cerrada"), div:has-text("Venta cerrada")').last();
+  /*
+   * Y el monto cobrado, en la casilla de la columna `venta_cerrada`.
+   *
+   * Ojo con el rótulo: desde que la escuela pidió intercambiarlos, esa
+   * casilla se muestra como «Valor de oportunidad». La columna en la que cae
+   * el número no cambió, que es lo que este archivo comprueba más abajo
+   * mirando la base.
+   */
+  const fila = p.locator(`tr:has-text("${ROTULO_CERRADA}"), div:has-text("${ROTULO_CERRADA}")`).last();
   await fila.locator('input[inputmode="decimal"], input[type="number"], input').last()
     .fill(String(MONTO));
   await p.waitForTimeout(400);
@@ -215,7 +232,7 @@ console.log("\n── EL DASHBOARD CAMBIÓ SOLO, SIN RECARGAR ──");
   await foto("4-dashboard");
 
   const ahora = {
-    cerrada: await indicador("Venta cerrada"),
+    cerrada: await indicador(ROTULO_CERRADA),
     pipeline: await indicador("En pipeline"),
   };
 

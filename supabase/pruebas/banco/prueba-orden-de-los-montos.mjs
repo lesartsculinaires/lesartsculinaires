@@ -1,18 +1,32 @@
 /**
- * El orden de los montos en la ficha, y que cada casilla siga siendo la suya.
+ * Los montos de la ficha: el orden, los rótulos, y que cada casilla siga
+ * siendo la suya.
  *
  *     node supabase/pruebas/banco/prueba-orden-de-los-montos.mjs
  *
  * ============================================================================
- * QUÉ PIDIÓ LA ESCUELA
+ * QUÉ PIDIÓ LA ESCUELA, EN DOS RONDAS
  * ============================================================================
  *
- * «Quiero que me cambies el orden de Valor de oportunidad a Venta cerrada y
- * viceversa. La fórmula está bien; es más en cuestión de términos.»
+ * PRIMERO: «Quiero que me cambies el orden de Valor de oportunidad a Venta
+ * cerrada y viceversa. La fórmula está bien; es más en cuestión de términos.»
+ * Preguntado cuál de las lecturas era, eligió mover los renglones: la casilla
+ * de `venta_cerrada` arriba, «Reserva» en el medio, la de `valor_oportunidad`
+ * abajo.
  *
- * Preguntado cuál de las lecturas era, eligió la de mover los renglones:
- * «Venta cerrada» arriba, «Reserva» en el medio, «Valor oportunidad» abajo.
- * Los números y lo que significa cada uno NO cambian.
+ * DESPUÉS: «donde dice Venta cerrada, pásalo a Valor de oportunidad, y donde
+ * dice Valor de oportunidad, pásalo a Venta cerrada. No toques la fórmula.»
+ * Preguntado otra vez —porque el rótulo solo en la ficha dejaría al tablero
+ * diciendo otra cosa del mismo número— eligió intercambiarlos EN TODO EL CRM.
+ *
+ * Así que hoy los rótulos están cruzados respecto de las columnas, a
+ * propósito y en un solo lugar, `src/lib/montosDelLead.ts`:
+ *
+ *     columna `venta_cerrada`      se muestra como «Valor de oportunidad»
+ *     columna `valor_oportunidad`  se muestra como «Venta cerrada»
+ *
+ * El orden de los renglones no se movió: sigue el de la primera ronda. Lo que
+ * cambió es cómo se llaman, y los números NO se movieron con los nombres.
  *
  * ============================================================================
  * POR QUÉ ESTO SE PRUEBA Y NO SE MIRA Y LISTO
@@ -34,6 +48,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
+
+/*
+ * Los rótulos de hoy, copiados de `src/lib/montosDelLead.ts`.
+ *
+ * Copiados y no importados porque esto es un .mjs y aquello es TypeScript, y
+ * traer un compilador para leer dos textos costaría más de lo que arregla. Se
+ * llaman por su COLUMNA, igual que allá: es lo que evita cruzarlos al leer.
+ */
+const ROTULO_CERRADA = "Valor de oportunidad";   // rotula `venta_cerrada`
+const ROTULO_VALOR = "Venta cerrada";            // rotula `valor_oportunidad`
 
 const sql = (q) => {
   const ruta = path.join(os.tmpdir(), `prueba-montos-${process.pid}-${Math.random()}.sql`);
@@ -121,18 +145,22 @@ await foto("1-ficha");
 console.log("── EL ORDEN QUE SE PIDIÓ ──");
 {
   /*
-   * Se leen las etiquetas en el orden en que aparecen en la ficha y se
-   * comprueba que «Venta cerrada» venga antes que «Valor oportunidad», con
-   * «Reserva» en el medio.
+   * Se leen los rótulos en el orden en que aparecen en la ficha.
+   *
+   * Ojo con leer esto rápido: arriba va la casilla de la columna
+   * `venta_cerrada`, que desde el intercambio se ROTULA «Valor de
+   * oportunidad». No es un error de tipeo ni una casilla cruzada; es
+   * exactamente lo que pidió la escuela, y las tres comprobaciones de abajo
+   * —cada número en su columna— son las que lo demuestran.
    */
   const t = (await p.locator("aside, [role=dialog]").last().innerText()).replace(/\s+/g, " ");
 
-  const posCerrada = t.indexOf("Venta cerrada");
+  const posCerrada = t.indexOf(ROTULO_CERRADA);
   const posReserva = t.indexOf("Reserva");
-  const posValor = t.indexOf("Valor oportunidad");
+  const posValor = t.indexOf(ROTULO_VALOR);
 
   es("están los tres", posCerrada >= 0 && posReserva >= 0 && posValor >= 0, true);
-  es("VENTA CERRADA VA ARRIBA", posCerrada < posValor, true);
+  es("LA CASILLA DE `venta_cerrada` VA ARRIBA", posCerrada < posValor, true);
   es("y la reserva queda en el medio", posReserva > posCerrada && posReserva < posValor, true);
 }
 
@@ -163,9 +191,9 @@ console.log("\n── CADA CASILLA ESCRIBE SU PROPIA COLUMNA ──");
     await p.waitForTimeout(700);
   };
 
-  await escribir("Venta cerrada", 111);
+  await escribir(ROTULO_CERRADA, 111);
   await escribir("Reserva", 222);
-  await escribir("Valor oportunidad", 333);
+  await escribir(ROTULO_VALOR, 333);
   await foto("2-escrito");
 
   /*

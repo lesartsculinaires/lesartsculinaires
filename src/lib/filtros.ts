@@ -64,6 +64,14 @@ export function definirFiltros(
    * necesita.
    */
   meses: readonly CatalogItem[] = [],
+  /**
+   * Las etiquetas del catálogo, para poder filtrar por ellas.
+   *
+   * Vienen de afuera por lo mismo que los meses: no están en `Catalogo`, que
+   * es lo que se le pide a la base para las pantallas de leads. Vacío = sin
+   * filtro de etiqueta.
+   */
+  etiquetas: readonly CatalogItem[] = [],
 ): DefFiltro[] {
   const todos: DefFiltro[] = [
     /*
@@ -97,6 +105,22 @@ export function definirFiltros(
     ...(importaciones.length > 0
       ? [{ key: "base", label: "Base", items: importaciones.map(comoOpcion) }]
       : []),
+    /*
+     * La etiqueta, que es la que arma los envíos.
+     *
+     * Es el filtro que la escuela pidió para poder «seleccionarlos o
+     * agruparlos»: se marca «viene de feria» en las fichas, se filtra por eso
+     * acá, se marcan todas con la casilla del encabezado y sale el botón de
+     * escribirles.
+     *
+     * Se comporta distinto de todos los demás y por eso está aparte en
+     * `pasa`: los otros comparan un id contra una columna, y un lead tiene
+     * UNA etapa; las etiquetas son varias por lead, así que la pregunta no es
+     * «¿es ésta?» sino «¿está entre las suyas?».
+     */
+    ...(etiquetas.length > 0
+      ? [{ key: "etiqueta", label: "Etiqueta", items: [...etiquetas] }]
+      : []),
   ];
 
   return todos.filter((f) => !omitir.includes(f.key));
@@ -121,6 +145,8 @@ export function pasa(
      * pantallas digan lo mismo de un mismo lead.
      */
     if (key === "mes") return esDelMes(o, quiere);
+    // Varias por lead: se pregunta si la puesta está entre las suyas.
+    if (key === "etiqueta") return o.etiquetaIds.includes(quiere);
     return o[CAMPO[key]] === quiere;
   });
 }

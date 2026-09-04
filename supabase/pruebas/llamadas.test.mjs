@@ -178,6 +178,41 @@ console.log("\n── la que marqué yo la veo yo, y nadie más ──");
   es("diciendo que está llamando", ver(saliente, KATYA, 4).porque, "yo-la-hice");
 }
 
+console.log("\n── UNA SALIENTE QUE SUENA NO DICE «EN LLAMADA» ──");
+{
+  /*
+   * El caso de verdad, y el que estaba mal.
+   *
+   * `llamarA` escribe la fila con `atendidaPor` puesto desde el primer
+   * momento: quien apretó «Llamar» ya la está atendiendo y nadie más tiene
+   * que verla sonar. Pero eso la hacía caer en la rama de «ya la agarró
+   * alguien», y la tarjeta decía «En llamada.» mientras al cliente recién le
+   * estaba sonando el teléfono. Quien marcaba leía que ya estaba hablando y
+   * no escuchaba a nadie.
+   */
+  const marcandoYo = sonando({
+    direccion: "saliente",
+    atendidaPor: KATYA.usuarioId,
+  });
+  es("está en la esquina", ver(marcandoYo, KATYA, 4).presencia, "esquina");
+  es("Y DICE QUE ESTÁ LLAMANDO, NO QUE YA HABLA", ver(marcandoYo, KATYA, 4).porque, "yo-la-hice");
+  es(
+    "y en la pantalla de otra persona no aparece",
+    ver(marcandoYo, ANA, 4).presencia,
+    "nada",
+  );
+
+  // Cuando Meta contesta, la fila pasa a `en_curso` y RECIÉN AHÍ es «En
+  // llamada»: es lo que hace que el rótulo signifique algo.
+  const yaHablando = sonando({
+    direccion: "saliente",
+    estado: "en_curso",
+    atendidaPor: KATYA.usuarioId,
+  });
+  es("ya en curso, sigue en la esquina", ver(yaHablando, KATYA, 4).presencia, "esquina");
+  es("y ahí sí dice que está en llamada", ver(yaHablando, KATYA, 4).porque, "la-estoy-atendiendo");
+}
+
 console.log("\n── sin sesión no se muestra nada ──");
 {
   /*

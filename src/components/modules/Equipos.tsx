@@ -17,6 +17,7 @@ import {
   valorPipeline,
 } from "@/lib/selectors";
 import { T, openTone, softer } from "@/lib/theme";
+import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import { activos } from "@/lib/types";
 import type { Oportunidad, Vendedor } from "@/lib/types";
 
@@ -188,7 +189,7 @@ export function Equipos({
     ? [
         { label: "Oportunidades", value: String(todasSuyas.length), pct: null },
         { label: "En pipeline", value: money(valorPipeline(todasSuyas) || null), pct: null },
-        { label: "Venta cerrada", value: money(totalCerrado(todasSuyas) || null), pct: null },
+        { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(todasSuyas) || null), pct: null },
         { label: "Tasa de cierre", value: tasa(todasSuyas.filter(esGanada).length, todasSuyas.length), pct: null },
       ]
     : [
@@ -203,7 +204,7 @@ export function Equipos({
           pct: mesPrevio ? variacion(mesActual?.pipeline ?? 0, mesPrevio.pipeline) : null,
         },
         {
-          label: "Venta cerrada",
+          label: ROTULO_VENTA_CERRADA,
           value: money((mesActual?.cerrado ?? 0) || null),
           pct: mesPrevio ? variacion(mesActual?.cerrado ?? 0, mesPrevio.cerrado) : null,
         },
@@ -603,7 +604,7 @@ export function Equipos({
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: T.paper }}>
-                    {["Mes", "Leads", "Ganados", "Tasa", "Venta cerrada", "Pipeline"].map((h, i) => (
+                    {["Mes", "Leads", "Ganados", "Tasa", ROTULO_VENTA_CERRADA, "Pipeline"].map((h, i) => (
                       <th
                         key={h}
                         style={{

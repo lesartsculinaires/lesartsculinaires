@@ -11,6 +11,11 @@ import { fechaCorta, money } from "@/lib/format";
 import { estadoTone, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { cuantosPorCliente, posicionEntreLosSuyos } from "@/lib/otrosLeads";
 import { T, softer } from "@/lib/theme";
+import {
+  CORTO_VALOR_OPORTUNIDAD,
+  CORTO_VENTA_CERRADA,
+  ROTULO_VENTA_CERRADA,
+} from "@/lib/montosDelLead";
 import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { EnvioMasivo } from "@/components/modules/EnvioMasivo";
@@ -20,7 +25,7 @@ import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
 import { mesesComoOpciones } from "@/lib/periodoDelTablero";
 import { definirFiltros, pasa } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
-import type { Importacion, Oportunidad, Plantilla } from "@/lib/types";
+import type { Etiqueta, Importacion, Oportunidad, Plantilla } from "@/lib/types";
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -36,6 +41,14 @@ interface Props {
   puedeSubirBases: boolean;
   /** Las bases subidas, para poder filtrar por la tanda que entró junta. */
   importaciones: Importacion[];
+  /**
+   * Las etiquetas del catálogo, para poder filtrar por ellas.
+   *
+   * Es lo que convierte a las etiquetas en algo útil para un envío: se ponen
+   * en la ficha y se cosechan acá, que es de donde sale la lista de a quién
+   * escribirle.
+   */
+  etiquetas: readonly Etiqueta[];
   accent: string;
   query: string;
   filtros: Record<string, number | null>;
@@ -65,6 +78,7 @@ export function Clientes({
   esAdmin,
   puedeSubirBases,
   importaciones,
+  etiquetas,
   accent,
   query,
   filtros,
@@ -119,7 +133,16 @@ export function Clientes({
    * doce opciones de las que ocho no tienen ni un lead.
    */
   const meses = useMemo(() => mesesComoOpciones(oportunidades), [oportunidades]);
-  const filtros_def = definirFiltros(cat, importaciones, [], meses);
+  const filtros_def = definirFiltros(
+    cat,
+    importaciones,
+    [],
+    meses,
+    // Sólo las que siguen en uso: filtrar por una etiqueta dada de baja
+    // devolvería lo que quedó con ella puesto de antes, que no es lo que
+    // alguien está buscando cuando la elige de una lista.
+    etiquetas.filter((e) => e.activa).map((e) => ({ id: e.id, nombre: e.nombre })),
+  );
 
   const filtradas = oportunidades.filter(
     (o) =>
@@ -293,7 +316,7 @@ export function Clientes({
   const resumen = [
     { label: "Oportunidades", value: String(list.length) },
     { label: "Valor en pipeline", value: money(valorPipeline(list) || null) },
-    { label: "Venta cerrada", value: money(totalCerrado(list) || null) },
+    { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(list) || null) },
     {
       label: "Ticket promedio",
       value: (() => {
@@ -590,8 +613,8 @@ export function Clientes({
                 <Encabezado columna="vendedor" orden={orden} onOrdenar={cambiarOrden}>Vendedor</Encabezado>
                 <Encabezado columna="etapa" orden={orden} onOrdenar={cambiarOrden}>Etapa</Encabezado>
                 <Encabezado columna="estado" orden={orden} onOrdenar={cambiarOrden}>Estado</Encabezado>
-                <Encabezado columna="valor" orden={orden} onOrdenar={cambiarOrden} derecha>Valor</Encabezado>
-                <Encabezado columna="cerrada" orden={orden} onOrdenar={cambiarOrden} derecha>Cerrada</Encabezado>
+                <Encabezado columna="valor" orden={orden} onOrdenar={cambiarOrden} derecha>{CORTO_VALOR_OPORTUNIDAD}</Encabezado>
+                <Encabezado columna="cerrada" orden={orden} onOrdenar={cambiarOrden} derecha>{CORTO_VENTA_CERRADA}</Encabezado>
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>

@@ -7,6 +7,7 @@ import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { agruparBases, repetidas, resumirBase } from "@/lib/bases";
 import { fechaCorta, horaDe, money } from "@/lib/format";
 import { T, softer } from "@/lib/theme";
+import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Importacion, Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -342,7 +343,7 @@ export function Bases({
                 <th style={{ ...th, textAlign: "right" }}>Registros</th>
                 {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Clientes</th>}
                 {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Ganados</th>}
-                {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>Venta cerrada</th>}
+                {puedeAbrir && <th style={{ ...th, textAlign: "right" }}>{ROTULO_VENTA_CERRADA}</th>}
                 <th style={{ width: 34, borderBottom: `1px solid ${T.border}` }} />
               </tr>
             </thead>

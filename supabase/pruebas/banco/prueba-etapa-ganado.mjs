@@ -44,13 +44,26 @@ console.log("\n── mover la tarjeta pone el estado ──");
   es("AL LLEGAR A GANADO, EL ESTADO CAMBIA SOLO", mirar(), "Ganado / Ganado / —");
 }
 
-console.log("\n── pero no le discute a la persona ──");
+console.log("\n── y el camino de vuelta: el estado mueve la tarjeta ──");
 {
+  /*
+   * Esto cambió, y a pedido.
+   *
+   * Antes acá se comprobaba lo contrario: que marcar «Perdido» en la ficha
+   * dejara la tarjeta donde estaba. Eso era lo que dejaba al Pipeline
+   * mostrando en «Ganado» una venta que la ficha daba por perdida, y la
+   * escuela lo pidió al revés: «cada cosa que se mueva en leads tiene que
+   * verse reflejado en esas áreas conectadas». Lo hace el disparador
+   * `etapa_por_el_estado`, de `20261019120000_etapa_y_estado_de_acuerdo`.
+   *
+   * Lo que NO cambió es el desempate: si una misma escritura mueve la tarjeta
+   * Y cambia el estado, manda lo que hizo la persona. Se comprueba abajo.
+   */
   sql(`update oportunidades set estado_id=(select id from estados where nombre='Perdido'), motivo_perdida_id=(select id from motivos_perdida where nombre='Muy caro') where id=${OP}`);
-  es("estando en Ganado se puede marcar Perdido a mano", mirar(), "Ganado / Perdido / Muy caro");
+  es("marcar Perdido MUEVE la tarjeta a Perdido", mirar(), "Perdido / Perdido / Muy caro");
 
   sql(`update oportunidades set valor_oportunidad=123 where id=${OP}`);
-  es("y editar otra cosa no vuelve a forzarlo", mirar(), "Ganado / Perdido / Muy caro");
+  es("y editar otra cosa no la vuelve a mover", mirar(), "Perdido / Perdido / Muy caro");
 
   poner("Pago", "Activo");
   sql(`update oportunidades set etapa_id=(select id from etapas where nombre='Ganado'), estado_id=(select id from estados where nombre='Perdido') where id=${OP}`);

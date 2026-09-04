@@ -24,6 +24,7 @@ import { anotarSeguimientoDeNota, filaDeSeguimiento } from "@/lib/crm/notaConSeg
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import {
   COLUMNAS_DE_FUSION,
+  ETIQUETA_CAMPO,
   listarCampos,
   planificarFusion,
   type Choque,
@@ -1057,6 +1058,21 @@ export async function importarClientes(
   // Completar los huecos de los contactos que se unifican. Va de a uno: son
   // pocos comparados con el lote, y cada uno necesita leer lo que ya tiene
   // para no pisarlo.
+  /*
+   * Lo que llegó distinto en los datos de la PERSONA, por contacto.
+   *
+   * Se junta acá y se escribe más abajo, cuando ya se sabe qué oportunidad le
+   * corresponde a cada fila: la nota va colgada de un lead, y en este punto
+   * los leads todavía no existen.
+   *
+   * Antes esto se calculaba y se tiraba. Los choques del LEAD sí se anotaban
+   * —el programa, el monto—, pero los de la persona —el nombre, el teléfono,
+   * el correo, que son los que la escuela nombró— se perdían sin dejar
+   * rastro: la planilla traía un segundo número y nadie se enteraba nunca de
+   * que había llegado.
+   */
+  const choquesDelContacto = new Map<number, Choque[]>();
+
   const aUnificar = filas.filter((f) => f.unificar_con != null);
   if (aUnificar.length > 0) {
     const ids = [...new Set(aUnificar.map((f) => f.unificar_con as number))];
@@ -1094,6 +1110,13 @@ export async function importarClientes(
         });
         Object.assign(parche, plan.parche);
         estado = { ...estado, ...plan.parche };
+
+        if (plan.choques.length > 0) {
+          choquesDelContacto.set(previo.id, [
+            ...(choquesDelContacto.get(previo.id) ?? []),
+            ...plan.choques,
+          ]);
+        }
       }
 
       if (Object.keys(parche).length > 0) {
@@ -1311,6 +1334,57 @@ export async function importarClientes(
 
   await guardarNotasDeLaBase(supabase, filas, porFila);
 
+  /*
+   * Y ahora sí, lo que llegó distinto de la PERSONA.
+   *
+   * Se escribe acá y no arriba porque recién en este punto se sabe en qué
+   * lead cayó cada fila. Va una nota por contacto, colgada del primer lead de
+   * sus filas: repetirla en los tres leads de alguien que preguntó por tres
+   * programas sería el mismo texto tres veces en tres bitácoras.
+   */
+  for (const [clienteId, choques] of choquesDelContacto) {
+    if (choques.length === 0) continue;
+
+    const suyas = filas
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f.unificar_con === clienteId)
+      .map(({ i }) => porFila.get(i))
+      .filter((id): id is number => id != null);
+
+    if (suyas.length === 0) continue;
+
+    // Un mismo dato puede haber chocado en varias filas del archivo; se dice
+    // una vez.
+    const vistos = new Set<string>();
+    const unicos = choques.filter((c) => {
+      const clave = `${c.campo}|${c.entrante}|${c.actual}`;
+      if (vistos.has(clave)) return false;
+      vistos.add(clave);
+      return true;
+    });
+
+    try {
+      await supabase.from("oportunidad_notas").insert({
+        oportunidad_id: suyas[0],
+        origen: "importacion",
+        nota:
+          "Una base importada traía a esta persona con datos distintos. No se " +
+          "aplicaron —lo cargado no se pisa— pero quedan acá para que no se " +
+          "pierdan: " +
+          unicos
+            .map(
+              (c) =>
+                `${ETIQUETA_CAMPO[c.campo]}: llegó «${c.entrante}», quedó «${c.actual}»`,
+            )
+            .join("; ") +
+          ".",
+      });
+    } catch {
+      // Una nota que no entra no puede tumbar una importación de trescientas
+      // filas que ya está escrita.
+    }
+  }
+
   // El contador de la base se acumula lote a lote.
   if (baseId != null) {
     const { data: previo } = await supabase
@@ -1495,6 +1569,66 @@ export interface ResultadoFusion extends ActionResult {
  * cerrado— abre uno nuevo como antes, pero devuelve el motivo para que la
  * pantalla lo pueda decir en vez de dejar aparecer un código de la nada.
  */
+/**
+ * Deja escrito en la bitácora del lead lo que llegó distinto y no se aplicó.
+ *
+ * ============================================================================
+ * POR QUÉ ESTO NO PUEDE QUEDAR SÓLO EN LA PANTALLA
+ * ============================================================================
+ *
+ * La regla de la fusión es «completar nunca borra»: un dato que ya está
+ * guardado no lo pisa el que llega, porque el guardado pudo haberse corregido
+ * a mano y el que llega pudo salir de una planilla vieja. Está bien, y no se
+ * toca.
+ *
+ * Pero el dato que llega tampoco es basura. Es un teléfono al que quizá esa
+ * persona sí contesta, o el correo con el que se inscribió, o el nombre
+ * completo del que en la ficha está el apodo. Hasta acá se mostraba en la
+ * ventana del alta y se perdía al cerrarla.
+ *
+ * Anotarlo cuesta una fila y lo deja donde alguien lo va a encontrar: en la
+ * bitácora del lead, al lado de todo lo demás que se sabe de esa persona.
+ *
+ * Los dos lados van juntos en una sola nota, y no en dos, porque son un solo
+ * hecho: «entró otra carga de esta persona y esto es lo que traía distinto».
+ * Partirlo en dos renglones haría leer dos veces la misma historia.
+ *
+ * No lanza. La unificación ya se hizo y es lo que importa; que falte la nota
+ * es un dato menos, no un lead perdido.
+ */
+async function anotarLoQueNoEntro(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  oportunidadId: number,
+  delContacto: readonly Choque[],
+  delLead: readonly Choque[],
+): Promise<void> {
+  if (delContacto.length === 0 && delLead.length === 0) return;
+
+  const comoSeLee = (c: Choque, etiqueta: string) =>
+    `${etiqueta}: llegó «${c.entrante}», quedó «${c.actual}»`;
+
+  const partes = [
+    ...delContacto.map((c) => comoSeLee(c, ETIQUETA_CAMPO[c.campo])),
+    ...delLead.map((c) =>
+      comoSeLee(c, ETIQUETA_LEAD[c.campo as unknown as CampoLead]),
+    ),
+  ];
+
+  try {
+    await supabase.from("oportunidad_notas").insert({
+      oportunidad_id: oportunidadId,
+      origen: "unificacion",
+      nota:
+        "Se unificó otra carga de esta persona. Datos que llegaron distintos y " +
+        "no se aplicaron, para que no se pierdan: " +
+        partes.join("; ") +
+        ".",
+    });
+  } catch {
+    // Ver el comentario de arriba.
+  }
+}
+
 export async function unificarCliente(
   clienteId: number,
   datos: NuevoCliente,
@@ -1530,6 +1664,12 @@ export async function unificarCliente(
     telefono: datos.telefono,
     correo: datos.correo,
     territorio_id: datos.territorio_id,
+    // El país faltaba, y era el mismo agujero que ya se había tapado con la
+    // edad y el responsable: la casilla existe en el alta, el campo existe en
+    // `clientes` y la fusión sabe completarlo, pero nadie se lo pasaba. Un
+    // lead extranjero que coincidía con un contacto viejo perdía el país sin
+    // decir nada.
+    pais: datos.pais ?? null,
     edad: datos.edad ?? null,
     responsable_nombre: datos.responsable_nombre ?? null,
     responsable_telefono: datos.responsable_telefono ?? null,
@@ -1593,23 +1733,30 @@ export async function unificarCliente(
      * Es la otra mitad de «que la información adicional se agregue»: un dato
      * que choca no se aplica —completar nunca borra— pero tampoco se tira. Se
      * anota, y queda en la ficha para que alguien lo mire.
+     *
+     * Van los dos lados en la misma nota. Antes se anotaban sólo los del
+     * LEAD, y los del CONTACTO —el nombre, el teléfono, el correo, que son
+     * justamente los que la escuela nombró— se mostraban en la pantalla del
+     * alta y ahí terminaban: quien cerraba la ventana se quedaba sin el
+     * teléfono nuevo que traía la carga, sin que en ningún lado quedara que
+     * había existido.
      */
-    if (p.choques.length > 0) {
-      await supabase.from("oportunidad_notas").insert({
-        oportunidad_id: lead.id,
-        origen: "unificacion",
-        nota:
-          "Se unificó otra carga de este mismo lead. Datos que llegaron distintos " +
-          "y no se aplicaron: " +
-          p.choques
-            .map(
-              (c) =>
-                `${ETIQUETA_LEAD[c.campo as unknown as CampoLead]}: llegó «${c.entrante}», ` +
-                `quedó «${c.actual}»`,
-            )
-            .join("; ") +
-          ".",
-      });
+    await anotarLoQueNoEntro(supabase, lead.id, plan.choques, p.choques);
+
+    /*
+     * Los programas por los que preguntó esta vez se SUMAN a los que ya tenía.
+     *
+     * `guardarProgramasDeInteres` reemplaza la lista, así que hay que
+     * mandarle la unión y no sólo lo nuevo: mandarle lo nuevo a secas
+     * borraría los intereses de la carga anterior, que es la manera más
+     * silenciosa de perder justo el dato que esta unificación viene a
+     * conservar.
+     */
+    if ((datos.programas_interes ?? []).length > 0) {
+      await guardarProgramasDeInteres(lead.id, [
+        ...(lead.programas ?? []),
+        ...(datos.programas_interes ?? []),
+      ]);
     }
 
     revalidatePath("/");
@@ -1655,8 +1802,10 @@ export async function unificarCliente(
       descuento_promocion: datos.descuento_promocion,
     })
       // El que vale es el que quedó guardado: si el propuesto ya lo tenía
-      // otro, el disparador de la base le puso el siguiente libre.
-      .select("codigo")
+      // otro, el disparador de la base le puso el siguiente libre. El id va
+      // al lado porque de él cuelgan la nota de lo que no entró y los
+      // programas por los que preguntó.
+      .select("id, codigo")
       .single();
 
     if (!errOp) {
@@ -1664,6 +1813,26 @@ export async function unificarCliente(
       // Es el punto de todo esto: unificar sin perder que ahora también
       // escribió por otro lado.
       await anotarCanal(supabase, clienteId, datos.canal_id, datos.fecha_registro);
+
+      /*
+       * Y por acá también, aunque el lead sea nuevo.
+       *
+       * Se llega hasta acá cuando el CONTACTO ya estaba pero el lead no se
+       * podía juntar con ninguno de los suyos. El contacto igual se fusionó
+       * —de ahí `plan.choques`— y esos datos no tenían dónde quedar: el lead
+       * viejo no es éste y el nuevo todavía no existía cuando se calcularon.
+       * Ahora existe, así que se anotan en él.
+       */
+      const nuevoId = (op as { id?: number } | null)?.id;
+      if (nuevoId != null) {
+        await anotarLoQueNoEntro(supabase, nuevoId, plan.choques, []);
+      }
+
+      // Y los programas por los que preguntó, que en este camino tampoco
+      // tenían dónde ir.
+      if (nuevoId != null) {
+        await guardarProgramasDeInteres(nuevoId, datos.programas_interes ?? []);
+      }
 
       revalidatePath("/");
       return {

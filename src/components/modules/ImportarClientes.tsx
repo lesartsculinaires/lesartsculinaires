@@ -25,6 +25,7 @@ import {
 } from "@/lib/importar";
 import { seAcomoda } from "@/lib/texto";
 import { T, softer } from "@/lib/theme";
+import { CORTO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -757,7 +758,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                       <th style={th}>Vendedor</th>
                       <th style={th}>Etapa</th>
                       <th style={th}>Fecha</th>
-                      <th style={{ ...th, textAlign: "right" }}>Valor</th>
+                      <th style={{ ...th, textAlign: "right" }}>{CORTO_VALOR_OPORTUNIDAD}</th>
                       <th style={th}>Notas</th>
                     </tr>
                   </thead>

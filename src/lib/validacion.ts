@@ -6,6 +6,8 @@
  * poder señalar cada campo y explicar qué le falta, "es inválido" no alcanza.
  */
 
+import { ROTULO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
+
 /** Campos del formulario que pueden fallar. */
 export type CampoCliente =
   | "nombre"
@@ -31,7 +33,7 @@ export const ETIQUETAS: Record<CampoCliente, string> = {
   correo: "Correo",
   fecha_registro: "Fecha de registro",
   fecha_cierre: "Fecha de cierre",
-  valor_oportunidad: "Valor de la oportunidad",
+  valor_oportunidad: ROTULO_VALOR_OPORTUNIDAD,
 };
 
 export interface DatosAlta {

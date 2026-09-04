@@ -63,6 +63,7 @@ function toOportunidad(r: Row): Oportunidad {
     // Se completa después, de `oportunidad_programas`. Vacío mientras tanto:
     // la vista no los trae y la ficha tiene que poder dibujarse igual.
     programasInteres: [],
+    etiquetaIds: [],
     producto: str(r.producto, SIN_DATO),
     categoria: r.categoria ? (str(r.categoria) as ProductoCategoria) : null,
     territorioId: numOrNull(r.territorio_id),
@@ -187,6 +188,43 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
         else porLead.set(i.oportunidad_id, [i.producto_id]);
       }
       for (const f of filas) f.programasInteres = porLead.get(f.id) ?? [];
+    }
+  }
+
+  /*
+   * Las etiquetas puestas en cada lead.
+   *
+   * Mismo camino que los programas de interés, y por los mismos motivos: una
+   * fila por etiqueta no cabe en una vista de una fila por lead, y si la
+   * migración no se corrió la tabla no existe y eso no puede dejar la pantalla
+   * en blanco.
+   *
+   * Se traen los ids y no los nombres. El catálogo de etiquetas ya viaja
+   * entero —es corto y lo necesitan la bandeja y la ficha— así que mandar
+   * también el nombre y el color en cada fila sería repetir el mismo texto mil
+   * veces para no hacer una búsqueda en un arreglo de diez.
+   */
+  {
+    const { data: puestas, error: errEtiquetas } = await traerTodo<{
+      oportunidad_id: number;
+      etiqueta_id: number;
+    }>(() =>
+      supabase
+        .from("oportunidad_etiquetas")
+        .select("oportunidad_id, etiqueta_id")
+        .order("oportunidad_id"),
+    );
+
+    if (errEtiquetas) {
+      console.warn("[queries] sin etiquetas de leads:", errEtiquetas);
+    } else if (puestas.length > 0) {
+      const porLead = new Map<number, number[]>();
+      for (const e of puestas) {
+        const suyas = porLead.get(e.oportunidad_id);
+        if (suyas) suyas.push(e.etiqueta_id);
+        else porLead.set(e.oportunidad_id, [e.etiqueta_id]);
+      }
+      for (const f of filas) f.etiquetaIds = porLead.get(f.id) ?? [];
     }
   }
 

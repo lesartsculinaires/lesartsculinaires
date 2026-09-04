@@ -29,6 +29,26 @@ export interface DatosLead {
   responsable_nombre?: string | null;
   responsable_telefono?: string | null;
   responsable_correo?: string | null;
+  /**
+   * De qué país es. Opcional y suele venir vacío.
+   *
+   * Sólo hace falta cuando la persona no está en El Salvador; para el resto,
+   * el territorio ya lo dice. Se guarda tal como lo eligió la lista, que es
+   * lo que evita que convivan «Panama» y «Panamá» como si fueran dos países.
+   */
+  pais?: string | null;
+  /**
+   * Por qué otros programas preguntó, además del que se está vendiendo.
+   *
+   * No es lo mismo que `producto_id` y la diferencia importa: aquél es el
+   * trato —uno solo, con su precio y su venta— y esto es el interés, que
+   * puede ser de tres a la vez. Está explicado largo en
+   * `ProgramasDeInteres.tsx`; acá alcanza con que uno cuenta en los montos y
+   * el otro no.
+   *
+   * El principal se agrega solo, así que no hace falta repetirlo.
+   */
+  programas_interes?: readonly number[];
   vendedor_id: number | null;
   producto_id: number | null;
   territorio_id: number | null;
@@ -140,6 +160,7 @@ export async function altaLead(
       responsable_nombre: datos.responsable_nombre ?? null,
       responsable_telefono: datos.responsable_telefono ?? null,
       responsable_correo: datos.responsable_correo ?? null,
+      pais: datos.pais ?? null,
     })
     .select("id")
     .single();
@@ -151,6 +172,15 @@ export async function altaLead(
 
   if (abierta.ok) await anotarCanal(supabase, clienteId, datos.canal_id, datos.fecha_registro);
 
+  if (abierta.ok && abierta.oportunidadId != null) {
+    await anotarProgramasDeInteres(
+      supabase,
+      abierta.oportunidadId,
+      datos.producto_id,
+      datos.programas_interes ?? [],
+    );
+  }
+
   if (abierta.ok) {
     return { ok: true, error: null, codigo: abierta.codigo, clienteId, oportunidadId: abierta.oportunidadId };
   }
@@ -159,6 +189,41 @@ export async function altaLead(
   // deshace el alta en vez de dejar una fila huérfana.
   await supabase.from("clientes").delete().eq("id", clienteId);
   return { ok: false, error: abierta.error };
+}
+
+/**
+ * Dejar anotados los programas por los que preguntó un lead recién creado.
+ *
+ * Es el alta de lo que en la ficha mantiene `guardarProgramasDeInteres`. Acá
+ * es más corto porque el lead acaba de nacer: no hay nada previo que comparar,
+ * sólo hay que escribir.
+ *
+ * El principal entra siempre, aunque no venga en la lista. Es lo mismo que
+ * hace la ficha, y es lo que sostiene la regla que evita duplicados: cuando
+ * más adelante entre una base que trae a esta persona por ese programa, el CRM
+ * tiene que poder ver que ya lo preguntó.
+ *
+ * No lanza. Un lead sin sus intereses anotados es un lead al que le falta un
+ * dato; un alta que falla por eso es una persona que se queda afuera del CRM.
+ */
+async function anotarProgramasDeInteres(
+  supabase: SupabaseClient,
+  oportunidadId: number,
+  principalId: number | null,
+  otros: readonly number[],
+): Promise<void> {
+  const todos = [...new Set([...otros, ...(principalId == null ? [] : [principalId])])]
+    .filter((id) => Number.isFinite(id));
+
+  if (todos.length === 0) return;
+
+  try {
+    await supabase
+      .from("oportunidad_programas")
+      .insert(todos.map((producto_id) => ({ oportunidad_id: oportunidadId, producto_id })));
+  } catch {
+    // Ver el comentario de arriba.
+  }
 }
 
 /**

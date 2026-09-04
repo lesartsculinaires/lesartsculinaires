@@ -13,6 +13,7 @@ import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { OtrosLeadsDelContacto } from "@/components/modules/OtrosLeadsDelContacto";
 import { ProgramasDeInteres } from "@/components/modules/ProgramasDeInteres";
+import { EtiquetasDelLead } from "@/components/modules/EtiquetasConversacion";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
 import { FilterMenu } from "@/components/ui/FilterMenu";
@@ -30,6 +31,7 @@ import {
 import { useCatalogo } from "@/lib/catalog";
 import { PAISES_POR_GRUPO, normalizarPais } from "@/lib/paises";
 import { fechaCorta, fechaLarga, mesLargo, money } from "@/lib/format";
+import { ROTULO_VALOR_OPORTUNIDAD, ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { promocionesUsadas } from "@/lib/promociones";
@@ -39,6 +41,7 @@ import {
   activosCon,
   esMenor,
   type CatalogItem,
+  type Etiqueta,
   type ClientePatch,
   type Oportunidad,
   type OportunidadPatch,
@@ -46,6 +49,8 @@ import {
 
 interface Props {
   oportunidad: Oportunidad;
+  /** El catálogo de etiquetas, el mismo que usa la bandeja. */
+  etiquetas: readonly Etiqueta[];
   /** Para ofrecer las promociones ya escritas en otras oportunidades. */
   todas: readonly Oportunidad[];
   accent: string;
@@ -99,6 +104,7 @@ const oMonto = (s: string): number | null => {
 
 export function ClienteDrawer({
   oportunidad: o,
+  etiquetas,
   todas,
   accent,
   menu,
@@ -246,13 +252,13 @@ export function ClienteDrawer({
       guardar: (v: string) =>
         onEditar(o.id, { fecha_cierre: oNull(v) }, { fechaCierre: oNull(v) }),
     },
-    // La venta cerrada va arriba y el valor de la oportunidad abajo, con la
-    // reserva en el medio. Es el orden que pidió la escuela: primero lo que
-    // de verdad entró, después lo que se había estimado. Nada más cambia de
-    // lugar; cada casilla sigue escribiendo su misma columna.
+    // El orden lo pidió la escuela y se mantiene; los rótulos salen de
+    // `montosDelLead`, que es donde se intercambiaron. Cada casilla sigue
+    // escribiendo su misma columna: lo que cambió es cómo se llama en
+    // pantalla, no qué guarda.
     {
       clave: "venta_cerrada",
-      label: "Venta cerrada",
+      label: ROTULO_VENTA_CERRADA,
       value: o.cerrada == null ? "" : String(o.cerrada),
       tipo: "monto" as const,
       requerido: false,
@@ -269,7 +275,7 @@ export function ClienteDrawer({
     },
     {
       clave: "valor_oportunidad",
-      label: "Valor oportunidad",
+      label: ROTULO_VALOR_OPORTUNIDAD,
       value: o.valor == null ? "" : String(o.valor),
       tipo: "monto" as const,
       requerido: false,
@@ -663,9 +669,9 @@ export function ClienteDrawer({
         {[
           // Mismo orden que las casillas de abajo. Verlas al revés dentro de la
           // misma ficha haría dudar de cuál número es cuál.
-          { label: "Venta cerrada", value: money(o.cerrada), bg: o.cerrada ? soft : T.paper, color: o.cerrada ? accent : T.faint },
+          { label: ROTULO_VENTA_CERRADA, value: money(o.cerrada), bg: o.cerrada ? soft : T.paper, color: o.cerrada ? accent : T.faint },
           { label: "Reserva", value: money(o.reserva), bg: o.reserva ? soft : T.paper, color: o.reserva ? accent : T.faint },
-          { label: "Valor oportunidad", value: money(o.valor), bg: T.paper, color: undefined as string | undefined },
+          { label: ROTULO_VALOR_OPORTUNIDAD, value: money(o.valor), bg: T.paper, color: undefined as string | undefined },
           { label: "Descuento", value: o.descuento ?? "—", bg: T.paper, color: undefined },
         ].map((m) => (
           <div key={m.label} style={{ background: m.bg, borderRadius: 8, padding: "11px 12px" }}>
@@ -740,6 +746,34 @@ export function ClienteDrawer({
         puestos={o.programasInteres}
         accent={accent}
       />
+
+      {/*
+        Las etiquetas del lead.
+
+        Las pidió la escuela para armar envíos: «que ayude al momento de hacer
+        los envíos masivos y seleccionarlos o agruparlos». Se ponen acá y se
+        filtran en Clientes, que es de donde sale la lista de a quién
+        escribirle.
+
+        Van debajo de los programas y no arriba, con la etapa y el estado, a
+        propósito. Ahí arriba está lo que el CRM mide —y de lo que salen los
+        números del tablero—; acá abajo, lo que el CRM no sabe: «viene de
+        feria», «hablar en enero», «pidió beca». Mezclarlos invitaría a poner
+        una etiqueta «GANADO» al lado del estado Ganado, y a partir de ahí
+        habría dos versiones de lo mismo sin manera de saber cuál vale.
+      */}
+      <section style={{ marginBottom: 20 }}>
+        <p style={{ margin: "0 0 6px", fontSize: 11, color: T.muted }}>
+          Etiquetas
+        </p>
+        <EtiquetasDelLead
+          oportunidadId={o.id}
+          puestas={o.etiquetaIds}
+          etiquetas={[...etiquetas]}
+          accent={accent}
+          onCambio={() => setRefrescoBitacora((n) => n + 1)}
+        />
+      </section>
 
       {/*
         Por qué se perdió: aparece sólo cuando el estado es «Perdido».

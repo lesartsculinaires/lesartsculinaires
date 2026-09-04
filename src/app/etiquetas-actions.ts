@@ -234,3 +234,62 @@ export async function marcarConversacion(
   revalidatePath("/");
   return { ok: true, error: null };
 }
+
+/**
+ * Poner o sacar una etiqueta de un LEAD.
+ *
+ * ============================================================================
+ * POR QUÉ ES OTRA FUNCIÓN Y NO UN PARÁMETRO DE `marcarConversacion`
+ * ============================================================================
+ *
+ * Porque son dos tablas y dos permisos, y meterlas en una sola función con un
+ * «¿es conversación o es lead?» adentro haría que el día que cambie el
+ * permiso de una haya que releer la otra para estar seguro de no haberla
+ * tocado.
+ *
+ * El catálogo sí es el mismo, a propósito: «pidió beca» es lo mismo esté en el
+ * chat o en la ficha. Lo que cambia es de dónde cuelga.
+ *
+ * ============================================================================
+ * QUIÉN PUEDE
+ * ============================================================================
+ *
+ * Lo decide la base, no esto. La política `op_etiquetas_todo` deja escribir
+ * sobre los leads que quien está conectado puede ver, que es la misma regla
+ * con la que se le muestran. Un asesor que intente etiquetar un lead de otra
+ * persona recibe el error de la base, y está bien: es el mismo lead que no
+ * puede abrir.
+ */
+export async function marcarLead(
+  oportunidadId: number,
+  etiquetaId: number,
+  puesta: boolean,
+): Promise<ResultadoEtiqueta> {
+  const supabase = await getServerClient();
+  if (!supabase) return SIN_SESION;
+
+  if (puesta) {
+    const user = await getUser();
+    const { error } = await supabase
+      .from("oportunidad_etiquetas")
+      .upsert(
+        {
+          oportunidad_id: oportunidadId,
+          etiqueta_id: etiquetaId,
+          puesta_por: user?.id ?? null,
+        },
+        { onConflict: "oportunidad_id,etiqueta_id" },
+      );
+    if (error) return { ok: false, error: explicar(error) };
+  } else {
+    const { error } = await supabase
+      .from("oportunidad_etiquetas")
+      .delete()
+      .eq("oportunidad_id", oportunidadId)
+      .eq("etiqueta_id", etiquetaId);
+    if (error) return { ok: false, error: explicar(error) };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null };
+}

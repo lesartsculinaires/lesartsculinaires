@@ -240,27 +240,69 @@ export async function llamarA(
    * propósito: si el navegador pudiera insertar filas, cualquiera con el
    * inspector abierto haría sonar el teléfono de todo el equipo con una
    * llamada que no existe.
+   *
+   * ----------------------------------------------------------------------------
+   * SIN ESTA FILA NO HAY LLAMADA, AUNQUE EL TELÉFONO SUENE
+   * ----------------------------------------------------------------------------
+   *
+   * Y por eso su error no se puede tragar, que es lo que hacía antes.
+   *
+   * La fila es por donde viaja la respuesta de Meta: el webhook le pega el SDP
+   * con un `update` sobre este `call_id`, y el navegador la recibe y recién ahí
+   * abre el audio. Sin fila, ese `update` no encuentra nada y la respuesta se
+   * cae en el vacío.
+   *
+   * Lo que se veía en ese caso era lo peor de los dos mundos: al cliente le
+   * suena el teléfono —la llamada ya está puesta en Meta— y atiende, y del
+   * lado del CRM la tarjeta se queda en «llamando…» para siempre, sin audio y
+   * sin explicación. Nadie tendría por qué relacionar eso con una fila que no
+   * se escribió.
+   *
+   * Así que si no se pudo escribir, se corta la llamada en Meta y se dice.
+   * Cortar es mejor que dejar sonando: el cliente ve una llamada perdida en
+   * vez de atender a nadie, y quien marcó se entera en el momento.
    */
   const admin = getAdminClient();
-  if (admin) {
-    await admin
-      .from("llamadas")
-      .insert({
-        call_id: r.callId,
-        conversacion_id: conversacionId,
-        telefono,
-        // Igual que en las entrantes: copiados, para que la fila se entienda
-        // sola sin depender de que quien la mire pueda ver el hilo.
-        vendedor_id: conv?.vendedor_id ?? null,
-        nombre: conv?.nombre_perfil ?? null,
-        direccion: "saliente",
-        estado: "sonando",
-        // Suya desde el principio: nadie más tiene que ver sonar una llamada
-        // que no va a atender, y quien la marcó ya la está atendiendo.
-        atendida_por: user.id,
-        atendida_en: new Date().toISOString(),
-      })
-      .then(null, () => null);
+
+  const noSePudo = async (porque: string) => {
+    // Se cuelga en Meta antes de contestar, para no dejar el teléfono del
+    // cliente sonando contra una llamada que el CRM ya no puede atender.
+    await colgar(r.callId!).catch(() => null);
+    return {
+      ok: false,
+      callId: null,
+      faltaPermiso: false,
+      error: `La llamada se cortó porque no se pudo registrar en el CRM (${porque}).`,
+    };
+  };
+
+  if (!admin) {
+    return noSePudo("falta SUPABASE_SERVICE_ROLE_KEY en el servidor");
+  }
+
+  const { error: errFila } = await admin.from("llamadas").insert({
+    call_id: r.callId,
+    conversacion_id: conversacionId,
+    telefono,
+    // Igual que en las entrantes: copiados, para que la fila se entienda
+    // sola sin depender de que quien la mire pueda ver el hilo.
+    vendedor_id: conv?.vendedor_id ?? null,
+    nombre: conv?.nombre_perfil ?? null,
+    direccion: "saliente",
+    estado: "sonando",
+    // Suya desde el principio: nadie más tiene que ver sonar una llamada
+    // que no va a atender, y quien la marcó ya la está atendiendo.
+    atendida_por: user.id,
+    atendida_en: new Date().toISOString(),
+  });
+
+  if (errFila) {
+    console.error("[llamadas] no se pudo registrar la saliente", errFila);
+    return noSePudo(
+      /relation .* does not exist|PGRST205/i.test(errFila.message ?? "")
+        ? "falta correr 20261017120000_llamadas.sql"
+        : errFila.message,
+    );
   }
 
   return { ok: true, callId: r.callId, faltaPermiso: false, error: null };

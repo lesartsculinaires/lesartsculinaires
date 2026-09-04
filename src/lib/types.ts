@@ -193,6 +193,17 @@ export interface Oportunidad {
    * Dashboard y en los montos— y está siempre también en esta lista.
    */
   programasInteres: number[];
+  /**
+   * Las etiquetas puestas en este lead.
+   *
+   * Son las mismas del catálogo que usa la bandeja —«pidió beca», «viene de
+   * feria»— pero pegadas al lead y no a la conversación: hay leads que
+   * entraron por una base y nunca escribieron, y la escuela los quiere poder
+   * agrupar igual para escribirles.
+   *
+   * Ids y no nombres: el catálogo entero ya viaja aparte.
+   */
+  etiquetaIds: number[];
   producto: string;
   categoria: ProductoCategoria | null;
   territorioId: number | null;

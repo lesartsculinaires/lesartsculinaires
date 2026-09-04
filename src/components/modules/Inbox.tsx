@@ -190,6 +190,15 @@ export function Inbox({
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   /** Null = todas las redes juntas, que es como se trabaja hoy. */
   const [porCanal, setPorCanal] = useState<string | null>(null);
+  /**
+   * De qué asesora son los hilos que se están mirando. Null = de todas.
+   *
+   * Lo pidió la escuela para poder repasar la bandeja de una persona sin
+   * leerla entera. Vive acá y no en `CrmApp` porque, a diferencia del tablero,
+   * la bandeja no se abandona para ir a otra pantalla y volver: se entra, se
+   * contesta y se sale.
+   */
+  const [porVendedor, setPorVendedor] = useState<number | null>(null);
   const [nuevoChat, setNuevoChat] = useState(false);
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
@@ -228,8 +237,10 @@ export function Inbox({
    * Abrir el hilo que pidió la tarjeta de llamada.
    *
    * Se sale de cualquier filtro puesto —archivadas, sin asignar, una etiqueta,
-   * una red— porque el hilo pedido puede no estar en lo que se está mirando, y
-   * abrirlo sin que aparezca en la lista dejaría la pantalla contradiciéndose.
+   * una red, una asesora— porque el hilo pedido puede no estar en lo que se
+   * está mirando, y abrirlo sin que aparezca en la lista dejaría la pantalla
+   * contradiciéndose. Pasa seguido con el de asesora: la llamada entra de un
+   * lead que es de otra persona.
    */
   const ultimoPedido = useRef<number>(0);
   useEffect(() => {
@@ -239,6 +250,7 @@ export function Inbox({
     setBusqueda("");
     setPorEtiqueta(null);
     setPorCanal(null);
+    setPorVendedor(null);
     setSoloSinAsignar(false);
     setVerArchivadas(false);
     setVerTodas(true);
@@ -306,6 +318,7 @@ export function Inbox({
               // distinto de las activas y de las archivadas por separado.
               ((verTodas || c.archivada === verArchivadas) &&
                 (!soloSinAsignar || c.vendedorId == null) &&
+                (porVendedor == null || c.vendedorId === porVendedor) &&
                 (porCanal == null || c.canal === porCanal) &&
                 (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
             (!buscando || coincideHilo(c, busqueda, nombreEnElCrm(c.clienteId))),
@@ -323,7 +336,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porCanal, porEtiqueta, buscando, busqueda, nombreEnElCrm],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porVendedor, porCanal, porEtiqueta, buscando, busqueda, nombreEnElCrm],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -894,6 +907,7 @@ export function Inbox({
               setVerTodas(true);
               setSoloSinAsignar(false);
               setPorEtiqueta(null);
+              setPorVendedor(null);
               setAbierta(id);
               onRefrescar();
             }}
@@ -1047,6 +1061,49 @@ export function Inbox({
                 ? "No hay ninguna conversación con eso."
                 : `${lista.length} ${lista.length === 1 ? "conversación" : "conversaciones"}, buscando en todas las redes y también en las archivadas.`}
             </p>
+          )}
+
+          {/*
+            De quién son los hilos.
+
+            Una lista y no pastillas como las redes o las etiquetas: los
+            asesores son varios y crecen, y una fila de pastillas con seis
+            nombres se come la mitad de la columna, que ya es angosta.
+
+            «Sin asignar» no está acá aunque parezca que corresponde. Es una de
+            las pestañas de arriba —con su contador, porque es una fila de
+            trabajo y no un filtro— y tenerlo en los dos lugares dejaría dos
+            controles que se contradicen: elegir un asesor con la pestaña «sin
+            asignar» puesta no puede dar nada nunca.
+          */}
+          {activosCon(cat.vendedores, porVendedor).length > 1 && (
+            <select
+              value={porVendedor ?? ""}
+              onChange={(e) =>
+                setPorVendedor(e.target.value === "" ? null : Number(e.target.value))
+              }
+              aria-label="Filtrar por asesor"
+              title="Ver sólo los hilos de una asesora"
+              style={{
+                width: "100%",
+                height: 30,
+                marginTop: 7,
+                boxSizing: "border-box",
+                padding: "0 8px",
+                fontSize: 12.5,
+                borderRadius: 7,
+                border: `1px solid ${porVendedor == null ? T.border : accent}`,
+                background: porVendedor == null ? T.surface : softer(accent),
+                color: T.ink,
+              }}
+            >
+              <option value="">Todas las asesoras</option>
+              {/* Igual que en la ficha: no se ofrece a quien está de baja, pero
+                  si el filtro puesto es el suyo su nombre no desaparece. */}
+              {activosCon(cat.vendedores, porVendedor).map((v) => (
+                <option key={v.id} value={v.id}>{v.nombre}</option>
+              ))}
+            </select>
           )}
         </div>
 

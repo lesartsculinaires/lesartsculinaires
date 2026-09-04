@@ -33,6 +33,16 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+/*
+ * Cómo se rotula hoy el indicador que suma `venta_cerrada`.
+ *
+ * Es el `data-kpi` de la caja del tablero, y sale del rótulo, así que cambió
+ * cuando la escuela pidió intercambiar los dos nombres. La cuenta que hay
+ * detrás es la misma de siempre. El original está en
+ * `src/lib/montosDelLead.ts`.
+ */
+const KPI_CERRADA = "Valor de oportunidad";
+
 const sql = (q) => {
   const ruta = path.join(os.tmpdir(), `prueba-tab-${process.pid}-${Math.random()}.sql`);
   fs.writeFileSync(ruta, q, "utf8");
@@ -212,7 +222,7 @@ console.log("── EL TABLERO ABRE EN EL MES EN CURSO ──");
   const i = await indicadores();
   es("OPORTUNIDADES: las del mes", i.Oportunidades, String(v.leads));
   es("En pipeline: las del mes", i["En pipeline"], String(v.pipeline));
-  es("VENTA CERRADA: la del mes", i["Venta cerrada"], dinero(v.cerrado));
+  es("VENTA CERRADA: la del mes", i[KPI_CERRADA], dinero(v.cerrado));
   es("Tasa de cierre: la del mes", i["Tasa de cierre"], `${v.tasa}%`);
 
   // Y no la del histórico, que es lo que decía antes.
@@ -233,7 +243,7 @@ console.log("\n── SE PUEDE MIRAR UN MES ANTERIOR ──");
   const v = verdad(previo);
   const i = await indicadores();
   es(`${comoSeLee(previo)}: oportunidades`, i.Oportunidades, String(v.leads));
-  es(`${comoSeLee(previo)}: venta cerrada`, i["Venta cerrada"], dinero(v.cerrado));
+  es(`${comoSeLee(previo)}: venta cerrada`, i[KPI_CERRADA], dinero(v.cerrado));
   es(`${comoSeLee(previo)}: tasa`, i["Tasa de cierre"], `${v.tasa}%`);
 }
 
@@ -251,7 +261,7 @@ console.log("\n── Y EL HISTÓRICO SIGUE ESTANDO, A UN CLIC ──");
   const v = verdad("TODO");
   const i = await indicadores();
   es("el histórico entero", i.Oportunidades, String(v.leads));
-  es("con toda la venta cerrada", i["Venta cerrada"], dinero(v.cerrado));
+  es("con toda la venta cerrada", i[KPI_CERRADA], dinero(v.cerrado));
 }
 
 console.log("\n── LOS GRÁFICOS TAMBIÉN SIGUEN AL MES ──");

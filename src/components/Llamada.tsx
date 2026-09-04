@@ -481,8 +481,16 @@ export function Llamada({
               Sin SDP no hay forma de armar el audio, y el botón de contestar
               está apagado. Decirlo es lo que evita que alguien lo apriete tres
               veces creyendo que el CRM no responde.
+
+              SÓLO en las entrantes. En una saliente todavía no hay SDP del
+              otro lado y es lo normal: la oferta la mandamos nosotros y la
+              respuesta de Meta llega unos segundos después. Este aviso salía
+              igual, así que quien marcaba leía «WhatsApp no mandó los datos de
+              audio» justo mientras la llamada estaba saliendo bien.
             */}
-            {llamada?.estado === "sonando" && !llamada.sdpRemoto && (
+            {llamada?.estado === "sonando" &&
+              llamada.direccion === "entrante" &&
+              !llamada.sdpRemoto && (
               <p style={{ margin: 0, fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
                 WhatsApp no mandó los datos de audio de esta llamada, así que no se
                 puede contestar desde el CRM. Devolvele la llamada cuando corte.

@@ -67,6 +67,7 @@
  */
 
 import type { CampoFusion, Choque } from "@/lib/fusion";
+import { ROTULO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
 
 /** Una oportunidad ya guardada, con lo justo para decidir sobre ella. */
 export interface LeadExistente {
@@ -137,7 +138,7 @@ export const ETIQUETA_LEAD: Record<CampoLead, string> = {
   estado_id: "Estado",
   fecha_registro: "Fecha de registro",
   fecha_cierre: "Fecha de cierre",
-  valor_oportunidad: "Valor de la oportunidad",
+  valor_oportunidad: ROTULO_VALOR_OPORTUNIDAD,
   descuento_promocion: "Descuento o promoción",
 };
 

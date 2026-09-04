@@ -164,14 +164,19 @@ export interface Veredicto {
  *    es lo que hace desaparecer la tarjeta en las otras cuatro pantallas en
  *    cuanto una persona atiende, sin que nadie tenga que cerrarla a mano.
  *
- * 2. ¿Ya la agarró alguien? Si fui yo, la sigo viendo —tengo que poder colgar—;
+ * 2. ¿Es una que marqué yo y todavía suena? Entonces a la esquina, diciendo
+ *    «Llamando…». Va antes que la siguiente porque una saliente nace ya
+ *    atendida por quien la marcó, y sin esta pregunta caería en la de abajo y
+ *    diría «En llamada» mientras al cliente recién le suena el teléfono.
+ *
+ * 3. ¿Ya la agarró alguien? Si fui yo, la sigo viendo —tengo que poder colgar—;
  *    si fue otro, se me va de la pantalla.
  *
- * 3. ¿Es mía? El hilo tiene dueño y el dueño es quien la contesta. Un hilo sin
+ * 4. ¿Es mía? El hilo tiene dueño y el dueño es quien la contesta. Un hilo sin
  *    dueño es de todos: ahí sí interrumpe en todas las pantallas, porque si no
  *    interrumpiera en ninguna no la atendería nadie.
  *
- * 4. ¿Estoy escribiendo? Aunque sea mía, no me la tires encima ahora. Se queda
+ * 5. ¿Estoy escribiendo? Aunque sea mía, no me la tires encima ahora. Se queda
  *    en la esquina sonando y sube sola cuando pare.
  */
 export function comoSeMuestra(
@@ -183,6 +188,38 @@ export function comoSeMuestra(
 ): Veredicto {
   if (yaTermino(llamada) || quedoColgada(llamada, ahora)) {
     return { presencia: "nada", porque: "termino" };
+  }
+
+  /*
+   * La que marqué yo y todavía está sonando del otro lado.
+   *
+   * Va ANTES de «ya la agarró alguien», y ese orden es el arreglo.
+   *
+   * Una saliente nace con `atendidaPor` puesto: la escribe así `llamarA`,
+   * porque quien apretó «Llamar» ya la está atendiendo y nadie más tiene que
+   * verla sonar. El efecto no buscado era que caía en la rama de abajo y la
+   * tarjeta decía «En llamada.» desde el primer segundo, mientras al cliente
+   * recién le estaba sonando el teléfono. Quien marcaba leía que ya estaba
+   * hablando y no escuchaba a nadie.
+   *
+   * Con esto dice «Llamando…» hasta que Meta contesta —ahí la fila pasa a
+   * `en_curso`— y recién entonces «En llamada».
+   */
+  if (llamada.direccion === "saliente" && llamada.estado === "sonando") {
+    /*
+     * Sin `atendidaPor` la fila no dice quién marcó, y ahí la ve cualquiera
+     * que tenga sesión: es como se comportaba antes y no hay con qué hacerlo
+     * mejor. Pasa sólo con filas escritas a mano o de antes de que `llamarA`
+     * lo pusiera; las de verdad siempre lo traen.
+     */
+    const laMarqueYo =
+      llamada.atendidaPor == null
+        ? yo.usuarioId != null
+        : llamada.atendidaPor === yo.usuarioId;
+
+    return laMarqueYo
+      ? { presencia: "esquina", porque: "yo-la-hice" }
+      : { presencia: "nada", porque: "es-de-otro" };
   }
 
   // Ya la agarró alguien.
@@ -197,7 +234,12 @@ export function comoSeMuestra(
   }
 
   /*
-   * La que marqué yo.
+   * Una saliente que no está sonando y que nadie tomó.
+   *
+   * Queda para el caso raro de una fila saliente sin `atendidaPor` —una
+   * escrita a mano, o una vieja de antes de que `llamarA` lo pusiera—. Las
+   * normales las agarra la regla de arriba mientras suenan, y la de «ya la
+   * agarró alguien» una vez que están en curso.
    *
    * Sale de la pantalla de quien la hizo y de ninguna otra: nadie más necesita
    * ver sonar una llamada que no va a atender. Y siempre en la esquina, porque

@@ -16,6 +16,7 @@ import {
 } from "@/lib/periodoDelTablero";
 import { estaAbierta, esGanada, groupBars, motivosDePerdida, totalCerrado } from "@/lib/selectors";
 import { T, openTone } from "@/lib/theme";
+import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
 
 interface Props {
@@ -95,6 +96,19 @@ export function Dashboard({ oportunidades, accent }: Props) {
     { title: "Territorio", hint: "top 8 departamentos", bars: groupBars(delPeriodo, "territorio", 8) },
     { title: "Programas", hint: "top 8 del catálogo", bars: groupBars(delPeriodo, "producto", 8) },
     { title: "Estados", hint: "situación actual", bars: groupBars(delPeriodo, "estado") },
+    /*
+     * El país lo pidió la escuela, y va al final por lo que hoy muestra.
+     *
+     * El dato existe desde que se cargó en la ficha, pero sólo se completa
+     * cuando el territorio es «Extranjero», así que la barra más larga es la
+     * de los que no lo tienen. Eso NO es un defecto del gráfico: es la
+     * respuesta honesta a «de qué países vienen» cuando el país no se viene
+     * cargando, y es lo que permite darse cuenta y empezar a llenarlo.
+     *
+     * Diez y no ocho como los demás: la primera barra se la lleva «Sin país
+     * cargado», y con ocho quedarían siete países de verdad.
+     */
+    { title: "Países", hint: "de dónde vienen", bars: groupBars(delPeriodo, "pais", 10) },
   ];
 
   return (
@@ -168,7 +182,7 @@ export function Dashboard({ oportunidades, accent }: Props) {
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
           <span style={{ width: 9, height: 9, borderRadius: 2, background: accent }} />
-          Venta cerrada
+          {ROTULO_VENTA_CERRADA}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.muted }}>
           <span style={{ width: 9, height: 9, borderRadius: 2, background: open }} />
@@ -278,7 +292,7 @@ function medir(list: readonly Oportunidad[]): Indicador[] {
   return [
     { label: "Oportunidades", texto: String(total), crudo: total },
     { label: "En pipeline", texto: String(abiertas), crudo: abiertas },
-    { label: "Venta cerrada", texto: money(cerrado || null), crudo: cerrado },
+    { label: ROTULO_VENTA_CERRADA, texto: money(cerrado || null), crudo: cerrado },
     {
       label: "Tasa de cierre",
       texto: total ? `${tasa}%` : "—",
