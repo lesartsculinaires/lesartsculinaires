@@ -28,6 +28,7 @@ export function AccionesEnLote({
   aviso,
   esAdmin,
   onWhatsapp,
+  onNuevaBase,
   onAplicar,
   onBorrar,
   onLimpiar,
@@ -48,6 +49,14 @@ export function AccionesEnLote({
   esAdmin: boolean;
   /** Abre la ventana de escribirle a los marcados por WhatsApp. */
   onWhatsapp: () => void;
+  /**
+   * Abre la ventana de armar una base con los marcados.
+   *
+   * Nulo cuando esta persona no puede crear bases. El botón entonces no
+   * aparece, en vez de aparecer y negarse al apretarlo: ofrecer algo que va a
+   * rebotar enseña a desconfiar de los botones.
+   */
+  onNuevaBase: (() => void) | null;
   onAplicar: (campo: CampoEnLote, valorId: number, etiqueta: string, nombre: string) => void;
   onBorrar: () => void;
   onLimpiar: () => void;
@@ -141,6 +150,47 @@ export function AccionesEnLote({
         >
           Escribirles por WhatsApp
         </button>
+
+        {/*
+          Agruparlos en una base.
+
+          Va al lado del de WhatsApp porque son de la misma familia: los dos
+          hacen algo CON los marcados en vez de cambiarles un dato. Y de los
+          dos, éste es el que se deshace —una base se puede borrar— así que va
+          después, entre el que manda mensajes y el que borra fichas.
+
+          Sin relleno de color: el de WhatsApp es la acción principal de esta
+          barra, y dos botones llenos al lado se pelean por el ojo.
+        */}
+        {onNuevaBase && (
+          <button
+            type="button"
+            onClick={onNuevaBase}
+            disabled={cambiando != null}
+            title={
+              ids.length === 1
+                ? "Armar una base con el lead marcado"
+                : `Armar una base con los ${ids.length} leads marcados`
+            }
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              height: 28,
+              padding: "0 11px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: `1px solid ${accent}`,
+              background: T.surface,
+              color: accent,
+              whiteSpace: "nowrap",
+              cursor: cambiando ? "wait" : "pointer",
+            }}
+          >
+            Crear base nueva
+          </button>
+        )}
 
         {esAdmin && (
           <button

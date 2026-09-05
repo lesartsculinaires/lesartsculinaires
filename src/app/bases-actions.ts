@@ -196,3 +196,156 @@ export async function borrarBase(
     contactosBorrados: Number(f.contactos_borrados ?? 0),
   };
 }
+
+export interface ResultadoNuevaBase {
+  ok: boolean;
+  error: string | null;
+  /** El id de la base creada, para poder abrirla después. */
+  importacionId: number | null;
+  /** Cuántos leads quedaron dentro. */
+  leads: number;
+  /**
+   * De esos, cuántos venían de OTRA base y se movieron.
+   *
+   * Se devuelve para poder decirlo después de hacerlo. Ver el comentario largo
+   * de `crearBaseConLeads`: un lead pertenece a una sola base, así que armar
+   * una nueva con leads que ya estaban en otra los saca de aquélla.
+   */
+  movidos: number;
+}
+
+/**
+ * Arma una base nueva con los leads que se marcaron en Clientes.
+ *
+ * ============================================================================
+ * QUÉ PIDIÓ LA ESCUELA
+ * ============================================================================
+ *
+ * «Quiero que cuando se seleccionen clientes en el módulo de Clientes aparezca
+ * un botón que diga "Crear base nueva" para poder crear una nueva base desde
+ * el CRM y que aparezca en el módulo de Base.»
+ *
+ * Hasta ahora una base sólo podía nacer subiendo una planilla. Esto la deja
+ * nacer de una selección: se filtra en Clientes —por programa, por asesora,
+ * por mes, por etiqueta—, se marcan las filas y se agrupan con un nombre.
+ *
+ * ============================================================================
+ * UN LEAD PERTENECE A UNA SOLA BASE, Y ESO TIENE UNA CONSECUENCIA
+ * ============================================================================
+ *
+ * `oportunidades.importacion_id` es una sola columna. No es una decisión de
+ * ahora: así entró el día que se registraron las importaciones, y es lo que
+ * permite que la pregunta «¿de qué carga vino este lead?» tenga una respuesta
+ * y no una lista.
+ *
+ * La consecuencia es que meter en una base nueva un lead que ya estaba en otra
+ * lo SACA de aquélla. No hay forma de que esté en las dos, y la pantalla de
+ * Bases mostraría a la vieja con menos filas de las que dice haber cargado.
+ *
+ * Por eso esto cuenta cuántos venían de otra base y lo devuelve. Quien aprieta
+ * el botón lo ve antes —la ventana lo avisa— y lo vuelve a ver después, con el
+ * número real. Hacerlo en silencio sería vaciar una base sin que nadie se
+ * entere.
+ *
+ * ============================================================================
+ * POR QUÉ NO SE TOCA `filas`
+ * ============================================================================
+ *
+ * Se escribe una vez, al crear, y no se vuelve a tocar. `filas` es «cuántas
+ * trajo esta carga», un dato histórico: la pantalla de Bases lo compara con
+ * las que quedan vivas para poder decir «quedan 280 de 325». Mantenerlo
+ * sincronizado lo convertiría en el mismo número dos veces y se perdería esa
+ * comparación.
+ */
+export async function crearBaseConLeads(
+  nombre: string,
+  ids: readonly number[],
+): Promise<ResultadoNuevaBase> {
+  const vacio = { importacionId: null, leads: 0, movidos: 0 };
+
+  const titulo = nombre.trim();
+  if (!titulo) {
+    return { ok: false, error: "Poné un nombre para la base.", ...vacio };
+  }
+  if (ids.length === 0) {
+    return { ok: false, error: "No hay ningún lead marcado.", ...vacio };
+  }
+
+  const supabase = await getServerClient();
+  if (!supabase) {
+    return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión.", ...vacio };
+  }
+
+  /*
+   * Se leen los leads antes de escribir nada, y por dos motivos.
+   *
+   * El primero es contar los que venían de otra base, que es lo que después se
+   * dice. El segundo es más importante: esta consulta pasa por RLS, así que
+   * devuelve nada más los leads que esta persona puede ver. Si alguien manda
+   * ids ajenos —la acción la puede invocar cualquiera con sesión— acá
+   * desaparecen, y la base se arma con los suyos y nada más.
+   */
+  const { data: suyos, error: errLeer } = await supabase
+    .from("oportunidades")
+    .select("id, importacion_id")
+    .in("id", [...ids]);
+
+  if (errLeer) return { ok: false, error: errLeer.message, ...vacio };
+
+  const visibles = (suyos ?? []) as { id: number; importacion_id: number | null }[];
+  if (visibles.length === 0) {
+    return { ok: false, error: "Ninguno de esos leads está disponible.", ...vacio };
+  }
+
+  const movidos = visibles.filter((o) => o.importacion_id != null).length;
+
+  const { data: base, error: errBase } = await supabase
+    .from("importaciones")
+    .insert({ archivo: titulo, filas: visibles.length })
+    .select("id")
+    .single();
+
+  if (errBase) {
+    // PGRST205: la tabla no existe todavía.
+    if (errBase.code === "PGRST205") {
+      return {
+        ok: false,
+        error:
+          "Falta correr la migración 20260731120000_bases_importadas.sql en Supabase.",
+        ...vacio,
+      };
+    }
+    return { ok: false, error: errBase.message, ...vacio };
+  }
+
+  const importacionId = Number((base as { id: number }).id);
+
+  const { error: errMarcar } = await supabase
+    .from("oportunidades")
+    .update({ importacion_id: importacionId })
+    .in(
+      "id",
+      visibles.map((o) => o.id),
+    );
+
+  if (errMarcar) {
+    /*
+     * Si los leads no se pudieron marcar, la base se deshace.
+     *
+     * Dejarla sería peor que no crearla: la pantalla de Bases la mostraría
+     * diciendo que cargó N filas y sin ninguna, y nadie podría distinguirla de
+     * una base cuyos leads alguien borró después.
+     */
+    await supabase.from("importaciones").delete().eq("id", importacionId);
+    return { ok: false, error: errMarcar.message, ...vacio };
+  }
+
+  revalidatePath("/");
+  return {
+    ok: true,
+    error: null,
+    importacionId,
+    leads: visibles.length,
+    movidos,
+  };
+}

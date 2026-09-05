@@ -19,6 +19,7 @@ import {
 import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
 import { EnvioMasivo } from "@/components/modules/EnvioMasivo";
+import { NuevaBase } from "@/components/modules/NuevaBase";
 import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
@@ -104,6 +105,8 @@ export function Clientes({
    * el filtro movería la selección a otras fichas sin que nadie lo pida.
    */
   const [marcadas, setMarcadas] = useState<number[]>([]);
+  /** Está abierta la ventana de armar una base con las marcadas. */
+  const [armandoBase, setArmandoBase] = useState(false);
   /** Está abierta la ventana de escribirle a los marcados. */
   const [enviando, setEnviando] = useState(false);
 
@@ -395,6 +398,23 @@ export function Clientes({
         </p>
       )}
 
+      {armandoBase && (
+        <NuevaBase
+          ids={marcadas}
+          oportunidades={oportunidades}
+          accent={accent}
+          onCerrar={() => setArmandoBase(false)}
+          onListo={(resumen) => {
+            setArmandoBase(false);
+            // Se suelta la selección: lo que había que hacer con ella ya se
+            // hizo, y dejarla marcada invita a armar la misma base dos veces.
+            setMarcadas([]);
+            setAvisoLote({ texto: resumen, malo: false });
+            onRefresh();
+          }}
+        />
+      )}
+
       {enviando && (
         <EnvioMasivo
           oportunidadIds={marcadas}
@@ -419,6 +439,10 @@ export function Clientes({
             aviso={avisoLote}
             esAdmin={esAdmin}
             onWhatsapp={() => setEnviando(true)}
+            /* La misma casilla que habilita subir una planilla: las dos crean
+               una base, y que una pidiera permiso y la otra no sería la misma
+               regla contestada de dos maneras. */
+            onNuevaBase={puedeSubirBases ? () => setArmandoBase(true) : null}
             onAplicar={aplicarALasMarcadas}
             onBorrar={() =>
               setPorBorrar(oportunidades.filter((o) => marcadas.includes(o.id)))
