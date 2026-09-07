@@ -109,6 +109,33 @@ export const salidaDisponible = async (): Promise<boolean> =>
   hayWhatsapp() || hayInstagram();
 
 /**
+ * Qué canales tienen sus credenciales puestas en el servidor.
+ *
+ * ============================================================================
+ * NO ES LO MISMO QUE `canales.ts`, Y CONFUNDIRLOS SE VE FEO
+ * ============================================================================
+ *
+ * `canales.ts` dice si el CRM SABE hablar ese canal: si existen el webhook, el
+ * envío y la lectura. Esto dice si además está ENCHUFADO: si el token está
+ * puesto en Netlify.
+ *
+ * Son dos cosas distintas y el día que Instagram pasó a `disponible: true` se
+ * volvieron visibles. La pestaña se encendió con el despliegue, pero los tokens
+ * los carga una persona después, así que en el medio quedaba encendida y
+ * filtrando a una lista vacía sin decir nada. Es exactamente lo que `canales.ts`
+ * viene evitando desde que se escribió: «una pestaña que no responde y no dice
+ * por qué es peor que no tenerla».
+ *
+ * Tiene que resolverse en el servidor porque los tokens viven ahí y no pueden
+ * llegar al navegador. Lo que cruza es un sí o un no por canal, que no es
+ * secreto: la escuela ya sabe qué conectó.
+ */
+export const canalesListos = async (): Promise<Record<string, boolean>> => ({
+  whatsapp: hayWhatsapp(),
+  instagram: hayInstagram(),
+});
+
+/**
  * Responde a un hilo, por el canal que sea.
  *
  * ============================================================================
