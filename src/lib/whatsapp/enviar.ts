@@ -18,6 +18,46 @@ import {
 
 const VERSION = "v21.0";
 
+/**
+ * A dónde se le habla a Meta.
+ *
+ * ============================================================================
+ * POR QUÉ ES UNA FUNCIÓN Y NO UNA CADENA FIJA
+ * ============================================================================
+ *
+ * Para poder probar el camino en que el envío SALE BIEN.
+ *
+ * En el banco de pruebas no hay Meta, así que todo lo que se probaba del envío
+ * masivo era el camino del error: el token es de mentira, Meta rechaza, y ahí
+ * termina. Lo que pasa cuando un mensaje sale bien —que quede en el hilo del
+ * cliente, con su asesora, para poder darle seguimiento cuando conteste— no se
+ * podía ejercer nunca, y es justo lo que la escuela acaba de pedir.
+ *
+ * Con esto, el banco levanta un Meta de mentira en un puerto local y el CRM le
+ * habla a ése. El código que se prueba es el mismo que corre en producción, que
+ * es la única forma de que la prueba valga algo.
+ *
+ * ============================================================================
+ * POR QUÉ SÓLO SE ACEPTA UNA DIRECCIÓN LOCAL
+ * ============================================================================
+ *
+ * Porque acá viaja el token de WhatsApp de la escuela. Una variable que
+ * redirija a dónde se manda es una variable que, mal puesta —o puesta por
+ * alguien que no debía—, le entrega esa credencial a otro servidor.
+ *
+ * Aceptar sólo `127.0.0.1` o `localhost` cierra eso del todo: el destino tiene
+ * que ser la misma máquina donde ya corre el CRM, así que no hay nada que
+ * llevarse a ningún lado. Cualquier otro valor se ignora en silencio y se usa
+ * el de Meta, que es lo correcto en producción.
+ */
+function base(): string {
+  const propuesta = process.env.WHATSAPP_GRAPH_URL;
+  if (propuesta && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(propuesta.trim())) {
+    return propuesta.trim();
+  }
+  return "https://graph.facebook.com";
+}
+
 export interface ResultadoEnvio {
   ok: boolean;
   /** Id que le puso Meta al mensaje; sirve para seguirle el estado. */
@@ -40,7 +80,7 @@ export async function enviarTexto(
   }
 
   try {
-    const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
+    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -189,7 +229,7 @@ async function mandar(
   }
 
   try {
-    const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
+    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({
@@ -347,7 +387,7 @@ export async function enviarPlantilla(
       : undefined;
 
   try {
-    const r = await fetch(`https://graph.facebook.com/${VERSION}/${numero}/messages`, {
+    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,

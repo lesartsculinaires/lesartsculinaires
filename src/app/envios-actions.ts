@@ -334,7 +334,7 @@ export async function mandarTanda(
 
   const { data: pendientes, error: errPend } = await supabase
     .from("envio_destinatarios")
-    .select("id, telefono, nombre")
+    .select("id, telefono, nombre, cliente_id")
     .eq("envio_id", envioId)
     .eq("estado", "pendiente")
     .order("id")
@@ -375,7 +375,14 @@ export async function mandarTanda(
       // Y queda en el hilo de esa persona, si tiene uno abierto: el envío
       // masivo no puede ser invisible desde la conversación, porque quien
       // conteste va a estar contestando algo que la asesora no vio salir.
-      await dejarEnElHilo(supabase, String(d.telefono), conValores(cuerpo, suyos), envio.waId, user.id);
+      await dejarEnElHilo(
+        supabase,
+        String(d.telefono),
+        conValores(cuerpo, suyos),
+        envio.waId,
+        user.id,
+        d.cliente_id == null ? null : Number(d.cliente_id),
+      );
     } else {
       /*
        * Un problema de la cuenta corta el envío entero, y no marca a nadie.
@@ -438,15 +445,61 @@ async function cuantosFaltan(supabase: Cliente, envioId: number): Promise<number
 }
 
 /**
- * Deja el mensaje en la conversación de esa persona, si ya tiene una.
+ * Deja el mensaje en la conversación de esa persona, abriéndola si no la hay.
  *
- * No abre hilos nuevos: crear trescientas conversaciones de golpe llenaría la
- * bandeja de gente que todavía no contestó nada, y la bandeja es una fila de
- * trabajo, no un registro de lo que salió. Cuando alguno conteste, el webhook
- * abre su hilo como con cualquier mensaje entrante.
+ * ============================================================================
+ * POR QUÉ AHORA SÍ SE ABREN HILOS NUEVOS
+ * ============================================================================
  *
- * Nunca lanza: el mensaje ya salió, y no poder dejar la copia es molesto pero
- * no puede hacer que la tanda se dé por fallida.
+ * Antes no: sólo escribía en las conversaciones que ya existían. El argumento
+ * era que crear trescientas de golpe llena la bandeja de gente que todavía no
+ * contestó nada, y que la bandeja es una fila de trabajo y no un registro de lo
+ * que salió.
+ *
+ * La escuela lo miró en uso y pidió lo contrario, con una razón mejor:
+ *
+ *     «Al momento que se envíe tiene que salir en mensaje de WhatsApp del
+ *      cliente que se envió el masivo, de esa manera podemos darle seguimiento
+ *      si contesta el cliente.»
+ *
+ * Y tienen razón. Sin la copia en el hilo, cuando alguien contesta «sí me
+ * interesa» tres días después, la asesora abre una conversación que empieza por
+ * esa respuesta: no ve qué se le dijo, ni cuándo, ni con qué plantilla. Tiene
+ * que ir a Envíos, encontrar la campaña y leerla ahí. Eso es exactamente el
+ * trabajo que la bandeja existe para evitar.
+ *
+ * ============================================================================
+ * LO QUE SE HACE PARA QUE NO SEA UNA INUNDACIÓN
+ * ============================================================================
+ *
+ * La preocupación de antes era real, así que se atiende de tres maneras:
+ *
+ *   NO SUBE EL CONTADOR ROJO   `sin_leer` queda en cero. Un mensaje que
+ *                              mandamos nosotros no es algo pendiente de nadie:
+ *                              contarlo pondría trescientos rojos y el número
+ *                              de la barra dejaría de significar «acá hay algo
+ *                              esperándote».
+ *
+ *   NO DESARCHIVA              Una conversación archivada la archivó alguien a
+ *                              propósito. El mensaje se guarda igual —así queda
+ *                              el registro— y si esa persona contesta, el
+ *                              webhook la trae de vuelta como con cualquier
+ *                              mensaje entrante.
+ *
+ *   QUEDA DE SU ASESORA        Es la otra mitad de lo que pidió la escuela
+ *                              —«y dependiendo de qué asesor»—: el hilo nace
+ *                              con el dueño del lead, así el filtro por asesora
+ *                              de la bandeja lo agrupa bien desde el minuto
+ *                              cero y no queda como «sin asignar».
+ *
+ * ============================================================================
+ * NUNCA LANZA
+ * ============================================================================
+ *
+ * El mensaje ya salió y el cliente ya lo tiene. Que no se haya podido dejar la
+ * copia es molesto y se arregla; dar la tanda por fallida haría que la
+ * siguiente le vuelva a escribir a la misma gente, que es el error que este
+ * archivo entero viene evitando.
  */
 async function dejarEnElHilo(
   supabase: Cliente,
@@ -454,18 +507,18 @@ async function dejarEnElHilo(
   texto: string,
   waId: string | null,
   usuarioId: string,
+  /** Para que el hilo nazca de quien atiende ese lead. */
+  clienteId: number | null,
 ) {
   try {
-    const { data: conv } = await supabase
-      .from("conversaciones")
-      .select("id")
-      .eq("telefono", paraMeta(telefono))
-      .maybeSingle();
+    const numero = paraMeta(telefono);
+    if (!numero) return;
 
-    if (!conv) return;
+    const conversacionId = await hiloDeEsteNumero(supabase, numero, clienteId);
+    if (conversacionId == null) return;
 
-    await supabase.from("mensajes").insert({
-      conversacion_id: Number(conv.id),
+    const { error } = await supabase.from("mensajes").insert({
+      conversacion_id: conversacionId,
       wa_id: waId,
       direccion: "saliente",
       tipo: "text",
@@ -473,9 +526,149 @@ async function dejarEnElHilo(
       estado: "enviado",
       enviado_por: usuarioId,
     });
+
+    // 23505: la tanda se reintentó y este mensaje ya estaba. No es un error.
+    if (error && error.code !== "23505") return;
+
+    /*
+     * El hilo sube en la lista, pero sin ponerse en rojo.
+     *
+     * `ultimo_mensaje_en` es por lo que se ordena la bandeja: sin tocarlo, el
+     * hilo de alguien a quien le acabamos de escribir quedaría hundido entre
+     * conversaciones de hace meses. `sin_leer` NO se toca, por lo de arriba.
+     */
+    await supabase
+      .from("conversaciones")
+      .update({
+        ultimo_texto: texto.slice(0, 200),
+        ultimo_mensaje_en: new Date().toISOString(),
+      })
+      .eq("id", conversacionId);
   } catch {
     // Ver arriba: no puede costar la tanda.
   }
+}
+
+/**
+ * El hilo de WhatsApp de este número: el que hay, o uno nuevo.
+ *
+ * ----------------------------------------------------------------------------
+ * SE BUSCA POR CANAL, COMO EN EL RESTO DEL CRM
+ * ----------------------------------------------------------------------------
+ *
+ * Desde `20261024120000_instagram.sql` la identidad de una conversación es
+ * `(canal, identificador)`. Un envío masivo sale por WhatsApp y sólo por ahí
+ * —es el único canal con plantillas—, así que el hilo que corresponde es el de
+ * WhatsApp aunque esa persona además tenga uno de Instagram.
+ *
+ * `identificador` se escribe siempre, y acá es el teléfono. Si la migración
+ * todavía no se corrió, se reintenta sin esa columna: entre desplegar y correr
+ * el SQL, mandar una campaña tiene que seguir funcionando.
+ */
+async function hiloDeEsteNumero(
+  supabase: Cliente,
+  numero: string,
+  clienteId: number | null,
+): Promise<number | null> {
+  const buscar = async () => {
+    const { data } = await supabase
+      .from("conversaciones")
+      .select("id")
+      .eq("canal", "whatsapp")
+      .eq("telefono", numero)
+      .maybeSingle();
+    return data ? Number(data.id) : null;
+  };
+
+  /*
+   * De quién es este lead, para que el hilo tenga dueño.
+   *
+   * Se toma el más reciente que tenga asesora asignada. Una persona puede tener
+   * varios leads; el que importa para contestar es el que alguien está
+   * atendiendo, no el más viejo.
+   */
+  let vendedorId: number | null = null;
+  let nombre: string | null = null;
+
+  if (clienteId != null) {
+    const { data: lead } = await supabase
+      .from("oportunidades")
+      .select("vendedor_id")
+      .eq("cliente_id", clienteId)
+      .not("vendedor_id", "is", null)
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lead?.vendedor_id != null) vendedorId = Number(lead.vendedor_id);
+
+    const { data: cli } = await supabase
+      .from("clientes")
+      .select("nombre")
+      .eq("id", clienteId)
+      .maybeSingle();
+    if (cli?.nombre) nombre = String(cli.nombre);
+  }
+
+  /*
+   * Si el hilo ya estaba pero sin dueño, se le pone el del lead.
+   *
+   * Es la otra mitad de «y dependiendo de qué asesor». Un hilo viejo sin
+   * asignar es lo más común en una base importada: existe porque alguien
+   * escribió una vez, nadie lo tomó, y el lead sí tiene asesora. Sin esto, el
+   * mensaje de la campaña cae en un hilo que el filtro por asesora no agrupa.
+   *
+   * Sólo cuando está vacío —`is("vendedor_id", null)`—, igual que hace el
+   * webhook: si alguien lo reasignó a mano, esa decisión es de una persona y
+   * vale más que la del lead.
+   */
+  const existente = await buscar();
+  if (existente != null) {
+    if (vendedorId != null) {
+      await supabase
+        .from("conversaciones")
+        .update({ vendedor_id: vendedorId })
+        .eq("id", existente)
+        .is("vendedor_id", null);
+    }
+    return existente;
+  }
+
+  const fila = {
+    telefono: numero,
+    // El nombre del CRM: esa persona nunca escribió, así que no tenemos el de
+    // su perfil de WhatsApp. Cuando escriba, el webhook lo pisa.
+    nombre_perfil: nombre,
+    cliente_id: clienteId,
+    vendedor_id: vendedorId,
+    ultimo_mensaje_en: new Date().toISOString(),
+    // Ver `dejarEnElHilo`: lo que mandamos nosotros no es un pendiente.
+    sin_leer: 0,
+  };
+
+  const { data: creada, error } = await supabase
+    .from("conversaciones")
+    .insert({ ...fila, canal: "whatsapp", identificador: numero })
+    .select("id")
+    .single();
+
+  // Dos tandas a la vez, o alguien abriendo el chat desde la ficha en el mismo
+  // momento: el segundo choca con la unicidad y se queda con el que ganó.
+  if (error?.code === "23505") return buscar();
+
+  // Sin la migración de Instagram corrida, `identificador` no existe todavía.
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    const { data: vieja, error: errViejo } = await supabase
+      .from("conversaciones")
+      .insert(fila)
+      .select("id")
+      .single();
+    if (errViejo?.code === "23505") return buscar();
+    if (errViejo) return null;
+    return vieja ? Number(vieja.id) : null;
+  }
+
+  if (error) return null;
+  return creada ? Number(creada.id) : null;
 }
 
 /** Frena un envío a mitad de camino. Lo mandado, mandado está. */

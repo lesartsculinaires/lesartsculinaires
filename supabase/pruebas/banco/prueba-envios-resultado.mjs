@@ -1,7 +1,7 @@
 /**
- * Por qué no llegaron, en porcentajes, y las difusiones en su propia pestaña.
+ * Por qué no llegaron los mensajes, y cómo le fue al envío, en porcentajes.
  *
- *     node supabase/pruebas/banco/prueba-difusiones.mjs
+ *     node supabase/pruebas/banco/prueba-envios-resultado.mjs
  *
  * ============================================================================
  * QUÉ PASÓ, Y QUÉ PIDIÓ LA ESCUELA
@@ -18,10 +18,6 @@
  * quien miraba se iba a revisar teléfonos que estaban bien.
  *
  * Y pidieron tres cosas más:
- *
- *   «Que aparezcan como un grupo de chat en el módulo de Inbox, o en otra
- *    pestaña que diga "grupos de whatsapp", para no confundirlos con la lista
- *    de whatsapp.»
  *
  *   «Ver el porcentaje % de cuántos lo vieron y cuántos no, de una manera más
  *    gráfica y visual, para entender si fue efectivo el envío.»
@@ -46,8 +42,8 @@
  *                                  teléfonos servían con cuánto interesó el
  *                                  mensaje, que son dos problemas distintos.
  *
- *   LA DIFUSIÓN EN SU PESTAÑA      Que esté, que se abra, y sobre todo que NO
- *                                  aparezca en la lista de conversaciones.
+ * Que el mensaje enviado aparezca en el hilo del cliente se prueba aparte, en
+ * `prueba-envio-masivo.mjs`: eso necesita un envío que salga bien.
  *
  * Necesita el banco armado (`armar.sh`) y la aplicación en 3142.
  */
@@ -270,65 +266,6 @@ await foto("2-porcentajes");
   console.log("\n── 3. CON QUIÉNES HUBO INTERACCIÓN ──");
   es("están los que contestaron, por nombre", /Ana Difu PRUEBA/.test(t) && /Beto Difu PRUEBA/.test(t), true);
   es("y no los que sólo lo abrieron", /Contestaron.{0,80}Carla Difu PRUEBA/.test(t), false);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 4. LA DIFUSIÓN EN SU PROPIA PESTAÑA DE LA BANDEJA ──");
-// ══════════════════════════════════════════════════════════════════════════
-await p.locator('aside button[data-mod="Inbox"]').click();
-await p.waitForTimeout(2400);
-
-{
-  const enChats = (await p.locator("main button.row").allInnerTexts()).join(" ");
-  es(
-    "NO ENSUCIA LA LISTA DE CONVERSACIONES",
-    new RegExp(CAIDO).test(enChats),
-    false,
-  );
-  es("la pestaña está", await p.getByRole("button", { name: /Difusiones/ }).count(), 1);
-}
-
-await p.getByRole("button", { name: /Difusiones/ }).click();
-await p.waitForTimeout(1200);
-await foto("3-pestana");
-
-{
-  const t = await texto();
-  es("LOS DOS ENVÍOS ESTÁN ACÁ", t.includes(CAIDO) && t.includes(BUENO), true);
-  es("el que se cayó se ve que se cayó", /no llegó ninguno/.test(t), true);
-  es("y el otro dice cuántos contestaron", /2 contestaron/.test(t), true);
-  // Las redes no aplican a una difusión: filtrarlas acá no significaría nada.
-  es("la fila de redes se esconde", /Messenger/.test(t), false);
-}
-
-await p.getByRole("button", { name: new RegExp(CAIDO) }).first().click();
-await p.waitForTimeout(1200);
-await foto("4-abierta");
-
-{
-  const t = await texto();
-  es("SE ABRE Y MUESTRA LO QUE SE MANDÓ", /Hola, buen día, cocina/.test(t), true);
-  es("con el motivo de Meta adentro", /no tiene forma de pago activa/.test(t), true);
-  /*
-   * Y la aclaración que evita la pregunta siguiente.
-   *
-   * La API de WhatsApp no permite grupos: no se pueden crear, ni escribirles,
-   * ni entrar a uno. Decirlo acá es lo que evita que alguien lo busque.
-   */
-  es(
-    "DICE QUE ESTO NO ES UN GRUPO DE WHATSAPP",
-    /no es un grupo de WhatsApp/.test(t) && /cada persona recibió el mensaje en su propio chat/i.test(t),
-    true,
-  );
-}
-
-// Y volver a conversaciones deja todo como estaba.
-await p.getByRole("button", { name: "Conversaciones" }).click();
-await p.waitForTimeout(1200);
-{
-  const t = await texto();
-  es("volviendo a Conversaciones reaparecen las redes", /WhatsApp/.test(t), true);
-  es("y la difusión ya no está en la lista", new RegExp(CAIDO).test(t), false);
 }
 
 es("sin errores en la página", errores, []);

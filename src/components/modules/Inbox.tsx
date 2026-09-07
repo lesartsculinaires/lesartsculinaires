@@ -31,7 +31,6 @@ import {
 import { coincideHilo, hayBusqueda } from "@/lib/buscarEnBandeja";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
 import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
-import { Difusiones, DifusionAbierta } from "@/components/modules/Difusiones";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
 import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
@@ -44,7 +43,6 @@ import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { AcuseDeMensaje } from "@/components/ui/AcuseDeMensaje";
 import { COMO_SE_DICE, acuseDe } from "@/lib/acuses";
 import { activosCon } from "@/lib/types";
-import type { Envio } from "@/lib/supabase/envios";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
 interface Props {
@@ -59,16 +57,6 @@ interface Props {
   etiquetas: Etiqueta[];
   /** Para poder reabrir un hilo dormido. Sólo se ofrecen las aprobadas. */
   plantillas: Plantilla[];
-  /**
-   * Los envíos masivos, para la pestaña de difusiones.
-   *
-   * Van aparte de las conversaciones y no mezclados con ellas: la lista de
-   * chats es la cola de trabajo del equipo, y una campaña no es un pendiente de
-   * nadie. El porqué completo está en `Difusiones.tsx`.
-   */
-  envios: Envio[];
-  /** Para saltar al módulo de Envíos desde una difusión abierta. */
-  onVerEnvios: () => void;
   /** Qué canales tienen sus credenciales puestas en el servidor. */
   canalesConectados: Record<string, boolean>;
   onRefrescar: () => void;
@@ -189,8 +177,6 @@ export function Inbox({
   oportunidades,
   etiquetas,
   plantillas,
-  envios,
-  onVerEnvios,
   canalesConectados,
   onRefrescar,
   onVerFicha,
@@ -244,18 +230,6 @@ export function Inbox({
   const cajaTexto = useRef<HTMLTextAreaElement | null>(null);
   /** El grabador está ocupando la fila del mensaje. */
   const [grabando, setGrabando] = useState(false);
-  /**
-   * Qué se está mirando: los chats o las difusiones.
-   *
-   * Una pestaña y no un filtro más, porque no son lo mismo: un chat es una
-   * persona esperando respuesta y una difusión es algo que ya salió. Mezclarlos
-   * en la misma lista —que era la otra opción— haría que cada campaña empujara
-   * hacia abajo las conversaciones de gente real, que es justo lo que la
-   * escuela pidió evitar: «para no confundirlos con la lista de whatsapp».
-   */
-  const [vista, setVista] = useState<"chats" | "difusiones">("chats");
-  const [difusion, setDifusion] = useState<number | null>(null);
-
   /** Lo escrito en la barra de búsqueda de la lista de hilos. */
   const [busqueda, setBusqueda] = useState("");
   /** Se está mandando la solicitud de permiso para llamar. */
@@ -1145,64 +1119,17 @@ export function Inbox({
           porque además de filtrar dice qué redes están previstas y qué le
           falta a cada una.
         */}
-        {/*
-          Chats o difusiones.
-
-          Va ARRIBA de la fila de redes porque es un corte más grueso todavía:
-          primero se decide qué clase de cosa se está mirando —conversaciones o
-          campañas— y recién después por qué red o con qué etiqueta.
-        */}
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            padding: "8px 12px 0",
-            alignItems: "center",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setVista("chats")}
-            style={solapa(vista === "chats", accent)}
-          >
-            Conversaciones
-          </button>
-          <button
-            type="button"
-            onClick={() => setVista("difusiones")}
-            style={solapa(vista === "difusiones", accent)}
-          >
-            📣 Difusiones
-            {envios.length > 0 && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 5px",
-                  borderRadius: 8,
-                  background: vista === "difusiones" ? "rgba(255,255,255,.25)" : T.paper,
-                  color: vista === "difusiones" ? "#fff" : T.muted,
-                }}
-              >
-                {envios.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {vista === "chats" && (
-          <CanalesDeLaBandeja
-            cuantos={porRed}
-            elegido={porCanal}
-            conectados={canalesConectados}
-            accent={accent}
-            onElegir={setPorCanal}
-          />
-        )}
+        <CanalesDeLaBandeja
+          cuantos={porRed}
+          elegido={porCanal}
+          conectados={canalesConectados}
+          accent={accent}
+          onElegir={setPorCanal}
+        />
 
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
             de controles vacía en una bandeja recién estrenada es ruido. */}
-        {vista === "chats" && etiquetas.some((e) => e.activa) && (
+        {etiquetas.some((e) => e.activa) && (
           <div
             style={{
               display: "flex",
@@ -1240,16 +1167,7 @@ export function Inbox({
         )}
 
         <div style={{ overflowY: "auto", flex: 1 }}>
-          {vista === "difusiones" && (
-            <Difusiones
-              envios={envios}
-              elegido={difusion}
-              accent={accent}
-              onElegir={setDifusion}
-            />
-          )}
-
-          {vista === "chats" && lista.length === 0 && (
+          {lista.length === 0 && (
             <p style={{ margin: 0, padding: 16, fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
               {verArchivadas
                 ? "No hay conversaciones archivadas."
@@ -1257,7 +1175,7 @@ export function Inbox({
             </p>
           )}
 
-          {vista === "chats" && lista.map((c) => {
+          {lista.map((c) => {
             const activa = c.id === abierta;
             const lead = leadDe(c.clienteId);
             return (
@@ -1439,18 +1357,7 @@ export function Inbox({
           overflow: "hidden",
         }}
       >
-        {vista === "difusiones" ? (
-          (() => {
-            const d = envios.find((e) => e.id === difusion);
-            return d ? (
-              <DifusionAbierta envio={d} accent={accent} onVerEnvios={onVerEnvios} />
-            ) : (
-              <p style={{ margin: "auto", fontSize: 13, color: T.muted, padding: 20, textAlign: "center", lineHeight: 1.6 }}>
-                Elegí una difusión de la izquierda para ver qué se mandó y cómo le fue.
-              </p>
-            );
-          })()
-        ) : !actual ? (
+        {!actual ? (
           <p style={{ margin: "auto", fontSize: 13, color: T.muted }}>
             Elegí una conversación de la izquierda.
           </p>
@@ -2095,27 +2002,4 @@ const botonLleno = (accent: string): CSSProperties => ({
   borderRadius: 6,
   background: accent,
   color: "#fff",
-});
-
-/**
- * Una solapa de las de arriba: conversaciones o difusiones.
- *
- * Más marcada que las pestañas de redes —fondo lleno cuando está puesta— porque
- * cambia la pantalla entera y no sólo filtra la lista. Si se pareciera a un
- * filtro, alguien la apretaría creyendo que suma un corte más y se
- * encontraría con otra cosa.
- */
-const solapa = (puesta: boolean, accent: string): CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 5,
-  height: 26,
-  padding: "0 11px",
-  fontSize: 12,
-  fontWeight: 600,
-  borderRadius: 7,
-  border: `1px solid ${puesta ? accent : T.border}`,
-  background: puesta ? accent : T.surface,
-  color: puesta ? "#fff" : T.muted,
-  cursor: "pointer",
 });

@@ -662,8 +662,6 @@ export default function CrmApp({
               oportunidades={oportunidades}
               etiquetas={etiquetas}
               plantillas={plantillas.plantillas}
-              envios={envios}
-              onVerEnvios={() => actions.setMod("Envíos")}
               canalesConectados={canalesConectados}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
