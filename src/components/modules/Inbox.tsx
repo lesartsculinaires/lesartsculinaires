@@ -69,6 +69,8 @@ interface Props {
   envios: Envio[];
   /** Para saltar al módulo de Envíos desde una difusión abierta. */
   onVerEnvios: () => void;
+  /** Qué canales tienen sus credenciales puestas en el servidor. */
+  canalesConectados: Record<string, boolean>;
   onRefrescar: () => void;
   /**
    * Abre la ficha de un lead encima de la bandeja.
@@ -189,6 +191,7 @@ export function Inbox({
   plantillas,
   envios,
   onVerEnvios,
+  canalesConectados,
   onRefrescar,
   onVerFicha,
   onLlamar,
@@ -1191,6 +1194,7 @@ export function Inbox({
           <CanalesDeLaBandeja
             cuantos={porRed}
             elegido={porCanal}
+            conectados={canalesConectados}
             accent={accent}
             onElegir={setPorCanal}
           />

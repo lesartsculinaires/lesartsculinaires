@@ -45,12 +45,39 @@ export function CanalesDeLaBandeja({
   /** Cuántos hilos hay por canal, para poder decirlo en la pestaña. */
   cuantos,
   elegido,
+  conectados,
   accent,
   onElegir,
 }: {
   cuantos: Record<string, number>;
   /** Null = todos los canales juntos. */
   elegido: string | null;
+  /**
+   * Cuáles tienen sus credenciales puestas en el servidor.
+   *
+   * ==========================================================================
+   * SON TRES ESTADOS, NO DOS
+   * ==========================================================================
+   *
+   * Hasta ahora había «anda» y «no anda». Con Instagram apareció el del medio,
+   * y es el que más confunde si no se dice:
+   *
+   *   NO ESTÁ HECHO      El CRM no sabe hablar ese canal. Messenger, TikTok.
+   *                      Falta programarlo.
+   *
+   *   HECHO, SIN ENCHUFAR  El código está —webhook, envío, base— pero los
+   *                      tokens todavía no se cargaron en el servidor. La
+   *                      pestaña se enciende con el despliegue; los tokens los
+   *                      pone una persona después.
+   *
+   *   ANDANDO            Las dos cosas.
+   *
+   * Sin el estado del medio, entre desplegar y cargar los tokens la pestaña
+   * queda encendida y filtrando a una lista vacía, sin decir qué falta. Y lo
+   * que falta —dos variables en Netlify— no se adivina mirando una lista
+   * vacía.
+   */
+  conectados: Record<string, boolean>;
   accent: string;
   onElegir: (clave: string | null) => void;
 }) {
@@ -82,6 +109,8 @@ export function CanalesDeLaBandeja({
         {CANALES.map((c) => {
           const n = cuantos[c.clave] ?? 0;
           const puesto = elegido === c.clave;
+          // Sabe hablarlo, pero todavía no tiene con qué. Ver `conectados`.
+          const faltaElToken = c.disponible && conectados[c.clave] === false;
 
           return (
             <button
@@ -90,31 +119,62 @@ export function CanalesDeLaBandeja({
               onClick={() => {
                 // Un canal que no anda no filtra nada: lo que hace es explicar
                 // qué le falta. Filtrar por él dejaría la lista vacía y eso no
-                // dice nada.
-                if (c.disponible) onElegir(puesto ? null : c.clave);
+                // dice nada. Lo mismo el que está hecho pero sin credenciales:
+                // su lista está vacía por una razón que hay que contar.
+                if (c.disponible && !faltaElToken) onElegir(puesto ? null : c.clave);
                 setMirando(mirando === c.clave ? null : c.clave);
               }}
-              title={c.disponible ? `Ver sólo ${c.nombre}` : `${c.nombre}: todavía no está conectado`}
+              title={
+                faltaElToken
+                  ? `${c.nombre}: listo en el CRM, falta cargar las credenciales`
+                  : c.disponible
+                    ? `Ver sólo ${c.nombre}`
+                    : `${c.nombre}: todavía no está conectado`
+              }
               style={{
                 ...pestana(puesto, accent),
                 // Los que no andan van en gris y con el borde punteado: se ve
-                // que están y se ve que todavía no.
-                borderStyle: c.disponible ? "solid" : "dashed",
-                opacity: c.disponible ? 1 : 0.72,
+                // que están y se ve que todavía no. El que está hecho pero sin
+                // enchufar va igual, porque desde la bandeja da lo mismo: no se
+                // puede usar. Lo que cambia es lo que dice al tocarlo.
+                borderStyle: c.disponible && !faltaElToken ? "solid" : "dashed",
+                opacity: c.disponible && !faltaElToken ? 1 : 0.72,
               }}
             >
               <span aria-hidden style={{ fontSize: 11 }}>{c.icono}</span>
               {c.nombre}
-              {c.disponible && n > 0 && <span style={numerito(puesto)}>{n}</span>}
+              {c.disponible && !faltaElToken && n > 0 && (
+                <span style={numerito(puesto)}>{n}</span>
+              )}
               {!c.disponible && (
                 <span style={{ fontSize: 9.5, color: T.faint, fontWeight: 600 }}>pronto</span>
+              )}
+              {/*
+                «Falta la llave» y no «pronto».
+
+                Son dos esperas distintas y quien las resuelve es distinto:
+                «pronto» es trabajo de programación y no depende de la escuela;
+                esto es una variable en Netlify que la escuela sí puede cargar
+                hoy. Decir lo mismo en los dos casos haría que nadie cargue
+                nada, esperando algo que ya está listo.
+              */}
+              {faltaElToken && (
+                <span style={{ fontSize: 9.5, color: "#8A7020", fontWeight: 600 }}>
+                  falta la llave
+                </span>
               )}
             </button>
           );
         })}
       </div>
 
-      {mirando && <Ficha canal={canalDe(mirando)} onCerrar={() => setMirando(null)} />}
+      {mirando && (
+        <Ficha
+          canal={canalDe(mirando)}
+          faltaElToken={conectados[mirando] === false && canalDe(mirando).disponible}
+          onCerrar={() => setMirando(null)}
+        />
+      )}
     </div>
   );
 }
@@ -126,7 +186,16 @@ export function CanalesDeLaBandeja({
  * que nadie tenga que preguntar. Y para el que ya anda sirve igual: dice
  * cuánto dura su ventana, que es el dato que más se olvida.
  */
-function Ficha({ canal, onCerrar }: { canal: Canal; onCerrar: () => void }) {
+function Ficha({
+  canal,
+  faltaElToken,
+  onCerrar,
+}: {
+  canal: Canal;
+  /** Está programado pero sin credenciales en el servidor. */
+  faltaElToken: boolean;
+  onCerrar: () => void;
+}) {
   return (
     <div
       style={{
@@ -140,8 +209,17 @@ function Ficha({ canal, onCerrar }: { canal: Canal; onCerrar: () => void }) {
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>{canal.nombre}</span>
-        <span style={{ fontSize: 11, color: canal.disponible ? "#2F6B4F" : T.faint }}>
-          {canal.disponible ? "conectado" : "todavía no conectado"}
+        <span
+          style={{
+            fontSize: 11,
+            color: faltaElToken ? "#8A7020" : canal.disponible ? "#2F6B4F" : T.faint,
+          }}
+        >
+          {faltaElToken
+            ? "listo en el CRM, falta la llave"
+            : canal.disponible
+              ? "conectado"
+              : "todavía no conectado"}
         </span>
         <span style={{ flex: 1 }} />
         <button
@@ -154,7 +232,25 @@ function Ficha({ canal, onCerrar }: { canal: Canal; onCerrar: () => void }) {
         </button>
       </div>
 
-      {canal.falta && (
+      {/*
+        Qué falta, con el nombre exacto de lo que hay que cargar.
+
+        Las variables se nombran acá y no se explican en un manual aparte
+        porque es donde se hace la pregunta. No son secretas —son NOMBRES, no
+        valores— y sin ellas el mensaje sería «falta configurar algo», que no
+        le sirve a nadie.
+      */}
+      {faltaElToken && (
+        <p style={{ margin: "7px 0 0", fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
+          El CRM ya sabe recibir y contestar por acá: están el webhook, el envío y la
+          base. Lo que falta es cargar las credenciales en el servidor —en Netlify,
+          {" "}
+          <strong>{VARIABLES[canal.clave] ?? "las variables del canal"}</strong>— y
+          apuntar el webhook de Meta a <strong>/api/{canal.clave}/webhook</strong>.
+        </p>
+      )}
+
+      {!faltaElToken && canal.falta && (
         <p style={{ margin: "7px 0 0", fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
           {canal.falta}
         </p>
@@ -230,3 +326,15 @@ const numerito = (puesta: boolean): CSSProperties => ({
   background: puesta ? "rgba(255,255,255,0.25)" : T.paper,
   color: puesta ? "#fff" : T.muted,
 });
+
+/**
+ * Cómo se llaman las credenciales de cada canal en el servidor.
+ *
+ * Los NOMBRES, nunca los valores: los valores son secretos y viven sólo en
+ * Netlify. Un nombre no abre nada y es lo único que hace accionable el aviso de
+ * «falta la llave» —sin él habría que ir a buscar a otro lado qué cargar—.
+ */
+const VARIABLES: Partial<Record<string, string>> = {
+  whatsapp: "WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID",
+  instagram: "INSTAGRAM_TOKEN y INSTAGRAM_ACCOUNT_ID",
+};

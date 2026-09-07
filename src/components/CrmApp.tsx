@@ -78,6 +78,15 @@ interface Props {
   faltaMigracionInbox: boolean;
   /** False cuando el servidor no tiene token de WhatsApp. */
   puedeResponderWhatsapp: boolean;
+  /**
+   * Qué canales tienen sus credenciales en el servidor.
+   *
+   * Distinto de que el CRM sepa hablarlos, que lo dice `canales.ts`. Sin esto
+   * la pestaña de un canal recién implementado se enciende con el despliegue y
+   * filtra a una lista vacía hasta que alguien carga los tokens, sin decir qué
+   * falta.
+   */
+  canalesConectados: Record<string, boolean>;
   /** False cuando el servidor no tiene las llamadas de WhatsApp configuradas. */
   puedeLlamarPorWhatsapp: boolean;
   userEmail: string;
@@ -130,6 +139,7 @@ export default function CrmApp({
   mensajes,
   faltaMigracionInbox,
   puedeResponderWhatsapp,
+  canalesConectados,
   puedeLlamarPorWhatsapp,
   userEmail,
   accesos,
@@ -654,6 +664,7 @@ export default function CrmApp({
               plantillas={plantillas.plantillas}
               envios={envios}
               onVerEnvios={() => actions.setMod("Envíos")}
+              canalesConectados={canalesConectados}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
               abrirHilo={hiloAAbrir}
