@@ -31,8 +31,23 @@
  *   QUE WHATSAPP NO CAMBIE       Todo lo de antes sigue igual: es lo que se
  *                                usa todos los días.
  *
- * La conversación de Instagram se inserta a mano: la columna `canal` existe
- * desde la primera migración de la bandeja. Nada de esto habla con Meta.
+ * La conversación de Instagram se inserta a mano, y desde que el canal está
+ * implementado se inserta como sería de verdad: SIN teléfono, con su IGSID en
+ * `identificador` y su @usuario. Nada de esto habla con Meta.
+ *
+ * ============================================================================
+ * QUÉ CAMBIÓ AL CONECTAR INSTAGRAM
+ * ============================================================================
+ *
+ * Este archivo se escribió cuando las cuatro redes eran un lugar reservado y
+ * ninguna andaba salvo WhatsApp. Instagram ya está implementado —webhook, envío
+ * y la identidad del hilo en la base— así que su pestaña dejó de explicar qué
+ * falta y pasó a filtrar, como la de WhatsApp.
+ *
+ * Las comprobaciones de «qué falta» se mudaron a Messenger, que sigue siendo lo
+ * que Instagram era: algo que se enciende en el mismo panel de Meta. Lo que NO
+ * se movió es lo que distingue a Instagram de WhatsApp —sin plantillas, siete
+ * días de ventana—, que ahora se comprueba donde importa: adentro del hilo.
  *
  * Necesita el banco armado y la aplicación en 3142.
  */
@@ -70,11 +85,15 @@ const es = (t, r, e) => {
   } else console.log(`✓ ${t}`);
 };
 
+const IGSID = "17841400099440002";
+
 const limpiar = () =>
   sql(`
     delete from public.mensajes where conversacion_id in
-      (select id from public.conversaciones where telefono like '5039944%');
-    delete from public.conversaciones where telefono like '5039944%';
+      (select id from public.conversaciones
+        where telefono like '5039944%' or identificador = '${IGSID}');
+    delete from public.conversaciones
+     where telefono like '5039944%' or identificador = '${IGSID}';
   `);
 limpiar();
 
@@ -88,13 +107,20 @@ limpiar();
  * y no dejaría contestar.
  */
 sql(`
-  insert into public.conversaciones (telefono, nombre_perfil, canal, ultimo_mensaje_en, ultimo_texto)
-  values ('50399440001', 'Canal Whatsapp',  'whatsapp',  now() - interval '3 days', 'Hola'),
-         ('50399440002', 'Canal Instagram', 'instagram', now() - interval '3 days', 'Hola por IG');
+  insert into public.conversaciones
+    (telefono, identificador, usuario, nombre_perfil, canal, ultimo_mensaje_en, ultimo_texto)
+  values
+    ('50399440001', '50399440001', null, 'Canal Whatsapp', 'whatsapp',
+      now() - interval '3 days', 'Hola'),
+    -- El de Instagram, como es de verdad: sin teléfono. Su identidad es el
+    -- IGSID y lo que se muestra es el @usuario.
+    (null, '${IGSID}', 'canal.instagram', 'Canal Instagram', 'instagram',
+      now() - interval '3 days', 'Hola por IG');
 
   insert into public.mensajes (conversacion_id, wa_id, direccion, tipo, texto, creado_en)
   select c.id, 'wamid.CANAL.' || c.id, 'entrante', 'text', 'Hola', now() - interval '3 days'
-    from public.conversaciones c where c.telefono like '5039944%';
+    from public.conversaciones c
+   where c.telefono like '5039944%' or c.identificador = '${IGSID}';
 `);
 
 const jwt = fs
@@ -138,8 +164,13 @@ console.log("── las cuatro redes están en la fila ──");
     es(`está ${red}`, t.includes(red), true);
   }
   // Las que no andan se marcan como tales, en vez de quedar apagadas sin
-  // explicación.
-  es("las que faltan dicen «pronto»", (t.match(/pronto/g) ?? []).length >= 3, true);
+  // explicación. Ahora son dos —Messenger y TikTok—: Instagram ya anda.
+  es("las que faltan dicen «pronto»", (t.match(/pronto/g) ?? []).length >= 2, true);
+  es(
+    "Y INSTAGRAM YA NO ESTÁ ENTRE ELLAS",
+    await p.locator('main button[title*="Instagram"][title*="pronto"]').count(),
+    0,
+  );
 }
 
 console.log("\n── al tocar una que no anda, dice qué falta ──");
@@ -163,18 +194,24 @@ console.log("\n── al tocar una que no anda, dice qué falta ──");
 
 console.log("\n── y una que sí se puede conectar dice otra cosa ──");
 {
-  await p.locator('main button[title*="Instagram"]').first().click();
+  // Messenger es ahora lo que Instagram era: algo que se enciende en el mismo
+  // panel de Meta, sin trámite con nadie.
+  await p.locator('main button[title*="Messenger"]').first().click();
   await p.waitForTimeout(600);
-  await foto("3-instagram");
+  await foto("3-messenger");
 
   const t = await texto();
   es("apunta al panel de Meta", /panel de Meta/.test(t), true);
-  es("y avisa que NO tiene plantillas", /Instagram no tiene plantillas/.test(t), true);
-  es("con su ventana de siete días", /siete días/.test(t), true);
+  es("y avisa que tampoco tiene plantillas", /tampoco tiene plantillas/.test(t), true);
+  es("con su ventana de siete días", /[Ss]iete días/.test(t), true);
 }
 
 console.log("\n── el hilo de WhatsApp, como siempre ──");
 {
+  // Se sale del panel de Messenger volviendo a la pestaña de WhatsApp, que
+  // ahora es un filtro de verdad y no una explicación.
+  await p.locator('main button[title*="WhatsApp"]').first().click();
+  await p.waitForTimeout(900);
   await p.locator('button.row:has-text("Canal Whatsapp")').click();
   await p.waitForTimeout(2200);
   await foto("4-whatsapp");
@@ -188,12 +225,35 @@ console.log("\n── el hilo de WhatsApp, como siempre ──");
 
 console.log("\n── el de Instagram cambia lo que hace falta ──");
 {
+  await p.locator('main button[title*="Instagram"]').first().click();
+  await p.waitForTimeout(900);
   await p.locator('button.row:has-text("Canal Instagram")').click();
   await p.waitForTimeout(2200);
   await foto("5-hilo-instagram");
 
   const t = await texto();
-  es("el encabezado dice por dónde se contesta", /Instagram · \+50399440002/.test(t), true);
+  /*
+   * El encabezado lleva el @usuario, no un número.
+   *
+   * Es lo que en WhatsApp resuelve el teléfono: con qué dato quien atiende
+   * ubica a la persona antes de contestarle. Un IGSID no sirve para eso —son
+   * diecisiete dígitos que no le dicen nada a nadie— así que no se muestra.
+   */
+  es("el encabezado dice por dónde se contesta", /Instagram · @canal\.instagram/.test(t), true);
+  es("Y NO INVENTA UN TELÉFONO", new RegExp(`\\+?${IGSID}`).test(t), false);
+
+  /*
+   * Lo que más cambia respecto de WhatsApp, comprobado donde se trabaja.
+   *
+   * Se busca el selector por su rótulo y no contando `<select>`: en el
+   * encabezado del hilo ya hay dos —la asesora y el estado— así que contarlos
+   * daría «sí hay plantillas» en un hilo donde no las hay.
+   */
+  es(
+    "NO OFRECE PLANTILLAS: en Instagram no existen",
+    await p.getByRole("option", { name: "Mandar una plantilla…" }).count(),
+    0,
+  );
 
   /*
    * Lo que de verdad prueba que la bandeja dejó de estar escrita para

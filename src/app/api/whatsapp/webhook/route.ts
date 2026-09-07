@@ -1,9 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { abrirOportunidad } from "@/lib/crm/altaLead";
+import {
+  abrirLeadSiEsNuevo as abrirLead,
+  anotarElCanal as anotarCanal,
+  faltaLaColumna,
+  faltaLaFuncion,
+  faltaLaTabla,
+} from "@/lib/crm/leadDeCanal";
 import { comoSeLee, type EstadoLlamada } from "@/lib/llamadas";
-import { sortear, yaEsLead } from "@/lib/reparto";
-import { hoyEnSalvador } from "@/lib/seguimientos";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 import {
@@ -208,12 +212,6 @@ async function anotarPermiso(supabase: Cliente, pp: PermisoDeLlamada) {
   if (error) throw error;
 }
 
-/** La base no conoce esa columna: falta correr la migración. */
-const faltaLaColumna = (e: { code?: string; message?: string }): boolean =>
-  e.code === "42703" ||
-  e.code === "PGRST204" ||
-  /Could not find the .* column|does not exist/i.test(e.message ?? "");
-
 /**
  * Una llamada: la que entra, la que se contesta, la que se corta.
  *
@@ -313,8 +311,8 @@ async function guardarLlamada(supabase: Cliente, ll: AvisoDeLlamada) {
    * con las mismas reglas que si hubiera escrito. Si algo de esto falla, la
    * llamada suena lo mismo, que es lo que importa en este segundo.
    */
-  await anotarElCanal(supabase, conversacion, ll.telefono, ll.cuando);
-  await abrirLeadSiEsNuevo(supabase, conversacion);
+  await anotarCanal(supabase, conversacion, "whatsapp", ll.telefono, ll.cuando);
+  await abrirLead(supabase, conversacion, "whatsapp");
 }
 
 /**
@@ -502,12 +500,6 @@ async function guardarReaccion(supabase: Cliente, r: ReaccionEntrante) {
   if (error && error.code !== "23505") throw error;
 }
 
-/** La base no conoce esa tabla: falta correr la migración. */
-const faltaLaTabla = (e: { code?: string; message?: string }): boolean =>
-  e.code === "PGRST205" ||
-  e.code === "42P01" ||
-  /Could not find the table|does not exist/i.test(e.message ?? "");
-
 type Cliente = NonNullable<ReturnType<typeof getAdminClient>>;
 
 /**
@@ -558,7 +550,7 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
 
   await anotarQueEscribioPorWhatsapp(supabase, conversacion, m);
   await contestoUnEnvio(supabase, m.telefono);
-  await abrirLeadSiEsNuevo(supabase, conversacion);
+  await abrirLead(supabase, conversacion, "whatsapp");
 }
 
 /**
@@ -674,256 +666,7 @@ const anotarQueEscribioPorWhatsapp = (
   supabase: Cliente,
   conversacionId: number,
   m: MensajeEntrante,
-) => anotarElCanal(supabase, conversacionId, m.telefono, m.enviadoEn);
-
-/**
- * El trabajo de arriba, sin depender de que el contacto haya sido un mensaje.
- *
- * Una llamada entrante es un contacto por WhatsApp igual que un mensaje —de
- * hecho es más fuerte—, y `contactos_canal` guarda por dónde apareció una
- * persona, no si escribió o marcó. Que las dos puertas pasen por acá es lo que
- * evita que un lead que llamó pero nunca escribió quede sin canal anotado.
- */
-async function anotarElCanal(
-  supabase: Cliente,
-  conversacionId: number,
-  telefono: string,
-  cuando: Date,
-) {
-  try {
-    const { data: conv } = await supabase
-      .from("conversaciones")
-      .select("cliente_id")
-      .eq("id", conversacionId)
-      .maybeSingle();
-
-    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
-    if (clienteId == null) return;
-
-    const canal = await idDeCanalWhatsapp(supabase);
-    if (canal == null) return;
-
-    await supabase.rpc("anotar_canal", {
-      p_cliente: clienteId,
-      p_canal: canal,
-      p_identificador: telefono || null,
-      p_cuando: cuando.toISOString(),
-    });
-  } catch (e) {
-    console.error("[whatsapp] no se pudo anotar el canal", e);
-  }
-}
-
-/**
- * Le pone dueño al hilo, el mismo que tiene el lead.
- *
- * ------------------------------------------------------------------------
- * POR QUÉ HAY QUE COPIARLO
- * ------------------------------------------------------------------------
- *
- * Son dos campos distintos y las dos pantallas leen el suyo:
- * `oportunidades.vendedor_id` dice de quién es el lead y sale en el Pipeline;
- * `conversaciones.vendedor_id` dice de quién es el chat y sale en la bandeja.
- *
- * Sortear sólo el primero dejaba el lead con dueño y el hilo diciendo «sin
- * asignar» —la misma persona, dos respuestas distintas—, y el asesor al que le
- * tocó no tenía cómo saber que era suyo mirando la bandeja, que es donde
- * primero se entera de que alguien escribió.
- *
- * Sólo se pone si el hilo no tenía dueño. Si alguien ya lo reasignó a mano,
- * esa decisión es de una persona y vale más que la del sorteo.
- */
-async function ponerDuenoAlHilo(
-  supabase: Cliente,
-  conversacionId: number,
-  vendedorId: number | null,
-) {
-  if (vendedorId == null) return;
-  await supabase
-    .from("conversaciones")
-    .update({ vendedor_id: vendedorId })
-    .eq("id", conversacionId)
-    .is("vendedor_id", null);
-}
-
-/**
- * Si quien escribe todavía no es un lead, abrirle uno y sortearle asesor.
- *
- * ------------------------------------------------------------------------
- * CUÁNDO SÍ Y CUÁNDO NO
- * ------------------------------------------------------------------------
- *
- * Sólo cuando el cliente no tiene ninguna oportunidad. Las dos reglas de la
- * escuela caen de esa única condición:
- *
- *   Vuelve a escribir           ya tiene una abierta, no se abre otra, y sigue
- *                               siendo de quien lo venía atendiendo.
- *   Ex-alumno que vuelve        tiene las suyas cerradas, tampoco se abre otra.
- *                               Se lo atiende sobre su ficha, donde está lo que
- *                               ya cursó, y si hay venta nueva la abre una
- *                               persona mirando.
- *
- * ------------------------------------------------------------------------
- * POR QUÉ LO DECIDE LA BASE Y NO ESTA FUNCIÓN
- * ------------------------------------------------------------------------
- *
- * Antes acá se preguntaba «¿ya tiene lead?» y, si la respuesta era que no, se
- * insertaba. Dos viajes distintos a la base, con un hueco en el medio.
- *
- * Ese hueco es el que duplicaba. Quien escribe manda tres globos seguidos
- * —«Hola», «buenas tardes», «quiero información»—; Meta los entrega en tres
- * llamadas separadas; Netlify levanta una función por llamada y las tres
- * corren a la vez. Las tres preguntan antes de que ninguna haya escrito, las
- * tres reciben «no», y las tres abren un lead. Como cada una sortea por su
- * cuenta, cada lead cae en un asesor distinto: el mismo cliente, el mismo día,
- * dos o tres vendedoras.
- *
- * `abrir_lead_de_whatsapp` hace las dos cosas en una sola llamada y con
- * candado, así que la segunda entra recién cuando la primera terminó y ya
- * encuentra el lead hecho. El sorteo se sigue haciendo acá —es una decisión de
- * la aplicación, no de la base— y se le pasa como propuesta: si el lead ya
- * existía, la base la ignora y devuelve el dueño que ya tenía.
- *
- * ------------------------------------------------------------------------
- * SI ALGO FALLA, EL MENSAJE NO SE PIERDE
- * ------------------------------------------------------------------------
- *
- * Nada de acá lanza. El mensaje ya está guardado y la conversación abierta;
- * que no se haya podido crear el lead es un problema menor que se arregla con
- * un clic desde la bandeja, y tumbar el webhook por eso haría que Meta
- * reintentara y terminara desactivándolo.
- */
-async function abrirLeadSiEsNuevo(supabase: Cliente, conversacionId: number) {
-  try {
-    const { data: conv } = await supabase
-      .from("conversaciones")
-      .select("cliente_id")
-      .eq("id", conversacionId)
-      .maybeSingle();
-
-    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
-    if (clienteId == null) return;
-
-    const { data: gente } = await supabase.rpc("vendedores_para_reparto");
-    const candidatos = ((gente ?? []) as { id: number; nombre: string }[]).map((v) => ({
-      id: Number(v.id),
-      nombre: String(v.nombre),
-    }));
-
-    // Sin nadie habilitado el lead entra igual, sin dueño. Un lead sin asignar
-    // lo ve todo el equipo —así está escrita la política— y alguien lo agarra;
-    // un lead que no se creó no lo ve nadie nunca.
-    const quien = sortear(candidatos);
-
-    const { data, error } = await supabase.rpc("abrir_lead_de_whatsapp", {
-      p_cliente: clienteId,
-      p_vendedor: quien?.id ?? null,
-      p_canal: await idDeCanalWhatsapp(supabase),
-      p_etapa: await idDeEtapaProspectos(supabase),
-      p_fecha: hoyEnSalvador(),
-    });
-
-    if (error) {
-      if (!faltaLaFuncion(error)) {
-        console.error("[whatsapp] no se pudo abrir el lead", error.message);
-        return;
-      }
-
-      /*
-       * Sin la migración corrida se abre el lead al modo viejo, con hueco y
-       * todo, en vez de no abrirlo.
-       *
-       * Es a propósito, y es lo que permite desplegar el código sin esperar a
-       * que se corra el SQL. La otra opción —no abrir nada hasta que la
-       * función exista— cambiaría un problema visible por uno invisible: un
-       * lead duplicado se ve en la lista y se fusiona; un lead que nunca se
-       * creó no lo ve nadie, y quien escribió se queda sin respuesta.
-       */
-      console.error(
-        "[whatsapp] falta correr 20260930120000_un_solo_lead_por_whatsapp.sql;" +
-          " se abre el lead al modo viejo, que puede duplicar",
-      );
-
-      const { count } = await supabase
-        .from("oportunidades")
-        .select("id", { count: "exact", head: true })
-        .eq("cliente_id", clienteId);
-
-      if (yaEsLead(count ?? 0)) {
-        const { data: suya } = await supabase
-          .from("oportunidades")
-          .select("vendedor_id")
-          .eq("cliente_id", clienteId)
-          .not("vendedor_id", "is", null)
-          .order("id", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        await ponerDuenoAlHilo(
-          supabase,
-          conversacionId,
-          suya?.vendedor_id == null ? null : Number(suya.vendedor_id),
-        );
-        return;
-      }
-
-      const r = await abrirOportunidad(supabase, clienteId, {
-        vendedor_id: quien?.id ?? null,
-        producto_id: null,
-        territorio_id: null,
-        canal_id: await idDeCanalWhatsapp(supabase),
-        etapa_id: await idDeEtapaProspectos(supabase),
-        estado_id: null,
-        fecha_registro: hoyEnSalvador(),
-        fecha_cierre: null,
-        valor_oportunidad: null,
-        descuento_promocion: null,
-      });
-
-      if (!r.ok) {
-        console.error("[whatsapp] no se pudo abrir el lead", r.error);
-        return;
-      }
-
-      await ponerDuenoAlHilo(supabase, conversacionId, quien?.id ?? null);
-      return;
-    }
-
-    const fila = (Array.isArray(data) ? data[0] : data) as {
-      id_lead?: number;
-      codigo_lead?: string | null;
-      id_vendedor?: number | null;
-      se_creo?: boolean;
-    } | null;
-
-    if (!fila) return;
-
-    /*
-     * El hilo queda del mismo asesor que el lead, se haya creado recién o no.
-     *
-     * Cuando el lead ya existía, el dueño que devuelve la base es el que lo
-     * viene atendiendo, no el que salió sorteado: contestarle desde la bandeja
-     * tiene que caerle a esa misma persona. Pasa con quien vuelve a escribir
-     * después de que alguien archivó su conversación, y con los clientes que
-     * ya estaban en la base antes de que existiera todo esto.
-     */
-    await ponerDuenoAlHilo(
-      supabase,
-      conversacionId,
-      fila.id_vendedor == null ? null : Number(fila.id_vendedor),
-    );
-
-    if (fila.se_creo) {
-      console.info(
-        `[whatsapp] lead ${fila.codigo_lead ?? "?"} abierto para ${
-          quien?.nombre ?? "nadie (sin asignar)"
-        }`,
-      );
-    }
-  } catch (e) {
-    console.error("[whatsapp] no se pudo abrir el lead", e);
-  }
-}
+) => anotarCanal(supabase, conversacionId, "whatsapp", m.telefono, m.enviadoEn);
 
 /**
  * De quién es un hilo y cómo se llama su gente.
@@ -967,49 +710,6 @@ async function deQuienEsElHilo(
   };
 }
 
-/** La base no conoce esa función: falta correr la migración. */
-const faltaLaFuncion = (e: { code?: string; message?: string }): boolean =>
-  e.code === "PGRST202" || /Could not find the function|does not exist/i.test(e.message ?? "");
-
-/**
- * El canal «Whatsapp» del catálogo.
- *
- * Se busca por nombre en vez de guardar el número: los catálogos se editan
- * desde Programas y Equipos, y un id escrito fijo en el código apuntaría a
- * otra cosa el día que alguien reordene la tabla. Si no está, el lead entra
- * sin canal en vez de no entrar.
- */
-async function idDeCanalWhatsapp(supabase: Cliente): Promise<number | null> {
-  const { data } = await supabase
-    .from("canales")
-    .select("id")
-    .ilike("nombre", "whatsapp")
-    .limit(1)
-    .maybeSingle();
-  return data ? Number(data.id) : null;
-}
-
-/** La primera etapa del embudo. Igual que arriba: por nombre, no por id. */
-async function idDeEtapaProspectos(supabase: Cliente): Promise<number | null> {
-  const { data } = await supabase
-    .from("etapas")
-    .select("id")
-    .ilike("nombre", "prospectos")
-    .limit(1)
-    .maybeSingle();
-  if (data) return Number(data.id);
-
-  // Sin la etapa Prospectos —si no se corrió esa migración— se usa la primera
-  // que haya, que es lo que un asesor esperaría ver.
-  const { data: primera } = await supabase
-    .from("etapas")
-    .select("id")
-    .order("orden", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return primera ? Number(primera.id) : null;
-}
-
 /**
  * Lo mínimo para saber de quién es un hilo.
  *
@@ -1023,21 +723,46 @@ interface QuienEs {
   nombrePerfil: string | null;
 }
 
-/** La conversación de este número, creándola si es la primera vez. */
+/**
+ * La conversación de este número, creándola si es la primera vez.
+ *
+ * ----------------------------------------------------------------------------
+ * EL HILO SE BUSCA POR CANAL, NO SÓLO POR NÚMERO
+ * ----------------------------------------------------------------------------
+ *
+ * Desde `20261024120000_instagram.sql`, la identidad de una conversación es
+ * `(canal, identificador)` y no el teléfono suelto: un hilo de Instagram no
+ * tiene número, y la misma persona puede tener el suyo en cada canal.
+ *
+ * Buscar sólo por `telefono` seguiría andando hoy —las conversaciones de
+ * Instagram tienen ese campo nulo, así que nunca coincidirían—, pero acá se
+ * pide el canal igual. Es lo que evita que el día que otro canal empiece a
+ * guardar un número, WhatsApp conteste en el hilo equivocado.
+ *
+ * `identificador` se escribe siempre, y en WhatsApp es el teléfono: la columna
+ * es obligatoria y sin esto ningún hilo nuevo entraría.
+ */
 async function conversacionDe(supabase: Cliente, m: QuienEs): Promise<number | null> {
-  const { data: existente } = await supabase
-    .from("conversaciones")
-    .select("id")
-    .eq("telefono", m.telefono)
-    .maybeSingle();
+  const buscar = async () => {
+    const { data } = await supabase
+      .from("conversaciones")
+      .select("id")
+      .eq("canal", "whatsapp")
+      .eq("identificador", m.telefono)
+      .maybeSingle();
+    return data ? Number(data.id) : null;
+  };
 
-  if (existente) return Number(existente.id);
+  const existente = await buscar();
+  if (existente != null) return existente;
 
   const clienteId = await clienteDe(supabase, m);
 
   const { data: creada, error } = await supabase
     .from("conversaciones")
     .insert({
+      canal: "whatsapp",
+      identificador: m.telefono,
       telefono: m.telefono,
       nombre_perfil: m.nombrePerfil,
       cliente_id: clienteId,
@@ -1047,14 +772,44 @@ async function conversacionDe(supabase: Cliente, m: QuienEs): Promise<number | n
 
   // Dos mensajes del mismo número nuevo llegando a la vez: el segundo choca
   // con la restricción de unicidad y se queda con la que ganó.
-  if (error?.code === "23505") {
-    const { data: ya } = await supabase
+  if (error?.code === "23505") return buscar();
+
+  /*
+   * Sin la migración corrida, `identificador` no existe y el insert se cae.
+   *
+   * Se reintenta al modo viejo en lugar de perder el mensaje: es la misma
+   * decisión que en el resto del webhook —un dato de menos se arregla, un
+   * mensaje perdido no se recupera— y permite desplegar el código sin tener que
+   * esperar a que se corra el SQL.
+   */
+  if (error && faltaLaColumna(error)) {
+    console.error(
+      "[whatsapp] falta correr 20261024120000_instagram.sql;" +
+        " el hilo se abre sin identificador",
+    );
+
+    const { data: vieja, error: errViejo } = await supabase
       .from("conversaciones")
+      .insert({
+        telefono: m.telefono,
+        nombre_perfil: m.nombrePerfil,
+        cliente_id: clienteId,
+      })
       .select("id")
-      .eq("telefono", m.telefono)
-      .maybeSingle();
-    return ya ? Number(ya.id) : null;
+      .single();
+
+    if (errViejo?.code === "23505") {
+      const { data: ya } = await supabase
+        .from("conversaciones")
+        .select("id")
+        .eq("telefono", m.telefono)
+        .maybeSingle();
+      return ya ? Number(ya.id) : null;
+    }
+    if (errViejo) throw errViejo;
+    return vieja ? Number(vieja.id) : null;
   }
+
   if (error) throw error;
 
   return creada ? Number(creada.id) : null;

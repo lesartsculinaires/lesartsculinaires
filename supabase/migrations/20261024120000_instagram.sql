@@ -69,6 +69,43 @@ update public.conversaciones
    set identificador = telefono
  where identificador is null;
 
+/*
+ * Y si alguien inserta un hilo sin decir la identidad, se le pone el teléfono.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ ESTO NO ES UN LUJO
+ * ----------------------------------------------------------------------------
+ *
+ * La columna pasa a ser obligatoria, y hay más de un lugar que abre
+ * conversaciones: el webhook, «Abrir chat» desde la ficha, la API que usa n8n,
+ * y las pruebas del banco. Todos ésos se actualizaron; el problema son los que
+ * no se ven desde acá —una automatización que la escuela arme mañana, un
+ * arreglo a mano por SQL— que empezarían a fallar con un error de Postgres que
+ * no dice qué hacer.
+ *
+ * En WhatsApp la identidad ES el teléfono, así que rellenarlo no es adivinar:
+ * es escribir el mismo dato que ya está en la fila de al lado.
+ *
+ * Lo que NO hace es inventarle identidad a un hilo que no tiene teléfono. Ahí
+ * sigue fallando, y tiene que fallar: una conversación de Instagram sin IGSID
+ * no se puede contestar, y guardarla a medias sería peor que rechazarla.
+ */
+create or replace function public.identidad_del_hilo()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.identificador is null then
+    new.identificador := new.telefono;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_identidad_del_hilo on public.conversaciones;
+create trigger trg_identidad_del_hilo
+  before insert or update on public.conversaciones
+  for each row execute function public.identidad_del_hilo();
+
 alter table public.conversaciones
   alter column identificador set not null;
 

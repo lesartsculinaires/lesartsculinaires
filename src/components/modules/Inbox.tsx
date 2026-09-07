@@ -1253,7 +1253,7 @@ export function Inbox({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.nombrePerfil ?? c.telefono}
+                      {c.nombrePerfil ?? (c.usuario ? `@${c.usuario}` : c.identificador)}
                     </span>
                     {c.silenciada && (
                       <span title="Silenciada: no cuenta para el número rojo" style={{ fontSize: 10, flexShrink: 0 }}>
@@ -1362,7 +1362,8 @@ export function Inbox({
             <div style={{ ...th, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <span>
                 <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>
-                  {actual.nombrePerfil ?? actual.telefono}
+                  {actual.nombrePerfil ??
+                    (actual.usuario ? `@${actual.usuario}` : actual.identificador)}
                 </span>
                 <span
                   className="mono"
@@ -1379,8 +1380,27 @@ export function Inbox({
                   */}
                   <span aria-hidden>{canal.icono}</span>
                   <span style={{ color: canal.color, fontWeight: 600 }}>{canal.nombre}</span>
-                  <span>·</span>
-                  <span>+{actual.telefono}</span>
+                  {/*
+                    El dato con el que quien atiende ubica a la persona.
+
+                    En WhatsApp es el teléfono, con su «+» de número. En
+                    Instagram es el @usuario, que es con lo que se mira el
+                    perfil antes de contestar —lo que allá resuelve el número—.
+                    Cuando Meta no entrega el usuario no se pone nada: el IGSID
+                    son diecisiete dígitos que no le dicen nada a nadie, y
+                    mostrarlos ahí sólo ensucia el encabezado.
+                  */}
+                  {actual.telefono ? (
+                    <>
+                      <span>·</span>
+                      <span>+{actual.telefono}</span>
+                    </>
+                  ) : actual.usuario ? (
+                    <>
+                      <span>·</span>
+                      <span>@{actual.usuario}</span>
+                    </>
+                  ) : null}
                 </span>
               </span>
 

@@ -14,6 +14,12 @@ import {
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
 import {
+  claseDeAdjunto,
+  enviarAdjuntoIg,
+  enviarTextoIg,
+  hayInstagram,
+} from "@/lib/instagram/enviar";
+import {
   enviarAudio,
   enviarDocumento,
   enviarImagen,
@@ -37,15 +43,33 @@ const SIN_SESION: ActionResult = {
   error: "Sesión no válida. Volvé a iniciar sesión.",
 };
 
-/** Si el servidor puede mandar mensajes hoy. */
-export const salidaDisponible = async (): Promise<boolean> => hayWhatsapp();
+/** Si el servidor puede mandar mensajes hoy, por el canal que sea. */
+export const salidaDisponible = async (): Promise<boolean> =>
+  hayWhatsapp() || hayInstagram();
 
 /**
- * Responde por WhatsApp.
+ * Responde a un hilo, por el canal que sea.
  *
- * El orden importa: primero sale el mensaje y sólo después se guarda. Al
- * revés, un fallo de envío dejaría en la bandeja una respuesta que el cliente
- * nunca recibió, y quien atiende creería que ya contestó.
+ * ============================================================================
+ * EL CANAL LO DECIDE EL HILO, NO QUIEN ESCRIBE
+ * ============================================================================
+ *
+ * Quien atiende escribe en el mismo cuadro para todos los hilos y no elige por
+ * dónde sale: sale por donde llegó. Es lo único que puede ser —a alguien que
+ * escribió por Instagram no se le puede contestar por WhatsApp, porque no
+ * tenemos su teléfono— y además es lo que hace que la bandeja se sienta una
+ * sola bandeja y no dos pegadas.
+ *
+ * De ahí que acá se lea `canal` e `identificador` en vez del teléfono: el
+ * identificador es el teléfono en WhatsApp y el IGSID en Instagram, y cada
+ * envío sabe qué hacer con el suyo.
+ *
+ * ============================================================================
+ * PRIMERO SALE, DESPUÉS SE GUARDA
+ * ============================================================================
+ *
+ * Al revés, un fallo de envío dejaría en la bandeja una respuesta que el
+ * cliente nunca recibió, y quien atiende creería que ya contestó.
  */
 export async function responderConversacion(
   conversacionId: number,
@@ -64,20 +88,43 @@ export async function responderConversacion(
   // WhatsApp esté configurado.
   if (privado) return await guardarNotaInterna(supabase, conversacionId, cuerpo, user.id);
 
-  if (!hayWhatsapp()) {
-    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
-  }
-
   const { data: conv, error } = await supabase
     .from("conversaciones")
-    .select("id, telefono")
+    .select("id, canal, telefono, identificador")
     .eq("id", conversacionId)
     .maybeSingle();
 
   if (error) return { ok: false, error: error.message };
   if (!conv) return { ok: false, error: "No se encontró la conversación." };
 
-  const envio = await enviarTexto(String(conv.telefono), cuerpo);
+  const esInstagram = String(conv.canal ?? "whatsapp").toLowerCase() === "instagram";
+
+  /*
+   * A quién se le manda.
+   *
+   * `identificador` es lo correcto y es lo que va a haber siempre después de la
+   * migración. Se cae al teléfono para los hilos de WhatsApp que existían antes
+   * de que la columna existiera: si el CRM se despliega antes de que se corra el
+   * SQL, contestar tiene que seguir funcionando.
+   */
+  const aQuien = conv.identificador ? String(conv.identificador) : String(conv.telefono ?? "");
+  if (!aQuien) return { ok: false, error: "Este hilo no tiene con quién comunicarse." };
+
+  if (esInstagram && !hayInstagram()) {
+    return { ok: false, error: "Instagram no está configurado en el servidor." };
+  }
+  if (!esInstagram && !hayWhatsapp()) {
+    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
+  }
+
+  const envio = esInstagram
+    ? await enviarTextoIg(aQuien, cuerpo).then((r) => ({
+        ok: r.ok,
+        waId: r.mid,
+        error: r.error,
+      }))
+    : await enviarTexto(aQuien, cuerpo);
+
   if (!envio.ok) return { ok: false, error: envio.error };
 
   const { error: errGuardar } = await supabase.from("mensajes").insert({
@@ -154,7 +201,7 @@ export async function reaccionar(
 
   const { data: mensaje, error } = await supabase
     .from("mensajes")
-    .select("id, wa_id, privado, conversacion_id, conversaciones(telefono)")
+    .select("id, wa_id, privado, conversacion_id, conversaciones(telefono, canal)")
     .eq("id", mensajeId)
     .maybeSingle();
 
@@ -180,10 +227,28 @@ export async function reaccionar(
   // arreglo de uno según la relación, así que se aceptan las dos formas.
   const anidado = (mensaje as { conversaciones?: unknown }).conversaciones;
   const conv = (Array.isArray(anidado) ? anidado[0] : anidado) as
-    | { telefono?: string | number }
+    | { telefono?: string | number; canal?: string }
     | null
     | undefined;
   const telefono = conv?.telefono == null ? null : String(conv.telefono);
+
+  /*
+   * En Instagram esto no existe.
+   *
+   * La API de Instagram AVISA de las reacciones que pone la persona —por eso el
+   * webhook las guarda y se ven en el hilo— pero no deja poner una desde acá.
+   * Es una limitación de Meta, no algo que falte programar: por eso `canales.ts`
+   * marca `reaccionar: "confirmar"` para Instagram y la bandeja esconde el
+   * botón. Este mensaje es la última red, para el caso de que igual se llame.
+   */
+  if (String(conv?.canal ?? "whatsapp").toLowerCase() === "instagram") {
+    return {
+      ok: false,
+      error:
+        "Instagram no deja reaccionar a un mensaje desde fuera de la aplicación. " +
+        "Las reacciones que pone el cliente sí se ven acá.",
+    };
+  }
 
   if (!telefono) return { ok: false, error: "No se encontró la conversación del mensaje." };
 
@@ -644,9 +709,18 @@ async function hiloPara(
     return { ok: false, error: "El número tiene que tener entre 8 y 15 dígitos, con código de país." };
   }
 
+  /*
+   * El hilo se busca por canal.
+   *
+   * Desde `20261024120000_instagram.sql` la identidad de una conversación es
+   * `(canal, identificador)`: la misma persona puede tener su hilo de WhatsApp
+   * y el de Instagram, y abrirle el chat desde la ficha significa el de
+   * WhatsApp, que es el único al que se puede escribir primero.
+   */
   const { data: existente, error: errBuscar } = await supabase
     .from("conversaciones")
     .select("id")
+    .eq("canal", "whatsapp")
     .eq("telefono", numero)
     .maybeSingle();
 
@@ -672,6 +746,10 @@ async function hiloPara(
   const { data: creada, error } = await supabase
     .from("conversaciones")
     .insert({
+      canal: "whatsapp",
+      // En WhatsApp la identidad ES el teléfono. La columna es obligatoria
+      // desde la migración de Instagram, así que va escrita y no por defecto.
+      identificador: numero,
       telefono: numero,
       // El nombre del CRM, no el del perfil de WhatsApp: todavía no lo sabemos
       // porque esa persona nunca escribió. Cuando escriba, el webhook lo pisa.
@@ -700,6 +778,31 @@ async function hiloPara(
         ok: false,
         error: "Falta correr la migración 20260901120000_abrir_chat.sql en Supabase.",
       };
+    }
+    /*
+     * Sin la migración de Instagram corrida, `identificador` no existe todavía.
+     *
+     * Se reintenta sin esa columna en vez de dejar al asesor sin poder abrir un
+     * chat: el CRM se despliega antes de que la escuela corra el SQL, y en ese
+     * rato abrir conversaciones tiene que seguir funcionando como siempre.
+     */
+    if (error.code === "PGRST204" || error.code === "42703") {
+      const { data: vieja, error: errViejo } = await supabase
+        .from("conversaciones")
+        .insert({
+          telefono: numero,
+          nombre_perfil: cliente?.nombre ? String(cliente.nombre) : null,
+          cliente_id: clienteId,
+          ultimo_mensaje_en: new Date().toISOString(),
+          sin_leer: 0,
+        })
+        .select("id")
+        .single();
+
+      if (!errViejo && vieja) {
+        return { ok: true, error: null, conversacionId: Number(vieja.id), yaExistia: false };
+      }
+      return { ok: false, error: errViejo?.message ?? error.message };
     }
     return { ok: false, error: error.message };
   }
@@ -1063,20 +1166,34 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     };
   }
 
-  if (!hayWhatsapp()) {
-    await limpiar();
-    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
-  }
-
   const { data: conv } = await supabase
     .from("conversaciones")
-    .select("id, telefono")
+    .select("id, canal, telefono, identificador")
     .eq("id", datos.conversacionId)
     .maybeSingle();
 
   if (!conv) {
     await limpiar();
     return { ok: false, error: "No se encontró la conversación." };
+  }
+
+  // Igual que al responder: el canal lo decide el hilo, y el identificador es
+  // el teléfono en WhatsApp y el IGSID en Instagram.
+  const esInstagram = String(conv.canal ?? "whatsapp").toLowerCase() === "instagram";
+  const aQuien = conv.identificador ? String(conv.identificador) : String(conv.telefono ?? "");
+
+  if (!aQuien) {
+    await limpiar();
+    return { ok: false, error: "Este hilo no tiene con quién comunicarse." };
+  }
+
+  if (esInstagram && !hayInstagram()) {
+    await limpiar();
+    return { ok: false, error: "Instagram no está configurado en el servidor." };
+  }
+  if (!esInstagram && !hayWhatsapp()) {
+    await limpiar();
+    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
   }
 
   /*
@@ -1094,18 +1211,41 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     return { ok: false, error: `No se pudo preparar el archivo: ${errFirma?.message ?? "sin firma"}` };
   }
 
-  const envio = esAudio
-    ? // El audio va sin pie: Meta no lo acepta en este tipo de mensaje.
-      await enviarAudio(String(conv.telefono), {
-        enlace: firmado.signedUrl,
-        mime: datos.mime,
-        bytes: datos.bytes,
-      })
-    : await (esImagen ? enviarImagen : enviarDocumento)(
-        String(conv.telefono),
-        { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
-        datos.pie,
-      );
+  /*
+   * Instagram no distingue foto de documento con cuerpos distintos.
+   *
+   * WhatsApp tiene un tipo de mensaje por cada cosa y cada uno acepta lo suyo
+   * —el audio no lleva pie, el documento lleva nombre de archivo—. Instagram
+   * tiene uno solo, `attachment`, con la clase adentro. Por eso acá se resuelve
+   * con una llamada y allá con tres.
+   *
+   * Lo que se pierde es el pie: Instagram no lo acepta junto al adjunto. Se
+   * manda aparte, en un segundo mensaje, para que no se pierda lo que quien
+   * atiende escribió junto a la cotización.
+   */
+  const envio = esInstagram
+    ? await enviarAdjuntoIg(aQuien, firmado.signedUrl, claseDeAdjunto(datos.mime)).then((r) => ({
+        ok: r.ok,
+        waId: r.mid,
+        error: r.error,
+      }))
+    : esAudio
+      ? // El audio va sin pie: Meta no lo acepta en este tipo de mensaje.
+        await enviarAudio(aQuien, {
+          enlace: firmado.signedUrl,
+          mime: datos.mime,
+          bytes: datos.bytes,
+        })
+      : await (esImagen ? enviarImagen : enviarDocumento)(
+          aQuien,
+          { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
+          datos.pie,
+        );
+
+  // El pie de un adjunto de Instagram, como mensaje aparte. Ver arriba.
+  if (esInstagram && envio.ok && !esAudio && datos.pie.trim()) {
+    await enviarTextoIg(aQuien, datos.pie.trim());
+  }
 
   if (!envio.ok) {
     await limpiar();
