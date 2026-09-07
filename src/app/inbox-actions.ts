@@ -43,6 +43,67 @@ const SIN_SESION: ActionResult = {
   error: "Sesión no válida. Volvé a iniciar sesión.",
 };
 
+/**
+ * A quién hay que escribirle en este hilo, y por qué canal.
+ *
+ * ============================================================================
+ * POR QUÉ PIDE LA COLUMNA NUEVA Y SABE VIVIR SIN ELLA
+ * ============================================================================
+ *
+ * `identificador` lo agrega la migración de Instagram: es el teléfono en
+ * WhatsApp y el IGSID en Instagram, y es lo único que sirve para los dos.
+ *
+ * El problema es el orden. El CRM se despliega desde Netlify apenas se sube el
+ * código, y el SQL lo corre una persona a mano en Supabase, después. En ese
+ * rato la columna no existe todavía, y PostgREST no devuelve un hueco cuando se
+ * le pide algo que no tiene: rechaza la consulta ENTERA con un 42703. O sea que
+ * pedirla sin más dejaría al equipo sin poder contestar NINGÚN mensaje —ni de
+ * Instagram ni de WhatsApp— hasta que alguien se acordara de correr el SQL.
+ *
+ * Así que se pide, y si la base todavía no la tiene se vuelve a preguntar sin
+ * ella. Es lo mismo que ya hace la bandeja para cargar los hilos, y por lo
+ * mismo: entre desplegar y correr la migración, el CRM tiene que seguir
+ * andando como el día anterior.
+ */
+async function aQuienLeEscribimos(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  conversacionId: number,
+): Promise<{
+  conv: { esInstagram: boolean; aQuien: string } | null;
+  error: string | null;
+}> {
+  const leer = async (columnas: string) =>
+    supabase.from("conversaciones").select(columnas).eq("id", conversacionId).maybeSingle();
+
+  let { data, error } = await leer("id, canal, telefono, identificador");
+
+  // 42703 / PGRST204: falta `identificador`, o sea que falta la migración.
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    ({ data, error } = await leer("id, canal, telefono"));
+  }
+
+  if (error) return { conv: null, error: error.message };
+  if (!data) return { conv: null, error: null };
+
+  const fila = data as unknown as Record<string, unknown>;
+
+  return {
+    conv: {
+      esInstagram: String(fila.canal ?? "whatsapp").toLowerCase() === "instagram",
+      /*
+       * El identificador, y el teléfono como respaldo.
+       *
+       * En WhatsApp los dos dicen lo mismo, así que caer al teléfono no cambia
+       * nada. En Instagram no hay teléfono, pero tampoco puede haber un hilo de
+       * Instagram sin la migración corrida: la columna es la que los hace
+       * posibles.
+       */
+      aQuien: fila.identificador ? String(fila.identificador) : String(fila.telefono ?? ""),
+    },
+    error: null,
+  };
+}
+
 /** Si el servidor puede mandar mensajes hoy, por el canal que sea. */
 export const salidaDisponible = async (): Promise<boolean> =>
   hayWhatsapp() || hayInstagram();
@@ -88,26 +149,12 @@ export async function responderConversacion(
   // WhatsApp esté configurado.
   if (privado) return await guardarNotaInterna(supabase, conversacionId, cuerpo, user.id);
 
-  const { data: conv, error } = await supabase
-    .from("conversaciones")
-    .select("id, canal, telefono, identificador")
-    .eq("id", conversacionId)
-    .maybeSingle();
+  const { conv, error } = await aQuienLeEscribimos(supabase, conversacionId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error };
   if (!conv) return { ok: false, error: "No se encontró la conversación." };
 
-  const esInstagram = String(conv.canal ?? "whatsapp").toLowerCase() === "instagram";
-
-  /*
-   * A quién se le manda.
-   *
-   * `identificador` es lo correcto y es lo que va a haber siempre después de la
-   * migración. Se cae al teléfono para los hilos de WhatsApp que existían antes
-   * de que la columna existiera: si el CRM se despliega antes de que se corra el
-   * SQL, contestar tiene que seguir funcionando.
-   */
-  const aQuien = conv.identificador ? String(conv.identificador) : String(conv.telefono ?? "");
+  const { esInstagram, aQuien } = conv;
   if (!aQuien) return { ok: false, error: "Este hilo no tiene con quién comunicarse." };
 
   if (esInstagram && !hayInstagram()) {
@@ -1166,21 +1213,14 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     };
   }
 
-  const { data: conv } = await supabase
-    .from("conversaciones")
-    .select("id, canal, telefono, identificador")
-    .eq("id", datos.conversacionId)
-    .maybeSingle();
+  const { conv } = await aQuienLeEscribimos(supabase, datos.conversacionId);
 
   if (!conv) {
     await limpiar();
     return { ok: false, error: "No se encontró la conversación." };
   }
 
-  // Igual que al responder: el canal lo decide el hilo, y el identificador es
-  // el teléfono en WhatsApp y el IGSID en Instagram.
-  const esInstagram = String(conv.canal ?? "whatsapp").toLowerCase() === "instagram";
-  const aQuien = conv.identificador ? String(conv.identificador) : String(conv.telefono ?? "");
+  const { esInstagram, aQuien } = conv;
 
   if (!aQuien) {
     await limpiar();
