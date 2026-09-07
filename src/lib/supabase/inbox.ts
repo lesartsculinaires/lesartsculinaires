@@ -42,6 +42,14 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    * consulta entera y la bandeja se queda en blanco—. Se reintenta sin ellas
    * para que siga funcionando todo menos fijar, silenciar y marcar sin leer.
    */
+  /*
+   * La identidad del hilo, de la migración de Instagram.
+   *
+   * Va en su propia capa porque es la más nueva: entre que se despliega el
+   * código y se corre el SQL, la bandeja tiene que seguir mostrando los hilos
+   * de WhatsApp en vez de quedarse en blanco.
+   */
+  const IDENTIDAD = ", identificador, usuario";
   const MARCAS = ", no_leida, fijada, silenciada";
   const PERMISO =
     ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta";
@@ -72,7 +80,12 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    */
   let convs = null;
   let error = null;
-  for (const extras of [MARCAS + PERMISO, MARCAS, ""]) {
+  for (const extras of [
+    IDENTIDAD + MARCAS + PERMISO,
+    MARCAS + PERMISO,
+    MARCAS,
+    "",
+  ]) {
     ({ data: convs, error } = await traerConvs(extras));
     if (error?.code !== "42703") break;
   }
@@ -175,7 +188,19 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   return {
     conversaciones: ((convs ?? []) as unknown as Fila[]).map((c) => ({
       id: Number(c.id),
-      telefono: String(c.telefono),
+      /*
+       * Vacío y no «null».
+       *
+       * `String(null)` da la cadena «null», que en Instagram se mostraría tal
+       * cual arriba del hilo: un hilo titulado «null» al lado del nombre de la
+       * persona. Un hilo de Instagram no tiene teléfono y eso se dice con nada,
+       * que es lo que la pantalla ya sabe esconder.
+       */
+      telefono: c.telefono ? String(c.telefono) : "",
+      // Se cae al teléfono para los hilos guardados antes de la migración: en
+      // WhatsApp la identidad ES el número, así que dice lo mismo.
+      identificador: c.identificador ? String(c.identificador) : String(c.telefono ?? ""),
+      usuario: c.usuario ? String(c.usuario) : null,
       nombrePerfil: c.nombre_perfil ? String(c.nombre_perfil) : null,
       clienteId: c.cliente_id == null ? null : Number(c.cliente_id),
       ultimoMensajeEn: String(c.ultimo_mensaje_en),

@@ -26,6 +26,30 @@ export interface Envio {
   respondieron: number;
   fallidos: number;
   omitidos: number;
+  /**
+   * Por qué no llegaron los que no llegaron, con las palabras de Meta.
+   *
+   * ==========================================================================
+   * POR QUÉ ESTO NO ESTABA Y HACÍA FALTA
+   * ==========================================================================
+   *
+   * El motivo se guardaba desde el principio en `envio_destinatarios.motivo`
+   * —lo escribe `mandarTanda` con lo que contestó Meta— pero ninguna pantalla
+   * lo leía. En su lugar la pantalla decía «el número no tiene WhatsApp o Meta
+   * los rechazó», una frase escrita a mano que sonaba a diagnóstico sin serlo.
+   *
+   * La escuela mandó cinco mensajes, fallaron los cinco, y esa frase la mandó a
+   * revisar los teléfonos. Los teléfonos estaban bien: el CRM ya sabía qué
+   * había pasado y no lo mostraba.
+   *
+   * Va agrupado y no fila por fila porque en un envío de trescientos el motivo
+   * se repite: lo que hay que ver es «280 por lo mismo», que dice que el
+   * problema es de la cuenta, o «3 por acá y 2 por allá», que dice que son esos
+   * números.
+   */
+  motivos: { motivo: string; cuantos: number }[];
+  /** Quiénes contestaron. Es con quién hubo conversación de verdad. */
+  contestaron: { nombre: string | null; telefono: string }[];
 }
 
 export interface ResultadoEnvios {
@@ -76,19 +100,46 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
 
   const { data: dest, error: errDest } = await supabase
     .from("envio_destinatarios")
-    .select("envio_id, estado")
+    .select("envio_id, estado, motivo, nombre, telefono")
     .in("envio_id", ids)
     .limit(50000);
 
   if (errDest) return { ...VACIO, error: errDest.message };
 
   const cuenta = new Map<number, Record<string, number>>();
+  const porque = new Map<number, Map<string, number>>();
+  const quienes = new Map<number, { nombre: string | null; telefono: string }[]>();
+
   for (const d of (dest ?? []) as unknown as Fila[]) {
     const id = Number(d.envio_id);
     const suyos = cuenta.get(id) ?? {};
     const estado = String(d.estado);
     suyos[estado] = (suyos[estado] ?? 0) + 1;
     cuenta.set(id, suyos);
+
+    if (estado === "fallido") {
+      const motivo = d.motivo == null ? "" : String(d.motivo).trim();
+      const m = porque.get(id) ?? new Map<string, number>();
+      /*
+       * Sin motivo guardado se dice eso y no se inventa uno.
+       *
+       * Pasa con los envíos anteriores a que esto se guardara. «Meta no dijo
+       * por qué» es información —quiere decir «este dato no lo tenemos»— y una
+       * causa inventada haría perder el tiempo buscando donde no hay nada.
+       */
+      const clave = motivo || "Meta no dijo por qué. Es un envío anterior a que el CRM lo guardara.";
+      m.set(clave, (m.get(clave) ?? 0) + 1);
+      porque.set(id, m);
+    }
+
+    if (estado === "respondio") {
+      const lista = quienes.get(id) ?? [];
+      lista.push({
+        nombre: d.nombre == null ? null : String(d.nombre),
+        telefono: String(d.telefono ?? ""),
+      });
+      quienes.set(id, lista);
+    }
   }
 
   return {
@@ -120,6 +171,11 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
         respondieron,
         fallidos: n("fallido"),
         omitidos: n("omitido"),
+        // De mayor a menor: el motivo que explica la campaña va primero.
+        motivos: [...(porque.get(Number(e.id)) ?? new Map())]
+          .map(([motivo, cuantos]) => ({ motivo, cuantos }))
+          .sort((a, b) => b.cuantos - a.cuantos),
+        contestaron: quienes.get(Number(e.id)) ?? [],
       };
     }),
     faltaMigracion: false,

@@ -276,20 +276,36 @@ console.log("\n── se manda; acá no hay Meta y tiene que decirlo ──");
          where e.nombre = 'PRUEBA Campaña masiva' and d.estado = 'enviado';`),
     "0",
   );
+
+  /*
+   * Y NINGUNO quedó marcado como fallido. Es lo que cambió.
+   *
+   * Antes el primero se marcaba «fallido» y los otros dos quedaban pendientes.
+   * Parecía razonable —al primero sí se le intentó— y confundía: un token
+   * vencido, una plantilla pausada o la falta de forma de pago hacen fallar a
+   * TODOS, y esa fila de «no llegó» mandaba a revisar el teléfono de una
+   * persona a la que en realidad nunca se le pudo escribir.
+   *
+   * La escuela mandó cinco mensajes reales y los cinco quedaron así: «no
+   * llegaron», con la pantalla sugiriendo que los números estaban mal.
+   *
+   * Ahora un problema de la cuenta corta antes de marcar a nadie: los tres
+   * quedan pendientes, el envío se reanuda cuando se arregle, y el aviso dice
+   * qué hay que tocar en Meta.
+   */
   es(
-    "el primero quedó como fallido, con su motivo",
+    "NADIE QUEDÓ MARCADO COMO «NO LLEGÓ»",
     sql(`select count(*) from public.envio_destinatarios d
           join public.envios e on e.id = d.envio_id
-         where e.nombre = 'PRUEBA Campaña masiva'
-           and d.estado = 'fallido' and d.motivo is not null;`),
-    "1",
+         where e.nombre = 'PRUEBA Campaña masiva' and d.estado = 'fallido';`),
+    "0",
   );
   es(
-    "y los otros dos siguen pendientes, para reanudar",
+    "LOS TRES SIGUEN PENDIENTES, PARA REANUDAR",
     sql(`select count(*) from public.envio_destinatarios d
           join public.envios e on e.id = d.envio_id
          where e.nombre = 'PRUEBA Campaña masiva' and d.estado = 'pendiente';`),
-    "2",
+    "3",
   );
 }
 

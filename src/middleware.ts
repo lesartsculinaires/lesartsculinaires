@@ -68,6 +68,13 @@ export const config = {
     // `pago` era el nombre viejo y sólo redirige; también tiene que quedar
     // afuera, o un enlace ya enviado moriría en el login en vez de llegar a su
     // redirección.
-    "/((?!api/v1|api/whatsapp|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    //
+    // `api/instagram` queda afuera por lo mismo que `api/whatsapp`: lo llama
+    // Meta desde sus servidores, sin cookie de sesión y sin nadie detrás.
+    // Pasando por acá recibiría un 307 al login, y Meta lo leería como que la
+    // URL no contesta: primero no verificaría el webhook, y después lo
+    // desactivaría. Lo que lo protege no es la sesión sino la firma del cuerpo,
+    // que la propia ruta comprueba antes de mirar nada.
+    "/((?!api/v1|api/whatsapp|api/instagram|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

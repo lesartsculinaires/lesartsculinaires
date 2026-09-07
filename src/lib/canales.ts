@@ -120,13 +120,28 @@ export const CANALES: readonly Canal[] = [
     nombre: "Instagram",
     color: "#C13584",
     icono: "📸",
-    disponible: false,
-    falta:
-      "Falta conectar la cuenta de Instagram con la página de Facebook de la escuela " +
-      "y darle permiso de mensajes a la aplicación. Es lo mismo que ya se hizo con " +
-      "WhatsApp, en el mismo panel de Meta.",
+    /*
+     * El CRM ya sabe hablar Instagram.
+     *
+     * Están el webhook —`api/instagram/webhook`—, el envío
+     * —`lib/instagram/enviar.ts`— y la identidad del hilo en la base. Que
+     * además esté ENCENDIDO depende de que las credenciales estén puestas en el
+     * servidor, y eso no se sabe desde acá: lo dice `hayInstagram()`, que corre
+     * donde viven los tokens. Son dos cosas distintas a propósito —ver el
+     * comentario de `disponible`— y la bandeja mira las dos.
+     */
+    disponible: true,
+    falta: null,
     puede: {
-      reaccionar: "confirmar",
+      /*
+       * Se ven, no se ponen.
+       *
+       * Meta AVISA por el webhook cuando alguien reacciona a un mensaje nuestro
+       * —y esas reacciones aparecen en el hilo— pero la API no deja mandar una
+       * desde afuera de la aplicación. No es algo que falte programar, así que
+       * el botón no se ofrece en vez de ofrecerlo y fallar.
+       */
+      reaccionar: "no",
       notaDeVoz: "si",
       archivos: "si",
       /*

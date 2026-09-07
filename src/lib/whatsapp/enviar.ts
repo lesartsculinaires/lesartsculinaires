@@ -384,28 +384,187 @@ export async function enviarPlantilla(
 /**
  * Traduce el error de Meta a algo accionable.
  *
- * El 131047 es el que más va a aparecer y el más confuso si se muestra crudo:
- * WhatsApp sólo deja escribir libremente durante 24 horas desde el último
- * mensaje de la persona. Pasado ese plazo hay que usar una plantilla
- * aprobada, y el mensaje de Meta no lo dice con esas palabras.
+ * ============================================================================
+ * POR QUÉ VALE LA PENA UNA TABLA TAN LARGA
+ * ============================================================================
+ *
+ * Porque el mensaje crudo de Meta casi nunca dice qué hacer, y en un envío
+ * masivo eso se multiplica por trescientos. La escuela mandó cinco mensajes y
+ * fallaron los cinco; lo que vio fue «no llegaron», y con eso no se puede
+ * arreglar nada: no se sabe si el problema son los números, la plantilla, el
+ * token o la cuenta.
+ *
+ * ============================================================================
+ * LO QUE SEPARA UN FALLO DE UNA CAMPAÑA CAÍDA
+ * ============================================================================
+ *
+ * Hay dos familias, y confundirlas cuesta tiempo:
+ *
+ *   ES DE ESTE NÚMERO     131026, 131052. Alguien no tiene WhatsApp. Falla uno
+ *                         y los demás salen igual. No hay nada que arreglar.
+ *
+ *   ES DE LA CUENTA O DE  131042, 132015, 133010, 190, 132000, 132001. Falla
+ *   LA PLANTILLA          el 100%, siempre. Reintentar no sirve: hay que
+ *                         tocar algo en Meta.
+ *
+ * Por eso `esDeLaCuenta` existe abajo: es lo que le permite al envío cortar y
+ * decirlo en vez de marcar a trescientas personas como «no llegó» y dejar a
+ * quien mandó pensando que su base de teléfonos está mal.
  */
-function explicar(error: { message?: string; code?: number } | undefined, estado: number): string {
-  if (error?.code === 131047) {
-    return "Pasaron más de 24 horas desde el último mensaje de esta persona. WhatsApp ya no deja escribirle libremente; hay que esperar a que escriba o usar una plantilla aprobada.";
+function explicar(
+  error: { message?: string; code?: number; error_subcode?: number } | undefined,
+  estado: number,
+): string {
+  const codigo = error?.code;
+
+  /*
+   * 131042: falta la forma de pago. El que más aparece al empezar a mandar.
+   *
+   * WhatsApp deja mandar gratis mientras se contesta a alguien, y cobra por
+   * las conversaciones que inicia la empresa —que es exactamente lo que es un
+   * envío masivo—. Sin tarjeta cargada en la cuenta de WhatsApp Business,
+   * TODOS los envíos fallan y ninguno llega, aunque el token y la plantilla
+   * estén perfectos.
+   *
+   * Se dice primero porque es el que más se confunde con «los números están
+   * mal»: el síntoma es idéntico —cero entregados— y la causa no tiene nada
+   * que ver con los teléfonos.
+   */
+  if (codigo === 131042) {
+    return (
+      "La cuenta de WhatsApp no tiene forma de pago activa, y Meta cobra los mensajes " +
+      "que inicia la empresa —que es lo que es un envío masivo—. Hay que cargar una " +
+      "tarjeta en Meta Business Suite → Facturación, en la cuenta de WhatsApp Business. " +
+      "Hasta que eso esté, ningún envío masivo va a salir."
+    );
   }
-  if (error?.code === 190 || estado === 401) {
+
+  if (codigo === 190 || estado === 401) {
     return "El token de WhatsApp venció o es inválido. Hay que renovarlo en Meta.";
   }
-  if (error?.code === 131026) {
-    return "Ese número no tiene WhatsApp o no puede recibir mensajes.";
+
+  /*
+   * 133010 / 131031: la cuenta o el número están restringidos.
+   *
+   * Pasa cuando Meta le baja la calificación al número, o cuando la cuenta
+   * quedó sin verificar. No se arregla desde el CRM y tampoco reintentando.
+   */
+  if (codigo === 133010 || codigo === 131031) {
+    return (
+      "Meta tiene restringida la cuenta o el número de la escuela, así que no deja " +
+      "mandar. Se ve el motivo en WhatsApp Manager → Información general; suele ser la " +
+      "calificación de calidad del número o una verificación pendiente del negocio."
+    );
   }
-  // 132000/132001: la plantilla no existe con ese nombre e idioma, o los
-  // valores que se mandaron no son los que espera.
-  if (error?.code === 132001) {
+
+  // 132015: la plantilla está pausada por mala calidad. Sigue figurando como
+  // aprobada, así que desde el CRM no se distingue de una que anda.
+  if (codigo === 132015) {
+    return (
+      "Meta pausó esa plantilla por baja calidad: la gente que la recibió la reportó o " +
+      "bloqueó el número. Sigue figurando como aprobada pero no se puede mandar. Hay que " +
+      "usar otra, o esperar a que Meta la reactive."
+    );
+  }
+
+  // 132016: deshabilitada del todo, que es el paso siguiente al pausado.
+  if (codigo === 132016) {
+    return "Meta deshabilitó esa plantilla y ya no se puede mandar. Hay que crear otra.";
+  }
+
+  if (codigo === 132001) {
     return "Meta no encuentra esa plantilla en ese idioma. Puede que la hayan borrado o cambiado; probá sincronizar.";
   }
-  if (error?.code === 132000) {
-    return "La plantilla espera otra cantidad de datos. Sincronizá las plantillas y volvé a intentar.";
+
+  if (codigo === 132000) {
+    return (
+      "La plantilla espera otra cantidad de datos de los que se le mandaron. Suele pasar " +
+      "cuando se editó en Meta y el CRM tiene la versión vieja: sincronizá las plantillas " +
+      "y volvé a intentar."
+    );
   }
+
+  // 132012: el dato en sí. Meta no acepta saltos de línea, tabulaciones ni
+  // cuatro espacios seguidos dentro de un hueco.
+  if (codigo === 132012) {
+    return (
+      "Uno de los datos que se puso en la plantilla tiene un formato que Meta no acepta: " +
+      "no se pueden usar saltos de línea, tabulaciones ni varios espacios seguidos dentro " +
+      "de un hueco."
+    );
+  }
+
+  /*
+   * 130472 y 131049: Meta frenó el mensaje a propósito.
+   *
+   * No es un error de la escuela. Meta limita cuántos mensajes de promoción
+   * recibe una persona por día, y a los que pasan del tope no los entrega. En
+   * un envío masivo aparece en algunos y no en otros, y la única lectura útil
+   * es que a esa persona hay que escribirle otro día.
+   */
+  if (codigo === 130472 || codigo === 131049) {
+    return (
+      "Meta no entregó este mensaje para no saturar a esta persona: recibió demasiados " +
+      "mensajes de promoción en poco tiempo. No es un error de la escuela; a esta persona " +
+      "conviene escribirle otro día."
+    );
+  }
+
+  if (codigo === 131047) {
+    return "Pasaron más de 24 horas desde el último mensaje de esta persona. WhatsApp ya no deja escribirle libremente; hay que esperar a que escriba o usar una plantilla aprobada.";
+  }
+
+  if (codigo === 131026) {
+    return "Ese número no tiene WhatsApp o no puede recibir mensajes.";
+  }
+
+  // 131052: el número existe pero está mal escrito para Meta —le falta el
+  // código de país, o le sobra algo—.
+  if (codigo === 131052) {
+    return "Meta no reconoce ese número. Suele faltarle el código de país (503) o tener dígitos de más.";
+  }
+
+  if (codigo === 131056) {
+    return "Se le mandó demasiado seguido a esta misma persona. Hay que esperar un rato antes de reintentar.";
+  }
+
+  if (codigo === 80007 || codigo === 4 || estado === 429) {
+    return "Se llegó al tope de mensajes que Meta deja mandar por ahora. Hay que esperar y reanudar el envío.";
+  }
+
   return error?.message ?? `WhatsApp respondió con error ${estado}.`;
+}
+
+/**
+ * ¿Este fallo es de la cuenta y no de este número?
+ *
+ * ----------------------------------------------------------------------------
+ * ES LO QUE EVITA MARCAR A TRESCIENTAS PERSONAS COMO «NO LLEGÓ»
+ * ----------------------------------------------------------------------------
+ *
+ * Cuando falta la forma de pago o la plantilla está pausada, van a fallar los
+ * trescientos: el primero ya lo dice todo. Sin esto, el envío sigue adelante,
+ * gasta trescientas llamadas a Meta, y termina con una lista de trescientos
+ * «no llegaron» que hace parecer que el problema es la base de teléfonos.
+ *
+ * Con esto el envío corta en el primero, deja al resto en «pendiente» —así se
+ * reanuda cuando el problema se arregle, sin volver a mandarle a nadie— y
+ * muestra qué hay que tocar.
+ *
+ * Se decide por el texto y no por el código porque el código ya se perdió: lo
+ * que viaja hasta acá es la frase de `explicar`. Se comparan trozos que sólo
+ * aparecen en esas frases, no palabras sueltas.
+ */
+export function esDeLaCuenta(error: string | null | undefined): boolean {
+  const t = String(error ?? "");
+  return (
+    /forma de pago activa/.test(t) ||
+    /token de WhatsApp/i.test(t) ||
+    /restringida la cuenta/.test(t) ||
+    /pausó esa plantilla/.test(t) ||
+    /deshabilitó esa plantilla/.test(t) ||
+    /no encuentra esa plantilla/.test(t) ||
+    /espera otra cantidad de datos/.test(t) ||
+    /formato que Meta no acepta/.test(t)
+  );
 }

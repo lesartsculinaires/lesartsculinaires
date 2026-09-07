@@ -463,9 +463,22 @@ export interface Accesos {
 /** Un hilo de WhatsApp con una persona. */
 export interface Conversacion {
   id: number;
-  /** Sólo dígitos, con código de país, tal como lo manda Meta. */
+  /**
+   * El teléfono, cuando lo hay.
+   *
+   * Vacío en Instagram: Meta no entrega el número de quien escribe por ahí. Es
+   * lo que decide si se puede ofrecer el botón de llamar, así que se deja vacío
+   * en vez de rellenarlo con el identificador.
+   */
   telefono: string;
-  /** Cómo se llama en su propio WhatsApp; puede no venir. */
+  /**
+   * Con qué identidad llegó este hilo: el teléfono en WhatsApp, el IGSID en
+   * Instagram. Es a quién se le contesta, sea por donde sea.
+   */
+  identificador: string;
+  /** El @usuario de Instagram, cuando Meta lo entrega. Sólo para mostrar. */
+  usuario: string | null;
+  /** Cómo se llama en su propio perfil; puede no venir. */
   nombrePerfil: string | null;
   /** Nulo mientras nadie la haya convertido en lead. */
   clienteId: number | null;

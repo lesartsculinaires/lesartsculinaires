@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
-import { enviarPlantilla, hayWhatsapp } from "@/lib/whatsapp/enviar";
+import { enviarPlantilla, esDeLaCuenta, hayWhatsapp } from "@/lib/whatsapp/enviar";
 import { conValores, cuantosHuecos } from "@/lib/whatsapp/huecos";
 import {
   paraMeta,
@@ -377,18 +377,25 @@ export async function mandarTanda(
       // conteste va a estar contestando algo que la asesora no vio salir.
       await dejarEnElHilo(supabase, String(d.telefono), conValores(cuerpo, suyos), envio.waId, user.id);
     } else {
-      fallidos++;
-      await supabase
-        .from("envio_destinatarios")
-        .update({ estado: "fallido", motivo: envio.error })
-        .eq("id", Number(d.id));
-
       /*
-       * Un token caído hace fallar a todos, y seguir sería marcar como
-       * fallidos a trescientas personas a las que en realidad nunca se
-       * intentó. Se corta y se dice.
+       * Un problema de la cuenta corta el envío entero, y no marca a nadie.
+       *
+       * ----------------------------------------------------------------------
+       * ESTO ES LO QUE FALLÓ EN LA PRUEBA DE LA ESCUELA
+       * ----------------------------------------------------------------------
+       *
+       * Cinco mensajes, cinco «no llegaron», y la pantalla mostrando que el
+       * problema eran los números. No lo era: cuando falta la forma de pago en
+       * Meta, o la plantilla está pausada, fallan TODOS —el primero ya lo dice
+       * todo— y no hay nada que revisar en los teléfonos.
+       *
+       * Antes eso sólo se cortaba si era el token. Ahora corta con cualquiera
+       * de esa familia, y sobre todo NO los marca como fallidos: quedan en
+       * «pendiente», así el envío se reanuda desde donde estaba cuando el
+       * problema se arregle, sin volver a escribirle a nadie ni dejar una lista
+       * de trescientos falsos rechazos.
        */
-      if (/token de WhatsApp/i.test(envio.error ?? "")) {
+      if (esDeLaCuenta(envio.error)) {
         return {
           ok: false,
           error: envio.error,
@@ -397,6 +404,12 @@ export async function mandarTanda(
           faltan: await cuantosFaltan(supabase, envioId),
         };
       }
+
+      fallidos++;
+      await supabase
+        .from("envio_destinatarios")
+        .update({ estado: "fallido", motivo: envio.error })
+        .eq("id", Number(d.id));
     }
   }
 
