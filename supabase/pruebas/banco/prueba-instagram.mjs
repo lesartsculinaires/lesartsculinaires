@@ -103,19 +103,37 @@ const marca = Date.now();
 const MID = `aWdfZG1fPRUEBA${marca}`;
 const MID_ECO = `aWdfZG1fECO${marca}`;
 
+/*
+ * La ficha que crea el webhook no se llama «PRUEBA» nada.
+ *
+ * Se llama «Contacto de Instagram», porque en el banco no hay un Meta a quien
+ * preguntarle el nombre. Borrarla por su nombre sería peligroso —hay una por
+ * cada persona real de Instagram sin nombre de perfil— así que se la busca por
+ * el IGSID, que sí es de esta prueba.
+ *
+ * Sin esto, cada corrida dejaba una ficha suelta y la comprobación de que NO se
+ * fundieron dos personas empezaba a contar las de las corridas anteriores.
+ */
 const limpiar = () => {
   sql(`
+    create temporary table if not exists _ig_prueba as
+      select cliente_id from public.contactos_canal where identificador = '${IGSID}';
+    insert into _ig_prueba
+      select cliente_id from public.contactos_canal where identificador = '${IGSID}';
+
     delete from public.mensajes where conversacion_id in
       (select id from public.conversaciones where identificador = '${IGSID}'
           or telefono = '${TEL_PARECIDO}');
     delete from public.conversaciones where identificador = '${IGSID}'
-       or telefono = '${TEL_PARECIDO}';
+       or telefono = '${TEL_PARECIDO}'
+       or cliente_id in (select cliente_id from _ig_prueba);
     delete from public.contactos_canal where identificador = '${IGSID}';
-    delete from public.oportunidades where cliente_id in
-      (select id from public.clientes where nombre like '%PRUEBA%'
+    delete from public.oportunidades where cliente_id in (select cliente_id from _ig_prueba)
+       or cliente_id in (select id from public.clientes where nombre like '%PRUEBA%'
           and (nombre like '%Igsid%' or nombre like '%Sofia Instagram%'));
-    delete from public.clientes where nombre like '%Igsid%PRUEBA%'
-       or nombre like '%Sofia Instagram%';
+    delete from public.clientes where id in (select cliente_id from _ig_prueba)
+       or nombre like '%Igsid%PRUEBA%' or nombre like '%Sofia Instagram%';
+    drop table if exists _ig_prueba;
   `);
 };
 limpiar();
@@ -242,11 +260,22 @@ es(
   sql(`select telefono from public.clientes where nombre = '${YA_ESTABA}';`),
   TEL_PARECIDO,
 );
+/*
+ * Dos fichas: la que ya estaba y la que abrió Instagram.
+ *
+ * Se cuentan por identidad y no por nombre. Contar los clientes llamados
+ * «Contacto de Instagram» mezclaría a toda la gente real de Instagram que
+ * todavía no tiene nombre de perfil, y la prueba pasaría o fallaría según qué
+ * más haya en la base.
+ */
 es(
   "son dos fichas distintas, no una",
   sql(`
-    select count(distinct c.id) from public.clientes c
-     where c.nombre in ('${YA_ESTABA}', 'Contacto de Instagram');
+    select count(*) from (
+      select c.id from public.clientes c where c.nombre = '${YA_ESTABA}'
+      union
+      select v.cliente_id from public.conversaciones v where v.identificador = '${IGSID}'
+    ) t;
   `),
   "2",
 );
