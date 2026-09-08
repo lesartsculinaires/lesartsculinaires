@@ -7,6 +7,8 @@ import { abrirOportunidad, altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
+import { comoLosLee } from "@/lib/supabase/inbox";
+import type { Mensaje } from "@/lib/types";
 import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
@@ -1453,4 +1455,62 @@ function extensionDeMime(mime: string): string {
     "text/plain": ".txt",
   };
   return tabla[mime.split(";")[0].trim()] ?? "";
+}
+
+/**
+ * Los mensajes de UN hilo, traídos aparte.
+ *
+ * ============================================================================
+ * PARA QUÉ, SI LA BANDEJA YA TRAE MENSAJES
+ * ============================================================================
+ *
+ * Porque la bandeja trae los últimos 4.000 de TODAS las conversaciones juntas,
+ * y eso es una ventana: alcanza de sobra para lo que se está trabajando, y deja
+ * afuera lo de un hilo que lleva meses callado.
+ *
+ * Antes ese tope se aplicaba al revés —traía los 4.000 más VIEJOS— y el efecto
+ * era mucho peor: lo recién contestado no aparecía en ningún lado. Arreglado
+ * eso, queda el caso contrario, más raro y menos dañino: abrir una conversación
+ * vieja y encontrarla vacía.
+ *
+ * Esto lo cierra. Se llama sólo cuando el hilo abierto no trajo ni un mensaje,
+ * así que en el uso normal no corre nunca: lo que se está atendiendo siempre
+ * está adentro de la ventana.
+ */
+export async function historialDeConversacion(
+  conversacionId: number,
+): Promise<{ ok: boolean; mensajes: Mensaje[]; error: string | null }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, mensajes: [], error: SIN_SESION.error };
+
+  /*
+   * Se piden los últimos y se dan vuelta, igual que en la bandeja.
+   *
+   * Quinientos es más de lo que tiene cualquier conversación de esta escuela y
+   * lo suficientemente poco como para que traerlos no se note.
+   */
+  const traer = (conMedia: boolean, conReacciones: boolean) =>
+    supabase
+      .from("mensajes")
+      .select(
+        "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado, wa_id" +
+          (conMedia ? ", media_ruta, media_mime, media_nombre, media_error" : "") +
+          (conReacciones ? ", reacciones(emoji, direccion)" : ""),
+      )
+      .eq("conversacion_id", conversacionId)
+      .order("creado_en", { ascending: false })
+      .limit(500);
+
+  let { data, error } = await traer(true, true);
+
+  // Las mismas dos migraciones opcionales que en la bandeja, por lo mismo.
+  if (error?.code === "PGRST200") ({ data, error } = await traer(true, false));
+  if (error?.code === "42703") {
+    ({ data, error } = await traer(false, true));
+    if (error?.code === "PGRST200") ({ data, error } = await traer(false, false));
+  }
+
+  if (error) return { ok: false, mensajes: [], error: error.message };
+
+  return { ok: true, mensajes: comoLosLee(data ?? []), error: null };
 }

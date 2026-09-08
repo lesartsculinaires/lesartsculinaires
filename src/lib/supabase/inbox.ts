@@ -135,7 +135,27 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
             (conReacciones ? ", reacciones(emoji, direccion)" : ""),
         )
         .in("conversacion_id", ids)
-        .order("creado_en", { ascending: true })
+        /*
+         * Los más NUEVOS, y no los más viejos.
+         *
+         * ====================================================================
+         * ESTO HACÍA DESAPARECER LOS MENSAJES RECIÉN CONTESTADOS
+         * ====================================================================
+         *
+         * Decía `ascending: true` con este mismo tope, o sea que pedía los
+         * 4.000 mensajes MÁS ANTIGUOS de la bandeja. Mientras hubo menos de
+         * 4.000 en total no se notó: entraban todos.
+         *
+         * Al pasar ese techo —la escuela lo cruzó con ciento veintitrés
+         * conversaciones y varios envíos— la consulta seguía trayendo los
+         * primeros 4.000 y dejaba afuera TODO lo nuevo. El síntoma es el peor
+         * posible: una asesora contesta, el mensaje sale, el cliente lo recibe,
+         * y en el hilo no aparece. Parece que el CRM no hubiera guardado nada.
+         *
+         * Se piden los últimos y se dan vuelta abajo, porque la pantalla los
+         * dibuja del más viejo al más nuevo.
+         */
+        .order("creado_en", { ascending: false })
         .limit(4000);
 
     let { data: msgs, error: errMsg } = await traer(true, true);
@@ -158,31 +178,14 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
 
     if (errMsg) return { ...VACIO, error: errMsg.message };
 
-    mensajes = ((msgs ?? []) as unknown as Fila[]).map((m) => ({
-      id: Number(m.id),
-      conversacionId: Number(m.conversacion_id),
-      direccion: m.direccion === "saliente" ? "saliente" : "entrante",
-      tipo: String(m.tipo ?? "text"),
-      texto: m.texto ? String(m.texto) : null,
-      estado: m.estado ? String(m.estado) : null,
-      error: m.error ? String(m.error) : null,
-      creadoEn: String(m.creado_en),
-      privado: Boolean(m.privado),
-      // El `wa_id` se lee pero no se manda: al navegador le alcanza con saber
-      // si hay a qué reaccionar.
-      reaccionable: m.wa_id != null && !m.privado,
-      reacciones: (Array.isArray(m.reacciones) ? m.reacciones : []).map((r) => {
-        const fila = r as Fila;
-        return {
-          emoji: String(fila.emoji ?? ""),
-          direccion: fila.direccion === "saliente" ? ("saliente" as const) : ("entrante" as const),
-        };
-      }),
-      mediaRuta: m.media_ruta ? String(m.media_ruta) : null,
-      mediaMime: m.media_mime ? String(m.media_mime) : null,
-      mediaNombre: m.media_nombre ? String(m.media_nombre) : null,
-      mediaError: m.media_error ? String(m.media_error) : null,
-    }));
+    /*
+     * Se dan vuelta: la consulta los trajo del más nuevo al más viejo.
+     *
+     * El hilo se dibuja en orden de conversación —lo primero arriba— y el resto
+     * de la pantalla cuenta con eso. Ordenar acá y no en la consulta es lo que
+     * permite pedir los últimos sin cambiar cómo se ven.
+     */
+    mensajes = comoLosLee(msgs ?? []);
   }
 
   return {
@@ -234,4 +237,52 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
     faltaMigracion: false,
     error: null,
   };
+}
+
+/**
+ * Las filas de `mensajes` como las lee la pantalla.
+ *
+ * ============================================================================
+ * POR QUÉ ESTÁ ACÁ Y NO ADENTRO DE `fetchInbox`
+ * ============================================================================
+ *
+ * Porque hay dos caminos que traen mensajes y tienen que dar exactamente lo
+ * mismo: la bandeja, que trae los últimos de todos los hilos, y
+ * `historialDeConversacion`, que trae los de UNO cuando ése quedó afuera de esa
+ * ventana.
+ *
+ * Con dos copias, agregar un campo en una y no en la otra haría que un mensaje
+ * se viera distinto según por dónde llegó —sin foto, sin reacciones, sin
+ * acuse— y sólo en las conversaciones viejas, que es donde nadie mira.
+ *
+ * Recibe las filas ORDENADAS DEL MÁS NUEVO AL MÁS VIEJO, que es como se piden
+ * para poder quedarse con las últimas, y las devuelve al revés: la pantalla
+ * dibuja el hilo de arriba hacia abajo en orden de conversación.
+ */
+export function comoLosLee(filas: unknown[]): Mensaje[] {
+  return (filas as unknown as Fila[]).reverse().map((m) => ({
+    id: Number(m.id),
+    conversacionId: Number(m.conversacion_id),
+    direccion: m.direccion === "saliente" ? "saliente" : "entrante",
+    tipo: String(m.tipo ?? "text"),
+    texto: m.texto ? String(m.texto) : null,
+    estado: m.estado ? String(m.estado) : null,
+    error: m.error ? String(m.error) : null,
+    creadoEn: String(m.creado_en),
+    privado: Boolean(m.privado),
+    // El `wa_id` se lee pero no se manda: al navegador le alcanza con saber
+    // si hay a qué reaccionar.
+    reaccionable: m.wa_id != null && !m.privado,
+    reacciones: (Array.isArray(m.reacciones) ? m.reacciones : []).map((r) => {
+      const fila = r as Fila;
+      return {
+        emoji: String(fila.emoji ?? ""),
+        direccion: fila.direccion === "saliente" ? ("saliente" as const) : ("entrante" as const),
+      };
+    }),
+    mediaRuta: m.media_ruta ? String(m.media_ruta) : null,
+    mediaMime: m.media_mime ? String(m.media_mime) : null,
+    mediaNombre: m.media_nombre ? String(m.media_nombre) : null,
+    mediaError: m.media_error ? String(m.media_error) : null,
+  }));
 }

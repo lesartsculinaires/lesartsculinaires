@@ -7,6 +7,7 @@ import {
   abrirLeadDelHilo,
   asignar,
   enviarArchivo,
+  historialDeConversacion,
   noEraLead,
   responderConversacion,
   urlsDeMedia,
@@ -365,10 +366,39 @@ export function Inbox({
     [conversaciones, abierta],
   );
 
-  const delHilo = useMemo(
-    () => (abierta == null ? [] : mensajes.filter((m) => m.conversacionId === abierta)),
-    [mensajes, abierta],
-  );
+  /*
+   * El historial de un hilo que quedó fuera de la ventana de la bandeja.
+   *
+   * La bandeja trae los últimos 4.000 mensajes de todas las conversaciones
+   * juntas. Alcanza de sobra para lo que se está trabajando, y deja afuera un
+   * hilo que lleva meses callado: al abrirlo se vería vacío, como si nunca se
+   * hubiera hablado con esa persona.
+   *
+   * Se pide sólo en ese caso —cero mensajes cargados— así que en el uso normal
+   * no corre nunca.
+   */
+  const [traidos, setTraidos] = useState<Record<number, Mensaje[]>>({});
+
+  const delHilo = useMemo(() => {
+    if (abierta == null) return [];
+    const enLaVentana = mensajes.filter((m) => m.conversacionId === abierta);
+    return enLaVentana.length > 0 ? enLaVentana : (traidos[abierta] ?? []);
+  }, [mensajes, abierta, traidos]);
+
+  useEffect(() => {
+    if (abierta == null) return;
+    if (mensajes.some((m) => m.conversacionId === abierta)) return;
+    if (traidos[abierta]) return;
+
+    let vigente = true;
+    void historialDeConversacion(abierta).then((r) => {
+      // Si mientras tanto se cambió de hilo, lo que llegó ya no es de acá.
+      if (vigente && r.ok) setTraidos((v) => ({ ...v, [abierta]: r.mensajes }));
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [abierta, mensajes, traidos]);
 
   /**
    * Las direcciones firmadas de los archivos del hilo abierto.
@@ -1570,7 +1600,15 @@ export function Inbox({
               )}
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", background: T.paper }}>
+            {/* `data-hilo` marca sólo las burbujas, aparte del resumen que la
+                lista de la izquierda muestra del mismo mensaje. Sin eso, una
+                prueba que busque el texto en la pantalla entera pasa en verde
+                leyendo el resumen aunque la burbuja no esté —que es justo el
+                error que la escuela reportó—. */}
+            <div
+              data-hilo={actual.id}
+              style={{ flex: 1, overflowY: "auto", padding: "14px 16px", background: T.paper }}
+            >
               {delHilo.map((m) => {
                 const mio = m.direccion === "saliente";
                 // Sólo los propios llevan acuse: de un mensaje que mandó el
