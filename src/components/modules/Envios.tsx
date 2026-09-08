@@ -6,6 +6,7 @@ import { cancelarEnvio } from "@/app/envios-actions";
 import { T } from "@/lib/theme";
 import { comoSeLlama } from "@/lib/envios";
 import { conValores } from "@/lib/whatsapp/huecos";
+import { repartirValores } from "@/lib/whatsapp/piezas";
 import type { Envio } from "@/lib/supabase/envios";
 
 /**
@@ -211,9 +212,14 @@ function Tarjeta({
               >
                 {/* Con un nombre de ejemplo: la plantilla cruda con «{{1}}» a
                     la vista no se parece a lo que recibió nadie. */}
+                {/* Sólo los valores del cuerpo: `e.valores` es la lista plana
+                    con el encabezado y los botones adentro. */}
                 {conValores(
                   e.cuerpo,
-                  e.valores.map((v) => (v.de === "nombre" ? "María" : v.texto)),
+                  repartirValores(
+                    e.pide,
+                    e.valores.map((v) => (v.de === "nombre" ? "María" : v.texto)),
+                  ).cuerpo,
                 )}
               </p>
               {e.valores.some((v) => v.de === "nombre") && (

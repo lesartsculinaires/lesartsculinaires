@@ -1,7 +1,5 @@
 import "server-only";
 
-import { componentesDe } from "@/lib/whatsapp/huecos";
-
 import {
   TOPE_DOCUMENTO_BYTES,
   esDocumentoAceptado,
@@ -351,16 +349,24 @@ export async function enviarPlantilla(
   telefono: string,
   nombre: string,
   idioma: string,
-  valores: string[],
   /**
-   * El cuerpo de la plantilla, para saber cómo marca sus huecos.
+   * Las piezas ya armadas, o `undefined` si la plantilla no lleva ninguna.
    *
-   * Hace falta porque el formato de los parámetros depende de eso y no hay
-   * otra manera de averiguarlo: `{{1}}` va como lista, `{{order_id}}` va con
-   * el nombre al lado. Sin el cuerpo se cae a lo posicional, que es lo que
-   * hacía antes.
+   * ==========================================================================
+   * POR QUÉ LAS ARMA QUIEN LLAMA Y NO ESTA FUNCIÓN
+   * ==========================================================================
+   *
+   * Antes acá entraban los valores del cuerpo y se armaba el bloque mirando el
+   * texto. Eso alcanzaba mientras una plantilla fuera sólo texto, y dejó de
+   * alcanzar en cuanto apareció una con encabezado: Meta rechazó la campaña
+   * entera con «(#131008) Required parameter is missing», porque el encabezado
+   * también hay que mandarlo y desde acá no se sabía que existía.
+   *
+   * Lo que sabe qué piezas tiene una plantilla es su definición completa, que
+   * vive en la base. Así que las arma `componentesPara` —en `piezas.ts`— y acá
+   * sólo se mandan. Esta función vuelve a hacer una sola cosa: hablarle a Meta.
    */
-  cuerpo?: string | null,
+  componentes?: { type: string; [k: string]: unknown }[],
 ): Promise<ResultadoEnvio> {
   const token = process.env.WHATSAPP_TOKEN;
   const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -368,23 +374,6 @@ export async function enviarPlantilla(
   if (!token || !numero) {
     return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
   }
-
-  /*
-   * Los huecos, con el formato que use ESTA plantilla.
-   *
-   * Antes se armaban acá a mano, siempre como lista posicional. Con una
-   * plantilla que usa nombres —`{{order_id}}`, que es la que tiene cargada la
-   * escuela— eso llegaba mal a Meta y el envío se rechazaba. Ahora lo decide
-   * `componentesDe` mirando el cuerpo, que es el único lugar donde se sabe.
-   *
-   * `cuerpo` puede venir nulo cuando la plantilla se guardó antes de que se
-   * sincronizara el texto; ahí se cae a lo de antes, que es lo que había.
-   */
-  const componentes = cuerpo
-    ? componentesDe(cuerpo, valores)
-    : valores.length > 0
-      ? [{ type: "body", parameters: valores.map((v) => ({ type: "text", text: v })) }]
-      : undefined;
 
   try {
     const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
@@ -400,7 +389,9 @@ export async function enviarPlantilla(
         template: {
           name: nombre,
           language: { code: idioma },
-          ...(componentes ? { components: componentes } : {}),
+          // Una plantilla sin piezas no lleva `components` en absoluto:
+          // mandarlo vacío Meta lo rechaza igual que si faltara.
+          ...(componentes && componentes.length > 0 ? { components: componentes } : {}),
         },
       }),
     });
@@ -510,6 +501,27 @@ function explicar(
   // 132016: deshabilitada del todo, que es el paso siguiente al pausado.
   if (codigo === 132016) {
     return "Meta deshabilitó esa plantilla y ya no se puede mandar. Hay que crear otra.";
+  }
+
+  /*
+   * 131008: a la plantilla le falta una pieza.
+   *
+   * Es el que tumbó la primera campaña de la escuela, y el más engañoso de
+   * todos: Meta dice «falta un parámetro» y no dice CUÁL. Cinco de cinco
+   * rechazados, sin una sola pista.
+   *
+   * Casi siempre es una plantilla con encabezado —una imagen, o un texto con
+   * hueco— o con un botón de dirección con parte variable: piezas que hay que
+   * mandar en CADA envío y que el CRM no armaba. Ahora sí las arma, y avisa
+   * antes de mandar cuando le falta algo, así que si este error igual aparece
+   * es que la plantilla cambió en Meta y la copia local quedó vieja.
+   */
+  if (codigo === 131008) {
+    return (
+      "A esta plantilla le falta una pieza que Meta exige en cada envío: suele ser el " +
+      "encabezado —una imagen o un texto con dato— o un botón con parte variable. " +
+      "Sincronizá las plantillas para traer su definición al día y volvé a intentar."
+    );
   }
 
   if (codigo === 132001) {

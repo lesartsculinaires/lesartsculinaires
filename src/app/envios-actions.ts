@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla, esDeLaCuenta, hayWhatsapp } from "@/lib/whatsapp/enviar";
-import { conValores, cuantosHuecos } from "@/lib/whatsapp/huecos";
+import { conValores } from "@/lib/whatsapp/huecos";
+import {
+  componentesPara,
+  loQueFalta,
+  quePide,
+  repartirValores,
+} from "@/lib/whatsapp/piezas";
 import {
   paraMeta,
   repartir,
@@ -290,7 +296,7 @@ export async function mandarTanda(
 
   const { data: plantilla, error: errPlantilla } = await supabase
     .from("plantillas")
-    .select("id, nombre, idioma, estado, cuerpo")
+    .select("id, nombre, idioma, estado, cuerpo, payload")
     .eq("id", plantillaId)
     .maybeSingle();
 
@@ -306,14 +312,42 @@ export async function mandarTanda(
   }
 
   const cuerpo = plantilla.cuerpo == null ? null : String(plantilla.cuerpo);
-  const faltan = cuantosHuecos(cuerpo) - valores.length;
-  if (faltan > 0) {
-    return {
-      ...SIN_TANDA,
-      ok: false,
-      error: `Faltan ${faltan} ${faltan === 1 ? "dato" : "datos"} de la plantilla.`,
-    };
-  }
+
+  /*
+   * Todo lo que esta plantilla exige, y no sólo su texto.
+   *
+   * ==========================================================================
+   * ESTO ES LO QUE TUMBÓ LA CAMPAÑA DE LA ESCUELA
+   * ==========================================================================
+   *
+   * Cinco mensajes, cinco rechazados, todos con el mismo error de Meta:
+   * «(#131008) Required parameter is missing». No era la cuenta ni eran los
+   * números: el CRM armaba sólo el cuerpo, y esa plantilla lleva además una
+   * pieza —un encabezado, un botón con parte variable— que Meta exige en cada
+   * envío. Falta una y rechaza el mensaje entero.
+   *
+   * Se comprueba ACÁ, antes de la primera petición. Intentarlo sería mandarle
+   * a Meta trescientas peticiones que van a fallar todas, y muchos errores
+   * seguidos le bajan la calificación al número de la escuela.
+   */
+  const pide = quePide(plantilla.payload, cuerpo);
+
+  /*
+   * La pantalla manda una lista plana; acá se reparte entre las piezas.
+   *
+   * El orden es el que espera Meta —encabezado, cuerpo, botones— y lo fija
+   * `pedidosDe`, que es lo que la pantalla usó para armar las casillas. Los dos
+   * viven en el mismo archivo justamente para que no se separen: si uno cambia
+   * sin el otro, los datos van a la pieza equivocada —el nombre del cliente en
+   * el botón, la fecha en el texto— y nada falla, sólo sale mal.
+   *
+   * Acá se reparte con textos vacíos porque lo único que se comprueba es la
+   * CANTIDAD: qué dice cada valor depende de cada destinatario y se resuelve
+   * abajo, uno por uno.
+   */
+  const enBlanco = valores.map(() => "");
+  const falta = loQueFalta(pide, repartirValores(pide, enBlanco));
+  if (falta) return { ...SIN_TANDA, ok: false, error: falta };
 
   // Se deja constancia de con qué se mandó, en el propio envío: la plantilla
   // se puede borrar o cambiar en Meta y el historial no puede quedar diciendo
@@ -356,8 +390,9 @@ export async function mandarTanda(
       String(d.telefono),
       String(plantilla.nombre),
       String(plantilla.idioma ?? "es"),
-      suyos,
-      cuerpo,
+      // Los valores de cada quien: el cuerpo lleva su nombre, el resto de las
+      // piezas es igual para todos.
+      componentesPara(pide, repartirValores(pide, suyos)),
     );
 
     if (envio.ok) {
@@ -378,7 +413,10 @@ export async function mandarTanda(
       await dejarEnElHilo(
         supabase,
         String(d.telefono),
-        conValores(cuerpo, suyos),
+        // Sólo los valores del CUERPO: es el único texto que se ve en el hilo.
+        // Con la lista plana, un encabezado con hueco correría todo un lugar y
+        // la copia diría cualquier cosa.
+        conValores(cuerpo, repartirValores(pide, suyos).cuerpo),
         envio.waId,
         user.id,
         d.cliente_id == null ? null : Number(d.cliente_id),

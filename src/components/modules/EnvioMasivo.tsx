@@ -6,7 +6,8 @@ import { mandarTanda, prepararEnvio, type Preparado } from "@/app/envios-actions
 import { aprobadas } from "@/components/ui/SelectorPlantilla";
 import { MARGEN, POR_QUE, TOPE_DIARIO, cuantosQuedan, type Valor } from "@/lib/envios";
 import { T } from "@/lib/theme";
-import { conValores, huecosDe } from "@/lib/whatsapp/huecos";
+import { conValores } from "@/lib/whatsapp/huecos";
+import { pedidosDe, repartirValores } from "@/lib/whatsapp/piezas";
 import type { Plantilla } from "@/lib/types";
 
 /**
@@ -79,13 +80,31 @@ export function EnvioMasivo({
 
   const listas = aprobadas(plantillas);
   const plantilla = listas.find((p) => p.id === elegida) ?? null;
-  const huecos = huecosDe(plantilla?.cuerpo ?? null);
+  /*
+   * Todo lo que la plantilla pide, no sólo los huecos del texto.
+   *
+   * Antes era `huecosDe(plantilla.cuerpo)`: sólo el cuerpo. Una plantilla con
+   * encabezado —o con un botón de dirección con parte variable— exige esas
+   * piezas en CADA envío, y sin pedirlas el envío salía incompleto y Meta lo
+   * rechazaba entero con «falta un parámetro», sin decir cuál. Es lo que tumbó
+   * la primera campaña de la escuela.
+   */
+  const huecos = plantilla ? pedidosDe(plantilla.pide) : [];
 
-  // Al cambiar de plantilla se rearman los huecos. El primero se propone con
-  // el nombre del cliente, que es lo que lleva en el noventa por ciento de las
-  // plantillas de esta escuela.
+  /*
+   * Al cambiar de plantilla se rearman las casillas.
+   *
+   * El primer hueco DEL CUERPO se propone con el nombre del cliente, que es lo
+   * que lleva en casi todas las plantillas de esta escuela. Los del encabezado
+   * y los botones no: ahí «el nombre del cliente» casi nunca es lo que va, y en
+   * una dirección de imagen no significa nada.
+   */
   useEffect(() => {
-    setValores(huecos.map((_, i) => (i === 0 ? { de: "nombre" } : { de: "texto", texto: "" })));
+    const nuevos = plantilla ? pedidosDe(plantilla.pide) : [];
+    const primeroDelCuerpo = nuevos.findIndex((h) => h.pieza === "cuerpo");
+    setValores(
+      nuevos.map((_, i) => (i === primeroDelCuerpo ? { de: "nombre" } : { de: "texto", texto: "" })),
+    );
     // Depende del id y no del arreglo: `huecos` se recalcula en cada pintada.
   }, [elegida]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -344,9 +363,31 @@ export function EnvioMasivo({
 
                 {plantilla &&
                   huecos.map((h, i) => (
-                    <div key={h.clave} style={{ marginBottom: 10 }}>
+                    <div key={`${h.pieza}-${i}`} style={{ marginBottom: 10 }}>
                       <span style={etiqueta}>{h.etiqueta}</span>
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {/*
+                          En una dirección de archivo no hay nada que elegir.
+
+                          «El nombre del cliente» no significa nada en el enlace
+                          de una imagen, y ofrecerlo llevaría a mandar una
+                          dirección que no existe.
+                        */}
+                        {h.esArchivo ? (
+                          <input
+                            value={valores[i]?.de === "texto" ? valores[i].texto : ""}
+                            onChange={(e) =>
+                              setValores((v) =>
+                                v.map((x, k) =>
+                                  k === i ? { de: "texto", texto: e.target.value } : x,
+                                ),
+                              )
+                            }
+                            placeholder="https://…"
+                            style={campo}
+                          />
+                        ) : (
+                          <>
                         <select
                           value={valores[i]?.de ?? "texto"}
                           onChange={(e) =>
@@ -380,6 +421,8 @@ export function EnvioMasivo({
                             style={campo}
                           />
                         )}
+                        </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -399,9 +442,18 @@ export function EnvioMasivo({
                         borderRadius: 8,
                       }}
                     >
+                      {/*
+                        La vista previa es del CUERPO, así que sólo se le pasan
+                        sus valores. Con la lista plana, un encabezado con hueco
+                        correría todo un lugar y la previa mostraría el dato del
+                        encabezado dentro del texto.
+                      */}
                       {conValores(
                         plantilla.cuerpo,
-                        valores.map((v) => (v.de === "nombre" ? "María" : v.texto)),
+                        repartirValores(
+                          plantilla.pide,
+                          valores.map((v) => (v.de === "nombre" ? "María" : v.texto)),
+                        ).cuerpo,
                       )}
                     </p>
                     {valores.some((v) => v.de === "nombre") && (

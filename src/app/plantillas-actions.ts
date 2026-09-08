@@ -8,6 +8,7 @@ import { enviarPlantilla } from "@/lib/whatsapp/enviar";
 import { conValores, cuantosHuecos } from "@/lib/whatsapp/huecos";
 import { hayWaba, panelDeMeta, traerPlantillas } from "@/lib/whatsapp/plantillas";
 import type { Plantilla } from "@/lib/types";
+import { componentesPara, loQueFalta, quePide } from "@/lib/whatsapp/piezas";
 
 /**
  * Las plantillas de WhatsApp.
@@ -55,7 +56,7 @@ export async function estadoPlantillas(): Promise<EstadoPlantillas> {
   const [lista, sync] = await Promise.all([
     supabase
       .from("plantillas")
-      .select("id, nombre, idioma, estado, categoria, cuerpo, variables")
+      .select("id, nombre, idioma, estado, categoria, cuerpo, variables, payload")
       .order("nombre"),
     supabase
       .from("plantillas_sync")
@@ -78,6 +79,15 @@ export async function estadoPlantillas(): Promise<EstadoPlantillas> {
       categoria: p.categoria ? String(p.categoria) : null,
       cuerpo: p.cuerpo ? String(p.cuerpo) : null,
       variables: Number(p.variables ?? 0),
+      /*
+       * Qué exige esta plantilla, resuelto en el servidor.
+       *
+       * Va calculado y no crudo: `payload` es el objeto entero de Meta —con
+       * ejemplos, identificadores internos y cosas que no se usan— y mandarlo
+       * al navegador por cada plantilla sería peso y detalle que a la pantalla
+       * no le sirve. Lo que la pantalla necesita es qué pedirle a quien manda.
+       */
+      pide: quePide(p.payload, p.cuerpo ? String(p.cuerpo) : null),
     })),
     intentadoEn: sync.data?.intentado_en ? String(sync.data.intentado_en) : null,
     logradoEn: sync.data?.logrado_en ? String(sync.data.logrado_en) : null,
@@ -179,7 +189,7 @@ export async function enviarPlantillaAConversacion(
   const [{ data: plantilla }, { data: conv }] = await Promise.all([
     supabase
       .from("plantillas")
-      .select("nombre, idioma, estado, cuerpo, variables")
+      .select("nombre, idioma, estado, cuerpo, variables, payload")
       .eq("id", plantillaId)
       .maybeSingle(),
     supabase.from("conversaciones").select("id, telefono").eq("id", conversacionId).maybeSingle(),
@@ -212,12 +222,25 @@ export async function enviarPlantillaAConversacion(
     return { ok: false, error: `Faltan datos: la plantilla tiene ${faltan} y se dieron ${dados}.` };
   }
 
+  /*
+   * Las piezas, no sólo el cuerpo.
+   *
+   * Una plantilla puede llevar encabezado y botones con dato, y faltando
+   * cualquiera Meta rechaza el mensaje entero. Se comprueba ANTES de mandar
+   * —`loQueFalta`— para poder decir qué falta en vez de mostrar el «(#131008)
+   * Required parameter is missing» de Meta, que no dice cuál.
+   */
+  const pide = quePide(plantilla.payload, plantilla.cuerpo ? String(plantilla.cuerpo) : null);
+  const datos = { encabezado: [], cuerpo: valores.slice(0, faltan), botones: [] };
+
+  const falta = loQueFalta(pide, datos);
+  if (falta) return { ok: false, error: falta };
+
   const envio = await enviarPlantilla(
     String(conv.telefono),
     String(plantilla.nombre),
     String(plantilla.idioma),
-    valores.slice(0, faltan),
-    plantilla.cuerpo ? String(plantilla.cuerpo) : null,
+    componentesPara(pide, datos),
   );
 
   if (!envio.ok) return { ok: false, error: envio.error };

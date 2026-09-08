@@ -2,6 +2,7 @@ import "server-only";
 
 import { getServerClient } from "@/lib/supabase/server";
 import type { Valor } from "@/lib/envios";
+import { NADA_MAS, quePide, type QuePide } from "@/lib/whatsapp/piezas";
 
 /** El `select` se arma como texto, así que las filas llegan sin tipar. */
 type Fila = Record<string, unknown>;
@@ -50,6 +51,19 @@ export interface Envio {
   motivos: { motivo: string; cuantos: number }[];
   /** Quiénes contestaron. Es con quién hubo conversación de verdad. */
   contestaron: { nombre: string | null; telefono: string }[];
+  /**
+   * Qué piezas tenía la plantilla con que salió este envío.
+   *
+   * Hace falta para leer bien `valores`, que es una lista plana en el orden
+   * encabezado → cuerpo → botones. Sin esto, la vista previa del historial
+   * mostraría el dato del encabezado dentro del texto, corrido un lugar.
+   *
+   * Sale de la plantilla que se usó. Si esa plantilla ya no existe en Meta
+   * —se borró, se rehizo— queda vacío, y entonces los valores se leen todos
+   * como del cuerpo: es lo que valía para todos los envíos anteriores a que
+   * existieran las piezas, así que el historial viejo se sigue viendo igual.
+   */
+  pide: QuePide;
 }
 
 export interface ResultadoEnvios {
@@ -85,7 +99,7 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
   const { data: filas, error } = await supabase
     .from("envios")
     .select(
-      "id, nombre, plantilla_nombre, cuerpo, valores, estado, creado_en, empezado_en, terminado_en",
+      "id, nombre, plantilla_id, plantilla_nombre, cuerpo, valores, estado, creado_en, empezado_en, terminado_en",
     )
     .order("creado_en", { ascending: false })
     .limit(100);
@@ -97,6 +111,32 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
 
   const ids = ((filas ?? []) as unknown as Fila[]).map((e) => Number(e.id));
   if (ids.length === 0) return VACIO;
+
+  /*
+   * Las plantillas con que salieron, para poder leer sus valores.
+   *
+   * Una sola consulta para todas, no una por envío: la lista trae hasta cien y
+   * casi siempre repiten plantilla.
+   */
+  const piezas = new Map<string, QuePide>();
+  {
+    const usadas = [
+      ...new Set(
+        ((filas ?? []) as unknown as Fila[])
+          .map((e) => (e.plantilla_id == null ? null : String(e.plantilla_id)))
+          .filter((v): v is string => v != null),
+      ),
+    ];
+    if (usadas.length > 0) {
+      const { data } = await supabase
+        .from("plantillas")
+        .select("id, cuerpo, payload")
+        .in("id", usadas);
+      for (const p of (data ?? []) as unknown as Fila[]) {
+        piezas.set(String(p.id), quePide(p.payload, p.cuerpo ? String(p.cuerpo) : null));
+      }
+    }
+  }
 
   const { data: dest, error: errDest } = await supabase
     .from("envio_destinatarios")
@@ -176,6 +216,8 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
           .map(([motivo, cuantos]) => ({ motivo, cuantos }))
           .sort((a, b) => b.cuantos - a.cuantos),
         contestaron: quienes.get(Number(e.id)) ?? [],
+        pide:
+          (e.plantilla_id != null ? piezas.get(String(e.plantilla_id)) : undefined) ?? NADA_MAS,
       };
     }),
     faltaMigracion: false,

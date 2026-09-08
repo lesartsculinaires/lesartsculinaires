@@ -1,3 +1,5 @@
+import type { QuePide } from "@/lib/whatsapp/piezas";
+
 /**
  * Domain types for the Les Arts Culinaires CRM.
  *
@@ -135,6 +137,17 @@ export interface Plantilla {
   cuerpo: string | null;
   /** Cuántos huecos hay que llenar antes de mandarla. */
   variables: number;
+  /**
+   * Todo lo que la plantilla exige para poder mandarse.
+   *
+   * No sólo los huecos del texto: también el encabezado —que puede ser una
+   * imagen— y los botones con parte variable. Faltando una sola de esas piezas,
+   * Meta rechaza el envío entero con «falta un parámetro» sin decir cuál.
+   *
+   * Sale de la definición completa que da Meta, que la base guarda desde el
+   * primer día en `plantillas.payload` y que nadie leía.
+   */
+  pide: QuePide;
 }
 
 /** Placeholder shown wherever an opportunity has no salesperson assigned. */

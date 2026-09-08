@@ -59,7 +59,37 @@ const servidor = http.createServer((req, res) => {
     }
     recibidos.push({ url: req.url, cuerpo: leido ?? cuerpo });
 
-    if (/fallar=131042/.test(req.url)) {
+    /*
+     * El 131008, como lo devuelve Meta cuando falta una pieza.
+     *
+     * Se decide por el NOMBRE de la plantilla y no por un parámetro en la URL:
+     * `WHATSAPP_GRAPH_URL` sólo acepta la dirección pelada de esta máquina —sin
+     * ruta ni parámetros—, que es justo lo que impide que esa variable mande el
+     * token a ningún lado. Así que la seña viaja donde sí se puede.
+     *
+     * Una plantilla llamada `..._con_header` exige el componente `header`, que
+     * es exactamente lo que le pasó a la escuela. Un Meta de mentira que
+     * aceptara todo no habría encontrado nunca ese fallo.
+     */
+    if (/_con_header/.test(leido?.template?.name ?? "")) {
+      const partes = (leido?.template?.components ?? []).map((c) => c?.type);
+      if (!partes.includes("header")) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: {
+              message: "(#131008) Required parameter is missing",
+              code: 131008,
+              type: "OAuthException",
+            },
+          }),
+        );
+        return;
+      }
+    }
+
+    // Igual que arriba: la seña va en el nombre de la plantilla.
+    if (/_sin_pago/.test(leido?.template?.name ?? "")) {
       res.writeHead(400, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
