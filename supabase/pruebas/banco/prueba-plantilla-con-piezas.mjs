@@ -95,6 +95,21 @@ const CON_HEADER = "prueba_con_header";
 const CON_IMAGEN = "prueba_imagen_con_header";
 const SOLO_TEXTO = "prueba_solo_texto";
 /*
+ * La de la escuela, copiada del resultado del SQL de producción.
+ *
+ * `catalogo_2026` tiene un BODY con un hueco con nombre y un botón de tipo
+ * CATALOG. Ninguna otra pieza. Es la que Meta rechazó cinco de cinco.
+ */
+/*
+ * Sin `_con_header` en el nombre, a propósito.
+ *
+ * Esa es la seña que hace que el Meta de mentira exija el componente `header`,
+ * y esta plantilla no tiene encabezado: lo suyo es el botón de catálogo. Con el
+ * nombre mal puesto, la prueba fallaba por una razón que no era la que estaba
+ * probando.
+ */
+const COMO_LA_ESCUELA = "prueba_catalogo_escuela";
+/*
  * Una persona por campaña, y no una para las tres.
  *
  * El CRM no le vuelve a escribir a alguien que recibió algo en los últimos
@@ -106,6 +121,7 @@ const GENTE = [
   { nombre: "Ana Piezas PRUEBA", tel: "50370800555" },
   { nombre: "Bea Piezas PRUEBA", tel: "50370800556" },
   { nombre: "Cris Piezas PRUEBA", tel: "50370800557" },
+  { nombre: "Dani Piezas PRUEBA", tel: "50370800558" },
 ];
 
 const limpiar = () =>
@@ -120,7 +136,7 @@ const limpiar = () =>
       (select id from public.clientes where nombre like '%Piezas PRUEBA%');
     delete from public.clientes where nombre like '%Piezas PRUEBA%';
     delete from public.plantillas where nombre in
-      ('${CON_HEADER}', '${CON_IMAGEN}', '${SOLO_TEXTO}');
+      ('${CON_HEADER}', '${CON_IMAGEN}', '${SOLO_TEXTO}', '${COMO_LA_ESCUELA}');
   `);
 limpiar();
 
@@ -162,6 +178,28 @@ const payloadConImagen = JSON.stringify({
   ],
 });
 
+/*
+ * La de la escuela, tal cual la devolvió el SQL de producción.
+ *
+ * Se copia y no se simplifica: el `param_name` con nombre, el botón CATALOG sin
+ * dirección, el emoji en el texto. Si se inventara un payload «parecido», la
+ * prueba comprobaría que el código lee lo que yo escribí, no lo que tiene Meta.
+ */
+const payloadComoLaEscuela = JSON.stringify({
+  id: "plt-escuela",
+  name: COMO_LA_ESCUELA,
+  language: "es",
+  status: "APPROVED",
+  components: [
+    {
+      type: "BODY",
+      text: "Hola, buen día, {{order_id}}😊 Te saludamos de Les Arts Culinaires.",
+      example: { body_text_named_params: [{ example: "Beatriz ", param_name: "order_id" }] },
+    },
+    { type: "BUTTONS", buttons: [{ text: "View catalog", type: "CATALOG" }] },
+  ],
+});
+
 const payloadSoloTexto = JSON.stringify({
   id: "plt-simple",
   name: SOLO_TEXTO,
@@ -181,7 +219,10 @@ sql(`
      '${payloadConImagen.replace(/'/g, "''")}'::jsonb),
     ('plt-simple', '${SOLO_TEXTO}', 'es', 'APPROVED', 'MARKETING',
      'Hola {{nombre}}, te esperamos', 1,
-     '${payloadSoloTexto.replace(/'/g, "''")}'::jsonb)
+     '${payloadSoloTexto.replace(/'/g, "''")}'::jsonb),
+    ('plt-escuela', '${COMO_LA_ESCUELA}', 'es', 'APPROVED', 'MARKETING',
+     'Hola, buen día, {{order_id}}😊 Te saludamos de Les Arts Culinaires.', 1,
+     '${payloadComoLaEscuela.replace(/'/g, "''")}'::jsonb)
   on conflict (id) do update set payload = excluded.payload, estado = 'APPROVED';
 
   insert into public.clientes (nombre, telefono) values
@@ -442,6 +483,66 @@ try {
       "MANDANDO SÓLO EL CUERPO, COMO ANTES",
       (ultimo?.cuerpo?.template?.components ?? []).map((c) => c.type),
       ["body"],
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("\n── 5. LA PLANTILLA DE LA ESCUELA: EL BOTÓN DE CATÁLOGO ──");
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // `catalogo_2026` no tiene encabezado: tiene un botón de tipo CATALOG, que
+  // parece que no llevara nada. Meta igual exige mandarle el SKU de un producto
+  // para usarlo de miniatura, y sin eso rechaza el mensaje entero. Es lo que le
+  // pasó a la escuela, y lo que la PRIMERA versión de este arreglo tampoco
+  // cubría: sólo miraba los botones de dirección con {{...}}.
+  {
+    const dlg = await armarCampana(
+      "PRUEBA Piezas como la escuela",
+      COMO_LA_ESCUELA,
+      GENTE[3].nombre,
+    );
+    await foto("6-catalogo");
+    const t = (await dlg.innerText()).replace(/\s+/g, " ");
+
+    es("no pide encabezado, porque no tiene", /Encabezado —/.test(t), false);
+    es(
+      "PERO SÍ PIDE EL CÓDIGO DEL PRODUCTO DEL CATÁLOGO",
+      /Botón «View catalog» — el código \(SKU\)/.test(t),
+      true,
+    );
+    es(
+      "y no deja mandar hasta que se llene",
+      await p.getByRole("button", { name: /^Mandar a 1$/ }).isDisabled(),
+      true,
+    );
+
+    const casillas = dlg.locator('input[placeholder="Lo que va en este hueco"]');
+    await casillas.last().fill("DIP-COCINA-2026");
+    await p.waitForTimeout(500);
+
+    await p.getByRole("button", { name: /^Mandar a 1$/ }).click();
+    await p.waitForTimeout(7000);
+    await foto("7-catalogo-mandado");
+
+    es("Y AHORA SALE", /1 enviados/.test(await texto()), true);
+
+    const recibidos = await loQueLlegoAMeta();
+    const piezas = recibidos[recibidos.length - 1]?.cuerpo?.template?.components ?? [];
+    const boton = piezas.find((c) => c.type === "button");
+
+    es("A META LE LLEGA EL BOTÓN", boton != null, true);
+    es("marcado como de catálogo, no de dirección", boton?.sub_type, "catalog");
+    /*
+     * Va como «acción» y no como texto.
+     *
+     * Es la diferencia con un botón de dirección, y mandarlo como texto lo
+     * rechaza igual que no mandarlo: para Meta es otra clase de parámetro.
+     */
+    es("y como una ACCIÓN, no como un texto", boton?.parameters?.[0]?.type, "action");
+    es(
+      "con el código del producto adentro",
+      boton?.parameters?.[0]?.action?.thumbnail_product_retailer_id,
+      "DIP-COCINA-2026",
     );
   }
 

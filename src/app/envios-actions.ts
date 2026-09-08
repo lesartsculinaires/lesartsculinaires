@@ -341,12 +341,19 @@ export async function mandarTanda(
    * sin el otro, los datos van a la pieza equivocada —el nombre del cliente en
    * el botón, la fecha en el texto— y nada falla, sólo sale mal.
    *
-   * Acá se reparte con textos vacíos porque lo único que se comprueba es la
-   * CANTIDAD: qué dice cada valor depende de cada destinatario y se resuelve
-   * abajo, uno por uno.
+   * Se comprueba con los valores DE VERDAD, no con blancos.
+   *
+   * Era con blancos —sólo se miraba la cantidad— y eso hacía saltar la
+   * comprobación del botón de catálogo, que además de contar mira que el código
+   * del producto no esté vacío. El envío se frenaba diciendo que faltaba un
+   * dato que sí estaba puesto.
+   *
+   * Lo único que cambia por destinatario es el cuerpo, donde va el nombre de
+   * cada quien; el encabezado y los botones son iguales para todos. Así que
+   * para comprobar alcanza con resolver el nombre a cualquiera —acá, uno de
+   * ejemplo— y lo que se manda de verdad se arma abajo, uno por uno.
    */
-  const enBlanco = valores.map(() => "");
-  const falta = loQueFalta(pide, repartirValores(pide, enBlanco));
+  const falta = loQueFalta(pide, repartirValores(pide, valoresPara(valores, "Ejemplo")));
   if (falta) return { ...SIN_TANDA, ok: false, error: falta };
 
   // Se deja constancia de con qué se mandó, en el propio envío: la plantilla

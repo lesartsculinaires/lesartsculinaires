@@ -518,9 +518,10 @@ function explicar(
    */
   if (codigo === 131008) {
     return (
-      "A esta plantilla le falta una pieza que Meta exige en cada envío: suele ser el " +
-      "encabezado —una imagen o un texto con dato— o un botón con parte variable. " +
-      "Sincronizá las plantillas para traer su definición al día y volvé a intentar."
+      "A esta plantilla le falta una pieza que Meta exige en cada envío: el encabezado " +
+      "—una imagen o un texto con dato—, un botón con parte variable, o el código de " +
+      "producto de un botón de catálogo. Sincronizá las plantillas para traer su " +
+      "definición al día y volvé a intentar."
     );
   }
 

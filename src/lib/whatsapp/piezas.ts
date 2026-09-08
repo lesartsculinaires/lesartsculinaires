@@ -51,6 +51,15 @@ export interface BotonConDato {
   indice: number;
   /** Cómo se le pide a quien manda: el texto del botón. */
   etiqueta: string;
+  /**
+   * Qué clase de botón es, porque no se mandan igual.
+   *
+   *   url       La parte variable del final de la dirección, como texto.
+   *   catalogo  El SKU de un producto del catálogo de Meta, que WhatsApp usa
+   *             de miniatura del botón. Va con otra forma —una «acción»— y no
+   *             como texto.
+   */
+  clase: "url" | "catalogo";
 }
 
 /** Todo lo que hay que darle a una plantilla para poder mandarla. */
@@ -145,12 +154,35 @@ export function quePide(
         const clase = texto(boton?.type)?.toUpperCase();
 
         /*
-         * Sólo los de dirección con parte variable piden dato.
+         * ------------------------------------------------------------------
+         * EL BOTÓN DE CATÁLOGO ES EL QUE TUMBÓ `catalogo_2026`
+         * ------------------------------------------------------------------
          *
-         * Un botón de «respuesta rápida» o de «llamar» es fijo: viaja dentro de
-         * la plantilla y no lleva nada por envío. Pedir un dato para ésos haría
-         * mandar un parámetro de más, y Meta rechaza por la cuenta igual que
-         * por la falta.
+         * Es un botón sin dirección: abre el catálogo de la empresa dentro de
+         * WhatsApp. Parece que no llevara nada, y por eso se pasa por alto.
+         *
+         * Pero Meta EXIGE mandarle una «acción» con el SKU de un producto del
+         * catálogo, que es el que usa de miniatura. Sin eso rechaza el mensaje
+         * entero con «falta un parámetro» —el mismo 131008 de siempre— y ni el
+         * CRM viejo ni la primera versión de este archivo lo mandaban: sólo se
+         * miraban los botones de dirección con `{{...}}`.
+         */
+        if (clase === "CATALOG") {
+          salida.botones.push({
+            indice: i,
+            etiqueta: texto(boton?.text) ?? "Ver catálogo",
+            clase: "catalogo",
+          });
+          return;
+        }
+
+        /*
+         * De los de dirección, sólo los que tienen parte variable.
+         *
+         * Un botón de «respuesta rápida», uno de «llamar» o uno de dirección
+         * fija viaja dentro de la plantilla y no lleva nada por envío. Pedir un
+         * dato para ésos haría mandar un parámetro de más, y Meta rechaza por
+         * la cuenta igual que por la falta.
          */
         if (clase !== "URL") return;
         if (huecosDe(texto(boton?.url)).length === 0) return;
@@ -158,6 +190,7 @@ export function quePide(
         salida.botones.push({
           indice: i,
           etiqueta: texto(boton?.text) ?? `Botón ${i + 1}`,
+          clase: "url",
         });
       });
     }
@@ -221,6 +254,23 @@ export function loQueFalta(pide: QuePide, dio: DatosDeLaPlantilla): string | nul
   const faltanBotones = pide.botones.length - dio.botones.length;
   if (faltanBotones > 0) {
     return `Faltan ${faltanBotones} ${faltanBotones === 1 ? "dato" : "datos"} de los botones.`;
+  }
+
+  /*
+   * El del catálogo, con su explicación completa.
+   *
+   * Es el único dato que no se saca de ningún lado del CRM: sale del catálogo
+   * de Meta, que la escuela tiene que tener conectado a su cuenta de WhatsApp.
+   * Decir sólo «falta un dato» mandaría a buscarlo donde no está.
+   */
+  const catalogo = pide.botones.findIndex((b) => b.clase === "catalogo");
+  if (catalogo >= 0 && !(dio.botones[catalogo] ?? "").trim()) {
+    return (
+      "Esta plantilla lleva un botón de catálogo, y WhatsApp exige el código (SKU) de un " +
+      "producto para usarlo de miniatura. Sale del catálogo de Meta Commerce que esté " +
+      "conectado a la cuenta de WhatsApp; sin catálogo conectado, esta plantilla no se " +
+      "puede mandar desde ningún lado."
+    );
   }
 
   return null;
@@ -301,6 +351,26 @@ export function componentesPara(
   pide.botones.forEach((b, i) => {
     const valor = dio.botones[i];
     if (valor == null) return;
+
+    /*
+     * El de catálogo va con una «acción», no con un texto.
+     *
+     * `thumbnail_product_retailer_id` es el SKU de un producto del catálogo que
+     * la escuela tenga conectado en Meta: WhatsApp lo usa de miniatura del
+     * botón. Es lo que Meta pide y lo que faltaba.
+     */
+    if (b.clase === "catalogo") {
+      partes.push({
+        type: "button",
+        sub_type: "catalog",
+        index: String(b.indice),
+        parameters: [
+          { type: "action", action: { thumbnail_product_retailer_id: valor } },
+        ],
+      });
+      return;
+    }
+
     partes.push({
       type: "button",
       sub_type: "url",
@@ -359,9 +429,16 @@ export function comoSeLee(pide: QuePide): string[] {
     partes.push(`${n} ${n === 1 ? "dato" : "datos"} en el texto`);
   }
 
-  if (pide.botones.length > 0) {
-    const n = pide.botones.length;
-    partes.push(`${n} ${n === 1 ? "dato" : "datos"} en ${n === 1 ? "el botón" : "los botones"}`);
+  if (pide.botones.some((b) => b.clase === "catalogo")) {
+    partes.push("el código de un producto del catálogo de Meta");
+  }
+
+  const deDireccion = pide.botones.filter((b) => b.clase === "url").length;
+  if (deDireccion > 0) {
+    partes.push(
+      `${deDireccion} ${deDireccion === 1 ? "dato" : "datos"} en ` +
+        `${deDireccion === 1 ? "el botón" : "los botones"} de dirección`,
+    );
   }
 
   return partes;
@@ -426,7 +503,10 @@ export function pedidosDe(pide: QuePide): Pedido[] {
 
   for (const b of pide.botones) {
     salida.push({
-      etiqueta: `Botón «${b.etiqueta}» — la parte variable de su dirección`,
+      etiqueta:
+        b.clase === "catalogo"
+          ? `Botón «${b.etiqueta}» — el código (SKU) del producto que se ve de miniatura`
+          : `Botón «${b.etiqueta}» — la parte variable de su dirección`,
       pieza: "boton",
       esArchivo: false,
     });
