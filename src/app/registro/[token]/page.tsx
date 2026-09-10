@@ -63,6 +63,12 @@ function ReciboImpreso({ recibo: r }: { recibo: Recibo }) {
 
       <Regla />
       <Linea etiqueta="Código" valor={r.codigo} />
+      {/* El correlativo de la escuela va arriba del todo, junto al código del
+          CRM y antes que nada más: es el número con el que académica archiva y
+          cobra, así que es lo primero que busca quien abre esto. Sólo cuando lo
+          hay —una línea «Correlativo —» en cada recibo se vuelve invisible de
+          tanto repetirse, igual que pasaba con la reserva y el horario. */}
+      {r.correlativo && <Linea etiqueta="Correlativo" valor={r.correlativo} />}
       <Linea etiqueta="Fecha" valor={fecha(r.fecha)} />
       {r.asesor && <Linea etiqueta="Asesor" valor={r.asesor} />}
 

@@ -57,6 +57,33 @@ const NO_SESSION: ActionResult = {
 };
 
 /**
+ * ¿Este error es «esa columna todavía no existe»?
+ *
+ * Pasa en la ventana que va entre el despliegue del código y la corrida del
+ * SQL, que acá no son el mismo momento: Netlify publica solo y la migración la
+ * corre alguien a mano en Supabase. En esa ventana la ficha ya muestra la
+ * casilla nueva y la base todavía no la tiene.
+ *
+ * Sin esto el asesor ve «Could not find the 'correlativo' column of
+ * 'oportunidades' in the schema cache», escribe que el CRM se rompió, y quien
+ * lo lea no tiene forma de saber que lo único que falta es correr un archivo.
+ * Con esto lo dice el mensaje.
+ *
+ *   PGRST204   PostgREST no la tiene en su caché de esquema (un update).
+ *   42703      Postgres dice que la columna no existe (un select).
+ */
+const faltaLaColumna = (error: { code?: string; message?: string }): string | null => {
+  if (error.code !== "PGRST204" && error.code !== "42703") return null;
+  const cual = /'([a-z_]+)'|column "?([a-z_]+)"?/i.exec(error.message ?? "");
+  const nombre = cual?.[1] ?? cual?.[2];
+  return (
+    `La base todavía no tiene la columna${nombre ? ` «${nombre}»` : ""}. ` +
+    "Falta correr la migración pendiente en Supabase; hasta entonces ese campo " +
+    "no se puede guardar. El resto de la ficha funciona igual."
+  );
+};
+
+/**
  * Persist an edit to one opportunity.
  *
  * The UI updates optimistically and calls this in the background; a failure
@@ -73,7 +100,7 @@ export async function updateOportunidad(
   if (!supabase) return NO_SESSION;
 
   const { error } = await supabase.from("oportunidades").update(patch).eq("id", id);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: faltaLaColumna(error) ?? error.message };
 
   revalidatePath("/");
   return { ok: true, error: null };
@@ -186,7 +213,7 @@ export async function updateCliente(
     .update(patch)
     .eq("id", clienteId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: faltaLaColumna(error) ?? error.message };
 
   revalidatePath("/");
   return { ok: true, error: null };

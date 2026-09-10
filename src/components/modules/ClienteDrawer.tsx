@@ -234,6 +234,32 @@ export function ClienteDrawer({
 
   /** Fields stored on the opportunity itself. */
   const editables = [
+    /*
+     * ------------------------------------------------------------------------
+     * EL CORRELATIVO DE LA ESCUELA
+     * ------------------------------------------------------------------------
+     *
+     * Va primero porque es un número de identificación, como el código del CRM
+     * que está arriba en la cabecera, y no un dato del negocio: quien lo busca
+     * lo busca al abrir la ficha, no después de leer los montos.
+     *
+     * No es `codigo`. Ése lo pone la base sola —CRM-0001— y sirve para que dos
+     * personas hablen del mismo lead. Éste sale de la numeración de la escuela,
+     * la que usan para cobrar y archivar, y lo escribe quien cierra. Los dos
+     * conviven y ninguno reemplaza al otro.
+     *
+     * Sale impreso en el link de registro, arriba del todo.
+     */
+    {
+      clave: "correlativo",
+      label: "Correlativo",
+      value: o.correlativo ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      placeholder: "El número de la escuela, si ya lo tiene",
+      guardar: (v: string) =>
+        onEditar(o.id, { correlativo: oNull(v) }, { correlativo: oNull(v) }),
+    },
     {
       clave: "fecha_registro",
       label: "Fecha de registro",
@@ -375,6 +401,44 @@ export function ClienteDrawer({
       requerido: false,
       guardar: (v: string) =>
         onEditarCliente(o.clienteId, { correo: oNull(v) }, { correo: oNull(v) }),
+    },
+    /*
+     * Dónde trabaja y de qué.
+     *
+     * Van en el bloque del cliente y no en el del lead porque son de la
+     * persona: quien es «Chef ejecutivo en Hotel Real» lo sigue siendo cuando
+     * pregunta por el segundo diplomado. Cargarlo por lead terminaría con la
+     * misma persona diciendo dos empresas distintas según qué ficha se abra.
+     *
+     * Eso significa que cambiarlos acá los cambia en todos los leads de esta
+     * persona, que es lo mismo que ya pasa con el teléfono y el correo y lo que
+     * el aviso de este bloque dice.
+     *
+     * Se muestran siempre, aunque la mayoría de los alumnos no trabajen: son
+     * dos casillas y a la escuela le sirven para los cursos que se venden a
+     * empresas, donde saber el cargo decide a quién se le factura.
+     */
+    {
+      clave: "cliente_empresa",
+      label: "Nombre de la empresa",
+      value: o.empresa ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      acentos: true,
+      placeholder: "Dónde trabaja, si trabaja",
+      guardar: (v: string) =>
+        onEditarCliente(o.clienteId, { empresa: oNull(v) }, { empresa: oNull(v) }),
+    },
+    {
+      clave: "cliente_cargo",
+      label: "Cargo",
+      value: o.cargo ?? "",
+      tipo: "texto" as const,
+      requerido: false,
+      acentos: true,
+      placeholder: "Qué puesto ocupa",
+      guardar: (v: string) =>
+        onEditarCliente(o.clienteId, { cargo: oNull(v) }, { cargo: oNull(v) }),
     },
     /*
      * El país, sólo cuando el territorio dice «Extranjero».

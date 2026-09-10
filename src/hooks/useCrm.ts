@@ -8,6 +8,7 @@ import {
   type ActionResult,
 } from "@/app/actions";
 import type { ClientePatch, Oportunidad, OportunidadPatch } from "@/lib/types";
+import { alternar, marcados, type Elegidos } from "@/lib/filtros";
 
 export interface CrmState {
   mod: string;
@@ -16,7 +17,13 @@ export interface CrmState {
 
   q: string;
   /** Catalogue filters, keyed by field, holding the selected id. */
-  filtros: Record<string, number | null>;
+  /**
+   * Lo marcado en cada filtro de Clientes.
+   *
+   * Una LISTA por filtro, no un valor: la escuela pidió poder marcar varios
+   * ítems del mismo desplegable. Vacío —o sin entrada— es «Todos».
+   */
+  filtros: Elegidos;
   /** Optimistic edits applied on top of the server data, by opportunity id. */
   edits: Record<number, Partial<Oportunidad>>;
   sel: number | null;
@@ -48,7 +55,7 @@ export interface CrmState {
    * dejado puestos. Y un filtro que actúa en una pantalla donde no se lo ve es
    * la mejor manera de que alguien crea que se le perdieron las fichas.
    */
-  pipeFiltros: Record<string, number | null>;
+  pipeFiltros: Elegidos;
   categoria: string;
 }
 
@@ -132,8 +139,17 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
       closeMenu: () => patchState({ menu: null }),
 
       setQuery: (q: string) => patchState({ q }),
+      /*
+       * Marca o desmarca un ítem del filtro, sin cerrar el menú.
+       *
+       * El menú NO se cierra —antes sí— porque marcar varios de un desplegable
+       * es justamente lo que se pidió: cerrándose en el primero habría que
+       * volver a abrirlo por cada uno.
+       */
       setFiltro: (k: string, v: number | null) =>
-        patchState((s) => ({ filtros: { ...s.filtros, [k]: v }, menu: null })),
+        patchState((s) => ({
+          filtros: { ...s.filtros, [k]: alternar(marcados(s.filtros, k), v) },
+        })),
       limpiarFiltros: () => patchState({ filtros: {}, q: "" }),
 
       select: (id: number | null) => patchState({ sel: id, menu: null }),
@@ -180,14 +196,35 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
 
       setVend: (vend: number) => patchState({ vend }),
       setPipeVend: (pipeVend: number | null) => patchState({ pipeVend, menu: null }),
+      // Igual que el de Clientes: alterna y deja el menú abierto.
       setPipeFiltro: (k: string, v: number | null) =>
-        patchState((s) => ({ pipeFiltros: { ...s.pipeFiltros, [k]: v }, menu: null })),
+        patchState((s) => ({
+          pipeFiltros: { ...s.pipeFiltros, [k]: alternar(marcados(s.pipeFiltros, k), v) },
+        })),
       limpiarPipeFiltros: () => patchState({ pipeFiltros: {}, pipeVend: null, menu: null }),
       setCategoria: (categoria: string) => patchState({ categoria }),
 
       /** Jump to Clientes with a preset filter, from Programas or Equipos. */
-      verEnClientes: (filtros: Record<string, number | null>, sel: number | null = null) =>
-        patchState({ mod: "Clientes", filtros, q: "", sel, menu: null }),
+      /*
+       * Llegar a Clientes ya filtrado, desde otra pantalla.
+       *
+       * Recibe un valor por filtro y no una lista: quien llama viene de apretar
+       * UNA cosa —«ver los leads de esta asesora», «ver los de este programa»—
+       * y pedirle que arme la lista sería obligarlo a conocer la forma interna
+       * del estado para decir algo que siempre es uno solo.
+       */
+      verEnClientes: (elegidos: Record<string, number | null>, sel: number | null = null) =>
+        patchState({
+          mod: "Clientes",
+          filtros: Object.fromEntries(
+            Object.entries(elegidos)
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => [k, [v as number]]),
+          ),
+          q: "",
+          sel,
+          menu: null,
+        }),
 
       dismissSyncError: () => setSyncError(null),
     }),

@@ -126,33 +126,98 @@ export function definirFiltros(
   return todos.filter((f) => !omitir.includes(f.key));
 }
 
+/**
+ * Lo elegido en cada filtro.
+ *
+ * ============================================================================
+ * UNA LISTA POR FILTRO, Y NO UN VALOR
+ * ============================================================================
+ *
+ * Antes era `number | null`: un filtro tenía un valor o ninguno. La escuela
+ * pidió poder marcar varios —«poder hacer clic a distintos ítems»— y eso no es
+ * un agregado a la pantalla sino un cambio de forma: «los leads de julio Y de
+ * agosto» no se puede decir con un número.
+ *
+ * La lista vacía es «Todos», que es lo mismo que era `null`. Así no hay dos
+ * maneras de decir «sin filtrar» —ni `null` ni `[]` conviviendo— que es de
+ * donde salen los filtros que se ven puestos y no filtran nada.
+ */
+export type Elegidos = Record<string, number[]>;
+
+/**
+ * Lo que hay marcado en un filtro, siempre como lista.
+ *
+ * Existe porque las pantallas guardan el estado en la dirección y en memoria, y
+ * un filtro que nunca se tocó no tiene entrada: pedirlo devuelve `undefined`.
+ * Sin esto, cada lugar que lee un filtro tendría que acordarse del `?? []`.
+ */
+export const marcados = (filtros: Elegidos, key: string): number[] => filtros[key] ?? [];
+
+/**
+ * Marca o desmarca un ítem, y devuelve la lista nueva.
+ *
+ * `null` es «Todos» y limpia el filtro entero: es el ítem de arriba de cada
+ * desplegable, y tiene que poder deshacer una selección larga de un clic.
+ *
+ * Los demás alternan. Volver a apretar algo ya marcado lo saca, que es lo que
+ * espera cualquiera que haya usado una lista de casillas.
+ */
+export function alternar(actuales: readonly number[], valor: number | null): number[] {
+  if (valor == null) return [];
+  return actuales.includes(valor)
+    ? actuales.filter((v) => v !== valor)
+    : [...actuales, valor];
+}
+
 /** ¿Esta ficha pasa todos los filtros puestos? */
-export function pasa(
-  o: Oportunidad,
-  defs: readonly DefFiltro[],
-  filtros: Record<string, number | null>,
-): boolean {
+export function pasa(o: Oportunidad, defs: readonly DefFiltro[], filtros: Elegidos): boolean {
   return defs.every(({ key }) => {
-    const quiere = filtros[key];
-    if (quiere == null) return true;
-    // `SIN_DUENO` pide lo contrario que un id: las fichas con el campo vacío.
-    // Es a donde lleva el aviso de «sin vendedor asignado».
-    if (quiere === SIN_DUENO) return o[CAMPO[key]] == null;
+    const quiere = marcados(filtros, key);
+    if (quiere.length === 0) return true;
+
     /*
-     * El mes no es un id de catálogo: es una fecha convertida a número. No
-     * está en `CAMPO` porque no hay una columna que guarde el mes; se calcula
-     * desde la fecha de registro, igual que en el tablero, para que las dos
-     * pantallas digan lo mismo de un mismo lead.
+     * Dentro de un filtro, las opciones suman; entre filtros, restan.
+     *
+     * «Julio o agosto» —`some`— y además «de Katya», que es otro filtro y se
+     * comprueba aparte con el `every` de arriba. Es lo que uno espera al marcar
+     * dos meses: ver los dos, no ver nada porque ningún lead es de los dos a la
+     * vez.
      */
-    if (key === "mes") return esDelMes(o, quiere);
-    // Varias por lead: se pregunta si la puesta está entre las suyas.
-    if (key === "etiqueta") return o.etiquetaIds.includes(quiere);
-    return o[CAMPO[key]] === quiere;
+    return quiere.some((v) => {
+      // `SIN_DUENO` pide lo contrario que un id: las fichas con el campo vacío.
+      // Es a donde lleva el aviso de «sin vendedor asignado».
+      if (v === SIN_DUENO) return o[CAMPO[key]] == null;
+      /*
+       * El mes no es un id de catálogo: es una fecha convertida a número. No
+       * está en `CAMPO` porque no hay una columna que guarde el mes; se calcula
+       * desde la fecha de registro, igual que en el tablero, para que las dos
+       * pantallas digan lo mismo de un mismo lead.
+       */
+      if (key === "mes") return esDelMes(o, v);
+      // Varias por lead: se pregunta si la puesta está entre las suyas.
+      if (key === "etiqueta") return o.etiquetaIds.includes(v);
+      return o[CAMPO[key]] === v;
+    });
   });
 }
 
 /** Cuántos filtros hay puestos. Cero es «la lista entera». */
-export const cuantosPuestos = (
-  defs: readonly DefFiltro[],
-  filtros: Record<string, number | null>,
-): number => defs.filter(({ key }) => filtros[key] != null).length;
+export const cuantosPuestos = (defs: readonly DefFiltro[], filtros: Elegidos): number =>
+  defs.filter(({ key }) => marcados(filtros, key).length > 0).length;
+
+/**
+ * Cómo se lee un filtro en su pastilla: «Todos», el nombre, o cuántos hay.
+ *
+ * Con uno marcado se dice cuál —es lo que más pasa y lo que hay que poder leer
+ * sin abrir el menú—. Con varios, el número: los nombres no entran en una
+ * pastilla y cortarlos haría leer «Diplomado Superior de Coci…» sin saber que
+ * hay otro más.
+ */
+export function comoSeLee(
+  puestos: readonly number[],
+  nombreDe: (id: number) => string | undefined,
+): string {
+  if (puestos.length === 0) return "Todos";
+  if (puestos.length === 1) return nombreDe(puestos[0]) ?? "Todos";
+  return `${puestos.length} elegidos`;
+}

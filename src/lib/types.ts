@@ -282,6 +282,26 @@ export interface Oportunidad {
   horarioPrograma: string | null;
 
   /**
+   * El correlativo de inscripción de la escuela, escrito a mano.
+   *
+   * No confundir con `codigo`, que es el número del CRM —CRM-0001— y lo pone
+   * la base sola. Éste sale de la numeración de la escuela, la que usan para
+   * cobrar, y aparece en el link de registro.
+   *
+   * Por inscripción y no por persona: quien entra a Pastelería en marzo y a
+   * Barismo en agosto tiene dos correlativos.
+   */
+  correlativo: string | null;
+  /**
+   * Dónde trabaja la persona y qué puesto ocupa.
+   *
+   * Viven en `clientes`, así que se comparten con todos los leads de la misma
+   * persona: corregir la empresa en una ficha la corrige en todas.
+   */
+  empresa: string | null;
+  cargo: string | null;
+
+  /**
    * Cuándo entró la fila al sistema. Distinto de `fechaRegistro`, que es
    * cuando el lead llegó al negocio: una base histórica se sube hoy con
    * fechas de hace meses.
@@ -317,6 +337,7 @@ export interface OportunidadPatch {
   reserva?: number | null;
   descuento_promocion?: string | null;
   horario?: string | null;
+  correlativo?: string | null;
 }
 
 /**
@@ -335,6 +356,8 @@ export interface ClientePatch {
   responsable_nombre?: string | null;
   responsable_telefono?: string | null;
   responsable_correo?: string | null;
+  empresa?: string | null;
+  cargo?: string | null;
 }
 
 /**

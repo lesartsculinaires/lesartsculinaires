@@ -24,7 +24,14 @@ import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
 import { CeldaEnLote } from "@/components/modules/CeldaEnLote";
 import { ordenar, siguienteOrden, type Columna, type Orden } from "@/lib/orden";
 import { mesesComoOpciones } from "@/lib/periodoDelTablero";
-import { definirFiltros, pasa } from "@/lib/filtros";
+import {
+  comoSeLee,
+  cuantosPuestos,
+  definirFiltros,
+  marcados,
+  pasa,
+  type Elegidos,
+} from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
 import type { Etiqueta, Importacion, Oportunidad, Plantilla } from "@/lib/types";
 
@@ -52,7 +59,7 @@ interface Props {
   etiquetas: readonly Etiqueta[];
   accent: string;
   query: string;
-  filtros: Record<string, number | null>;
+  filtros: Elegidos;
   selected: number | null;
   menu: string | null;
   onQuery: (q: string) => void;
@@ -151,7 +158,19 @@ export function Clientes({
     (o) =>
       pasa(o, filtros_def, filtros) &&
       (!q ||
-        [o.cliente, o.codigo, o.telefono ?? "", o.correo ?? ""]
+        // El correlativo de la escuela entra en la búsqueda igual que el código
+        // del CRM: es el número con el que académica archiva, así que «buscá el
+        // 2026-114» tiene que encontrar la ficha. La empresa también: los
+        // cursos que se venden a empresas se revisan por empresa, no por
+        // alumno.
+        [
+          o.cliente,
+          o.codigo,
+          o.correlativo ?? "",
+          o.telefono ?? "",
+          o.correo ?? "",
+          o.empresa ?? "",
+        ]
           .join(" ")
           .toLowerCase()
           .includes(q)),
@@ -187,7 +206,7 @@ export function Clientes({
     setAncla(null);
   };
 
-  const activos = filtros_def.filter((f) => filtros[f.key] != null).length;
+  const activos = cuantosPuestos(filtros_def, filtros);
 
   // «Todas» quiere decir todas las que se están viendo, no todas las que hay:
   // marcar una casilla no puede alcanzar fichas que quien la marca no vio.
@@ -515,14 +534,19 @@ export function Clientes({
                     : []),
                   ...f.items.map((i) => ({ label: i.nombre, value: i.id })),
                 ]}
-                current={filtros[f.key] ?? null}
-                valueText={
-                  filtros[f.key] == null
-                    ? "Todos"
-                    : filtros[f.key] === SIN_DUENO
+                /*
+                  Selección múltiple: se pueden marcar varios del mismo menú.
+                  «Julio y agosto» suman entre ellos y restan contra los demás
+                  filtros, que es lo que uno espera al marcar dos.
+                */
+                multi={{
+                  selected: marcados(filtros, f.key),
+                  summary: comoSeLee(marcados(filtros, f.key), (id) =>
+                    id === SIN_DUENO
                       ? SIN_ASIGNAR
-                      : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
-                }
+                      : f.items.find((i) => i.id === id)?.nombre,
+                  ),
+                }}
                 open={menu === key}
                 accent={accent}
                 onToggle={() => onToggleMenu(key)}

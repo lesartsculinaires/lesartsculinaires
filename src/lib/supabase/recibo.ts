@@ -18,6 +18,18 @@ import { getAdminClient } from "@/lib/supabase/admin";
 
 export interface Recibo {
   codigo: string;
+  /**
+   * El correlativo de inscripción de la escuela, si lo cargaron.
+   *
+   * Va aparte de `codigo` porque son dos numeraciones distintas: `codigo` es el
+   * del CRM —CRM-0001, lo pone la base sola— y sirve para que ventas y
+   * académica hablen del mismo lead; el correlativo es el de la escuela, el que
+   * usan para cobrar y archivar, y lo escribe quien cierra.
+   *
+   * Nulo mientras nadie lo cargue, y también mientras no se haya corrido la
+   * migración: en los dos casos el recibo sale sin esa línea en vez de romperse.
+   */
+  correlativo: string | null;
   fecha: string;
   cliente: string;
   telefono: string | null;
@@ -118,6 +130,7 @@ export async function leerRecibo(token: string): Promise<ResultadoRecibo> {
     estado: "ok",
     recibo: {
       codigo: String(fila.codigo ?? ""),
+      correlativo: texto(fila.correlativo),
       fecha: String(fila.fecha_registro ?? ""),
       cliente: String(fila.cliente ?? ""),
       telefono: texto(fila.telefono),

@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
-import { cuantosPuestos, definirFiltros, pasa } from "@/lib/filtros";
+import {
+  comoSeLee,
+  cuantosPuestos,
+  definirFiltros,
+  marcados,
+  pasa,
+  type Elegidos,
+} from "@/lib/filtros";
 import { leadCount, money } from "@/lib/format";
 import { mesesComoOpciones } from "@/lib/periodoDelTablero";
 import { etapaTone } from "@/lib/selectors";
@@ -41,7 +48,7 @@ interface Props {
   onVendedor: (id: number | null) => void;
 
   /** Los filtros de la barra, propios del tablero. */
-  filtros: Record<string, number | null>;
+  filtros: Elegidos;
   onFiltro: (key: string, value: number | null) => void;
   onLimpiar: () => void;
   menu: string | null;
@@ -220,12 +227,14 @@ export function Pipeline({
                   { label: "Todos", value: null },
                   ...f.items.map((i) => ({ label: i.nombre, value: i.id })),
                 ]}
-                current={filtros[f.key] ?? null}
-                valueText={
-                  filtros[f.key] == null
-                    ? "Todos"
-                    : (f.items.find((i) => i.id === filtros[f.key])?.nombre ?? "Todos")
-                }
+                // Selección múltiple, igual que en Clientes: es la misma barra.
+                multi={{
+                  selected: marcados(filtros, f.key),
+                  summary: comoSeLee(
+                    marcados(filtros, f.key),
+                    (id) => f.items.find((i) => i.id === id)?.nombre,
+                  ),
+                }}
                 open={menu === clave}
                 accent={accent}
                 onToggle={() => onToggleMenu(clave)}

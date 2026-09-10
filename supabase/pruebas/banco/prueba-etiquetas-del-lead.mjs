@@ -222,6 +222,20 @@ await p.getByRole("button", { name: ETIQUETA, exact: true }).first().click();
 await p.waitForTimeout(2000);
 await foto("2-filtrado");
 
+/*
+ * Y se cierra el desplegable, que ahora queda abierto.
+ *
+ * Antes marcar una opción lo cerraba. Desde que se pueden marcar varias no,
+ * porque cerrarse en la primera obligaría a reabrirlo por cada una. Abierto,
+ * cuelga por encima de las primeras filas de la tabla y se come sus clics —que
+ * es lo que hacía fallar el paso 3 de esta prueba—.
+ *
+ * En el CRM se cierra haciendo clic afuera o con Escape, como cualquier
+ * desplegable; acá se usa Escape porque no depende de dónde haya lugar libre.
+ */
+await p.keyboard.press("Escape");
+await p.waitForTimeout(700);
+
 const enPantalla = async () =>
   (await p.locator("main").innerText()).replace(/\s+/g, " ");
 

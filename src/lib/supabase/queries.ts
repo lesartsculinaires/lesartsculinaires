@@ -96,6 +96,13 @@ function toOportunidad(r: Row): Oportunidad {
     horario: r.horario ? str(r.horario) : null,
     horarioPrograma: r.horario_programa ? str(r.horario_programa) : null,
 
+    // El correlativo de la escuela, y dónde trabaja la persona. Nulos mientras
+    // no se haya corrido la migración: la vista vieja no los trae y la ficha
+    // tiene que seguir abriendo igual.
+    correlativo: r.correlativo ? str(r.correlativo) : null,
+    empresa: r.empresa ? str(r.empresa) : null,
+    cargo: r.cargo ? str(r.cargo) : null,
+
     // Vienen en null mientras no se haya corrido la migración de bases: la
     // vista vieja no las trae y la app tiene que seguir funcionando igual.
     creadoEn: r.created_at ? str(r.created_at) : null,
