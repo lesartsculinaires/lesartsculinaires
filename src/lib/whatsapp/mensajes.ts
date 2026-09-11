@@ -271,9 +271,113 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
     case "video":
     case "document":
       return texto(obj(msg[tipo])?.caption);
+
+    /*
+     * ------------------------------------------------------------------------
+     * LOS QUE ANTES QUEDABAN EN UNA BURBUJA QUE DECÍA «Mensaje»
+     * ------------------------------------------------------------------------
+     *
+     * Todo lo que no estuviera acá arriba caía en `default: null`, y en el hilo
+     * salía una burbuja con la palabra «Mensaje» y la hora. Para quien atiende
+     * eso es peor que nada: sabe que la persona mandó algo, no sabe qué, y no
+     * tiene forma de averiguarlo.
+     *
+     * El contenido nunca se perdió —el JSON entero se guarda en
+     * `mensajes.payload` desde el primer día— así que esto es leer lo que ya
+     * estaba ahí.
+     */
+
+    /*
+     * «Abrió el chat», de alguien que llegó por un anuncio.
+     *
+     * WhatsApp lo manda cuando una persona entra a la conversación desde un
+     * anuncio o un enlace y todavía no escribió nada. No trae texto porque no
+     * hay texto: el hecho ES que abrió el chat, y para ventas es justamente el
+     * momento de contestar primero.
+     */
+    case "request_welcome":
+      return deDondeVino(msg) ?? "Abrió el chat";
+
+    // Un pedido del catálogo de WhatsApp.
+    case "order": {
+      const pedido = obj(msg.order);
+      const cuantos = lista(pedido?.product_items).length;
+      const nota = texto(pedido?.text);
+      const cabeza =
+        cuantos > 0
+          ? `Pedido del catálogo: ${cuantos} ${cuantos === 1 ? "producto" : "productos"}`
+          : "Pedido del catálogo";
+      return nota ? `${cabeza} — ${nota}` : cabeza;
+    }
+
+    // Una ubicación: el nombre y la dirección valen mucho más que «Ubicación».
+    case "location": {
+      const donde = obj(msg.location);
+      const partes = [texto(donde?.name), texto(donde?.address)].filter(Boolean);
+      return partes.length > 0 ? `📍 ${partes.join(" — ")}` : null;
+    }
+
+    // Uno o varios contactos compartidos, por su nombre.
+    case "contacts": {
+      const nombres = lista(msg.contacts)
+        .map((c) => texto(obj(obj(c)?.name)?.formatted_name))
+        .filter((n): n is string => Boolean(n));
+      return nombres.length > 0 ? `Contacto: ${nombres.join(", ")}` : null;
+    }
+
+    /*
+     * Avisos de WhatsApp, no de la persona.
+     *
+     * «Fulano cambió de número» es el caso que importa: sin esto el hilo
+     * seguiría al mismo contacto sin que nadie se entere de que el teléfono
+     * guardado en la ficha ya no sirve.
+     */
+    case "system":
+      return texto(obj(msg.system)?.body);
+
+    /*
+     * Los que Meta misma no pudo entregar enteros.
+     *
+     * Llegan con `type: "unknown"` y un error adentro que explica por qué —un
+     * tipo de mensaje que la cuenta no soporta, por ejemplo—. Decirlo es mejor
+     * que una burbuja muda: quien atiende sabe que tiene que pedirle a la
+     * persona que lo mande de otra forma.
+     */
+    case "unknown": {
+      const err = obj(lista(msg.errors)[0]);
+      const titulo = texto(err?.title);
+      return titulo
+        ? `No se pudo recibir este mensaje (${titulo})`
+        : "No se pudo recibir este mensaje";
+    }
+
     default:
       return null;
   }
+}
+
+/**
+ * De dónde vino esta persona, cuando llegó por un anuncio.
+ *
+ * WhatsApp adjunta un bloque `referral` a los mensajes de quien entró desde un
+ * anuncio de Facebook o Instagram, o desde un enlace publicado en otro lado
+ * —incluido TikTok—. Trae el titular del anuncio y la dirección de origen.
+ *
+ * Se usa SÓLO cuando el mensaje no trae texto propio. Si la persona escribió
+ * algo, lo que se muestra es lo que escribió: pegarle el nombre del anuncio a
+ * sus palabras sería ponerle en la boca algo que no dijo.
+ */
+function deDondeVino(msg: Record<string, unknown>): string | null {
+  const ref = obj(msg.referral);
+  if (!ref) return null;
+
+  const titular = texto(ref.headline) ?? texto(ref.body);
+  const clase = texto(ref.source_type)?.toLowerCase();
+  const donde = clase === "ad" ? "un anuncio" : clase === "post" ? "una publicación" : "un enlace";
+
+  return titular
+    ? `Abrió el chat desde ${donde}: «${titular}»`
+    : `Abrió el chat desde ${donde}`;
 }
 
 /**
@@ -342,6 +446,26 @@ export function resumen(tipo: string, texto: string | null): string {
     sticker: "Sticker",
     location: "Ubicación",
     contacts: "Contacto compartido",
+    order: "Pedido del catálogo",
+    request_welcome: "Abrió el chat",
+    system: "Aviso de WhatsApp",
+    unknown: "Mensaje que no se pudo recibir",
   };
-  return etiquetas[tipo] ?? "Mensaje";
+  return etiquetas[tipo] ?? sinNombre(tipo);
 }
+
+/**
+ * El último recurso, cuando llega un tipo que este código no conoce.
+ *
+ * Antes decía «Mensaje» a secas, y eso es lo peor que puede decir: quien
+ * atiende ve que la persona mandó algo, no sabe qué, y no tiene ni cómo
+ * averiguarlo ni qué pedirle a quien mantiene el CRM.
+ *
+ * Nombrar el tipo no lo arregla, pero lo hace reportable: «me llega uno que
+ * dice location_share» es un pedido que se puede resolver en un rato. Meta
+ * agrega tipos nuevos cada tanto, así que esto va a volver a pasar.
+ *
+ * El contenido no se pierde igual: el JSON entero queda en `mensajes.payload`.
+ */
+const sinNombre = (tipo: string): string =>
+  tipo && tipo !== "desconocido" ? `Mensaje de tipo «${tipo}»` : "Mensaje";

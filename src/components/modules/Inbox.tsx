@@ -106,6 +106,10 @@ const ETIQUETA: Record<string, string> = {
   sticker: "Sticker",
   location: "📍 Ubicación",
   contacts: "Contacto compartido",
+  order: "🛒 Pedido del catálogo",
+  request_welcome: "👋 Abrió el chat",
+  system: "ℹ️ Aviso de WhatsApp",
+  unknown: "⚠️ Mensaje que no se pudo recibir",
 };
 
 /**
@@ -123,7 +127,15 @@ const contenido = (m: Mensaje): string => {
   if (m.tipo === "llamada") return `📞 ${m.texto ?? "Llamada"}`;
   if (m.texto) return m.texto;
   if (m.mediaRuta) return "";
-  return ETIQUETA[m.tipo] ?? "Mensaje";
+  /*
+   * Si el tipo no está en la tabla, se dice CUÁL es en vez de «Mensaje».
+   *
+   * Una burbuja que dice «Mensaje» y nada más deja a quien atiende sabiendo
+   * que la persona mandó algo, sin saber qué y sin poder pedir que lo
+   * arreglen. Con el nombre del tipo, el reporte se vuelve accionable —y Meta
+   * agrega tipos nuevos cada tanto, así que esto va a volver a pasar—.
+   */
+  return ETIQUETA[m.tipo] ?? `Mensaje de tipo «${m.tipo}»`;
 };
 
 const hora = (iso: string) =>
