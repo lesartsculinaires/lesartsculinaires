@@ -103,10 +103,24 @@ update public.mensajes m
          */
         when x.tipo in ('unsupported', 'unknown') then
           case
+            -- Si Meta mandó el cuerpo igual, gana el cuerpo. Es el caso de un
+            -- código de verificación: taparlo con el error escondería justo el
+            -- dato por el que alguien abre la conversación.
+            when coalesce(
+                   nullif(trim(x.payload -> 'text' ->> 'body'), ''),
+                   nullif(trim(x.payload ->> 'body'), ''),
+                   nullif(trim(x.payload -> 'button' ->> 'text'), '')
+                 ) is not null then
+              coalesce(
+                nullif(trim(x.payload -> 'text' ->> 'body'), ''),
+                nullif(trim(x.payload ->> 'body'), ''),
+                nullif(trim(x.payload -> 'button' ->> 'text'), '')
+              )
             when (x.payload -> 'errors' -> 0 ->> 'code') = '131051' then
-              'La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, '
-              || 'un mensaje que se borra solo o algo parecido). Hay que pedirle que lo '
-              || 'reenvíe como texto o como foto.'
+              'WhatsApp no deja recibir este mensaje acá: llegó el aviso pero no el '
+              || 'contenido. Suele pasar con encuestas, mensajes que se borran solos y '
+              || 'códigos de verificación que manda otra empresa. No se puede recuperar '
+              || 'desde el CRM.'
             else
               coalesce(
                 'No se pudo recibir este mensaje ('

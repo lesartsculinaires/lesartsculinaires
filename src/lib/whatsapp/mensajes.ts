@@ -357,18 +357,43 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
      */
     case "unsupported":
     case "unknown": {
+      /*
+       * Primero se busca si vino ALGO de contenido, aunque el tipo diga que no.
+       *
+       * ----------------------------------------------------------------------
+       * POR QUÉ, SI SE SUPONE QUE ESTOS NO TRAEN NADA
+       * ----------------------------------------------------------------------
+       *
+       * Porque la escuela usa este número para recibir códigos de verificación
+       * —TikTok le manda uno— y un código es SEIS DÍGITOS que o están o no
+       * están. Si Meta manda el cuerpo aunque marque el tipo como no soportado,
+       * taparlo con «no se pudo recibir este mensaje» sería esconder justo el
+       * dato por el que alguien abrió la conversación.
+       *
+       * Cuesta una función y cubre el caso en que Meta cambie de opinión, que
+       * con estos tipos pasa. Si no hay nada, se sigue como antes.
+       */
+      const rescatado = rescatarTexto(msg);
+      if (rescatado) return rescatado;
+
       const err = obj(lista(msg.errors)[0]);
       const titulo = texto(err?.title);
       /*
        * El caso real es el 131051: «mensaje de un tipo que no se soporta». Le
-       * pasa a las encuestas, los mensajes efímeros y los eventos, que la API
-       * de negocios no recibe. Vale la pena decirlo en castellano, porque lo
-       * que hay que hacer es concreto: pedirle a la persona que lo reenvíe
-       * como texto o como foto.
+       * pasa a las encuestas, los mensajes efímeros, los eventos y a algunas
+       * plantillas de otras empresas —como las de código de verificación—, que
+       * la API de negocios no recibe.
+       *
+       * Se dice qué pasó y qué hacer, porque hay algo concreto que hacer.
        */
       const codigo = err?.code;
       if (codigo === 131051 || Number(codigo) === 131051) {
-        return "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.";
+        return (
+          "WhatsApp no deja recibir este mensaje acá: llegó el aviso pero no el " +
+          "contenido. Suele pasar con encuestas, mensajes que se borran solos y " +
+          "códigos de verificación que manda otra empresa. No se puede recuperar " +
+          "desde el CRM."
+        );
       }
       return titulo
         ? `No se pudo recibir este mensaje (${titulo})`
@@ -406,6 +431,27 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
  * algo, lo que se muestra es lo que escribió: pegarle el nombre del anuncio a
  * sus palabras sería ponerle en la boca algo que no dijo.
  */
+/**
+ * Cualquier texto que venga en un mensaje cuyo tipo no lo explica.
+ *
+ * Mira los lugares donde Meta pone el contenido, por si mandó el cuerpo a pesar
+ * de marcar el mensaje como no soportado. Devuelve null cuando de verdad no
+ * vino nada, que es lo normal en esos casos.
+ *
+ * No inventa: sólo lee. Si el JSON no trae el texto, no hay texto —y un código
+ * de verificación que Meta no mandó no se puede sacar de ningún lado—.
+ */
+function rescatarTexto(msg: Record<string, unknown>): string | null {
+  return (
+    texto(obj(msg.text)?.body) ??
+    texto(msg.body) ??
+    texto(obj(msg.button)?.text) ??
+    texto(obj(msg.interactive)?.body) ??
+    texto(obj(obj(msg.interactive)?.body)?.text) ??
+    null
+  );
+}
+
 function deDondeVino(msg: Record<string, unknown>): string | null {
   const ref = obj(msg.referral);
   if (!ref) return null;

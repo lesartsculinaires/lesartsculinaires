@@ -76,6 +76,13 @@ const carga = (...messages) => ({
 });
 
 const base = { from: "15558934547", timestamp: "1789000000" };
+
+/** Lo que dice la burbuja cuando WhatsApp no entregó el contenido. */
+const NO_SOPORTADO =
+  "WhatsApp no deja recibir este mensaje acá: llegó el aviso pero no el " +
+  "contenido. Suele pasar con encuestas, mensajes que se borran solos y " +
+  "códigos de verificación que manda otra empresa. No se puede recuperar " +
+  "desde el CRM.";
 /** El texto con que queda guardado el primer mensaje de una carga. */
 const leido = (msg) => leerWebhook(carga({ ...base, ...msg })).mensajes[0]?.texto ?? null;
 /** Y lo que se ve en la lista, que es lo que cae cuando no hay texto. */
@@ -213,7 +220,7 @@ console.log("\n── 3. LOS OTROS QUE TAMBIÉN SALÍAN COMO «Mensaje» ──"
       type: "unsupported",
       errors: [{ code: 131051, title: "Message type unknown" }],
     }),
-    "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.",
+    NO_SOPORTADO,
   );
 
   es(
@@ -231,7 +238,30 @@ console.log("\n── 3. LOS OTROS QUE TAMBIÉN SALÍAN COMO «Mensaje» ──"
   es(
     "el nombre viejo sigue cubierto",
     leido({ id: "wamid.RARO3", type: "unknown", errors: [{ code: 131051 }] }),
-    "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.",
+    NO_SOPORTADO,
+  );
+
+  /*
+   * ------------------------------------------------------------------------
+   * Y SI META MANDA EL CUERPO IGUAL, GANA EL CUERPO
+   * ------------------------------------------------------------------------
+   *
+   * La escuela recibe en este número el código de verificación de TikTok, y
+   * un código son seis dígitos que o están o no están. Si Meta manda el texto
+   * aunque marque el tipo como no soportado, taparlo con «no se pudo recibir»
+   * escondería justo el dato por el que alguien abrió la conversación.
+   *
+   * Con estos tipos Meta cambia de opinión seguido, así que se mira siempre.
+   */
+  es(
+    "SI VINO EL TEXTO, SE MUESTRA EL TEXTO Y NO EL ERROR",
+    leido({
+      id: "wamid.CODIGO",
+      type: "unsupported",
+      errors: [{ code: 131051, title: "Message type unknown" }],
+      text: { body: "Tu código de TikTok es 483920" },
+    }),
+    "Tu código de TikTok es 483920",
   );
 }
 
