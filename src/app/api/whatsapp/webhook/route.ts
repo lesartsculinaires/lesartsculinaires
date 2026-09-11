@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 
 import {
   abrirLeadSiEsNuevo as abrirLead,
@@ -86,6 +86,17 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: true, nota: "cuerpo ilegible" });
   }
+
+  /*
+   * Copia hacia el bot de carnets en n8n.
+   *
+   * Va después de validar la firma —para no reenviar cualquier cosa que
+   * llegue a esta URL pública— pero antes de tocar Supabase: n8n no está en
+   * el camino crítico, así que no debe esperar a que termine de guardarse el
+   * mensaje ni puede impedirlo. `after` deja que la respuesta a Meta salga
+   * ya mismo y hace la copia en segundo plano.
+   */
+  after(() => copiarAN8n(carga));
 
   const supabase = getAdminClient();
   if (!supabase) {
@@ -942,3 +953,43 @@ async function guardarArchivo(
  * eso y para lo demás que hace la función.
  */
 const SEGUNDOS_PARA_BAJAR = 8;
+
+/**
+ * Copia el payload de Meta, tal cual llegó, hacia el bot de carnets en n8n.
+ *
+ * ----------------------------------------------------------------------------
+ * n8n NO ESTÁ EN EL CAMINO CRÍTICO
+ * ----------------------------------------------------------------------------
+ *
+ * Esta función es lo único que conecta este webhook con el bot de carnets.
+ * Si n8n está caído, lento o en edición, el CRM tiene que seguir funcionando
+ * exactamente igual: por eso nunca lanza, por eso tiene un timeout corto, y
+ * por eso se llama con `after` en vez de con `await` en la ruta principal —
+ * la respuesta a Meta no espera a que esto termine.
+ *
+ * Se manda el payload crudo, sin volver a tocarlo, para que el parser del
+ * workflow de n8n sea el mismo que si Meta le hablara directo.
+ *
+ * `N8N_WEBHOOK_URL` y `N8N_SECRETO` son opcionales a propósito: sin ellos,
+ * el CRM sigue guardando los mensajes de WhatsApp como siempre, sólo que sin
+ * generar carnets.
+ */
+async function copiarAN8n(payloadDeMeta: unknown) {
+  const url = process.env.N8N_WEBHOOK_URL;
+  const secreto = process.env.N8N_SECRETO;
+  if (!url || !secreto) return;
+
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-lac-token": secreto,
+      },
+      body: JSON.stringify(payloadDeMeta),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (err) {
+    console.error("[n8n] no se pudo copiar el mensaje:", err instanceof Error ? err.message : err);
+  }
+}
