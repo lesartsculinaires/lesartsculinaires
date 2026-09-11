@@ -90,12 +90,42 @@ update public.mensajes m
         when x.tipo = 'system' then
           nullif(trim(x.payload -> 'system' ->> 'body'), '')
 
-        -- Los que Meta no pudo entregar enteros.
-        when x.tipo = 'unknown' then
+        /*
+         * Los que WhatsApp no deja recibir por la API de negocios.
+         *
+         * El tipo que llega de verdad es `unsupported` —así salió en la base de
+         * la escuela, con el error 131051—, no `unknown`. Van los dos porque
+         * cuál use Meta no lo decide este archivo.
+         *
+         * El 131051 son las encuestas, los mensajes que se borran solos y los
+         * eventos: cosas que WhatsApp simplemente no entrega acá. Se dice en
+         * castellano y con qué hacer, porque hay algo concreto que hacer.
+         */
+        when x.tipo in ('unsupported', 'unknown') then
+          case
+            when (x.payload -> 'errors' -> 0 ->> 'code') = '131051' then
+              'La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, '
+              || 'un mensaje que se borra solo o algo parecido). Hay que pedirle que lo '
+              || 'reenvíe como texto o como foto.'
+            else
+              coalesce(
+                'No se pudo recibir este mensaje ('
+                  || nullif(trim(x.payload -> 'errors' -> 0 ->> 'title'), '') || ')',
+                'No se pudo recibir este mensaje'
+              )
+          end
+
+        /*
+         * Reacciones que quedaron guardadas como mensajes.
+         *
+         * No deberían existir: el webhook las saca antes de que entren a la
+         * tabla. Pero las que entraron antes de que eso existiera siguen ahí, y
+         * cada una es una burbuja vacía en medio de una conversación.
+         */
+        when x.tipo = 'reaction' then
           coalesce(
-            'No se pudo recibir este mensaje ('
-              || nullif(trim(x.payload -> 'errors' -> 0 ->> 'title'), '') || ')',
-            'No se pudo recibir este mensaje'
+            'Reaccionó con ' || nullif(trim(x.payload -> 'reaction' ->> 'emoji'), ''),
+            'Quitó su reacción'
           )
 
         -- Un texto que quedó vacío por algún motivo, pero el JSON lo tiene.

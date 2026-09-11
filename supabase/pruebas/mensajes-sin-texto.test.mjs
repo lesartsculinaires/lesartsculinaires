@@ -200,14 +200,38 @@ console.log("\n── 3. LOS OTROS QUE TAMBIÉN SALÍAN COMO «Mensaje» ──"
     "Alexandra cambió de número de teléfono",
   );
 
+  /*
+   * ESTE es el que de verdad tiene la escuela: cuatro en la base, con el tipo
+   * `unsupported` y el error 131051 adentro. El primer arreglo miraba sólo
+   * `unknown` —así lo nombra parte de la documentación— y por eso no disparaba
+   * justo en los mensajes que lo motivaron.
+   */
   es(
-    "y uno que Meta no pudo entregar dice por qué",
+    "EL QUE WHATSAPP NO DEJA RECIBIR DICE QUÉ HACER",
     leido({
       id: "wamid.RARO",
-      type: "unknown",
-      errors: [{ code: 131051, title: "Message type is not currently supported" }],
+      type: "unsupported",
+      errors: [{ code: 131051, title: "Message type unknown" }],
     }),
-    "No se pudo recibir este mensaje (Message type is not currently supported)",
+    "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.",
+  );
+
+  es(
+    "y con otro error, se dice el error",
+    leido({
+      id: "wamid.RARO2",
+      type: "unsupported",
+      errors: [{ code: 131000, title: "Something went wrong" }],
+    }),
+    "No se pudo recibir este mensaje (Something went wrong)",
+  );
+
+  // `unknown` sigue cubierto: cuál de los dos nombres use Meta no lo decide
+  // este código.
+  es(
+    "el nombre viejo sigue cubierto",
+    leido({ id: "wamid.RARO3", type: "unknown", errors: [{ code: 131051 }] }),
+    "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.",
   );
 }
 

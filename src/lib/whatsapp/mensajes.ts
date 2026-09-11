@@ -343,12 +343,51 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
      * que una burbuja muda: quien atiende sabe que tiene que pedirle a la
      * persona que lo mande de otra forma.
      */
+    /*
+     * `unsupported` es el que manda Meta de verdad; `unknown` está por las
+     * dudas.
+     *
+     * Acá esto decía sólo `unknown`, que es como lo nombra parte de la
+     * documentación. La base de la escuela mostró que lo que llega es
+     * `unsupported`, con el error 131051 adentro. O sea que el arreglo no
+     * disparaba justo en los mensajes que lo motivaron.
+     *
+     * Van los dos nombres: cuál de ellos use Meta no es algo que este código
+     * pueda decidir, y equivocarse cuesta una burbuja muda.
+     */
+    case "unsupported":
     case "unknown": {
       const err = obj(lista(msg.errors)[0]);
       const titulo = texto(err?.title);
+      /*
+       * El caso real es el 131051: «mensaje de un tipo que no se soporta». Le
+       * pasa a las encuestas, los mensajes efímeros y los eventos, que la API
+       * de negocios no recibe. Vale la pena decirlo en castellano, porque lo
+       * que hay que hacer es concreto: pedirle a la persona que lo reenvíe
+       * como texto o como foto.
+       */
+      const codigo = err?.code;
+      if (codigo === 131051 || Number(codigo) === 131051) {
+        return "La persona mandó algo que WhatsApp no deja recibir acá (una encuesta, un mensaje que se borra solo o algo parecido). Hay que pedirle que lo reenvíe como texto o como foto.";
+      }
       return titulo
         ? `No se pudo recibir este mensaje (${titulo})`
         : "No se pudo recibir este mensaje";
+    }
+
+    /*
+     * Una reacción guardada como mensaje.
+     *
+     * No debería existir: las reacciones salen por su propia puerta más
+     * arriba y no entran en la tabla de mensajes. Pero en la base de la
+     * escuela hay cinco de antes de que eso existiera, y cada una es una
+     * burbuja vacía en medio de una conversación.
+     *
+     * Se leen para que digan qué son. Las nuevas siguen sin entrar.
+     */
+    case "reaction": {
+      const emoji = texto(obj(msg.reaction)?.emoji);
+      return emoji ? `Reaccionó con ${emoji}` : "Quitó su reacción";
     }
 
     default:
@@ -450,6 +489,8 @@ export function resumen(tipo: string, texto: string | null): string {
     request_welcome: "Abrió el chat",
     system: "Aviso de WhatsApp",
     unknown: "Mensaje que no se pudo recibir",
+    unsupported: "Mensaje que WhatsApp no deja recibir acá",
+    reaction: "Reacción",
   };
   return etiquetas[tipo] ?? sinNombre(tipo);
 }
