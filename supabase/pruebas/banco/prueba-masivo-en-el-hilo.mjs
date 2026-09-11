@@ -99,6 +99,7 @@ const CAMPANA = "PRUEBA Masivo al hilo";
 const PLANTILLA = "prueba_masivo_hilo";
 const TEL_NUEVO = "50370700001";
 const TEL_CON_HILO = "50370700002";
+const TEL_ARCHIVADO = "50370700003";
 
 const limpiar = () =>
   sql(`
@@ -106,8 +107,10 @@ const limpiar = () =>
       (select id from public.envios where nombre like 'PRUEBA Masivo%');
     delete from public.envios where nombre like 'PRUEBA Masivo%';
     delete from public.mensajes where conversacion_id in
-      (select id from public.conversaciones where telefono in ('${TEL_NUEVO}', '${TEL_CON_HILO}'));
-    delete from public.conversaciones where telefono in ('${TEL_NUEVO}', '${TEL_CON_HILO}');
+      (select id from public.conversaciones
+        where telefono in ('${TEL_NUEVO}', '${TEL_CON_HILO}', '${TEL_ARCHIVADO}'));
+    delete from public.conversaciones
+     where telefono in ('${TEL_NUEVO}', '${TEL_CON_HILO}', '${TEL_ARCHIVADO}');
     delete from public.oportunidades where cliente_id in
       (select id from public.clientes where nombre like '%Masivo PRUEBA%');
     delete from public.clientes where nombre like '%Masivo PRUEBA%';
@@ -124,6 +127,13 @@ limpiar();
  *
  * La SEGUNDA ya tiene un hilo con un mensaje viejo. Sirve para comprobar que no
  * se abre un segundo hilo al lado del que ya está.
+ *
+ * La TERCERA tiene el hilo ARCHIVADO, que es el caso que reportó la escuela:
+ * «varios clientes que se reactivaron con la plantilla no aparecen los chats».
+ * Un lead se enfría, alguien archiva el hilo para sacarlo de la vista, y meses
+ * después entra en una campaña de reactivación. El mensaje salía, el hilo subía
+ * en la lista, y seguía archivado —o sea escondido—, así que el asesor no veía
+ * lo que se había mandado en su nombre.
  */
 sql(`
   insert into public.plantillas (id, nombre, idioma, estado, cuerpo, categoria)
@@ -133,7 +143,8 @@ sql(`
 
   insert into public.clientes (nombre, telefono) values
     ('Sin Hilo Masivo PRUEBA', '${TEL_NUEVO}'),
-    ('Con Hilo Masivo PRUEBA', '${TEL_CON_HILO}');
+    ('Con Hilo Masivo PRUEBA', '${TEL_CON_HILO}'),
+    ('Archivado Masivo PRUEBA', '${TEL_ARCHIVADO}');
 
   insert into public.oportunidades
     (codigo, cliente_id, vendedor_id, etapa_id, estado_id, fecha_registro)
@@ -154,6 +165,14 @@ sql(`
   select v.id, 'wamid.VIEJO.MASIVO', 'entrante', 'text',
          'Hola, información por favor', now() - interval '7 days'
     from public.conversaciones v where v.telefono = '${TEL_CON_HILO}';
+
+  -- El frío: hilo archivado hace meses, que es lo que hace el equipo cuando
+  -- alguien deja de contestar.
+  insert into public.conversaciones
+    (canal, identificador, telefono, nombre_perfil, ultimo_mensaje_en, ultimo_texto,
+     sin_leer, archivada)
+  values ('whatsapp', '${TEL_ARCHIVADO}', '${TEL_ARCHIVADO}', 'Archivado Masivo PRUEBA',
+          now() - interval '120 days', 'dejó de contestar', 0, true);
 `);
 
 // La asesora que le tocó, para poder comprobar que el hilo nace con dueño.
@@ -274,7 +293,7 @@ try {
   await p.getByPlaceholder(/Buscar/).first().fill("Masivo PRUEBA");
   await p.waitForTimeout(1600);
 
-  for (const codigo of ["MAS-0001", "MAS-0002"]) {
+  for (const codigo of ["MAS-0001", "MAS-0002", "MAS-0003"]) {
     await p.locator(`main tbody tr:has-text("${codigo}") input[type=checkbox]`).first().check();
     await p.waitForTimeout(400);
   }
@@ -300,15 +319,43 @@ try {
     true,
   );
 
-  await p.getByRole("button", { name: /^Mandar a 2$/ }).click();
-  await p.waitForTimeout(7000);
+  await p.getByRole("button", { name: /^Mandar a 3$/ }).click();
+  await p.waitForTimeout(8000);
   await foto("3-mandado");
 
   {
     const t = await texto();
-    es("LOS DOS SALIERON", /2 enviados/.test(t), true);
+    es("LOS TRES SALIERON", /3 enviados/.test(t), true);
     es("y ninguno falló", /[1-9]\d* no llegaron/.test(t), false);
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  console.log("\n── 1b. EL HILO ARCHIVADO VUELVE A LA BANDEJA ──");
+  // ══════════════════════════════════════════════════════════════════════
+  //
+  // «Varios clientes que se reactivaron con la plantilla no aparecen los
+  // chats.» El mensaje salía y el hilo seguía marcado como archivado, o sea
+  // escondido: el asesor no veía lo que se mandó en su nombre ni podía dar
+  // seguimiento.
+  //
+  // Archivar quiere decir «con esta persona no estoy hablando». Escribirle deja
+  // de ser cierto, y es la misma regla que ya valía al revés: cuando el cliente
+  // contesta, el hilo se desarchiva solo desde siempre.
+  es(
+    "EL HILO REACTIVADO YA NO ESTÁ ARCHIVADO",
+    sql(`select archivada from public.conversaciones where telefono = '${TEL_ARCHIVADO}';`),
+    "f",
+  );
+  es(
+    "y el mensaje quedó adentro",
+    sql(`select count(*) from public.mensajes m
+           join public.conversaciones v on v.id = m.conversacion_id
+          where v.telefono = '${TEL_ARCHIVADO}' and m.direccion = 'saliente';`),
+    "1",
+  );
+
+  // Que además se VEA en la bandeja se comprueba en el paso 4, que es donde la
+  // prueba ya está parada ahí.
 
   // ══════════════════════════════════════════════════════════════════════
   console.log("\n── 2. EL MENSAJE QUEDÓ EN EL HILO DE CADA CLIENTE ──");
@@ -406,6 +453,21 @@ try {
     // La pestaña de Difusiones se sacó: la escuela pidió que el masivo se vea
     // como un mensaje más y no en una sección aparte.
     es("y ya no hay pestaña de Difusiones", /Difusiones/.test(t), false);
+
+    /*
+     * Y el reactivado también, que es lo que la escuela no veía.
+     *
+     * Se cuenta la FILA de la lista y no el texto de la pantalla: el buscador
+     * de la bandeja encuentra a propósito también en las archivadas, así que
+     * una comprobación sobre el texto entero podría pasar en verde con el hilo
+     * escondido. Acá la lista está sin filtrar, que es lo que tiene delante el
+     * asesor al abrir la bandeja.
+     */
+    es(
+      "Y EL REACTIVADO TAMBIÉN, QUE ES LO QUE NO SE VEÍA",
+      await p.locator('button.row:has-text("Archivado Masivo PRUEBA")').count(),
+      1,
+    );
   }
 
   await p.locator('button.row:has-text("Sin Hilo Masivo PRUEBA")').first().click();

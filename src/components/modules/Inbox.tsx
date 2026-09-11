@@ -374,20 +374,59 @@ export function Inbox({
    * hilo que lleva meses callado: al abrirlo se vería vacío, como si nunca se
    * hubiera hablado con esa persona.
    *
-   * Se pide sólo en ese caso —cero mensajes cargados— así que en el uso normal
-   * no corre nunca.
+   * ==========================================================================
+   * ANTES SE PEDÍA SÓLO SI EL HILO ESTABA VACÍO, Y ESO NO ALCANZABA
+   * ==========================================================================
+   *
+   * La condición era «cero mensajes cargados». Parecía suficiente: si algo del
+   * hilo entró en la ventana, se supuso que había entrado todo.
+   *
+   * No es así. La ventana es de los últimos mensajes de la bandeja ENTERA, sin
+   * mirar de qué hilo son, así que corta hilos por la mitad: los de hoy entran
+   * y los de la semana pasada no. Un hilo con dos mensajes recientes no cuenta
+   * como vacío, no se pedía nunca, y el historial anterior no aparecía jamás.
+   *
+   * Es lo que reportó la escuela: «los mensajes anteriores no aparecen», con la
+   * plantilla de hoy y la respuesta del cliente a la vista y nada más atrás.
+   *
+   * Ahora se pide SIEMPRE al abrir un hilo, y lo que llega se UNE con lo que
+   * haya en la ventana en vez de reemplazarlo: la unión es la que conserva los
+   * mensajes que entran en vivo mientras uno está mirando la conversación.
    */
   const [traidos, setTraidos] = useState<Record<number, Mensaje[]>>({});
 
   const delHilo = useMemo(() => {
     if (abierta == null) return [];
     const enLaVentana = mensajes.filter((m) => m.conversacionId === abierta);
-    return enLaVentana.length > 0 ? enLaVentana : (traidos[abierta] ?? []);
+    const delServidor = traidos[abierta];
+
+    // Todavía no llegó el historial: se dibuja lo que hay, que es lo que
+    // permite que el hilo aparezca al instante.
+    if (!delServidor) return enLaVentana;
+
+    /*
+     * Unidos por id, y los de la ventana pisan a los traídos.
+     *
+     * Los de la ventana son más nuevos en el sentido que importa: si un acuse
+     * cambió el estado de un mensaje —«enviado» a «leído»— o si le pusieron una
+     * reacción, eso llegó por ahí.
+     */
+    const porId = new Map<number, Mensaje>();
+    for (const m of delServidor) porId.set(m.id, m);
+    for (const m of enLaVentana) porId.set(m.id, m);
+
+    // En orden de conversación, que es como se dibuja. El id desempata los que
+    // caen en el mismo instante, como los de una misma campaña.
+    return [...porId.values()].sort(
+      (a, b) => a.creadoEn.localeCompare(b.creadoEn) || a.id - b.id,
+    );
   }, [mensajes, abierta, traidos]);
 
   useEffect(() => {
     if (abierta == null) return;
-    if (mensajes.some((m) => m.conversacionId === abierta)) return;
+    // Ya se pidió el de este hilo: lo nuevo entra por la ventana y se une
+    // arriba, así que no hace falta volver a pedirlo al cambiar de hilo y
+    // volver.
     if (traidos[abierta]) return;
 
     let vigente = true;
@@ -398,7 +437,7 @@ export function Inbox({
     return () => {
       vigente = false;
     };
-  }, [abierta, mensajes, traidos]);
+  }, [abierta, traidos]);
 
   /**
    * Las direcciones firmadas de los archivos del hilo abierto.

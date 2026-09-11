@@ -581,12 +581,33 @@ async function dejarEnElHilo(
      * `ultimo_mensaje_en` es por lo que se ordena la bandeja: sin tocarlo, el
      * hilo de alguien a quien le acabamos de escribir quedaría hundido entre
      * conversaciones de hace meses. `sin_leer` NO se toca, por lo de arriba.
+     *
+     * ------------------------------------------------------------------------
+     * Y SE DESARCHIVA, QUE ES LO QUE FALTABA
+     * ------------------------------------------------------------------------
+     *
+     * Acá no se tocaba `archivada`, por no mover algo que alguien había
+     * ordenado a mano. Estaba mal, y la escuela lo reportó así: «varios
+     * clientes que se reactivaron con la plantilla no aparecen los chats».
+     *
+     * El caso es justo el que una campaña de reactivación busca. Un lead se
+     * enfría, alguien archiva el hilo para sacarlo de la vista, y meses después
+     * entra en una campaña. El mensaje sale, el hilo sube en la lista… y sigue
+     * marcado como archivado, así que la bandeja lo esconde. El asesor no ve lo
+     * que se mandó en su nombre y no puede dar seguimiento.
+     *
+     * Archivar quiere decir «con esta persona no estoy hablando». Escribirle
+     * deja de ser cierto en el momento en que se manda el mensaje, y es la
+     * misma regla que ya aplica cuando el cliente contesta: la función
+     * `marcar_mensaje_entrante` desarchiva desde siempre. Esto lo único que
+     * hace es que el lado saliente se comporte igual que el entrante.
      */
     await supabase
       .from("conversaciones")
       .update({
         ultimo_texto: texto.slice(0, 200),
         ultimo_mensaje_en: new Date().toISOString(),
+        archivada: false,
       })
       .eq("id", conversacionId);
   } catch {

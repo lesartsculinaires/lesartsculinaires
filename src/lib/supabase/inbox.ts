@@ -1,5 +1,6 @@
 import "server-only";
 
+import { POR_TANDA, traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Conversacion, Mensaje } from "@/lib/types";
 
@@ -54,16 +55,38 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   const PERMISO =
     ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta";
 
+  const COLUMNAS =
+    "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
+    "sin_leer, archivada, estado, vendedor_id, canal";
+
+  /*
+   * El orden tiene que ser TOTAL, o sea sin empates.
+   *
+   * Se pide de a tandas, y cada tanda es una consulta nueva. Dos hilos con el
+   * mismo `ultimo_mensaje_en` —dos mensajes de la misma campaña, que salen en
+   * el mismo segundo— podrían salir en distinto orden en cada tanda: uno
+   * aparecería dos veces y otro ninguna. El `id` al final lo desempata.
+   */
+  /*
+   * El `as` es por el `select` armado como texto.
+   *
+   * supabase-js deduce el tipo de la fila leyendo la lista de columnas cuando
+   * es una constante. Acá se arma sumando lo opcional —según qué migraciones
+   * estén corridas— así que no puede, y deduce un tipo de error. Las filas ya
+   * se leen como `Fila` y se convierten campo por campo más abajo, que es donde
+   * de verdad se comprueba qué vino.
+   */
   const traerConvs = (extras: string) =>
     supabase
       .from("conversaciones")
-      .select(
-        "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
-          "sin_leer, archivada, estado, vendedor_id, canal" +
-          extras,
-      )
+      .select(COLUMNAS + extras)
       .order("ultimo_mensaje_en", { ascending: false })
-      .limit(300);
+      .order("id", { ascending: false }) as unknown as {
+      range(desde: number, hasta: number): PromiseLike<{
+        data: Fila[] | null;
+        error: unknown;
+      }>;
+    };
 
   /*
    * Se va soltando lo opcional hasta que la consulta entra.
@@ -78,16 +101,27 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    * verdad: las migraciones se corren en orden, así que nadie tiene el permiso
    * sin tener las marcas.
    */
-  let convs = null;
+  /*
+   * Primero se averigua QUÉ columnas hay, con una consulta de una fila.
+   *
+   * Antes esta prueba se hacía con la consulta completa, y estaba bien mientras
+   * la consulta fuera una sola. Ahora la bandeja se trae de a tandas, y probar
+   * las cuatro combinaciones contra cada tanda multiplicaría las consultas sin
+   * ganar nada: las columnas que existen no cambian entre una tanda y la
+   * siguiente.
+   */
+  let extras = "";
   let error = null;
-  for (const extras of [
-    IDENTIDAD + MARCAS + PERMISO,
-    MARCAS + PERMISO,
-    MARCAS,
-    "",
-  ]) {
-    ({ data: convs, error } = await traerConvs(extras));
-    if (error?.code !== "42703") break;
+  for (const cand of [IDENTIDAD + MARCAS + PERMISO, MARCAS + PERMISO, MARCAS, ""]) {
+    const prueba = await supabase
+      .from("conversaciones")
+      .select("id" + cand)
+      .limit(1);
+    error = prueba.error;
+    if (error?.code !== "42703") {
+      extras = cand;
+      break;
+    }
   }
 
   if (error) {
@@ -95,6 +129,27 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
     if (error.code === "PGRST205") return { ...VACIO, faltaMigracion: true };
     return { ...VACIO, error: error.message };
   }
+
+  /*
+   * ==========================================================================
+   * POR QUÉ DE A TANDAS Y NO CON UN `.limit()`
+   * ==========================================================================
+   *
+   * Acá decía `.limit(300)`. Trescientos hilos alcanzaban cuando la escuela
+   * tenía ciento veintitrés; con las campañas de reactivación los pasaron, y a
+   * partir de ahí los hilos que sobran no se ven en la bandeja. No aparece
+   * ningún error: aparece una lista a la que le faltan conversaciones, siempre
+   * las de más abajo.
+   *
+   * Y subir el número no alcanza, porque PostgREST corta en MIL filas por
+   * respuesta y no lo dice —está explicado en `paginar.ts`, que existe por
+   * exactamente este problema en el pipeline—. `.limit(4000)` devuelve mil.
+   *
+   * La única forma de traerlas todas es pedir de a tramos, que es lo que hace
+   * `traerTodo`.
+   */
+  const { data: convs, error: errConvs } = await traerTodo<Fila>(() => traerConvs(extras));
+  if (errConvs) return { ...VACIO, error: errConvs };
 
   const ids = ((convs ?? []) as unknown as Fila[]).map((c) => Number(c.id));
   let mensajes: Mensaje[] = [];
@@ -154,9 +209,26 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
          *
          * Se piden los últimos y se dan vuelta abajo, porque la pantalla los
          * dibuja del más viejo al más nuevo.
+         *
+         * ====================================================================
+         * Y POR QUÉ EL NÚMERO ES 900 Y NO 4.000
+         * ====================================================================
+         *
+         * Porque 4.000 era mentira. PostgREST corta en mil filas por respuesta
+         * y no avisa, así que esta consulta nunca trajo más de mil mensajes
+         * para TODA la bandeja. Repartidos entre trescientos hilos son tres
+         * mensajes por hilo, y de ahí salía «los mensajes anteriores no
+         * aparecen»: el hilo se veía cortado por la mitad.
+         *
+         * Un número que miente es peor que uno chico: hace creer que el hueco
+         * está en otro lado. 900 es lo que de verdad entra en una respuesta, y
+         * ya no es lo que sostiene la conversación abierta —de eso se encarga
+         * `historialDeConversacion`, que ahora corre SIEMPRE al abrir un hilo—.
+         * Esto quedó sólo para que el hilo se dibuje al instante mientras ese
+         * pedido viaja.
          */
         .order("creado_en", { ascending: false })
-        .limit(4000);
+        .limit(POR_TANDA);
 
     let { data: msgs, error: errMsg } = await traer(true, true);
 
