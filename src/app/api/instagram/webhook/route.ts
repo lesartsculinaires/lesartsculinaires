@@ -118,7 +118,34 @@ export async function POST(req: NextRequest) {
   const crudo = await req.text();
 
   if (!firmaValida(crudo, req.headers.get("x-hub-signature-256"), secreto)) {
-    console.warn("[instagram] firma inválida; se descarta");
+    /*
+     * Se dice CON CUÁL secreto se verificó, que es la mitad de la respuesta.
+     *
+     * --------------------------------------------------------------------
+     * POR QUÉ ESTE AVISO ES DISTINTO DE LOS DEMÁS
+     * --------------------------------------------------------------------
+     *
+     * Porque el modo en que falla es invisible desde los dos lados. En Meta se
+     * ve la entrega hecha; acá se ve un 401 que no explica nada; y el mensaje
+     * del cliente simplemente no aparece en la bandeja.
+     *
+     * La causa casi siempre es la misma: la escuela usa una aplicación de Meta
+     * aparte para Instagram, y `INSTAGRAM_APP_SECRET` no está puesto. Sin él
+     * esto cae al de WhatsApp —ver `elSecreto`— y las firmas no van a coincidir
+     * nunca, porque las firmó otra aplicación.
+     *
+     * Decir cuál se usó convierte un rato de buscar a ciegas en una línea de
+     * registro que se lee y se arregla. No se registra ningún secreto: sólo
+     * cuál de los dos nombres de variable entró en juego.
+     */
+    const cual = process.env.INSTAGRAM_APP_SECRET
+      ? "INSTAGRAM_APP_SECRET"
+      : "WHATSAPP_APP_SECRET (de reserva, porque INSTAGRAM_APP_SECRET no está puesto)";
+    console.warn(
+      `[instagram] firma inválida; se descarta. Se verificó con ${cual}. ` +
+        "Si Instagram está en otra aplicación de Meta, hay que poner la clave " +
+        "secreta DE ESA aplicación en INSTAGRAM_APP_SECRET.",
+    );
     return new NextResponse("firma inválida", { status: 401 });
   }
 
@@ -136,6 +163,44 @@ export async function POST(req: NextRequest) {
   }
 
   const { mensajes, reacciones, lecturas } = leerWebhookIg(carga);
+
+  /*
+   * Una carga que pasó la firma y no trajo ningún mensaje se anota.
+   *
+   * Es el tercer escalón de «no me llegan los mensajes», y sin esto es
+   * indistinguible del primero. Los tres se leen seguidos en el registro de
+   * Netlify y cada uno tiene un arreglo distinto:
+   *
+   *   NO HAY NINGUNA LÍNEA    Meta no está llamando. Falta suscribir la página,
+   *                           o la aplicación está en desarrollo y quien
+   *                           escribió no tiene rol en ella.
+   *   «firma inválida»        Llega, pero se verifica con el secreto de otra
+   *                           aplicación. Ver arriba.
+   *   ESTA LÍNEA              Llega y se verifica, pero no venía un mensaje:
+   *                           suele ser que se suscribió otro campo en vez de
+   *                           `messages`, o que es un eco de algo que mandamos.
+   *
+   * Se registra qué objeto y qué campos vinieron —no el contenido— para poder
+   * decir cuál de esos dos es sin pedirle a nadie que copie un JSON.
+   */
+  if (mensajes.length === 0 && reacciones.length === 0 && lecturas.length === 0) {
+    const raiz = carga as { object?: unknown; entry?: unknown[] };
+    const campos = Array.isArray(raiz?.entry)
+      ? [
+          ...new Set(
+            raiz.entry.flatMap((e) =>
+              Object.keys((e ?? {}) as Record<string, unknown>).filter((k) => k !== "id"),
+            ),
+          ),
+        ].join(", ")
+      : "ninguno";
+    console.warn(
+      `[instagram] llegó una carga verificada pero sin mensajes. ` +
+        `object=${String(raiz?.object)} campos=${campos || "ninguno"}. ` +
+        "Si esto se repite con cada DM, revisá que el webhook esté suscrito al " +
+        "campo «messages» de la cuenta de Instagram.",
+    );
+  }
 
   for (const m of mensajes) {
     try {
