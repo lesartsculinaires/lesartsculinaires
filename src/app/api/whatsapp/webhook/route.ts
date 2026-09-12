@@ -532,7 +532,7 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   // falta, que es lo que después permite entender un comprobante que no está.
   const archivo = m.media ? await guardarArchivo(supabase, conversacion, m) : null;
 
-  const { error } = await supabase.from("mensajes").insert({
+  const fila = {
     conversacion_id: conversacion,
     wa_id: m.waId,
     direccion: "entrante",
@@ -544,12 +544,50 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
     media_mime: archivo?.mime ?? null,
     media_nombre: m.media?.nombre ?? null,
     media_error: archivo?.error ?? null,
-  });
+  };
+
+  /*
+   * `origen` va aparte por la ventana entre el despliegue y la migración.
+   *
+   * Netlify publica solo y el SQL se corre a mano, así que hay un rato en el
+   * que este código ya manda la columna y la base todavía no la tiene. Mandarla
+   * ahí devuelve PGRST204 y se pierde el mensaje entero —el mensaje de un
+   * cliente, por una columna de marketing—.
+   *
+   * Se intenta con ella y, si la base no la conoce, se reintenta sin ella. El
+   * dato no se pierde igual: sigue entero en `payload`, y la migración lo
+   * rescata de ahí.
+   */
+  let { error } = m.origen
+    ? await supabase.from("mensajes").insert({ ...fila, origen: m.origen })
+    : await supabase.from("mensajes").insert(fila);
+
+  if (error && (error.code === "PGRST204" || error.code === "42703")) {
+    ({ error } = await supabase.from("mensajes").insert(fila));
+  }
 
   // 23505 es la restricción de unicidad sobre `wa_id`: este mensaje ya estaba
   // guardado y esto es un reintento de Meta. No es un error.
   if (error && error.code !== "23505") throw error;
   if (error) return;
+
+  /*
+   * Y el hilo se queda con el PRIMER origen, no con el último.
+   *
+   * Alguien que vino por la pauta de Pastelería en marzo y en agosto toca una
+   * de Barismo no cambia de origen: el mérito de haberlo traído es de la
+   * primera. Si se pisara, los números de una campaña vieja se moverían solos
+   * meses después y ningún reporte se podría leer.
+   *
+   * Por eso el `is` null: sólo escribe cuando todavía no hay ninguno.
+   */
+  if (m.origen) {
+    await supabase
+      .from("conversaciones")
+      .update({ origen: m.origen })
+      .eq("id", conversacion)
+      .is("origen", null);
+  }
 
   // El contador sube en la base, no en memoria: dos mensajes que llegan a la
   // vez se cuentan los dos.

@@ -39,6 +39,7 @@ import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { NuevoChat } from "@/components/modules/NuevoChat";
+import { DeDondeVino } from "@/components/modules/DeDondeVino";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { AcuseDeMensaje } from "@/components/ui/AcuseDeMensaje";
@@ -1717,6 +1718,12 @@ export function Inbox({
                           NOTA INTERNA
                         </span>
                       )}
+                      {/*
+                        De qué anuncio vino, arriba del mensaje y no adentro:
+                        lo que la persona escribió es una cosa y de dónde venía
+                        es otra. WhatsApp lo dibuja igual, por lo mismo.
+                      */}
+                      {m.origen && <DeDondeVino origen={m.origen} mio={mio} />}
                       {contenido(m)}
                       <MediaMensaje
                         mensaje={m}

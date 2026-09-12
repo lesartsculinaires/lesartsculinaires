@@ -21,8 +21,49 @@ export interface MensajeEntrante {
    * documento. Nulo para los de texto.
    */
   media: MediaEntrante | null;
+  /**
+   * De qué anuncio vino esta persona, cuando vino de uno.
+   *
+   * Meta lo adjunta a los mensajes de quien tocó un anuncio de Facebook o
+   * Instagram que abre WhatsApp. Es lo que WhatsApp dibuja como una tarjeta
+   * arriba de la burbuja, y lo que le dice a marketing qué campaña trajo a cada
+   * quien.
+   *
+   * Nulo en la enorme mayoría: la gente que escribe por su cuenta no trae nada.
+   */
+  origen: OrigenDelLead | null;
   /** El objeto tal cual vino, para no perder lo que hoy no se usa. */
   crudo: unknown;
+}
+
+/**
+ * De dónde salió un lead, normalizado.
+ *
+ * Se guarda con nombres propios y no como vino de Meta porque lo van a leer
+ * personas y consultas de marketing, no sólo este archivo. `source_type: "ad"`
+ * no le dice nada a nadie; «anuncio» sí.
+ */
+export interface OrigenDelLead {
+  /** «anuncio», «publicacion» o «enlace». */
+  red: string;
+  /** El identificador del anuncio en Meta. Es por lo que se agrupa. */
+  campana: string | null;
+  /** El titular, que es como lo reconoce quien armó la pauta. */
+  titular: string | null;
+  cuerpo: string | null;
+  /** La dirección de la publicación o del anuncio. */
+  url: string | null;
+  /** «image» o «video». */
+  medio: string | null;
+  /** La miniatura, para dibujar la tarjeta como la dibuja WhatsApp. */
+  imagen: string | null;
+  /**
+   * El identificador del clic.
+   *
+   * Es lo que permite atar este lead con el gasto de la campaña en el
+   * administrador de anuncios. No se muestra: se guarda para poder medir.
+   */
+  clic: string | null;
 }
 
 /**
@@ -205,6 +246,7 @@ export function leerWebhook(carga: unknown): {
           tipo,
           texto: leerTexto(msg, tipo),
           media: leerMedia(msg, tipo),
+          origen: leerOrigen(msg),
           // Meta manda segundos desde epoch, no milisegundos.
           enviadoEn: cuando,
           crudo: m,
@@ -453,16 +495,57 @@ function rescatarTexto(msg: Record<string, unknown>): string | null {
 }
 
 function deDondeVino(msg: Record<string, unknown>): string | null {
+  const o = leerOrigen(msg);
+  if (!o) return null;
+
+  const donde = COMO_SE_LLAMA[o.red] ?? "un enlace";
+  return o.titular
+    ? `Abrió el chat desde ${donde}: «${o.titular}»`
+    : `Abrió el chat desde ${donde}`;
+}
+
+/** Cómo se lee cada clase de origen en una frase. */
+const COMO_SE_LLAMA: Record<string, string> = {
+  anuncio: "un anuncio",
+  publicacion: "una publicación",
+  enlace: "un enlace",
+};
+
+/**
+ * El bloque `referral` de Meta, pasado a nombres que se entiendan.
+ *
+ * ============================================================================
+ * DE DÓNDE SALE ESTE DATO
+ * ============================================================================
+ *
+ * Meta lo adjunta a los mensajes de quien tocó un anuncio de Facebook o
+ * Instagram que abre WhatsApp. Viene en el webhook desde siempre y se guardaba
+ * entero en `mensajes.payload` sin que nadie lo leyera.
+ *
+ * No hace falta activar ningún permiso: si la pauta lleva a WhatsApp, el bloque
+ * viene solo.
+ *
+ * Se normaliza en vez de guardarlo crudo porque lo van a leer personas y
+ * consultas de marketing: `source_type: "ad"` no le dice nada a nadie, y
+ * `origen ->> 'red' = 'anuncio'` sí.
+ */
+function leerOrigen(msg: Record<string, unknown>): OrigenDelLead | null {
   const ref = obj(msg.referral);
   if (!ref) return null;
 
-  const titular = texto(ref.headline) ?? texto(ref.body);
   const clase = texto(ref.source_type)?.toLowerCase();
-  const donde = clase === "ad" ? "un anuncio" : clase === "post" ? "una publicación" : "un enlace";
 
-  return titular
-    ? `Abrió el chat desde ${donde}: «${titular}»`
-    : `Abrió el chat desde ${donde}`;
+  return {
+    red: clase === "ad" ? "anuncio" : clase === "post" ? "publicacion" : "enlace",
+    campana: texto(ref.source_id),
+    titular: texto(ref.headline),
+    cuerpo: texto(ref.body),
+    url: texto(ref.source_url),
+    medio: texto(ref.media_type),
+    // Meta manda una u otra según el tipo de anuncio.
+    imagen: texto(ref.image_url) ?? texto(ref.thumbnail_url),
+    clic: texto(ref.ctwa_clid),
+  };
 }
 
 /**

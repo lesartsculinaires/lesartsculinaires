@@ -1,3 +1,4 @@
+import type { OrigenDelLead } from "@/lib/whatsapp/mensajes";
 import type { QuePide } from "@/lib/whatsapp/piezas";
 
 /**
@@ -500,6 +501,14 @@ export interface Accesos {
 export interface Conversacion {
   id: number;
   /**
+   * De qué anuncio vino esta persona la PRIMERA vez que escribió.
+   *
+   * No cambia cuando después toca otra pauta: el mérito de haberla traído es
+   * de la primera, y si se pisara, los números de una campaña vieja se
+   * moverían solos meses después. De acá sale el reporte de marketing.
+   */
+  origen: OrigenDelLead | null;
+  /**
    * El teléfono, cuando lo hay.
    *
    * Vacío en Instagram: Meta no entrega el número de quien escribe por ahí. Es
@@ -615,4 +624,12 @@ export interface Mensaje {
   /** Nombre original; sólo lo traen los documentos. */
   mediaNombre: string | null;
   mediaError: string | null;
+  /**
+   * De qué anuncio vino este mensaje, cuando vino de uno.
+   *
+   * Es lo que WhatsApp dibuja como una tarjeta arriba de la burbuja: la
+   * miniatura del anuncio, su titular y de qué red salió. Nulo en casi todos
+   * —la gente que escribe por su cuenta no trae nada—.
+   */
+  origen: OrigenDelLead | null;
 }

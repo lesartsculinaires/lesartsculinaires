@@ -51,6 +51,12 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    * de WhatsApp en vez de quedarse en blanco.
    */
   const IDENTIDAD = ", identificador, usuario";
+  /*
+   * De qué anuncio vino la persona. Es la capa MÁS NUEVA del desarme, así que
+   * va primera: entre que se despliega el código y se corre el SQL, la bandeja
+   * tiene que seguir mostrando los hilos en vez de quedarse en blanco.
+   */
+  const ORIGEN = ", origen";
   const MARCAS = ", no_leida, fijada, silenciada";
   const PERMISO =
     ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta";
@@ -112,7 +118,13 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    */
   let extras = "";
   let error = null;
-  for (const cand of [IDENTIDAD + MARCAS + PERMISO, MARCAS + PERMISO, MARCAS, ""]) {
+  for (const cand of [
+    ORIGEN + IDENTIDAD + MARCAS + PERMISO,
+    IDENTIDAD + MARCAS + PERMISO,
+    MARCAS + PERMISO,
+    MARCAS,
+    "",
+  ]) {
     const prueba = await supabase
       .from("conversaciones")
       .select("id" + cand)
@@ -181,11 +193,12 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
      * servidor rechaza antes de mirarla. Anidado va por la clave foránea y no
      * cuesta una consulta más.
      */
-    const traer = (conMedia: boolean, conReacciones: boolean) =>
+    const traer = (conMedia: boolean, conReacciones: boolean, conOrigen = true) =>
       supabase
         .from("mensajes")
         .select(
           "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado, wa_id" +
+            (conOrigen ? ", origen" : "") +
             (conMedia ? ", media_ruta, media_mime, media_nombre, media_error" : "") +
             (conReacciones ? ", reacciones(emoji, direccion)" : ""),
         )
@@ -231,6 +244,18 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
         .limit(POR_TANDA);
 
     let { data: msgs, error: errMsg } = await traer(true, true);
+
+    /*
+     * La columna del origen es la más nueva, así que se suelta primero.
+     *
+     * Sin esto, entre el despliegue y la corrida del SQL la bandeja se quedaría
+     * SIN NINGÚN MENSAJE: pedir una columna que no existe devuelve 42703 y ese
+     * error se lleva la consulta entera. Una tarjeta de marketing no puede
+     * costar la bandeja.
+     */
+    if (errMsg?.code === "42703") {
+      ({ data: msgs, error: errMsg } = await traer(true, true, false));
+    }
 
     /*
      * Dos migraciones opcionales, dos reintentos.
@@ -304,6 +329,9 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
           ? c.llamada_permiso_respuesta
           : null,
       etiquetaIds: etiquetasPorConv.get(Number(c.id)) ?? [],
+      // Nulo mientras no se haya corrido la migración del origen, y nulo en
+      // la enorme mayoría: quien escribe por su cuenta no viene de una pauta.
+      origen: (c.origen as Conversacion["origen"]) ?? null,
     })),
     mensajes,
     faltaMigracion: false,
@@ -356,5 +384,7 @@ export function comoLosLee(filas: unknown[]): Mensaje[] {
     mediaMime: m.media_mime ? String(m.media_mime) : null,
     mediaNombre: m.media_nombre ? String(m.media_nombre) : null,
     mediaError: m.media_error ? String(m.media_error) : null,
+    // De qué anuncio vino. Nulo sin la migración y nulo en casi todos.
+    origen: (m.origen as Mensaje["origen"]) ?? null,
   }));
 }
