@@ -46,6 +46,47 @@ import "server-only";
  */
 const VERSION = "v21.0";
 
+/**
+ * A qué Graph le hablamos: Meta tiene DOS Instagram y no son intercambiables.
+ *
+ * ============================================================================
+ * LOS DOS MODELOS
+ * ============================================================================
+ *
+ * Meta ofrece dos formas de conectar la mensajería de Instagram, y cada una
+ * tiene su propio servidor, su propio tipo de token y su propia forma de
+ * configurarse:
+ *
+ *   FACEBOOK LOGIN FOR BUSINESS   `graph.facebook.com`, token DE PÁGINA, y hay
+ *                                 que vincular una página de Facebook. El token
+ *                                 no expira.
+ *
+ *   INSTAGRAM BUSINESS LOGIN      `graph.instagram.com`, token DE INSTAGRAM, y
+ *                                 no hace falta ninguna página. El token expira
+ *                                 a los 60 días y hay que renovarlo.
+ *
+ * Los dos mandan el MISMO webhook —por eso recibir funciona con cualquiera—,
+ * pero para responder hay que pegarle al servidor que corresponde. Con el
+ * equivocado, Meta contesta «Invalid OAuth 2.0 Access Token» aunque el token
+ * esté perfecto.
+ *
+ * ============================================================================
+ * POR QUÉ ES UNA VARIABLE Y NO SE ADIVINA
+ * ============================================================================
+ *
+ * Se pensó en probar uno y, si falla, probar el otro. No se hizo: un token de
+ * verdad vencido daría exactamente el mismo error que un servidor equivocado, y
+ * el reintento convertiría «hay que renovar el token» en «probé los dos y
+ * ninguno anda», que es peor para quien lo tenga que arreglar.
+ *
+ * Por omisión `facebook`, que es como estaba antes de que esto existiera: quien
+ * ya lo tenía andando no tiene que tocar nada.
+ */
+const base = (): string =>
+  (process.env.INSTAGRAM_API ?? "").trim().toLowerCase() === "instagram"
+    ? `https://graph.instagram.com/${VERSION}`
+    : `https://graph.facebook.com/${VERSION}`;
+
 export interface ResultadoIg {
   ok: boolean;
   /** El `mid` que le puso Meta al mensaje. Sirve para seguirle el estado. */
@@ -145,7 +186,7 @@ async function mandar(igsid: string, mensaje: unknown): Promise<ResultadoIg> {
   }
 
   try {
-    const r = await fetch(`https://graph.facebook.com/${VERSION}/${cuenta}/messages`, {
+    const r = await fetch(`${base()}/${cuenta}/messages`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -202,8 +243,29 @@ function explicar(
       "A diferencia de WhatsApp, no hay plantillas para reabrir la conversación."
     );
   }
+  /*
+   * El 190 tiene DOS causas y se parecen tanto que confunden a cualquiera.
+   *
+   * La obvia es que el token venció. La otra, mucho menos obvia, es que el
+   * token esté perfecto pero se lo esté mandando al Graph equivocado: Meta
+   * tiene dos Instagram —ver `base()` acá arriba— y un token de Instagram
+   * contra `graph.facebook.com` devuelve exactamente este mismo error que un
+   * token vencido.
+   *
+   * Pasó de verdad al conectar la cuenta de la escuela. Por eso el mensaje
+   * nombra las dos y dice contra cuál se está hablando: sin ese dato, quien lo
+   * lea va a renovar el token una y otra vez sin que cambie nada.
+   */
   if (error?.code === 190 || estado === 401) {
-    return "El token de Instagram venció o es inválido. Hay que renovarlo en Meta.";
+    const contra = base().includes("graph.instagram.com")
+      ? "graph.instagram.com (Instagram Business Login)"
+      : "graph.facebook.com (Facebook Login for Business)";
+    return (
+      `Instagram rechazó el token. Se está hablando contra ${contra}. ` +
+      "O el token venció y hay que renovarlo en Meta, o es de la OTRA forma de " +
+      "conectar Instagram: en ese caso hay que cambiar la variable INSTAGRAM_API " +
+      "(«facebook» o «instagram»), no el token."
+    );
   }
   /*
    * 100 con subcódigo 2534014: el IGSID no existe o no es de esta cuenta.
@@ -259,7 +321,7 @@ export async function perfilDe(
 
   try {
     const r = await fetch(
-      `https://graph.facebook.com/${VERSION}/${igsid}?fields=name,username`,
+      `${base()}/${igsid}?fields=name,username`,
       { headers: { authorization: `Bearer ${token}` } },
     );
 
