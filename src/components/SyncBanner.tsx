@@ -1,5 +1,6 @@
 "use client";
 
+import { enCastellano } from "@/lib/supabase/enCastellano";
 import { T } from "@/lib/theme";
 
 interface Props {
@@ -44,9 +45,18 @@ export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
   }
 
   if (loadError) {
+    /*
+     * Traducido, porque lo lee una asesora y no quien mantiene la base.
+     *
+     * «JWT issued at future» en una barra amarilla no dice qué pasó, si se
+     * perdió algo ni qué hacer: deja a la persona mirando cero leads y
+     * pensando que se borraron. Lo que cuesta eso no es el susto, es el rato
+     * que se pierde revisando y la desconfianza que queda después.
+     */
+    const explicado = enCastellano(loadError);
     return (
       <div style={{ ...BOX, background: "#F6EEDC", color: "#7A5A12" }}>
-        <span>No se pudieron cargar los datos: {loadError}</span>
+        <span>No se pudieron cargar los datos. {explicado?.texto}</span>
       </div>
     );
   }
