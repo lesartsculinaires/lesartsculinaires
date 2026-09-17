@@ -111,6 +111,17 @@ const servidor = http.createServer((req, res) => {
         contacts: [{ input: "x", wa_id: "x" }],
         // Distinto cada vez: ver el encabezado.
         messages: [{ id: `wamid.FALSO${Date.now()}.${n}` }],
+        /*
+         * Y la forma que usa Instagram para lo mismo.
+         *
+         * Instagram no contesta `messages[]` sino `message_id` pelado, así que
+         * sin esta clave una respuesta de Instagram se daba por buena pero se
+         * guardaba sin identificador, y después no había con qué seguirle el
+         * estado. Va agregada y no en lugar de la otra: las pruebas de WhatsApp
+         * leen `messages[0].id` y tienen que seguir leyéndolo igual.
+         */
+        recipient_id: "IGSID_FALSO",
+        message_id: `mid.FALSO${Date.now()}.${n}`,
       }),
     );
   });
