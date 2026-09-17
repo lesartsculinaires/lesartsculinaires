@@ -1989,12 +1989,20 @@ export function Inbox({
                     void enviar();
                   }
                 }}
+                /*
+                 * El nombre del canal sale de la ficha, no escrito a mano.
+                 *
+                 * Decía «WhatsApp» siempre. En un hilo de Instagram sin token
+                 * eso mandaba a revisar la integración equivocada: el asesor
+                 * leía «WhatsApp no está configurado» en una conversación de
+                 * Instagram, con WhatsApp andando perfecto al lado.
+                 */
                 placeholder={
                   nota
-                    ? "Una nota para el equipo. No sale a WhatsApp."
+                    ? `Una nota para el equipo. No sale a ${canal.nombre}.`
                     : puedeResponder
                       ? "Escribí tu respuesta… (Enter envía)"
-                      : "WhatsApp no está configurado en el servidor."
+                      : `${canal.nombre} no está configurado en el servidor.`
                 }
                 /*
                  * Una nota interna se puede escribir siempre.

@@ -82,10 +82,45 @@ const VERSION = "v21.0";
  * Por omisión `facebook`, que es como estaba antes de que esto existiera: quien
  * ya lo tenía andando no tiene que tocar nada.
  */
-const base = (): string =>
-  (process.env.INSTAGRAM_API ?? "").trim().toLowerCase() === "instagram"
+const base = (): string => {
+  /*
+   * El desvío al banco de pruebas, igual que en WhatsApp.
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ HACÍA FALTA
+   * --------------------------------------------------------------------------
+   *
+   * Sin esto, contestar por Instagram era el único camino del CRM que no se
+   * podía probar nunca: el webhook se ejerce mandándole una carga firmada, pero
+   * la respuesta sale contra `graph.facebook.com` y no hay forma de interceptarla
+   * sin una cuenta real. O sea que la mitad que más importa —«¿puedo
+   * contestar?»— se verificaba mirando la pantalla y cruzando los dedos.
+   *
+   * WhatsApp ya tenía su `WHATSAPP_GRAPH_URL` por exactamente esta razón. Esto
+   * es el gemelo, con la misma regla de seguridad.
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ SÓLO SE ACEPTA UNA DIRECCIÓN LOCAL
+   * --------------------------------------------------------------------------
+   *
+   * Porque acá viaja el token de Instagram de la escuela. Una variable que
+   * redirija a dónde se manda es una variable que, mal puesta —o puesta por
+   * alguien que no debía—, le entrega esa credencial a otro servidor.
+   *
+   * Aceptar sólo `127.0.0.1` o `localhost` cierra eso del todo: el destino tiene
+   * que ser la misma máquina donde ya corre el CRM, así que no hay nada que
+   * llevarse a ningún lado. Cualquier otro valor se ignora en silencio y se usa
+   * el de Meta, que es lo correcto en producción.
+   */
+  const propuesta = process.env.INSTAGRAM_GRAPH_URL;
+  if (propuesta && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(propuesta.trim())) {
+    return `${propuesta.trim()}/${VERSION}`;
+  }
+
+  return (process.env.INSTAGRAM_API ?? "").trim().toLowerCase() === "instagram"
     ? `https://graph.instagram.com/${VERSION}`
     : `https://graph.facebook.com/${VERSION}`;
+};
 
 export interface ResultadoIg {
   ok: boolean;
