@@ -91,6 +91,15 @@ export interface Canal {
   ventanaHoras: number;
   /** Cómo se le explica esa ventana a quien atiende. */
   laVentana: string;
+  /**
+   * Por dónde entra un mensaje de este canal, dicho como se le habla a alguien.
+   *
+   * Se completa una frase del estilo «cuando llegue el primer mensaje ___».
+   * Vive acá y no escrito en la pantalla porque la bandeja se filtra por canal:
+   * con el filtro en Instagram, un aviso que diga «al número de WhatsApp» manda
+   * a revisar la integración equivocada, que es justo lo que pasó.
+   */
+  porDondeLlega: string;
 }
 
 export const CANALES: readonly Canal[] = [
@@ -114,6 +123,7 @@ export const CANALES: readonly Canal[] = [
     laVentana:
       "Se puede escribir libremente durante 24 horas desde el último mensaje de la " +
       "persona. Después, sólo con una plantilla aprobada por Meta.",
+    porDondeLlega: "al número de WhatsApp de la escuela",
   },
   {
     clave: "instagram",
@@ -168,6 +178,7 @@ export const CANALES: readonly Canal[] = [
       "Hay siete días para contestar desde el último mensaje de la persona, porque " +
       "contesta alguien del equipo y no un robot. Pasados, hay que esperar a que " +
       "vuelva a escribir: Instagram no tiene plantillas.",
+    porDondeLlega: "a la cuenta de Instagram de la escuela",
   },
   {
     clave: "messenger",
@@ -189,6 +200,7 @@ export const CANALES: readonly Canal[] = [
     laVentana:
       "Siete días para contestar desde el último mensaje, por contestar una persona " +
       "y no un robot. Messenger tampoco tiene plantillas aprobadas.",
+    porDondeLlega: "a la página de Facebook de la escuela",
   },
   {
     clave: "tiktok",
@@ -218,6 +230,7 @@ export const CANALES: readonly Canal[] = [
     },
     ventanaHoras: 24 * 7,
     laVentana: "Todavía no se sabe: depende de las reglas que ponga TikTok al aprobar.",
+    porDondeLlega: "a la cuenta de TikTok de la escuela",
   },
 ];
 
