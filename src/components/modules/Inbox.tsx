@@ -983,7 +983,9 @@ export function Inbox({
         {nuevoChat && (
           <NuevoChat
             oportunidades={oportunidades}
+            conversaciones={conversaciones}
             plantillas={plantillas}
+            canalesConectados={canalesConectados}
             accent={accent}
             onCerrar={() => setNuevoChat(false)}
             onAbierta={(id) => {

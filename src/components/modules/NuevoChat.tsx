@@ -13,8 +13,10 @@ import {
 import { T } from "@/lib/theme";
 import { useCatalogo } from "@/lib/catalog";
 import { activos } from "@/lib/types";
+import { CANALES, canalDe } from "@/lib/canales";
+import { coincideHilo } from "@/lib/buscarEnBandeja";
 import { aInternacional, bonito } from "@/lib/whatsapp/numero";
-import type { Oportunidad, Plantilla } from "@/lib/types";
+import type { Conversacion, Oportunidad, Plantilla } from "@/lib/types";
 
 /**
  * Abrir un chat con alguien que ya está en la base.
@@ -31,22 +33,53 @@ import type { Oportunidad, Plantilla } from "@/lib/types";
  * silenciosa es peor que un paso de más, así que el número se muestra, se dice
  * qué se le cambió, y se puede corregir.
  */
+/*
+ * ============================================================================
+ * POR QUÉ EL SELECTOR DE CANAL NO HACE LO MISMO EN LOS TRES
+ * ============================================================================
+ *
+ * Porque Meta no deja lo mismo en los tres, y una ventana que fingiera que sí
+ * terminaría en un hilo abierto que no puede mandar nada.
+ *
+ *   WHATSAPP    Se le puede escribir primero a alguien que nunca escribió, con
+ *               una plantilla aprobada. Por eso acá se busca en TODO el CRM
+ *               —nombre, código, teléfono— y hasta se puede dar de alta a
+ *               alguien que no estaba.
+ *
+ *   INSTAGRAM   No. No hay plantillas y no hay forma de escribir primero: la
+ *   MESSENGER   conversación la empieza siempre la persona. Tampoco existe cómo
+ *               preguntarle a Meta «¿quién es @sofi.mtz?»; el identificador de
+ *               alguien aparece recién cuando escribe.
+ *
+ * Así que en esas dos el buscador no busca contactos del CRM sino HILOS QUE YA
+ * EXISTEN, por su @usuario o por su nombre, y el botón abre ese hilo. Es lo
+ * único que se puede hacer, y es lo que hace falta: encontrar rápido a la
+ * persona que uno conoce nada más que por su arroba.
+ */
 export function NuevoChat({
   oportunidades,
+  conversaciones,
   plantillas,
+  canalesConectados,
   accent,
   onCerrar,
   onAbierta,
 }: {
   oportunidades: Oportunidad[];
+  /** Para poder encontrar un hilo de Instagram o Messenger por su @usuario. */
+  conversaciones: Conversacion[];
   /** Las de Meta. Se ofrecen sólo las aprobadas. */
   plantillas: Plantilla[];
+  /** Qué canales tienen credenciales puestas en el servidor. */
+  canalesConectados: Record<string, boolean>;
   accent: string;
   onCerrar: () => void;
   /** Recibe la conversación lista, para que la bandeja la muestre abierta. */
   onAbierta: (conversacionId: number) => void;
 }) {
   const cat = useCatalogo();
+  const [canal, setCanal] = useState("whatsapp");
+  const esWhatsapp = canal === "whatsapp";
   const [busqueda, setBusqueda] = useState("");
   const [elegido, setElegido] = useState<Oportunidad | null>(null);
   const [numero, setNumero] = useState("");
@@ -102,6 +135,25 @@ export function NuevoChat({
       )
       .slice(0, 40);
   }, [contactos, busqueda]);
+
+  /**
+   * Los hilos que ya existen en el canal elegido, cuando no es WhatsApp.
+   *
+   * Se reusa `coincideHilo`, que es el mismo buscador de la bandeja: así lo que
+   * encuentra acá y lo que encuentra allá es lo mismo, y arreglar uno arregla
+   * los dos. Busca por @usuario, por el nombre del perfil y por el nombre que
+   * tenga esa persona en el CRM.
+   */
+  const hilos = useMemo(() => {
+    if (esWhatsapp) return [];
+    const q = busqueda.trim();
+    if (q === "") return [];
+    const nombreDe = new Map(oportunidades.map((o) => [o.clienteId, o.cliente]));
+    return conversaciones
+      .filter((c) => c.canal === canal)
+      .filter((c) => coincideHilo(c, q, c.clienteId == null ? null : nombreDe.get(c.clienteId)))
+      .slice(0, 40);
+  }, [conversaciones, oportunidades, canal, busqueda, esWhatsapp]);
 
   const elegir = (o: Oportunidad) => {
     const propuesta = aInternacional(o.telefono);
@@ -222,9 +274,69 @@ export function NuevoChat({
         <h2 className="dsp" style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700 }}>
           Nuevo chat
         </h2>
-        <p style={{ margin: "0 0 13px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
-          Buscá a quién le querés escribir entre los contactos que ya están en el CRM.
+        <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
+          {esWhatsapp
+            ? "Buscá a quién le querés escribir entre los contactos que ya están en el CRM. Al elegirlo vas a poder mandarle una plantilla."
+            : `Buscá una conversación de ${canalDe(canal).nombre} que ya exista, por su @usuario o por su nombre.`}
         </p>
+
+        {/*
+          Por dónde se le escribe.
+          --------------------------------------------------------------------
+          Va arriba de todo porque cambia lo que hace el buscador de abajo, y un
+          control que cambia a otro tiene que leerse antes que él.
+
+          Los canales sin credenciales se muestran apagados en vez de
+          esconderse: que Instagram no esté hoy es un dato que sirve —dice que
+          falta terminar de conectarlo—, y una fila que aparece y desaparece
+          según el servidor se lee como si la pantalla estuviera fallando.
+        */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 11 }}>
+          {CANALES.map((c) => {
+            const puesto = canal === c.clave;
+            const listo = c.disponible && canalesConectados[c.clave] === true;
+            return (
+              <button
+                key={c.clave}
+                type="button"
+                data-canal-nuevo={c.clave}
+                aria-pressed={puesto}
+                disabled={!listo}
+                title={
+                  listo
+                    ? `Escribir por ${c.nombre}`
+                    : `${c.nombre} todavía no está conectado en el servidor.`
+                }
+                onClick={() => {
+                  if (!listo) return;
+                  setCanal(c.clave);
+                  // Lo escrito para buscar un teléfono no sirve para buscar una
+                  // arroba, y al revés. Dejarlo daría una lista vacía que parece
+                  // «no hay nadie» cuando en realidad es «eso no se busca acá».
+                  setBusqueda("");
+                  setElegido(null);
+                  setDandoAlta(false);
+                  setError(null);
+                }}
+                style={{
+                  height: 27,
+                  padding: "0 10px",
+                  fontSize: 12,
+                  fontWeight: puesto ? 700 : 500,
+                  borderRadius: 999,
+                  border: `1px solid ${puesto ? accent : T.border}`,
+                  background: puesto ? accent : T.surface,
+                  color: puesto ? "#fff" : listo ? T.ink : T.faint,
+                  cursor: listo ? "pointer" : "not-allowed",
+                  opacity: listo ? 1 : 0.55,
+                }}
+              >
+                {c.icono} {c.nombre}
+                {!listo && <span style={{ fontSize: 10.5 }}> · pronto</span>}
+              </button>
+            );
+          })}
+        </div>
 
         <Buscador
           valor={busqueda}
@@ -233,11 +345,65 @@ export function NuevoChat({
             setElegido(null);
             setError(null);
           }}
-          placeholder="Nombre, código o teléfono…"
+          placeholder={esWhatsapp ? "Nombre, código o teléfono…" : "@usuario o nombre…"}
           autoFocus
         />
 
-        {!elegido && !dandoAlta && (
+        {/*
+          Instagram y Messenger: sólo abrir un hilo que ya existe.
+          --------------------------------------------------------------------
+          El porqué está en el encabezado del archivo. Lo que importa acá es que
+          se DIGA, y no que el botón falle después: quien atiende tiene que
+          entender en el momento que a esa persona no se le puede escribir
+          primero, para no quedarse esperando una respuesta que nunca pidió.
+        */}
+        {!esWhatsapp && (
+          <div style={{ flex: 1, overflowY: "auto", marginTop: 10, minHeight: 60 }}>
+            <p style={{ margin: "0 0 9px", fontSize: 11.5, color: T.muted, lineHeight: 1.55 }}>
+              En {canalDe(canal).nombre} la conversación la empieza siempre la persona:
+              no hay plantillas y Meta no deja escribir primero. Acá se abre un hilo
+              que ya existe.
+            </p>
+
+            {busqueda.trim() === "" ? (
+              <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
+                Escribí algo para buscar.
+              </p>
+            ) : hilos.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
+                Ninguna conversación de {canalDe(canal).nombre} con eso. Si esa persona
+                todavía no te escribió, no va a aparecer: su identificador llega recién
+                con su primer mensaje.
+              </p>
+            ) : (
+              hilos.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onAbierta(c.id)}
+                  className="row"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 9px",
+                    borderRadius: 7,
+                    borderBottom: `1px solid ${T.border}`,
+                  }}
+                >
+                  <span style={{ display: "block", fontSize: 13, color: T.ink }}>
+                    {c.nombrePerfil ?? c.usuario ?? "Contacto sin nombre"}
+                  </span>
+                  <span className="mono" style={{ fontSize: 11, color: T.faint }}>
+                    {c.usuario ? `@${c.usuario.replace(/^@+/, "")}` : "sin @usuario"}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
+        {esWhatsapp && !elegido && !dandoAlta && (
           <div style={{ flex: 1, overflowY: "auto", marginTop: 10, minHeight: 60 }}>
             {busqueda.trim() === "" ? (
               <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
@@ -559,6 +725,11 @@ export function NuevoChat({
             >
               Entrar al chat igual
             </button>
+          ) : !esWhatsapp ? (
+            // En Instagram y Messenger no hay nada que confirmar: se toca el
+            // hilo de la lista y se entra. Un botón de «abrir» apagado al lado
+            // haría pensar que falta un paso que no existe.
+            null
           ) : dandoAlta ? (
             <button
               type="button"
