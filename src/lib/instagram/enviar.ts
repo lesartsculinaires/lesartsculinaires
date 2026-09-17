@@ -135,6 +135,31 @@ export interface ResultadoIg {
  * Distinto de que el CRM sepa hablar Instagram —eso lo dice `canales.ts`—:
  * esto es si están puestas las credenciales. La bandeja necesita las dos cosas
  * para decidir si el cuadro de escribir se habilita o se explica por qué no.
+ *
+ * ============================================================================
+ * QUÉ VA EN `INSTAGRAM_ACCOUNT_ID`, QUE NO ES LO QUE EL NOMBRE SUGIERE
+ * ============================================================================
+ *
+ * Con Facebook Login for Business va el ID DE LA PÁGINA de Facebook, no el de
+ * la cuenta de Instagram. El nombre de la variable engaña y la documentación de
+ * Meta no ayuda, así que queda escrito acá con la prueba que lo demuestra.
+ *
+ * Probando los dos contra Meta con el mismo token de Página:
+ *
+ *   POST /v21.0/<id de Instagram>/messages
+ *        → «(#3) Application does not have the capability to make this API
+ *           call.» O sea: ese camino es el de la Instagram Platform y exige que
+ *           la aplicación tenga el producto de Instagram habilitado aparte.
+ *
+ *   POST /v21.0/<id de la Página>/messages
+ *        → «(#100) You cannot send messages to this id», que es el error que
+ *           corresponde a un destinatario inventado. El endpoint y los permisos
+ *           están bien; sólo faltaba un IGSID de verdad.
+ *
+ * Ése es el que sirve: la mensajería de Instagram por Facebook Login viaja por
+ * la Página, con el IGSID de la persona en `recipient`. Si algún día se cambia
+ * de modelo, el error #3 es la señal de que esta variable quedó con el ID
+ * equivocado.
  */
 export const hayInstagram = (): boolean =>
   Boolean(process.env.INSTAGRAM_TOKEN && process.env.INSTAGRAM_ACCOUNT_ID);
