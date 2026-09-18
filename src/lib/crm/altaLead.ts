@@ -218,9 +218,38 @@ async function anotarProgramasDeInteres(
   if (todos.length === 0) return;
 
   try {
+    /*
+     * `upsert` y no `insert`, y esto no es una precaución: era un error.
+     *
+     * ------------------------------------------------------------------------
+     * QUÉ PASABA
+     * ------------------------------------------------------------------------
+     *
+     * La base tiene un disparador —`trg_programa_principal`— que, al crear la
+     * oportunidad, ya anota el programa principal en esta tabla. Acá se mandaba
+     * la lista entera CON el principal adentro, y la clave primaria de
+     * `oportunidad_programas` es el par (oportunidad, programa).
+     *
+     * Un `insert` con una fila repetida no guarda las otras: PostgREST rechaza
+     * el lote COMPLETO con un 23505. Así que de «Pastelería y Barismo» quedaba
+     * anotada sólo Pastelería —la que el disparador ya había puesto— y Barismo
+     * desaparecía.
+     *
+     * Y desaparecía en silencio, por partida doble: el error vuelve en el
+     * resultado en vez de lanzarse, así que este `try` nunca se enteraba, y el
+     * lead se creaba bien igual. Lo único que faltaba era un interés que nadie
+     * sabía que se había perdido, hasta que alguien se pregunta por qué el lead
+     * de la feria sólo tenía un programa.
+     *
+     * Con `ignoreDuplicates` la fila que ya está se saltea y las demás entran,
+     * que es lo que se quería desde el principio.
+     */
     await supabase
       .from("oportunidad_programas")
-      .insert(todos.map((producto_id) => ({ oportunidad_id: oportunidadId, producto_id })));
+      .upsert(
+        todos.map((producto_id) => ({ oportunidad_id: oportunidadId, producto_id })),
+        { onConflict: "oportunidad_id,producto_id", ignoreDuplicates: true },
+      );
   } catch {
     // Ver el comentario de arriba.
   }
