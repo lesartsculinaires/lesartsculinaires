@@ -123,6 +123,25 @@ export async function responderFormulario(
       responsable_correo: lead.responsable_correo,
       vendedor_id: vendedorId == null ? null : Number(vendedorId),
       producto_id: lead.producto_id,
+      /*
+       * Los programas marcados van POR ACÁ, no en un insert aparte.
+       *
+       * Antes se hacía después del alta, en su propia sentencia, y por eso las
+       * marcas de más se perdían: `altaLead` ya anota el programa principal en
+       * `oportunidad_programas`, y el segundo insert mandaba la lista entera
+       * —el principal incluido—. La clave primaria de esa tabla es el par
+       * (oportunidad, programa), así que el principal repetido hacía rebotar el
+       * lote COMPLETO. Quedaba anotado sólo el principal, que es justo el que
+       * ya estaba.
+       *
+       * De cara a quien llenaba el formulario no se notaba nada: marcaba
+       * Pastelería y Barismo, el lead entraba bien, y el interés en Barismo no
+       * existía en ningún lado.
+       *
+       * `altaLead` los une con el principal y los deduplica antes de escribir,
+       * que es exactamente lo que hacía falta.
+       */
+      programas_interes: lead.programas_interes,
       territorio_id: lead.territorio_id ?? formulario.territorioId,
       canal_id: formulario.canalId,
       etapa_id: formulario.etapaId,
@@ -160,26 +179,11 @@ export async function responderFormulario(
   }
 
   /*
-   * Los demás programas que marcó.
+   * Los programas marcados ya quedaron anotados: van dentro del alta, arriba.
    *
-   * En una feria alguien dice que le interesan Pastelería y Barismo. El
-   * primero va en `producto_id` —es el que lleva la plata del trato— y los
-   * demás quedan anotados acá. Con eso, la próxima base que la traiga por
-   * Barismo cae sobre este mismo lead en vez de abrirle otro.
-   *
-   * No frena el alta si falla: la persona ya está guardada, que es lo que
-   * importa, y lo marcado queda igual en la nota y en la respuesta cruda.
+   * Acá había un insert propio a `oportunidad_programas` y era el que rompía
+   * todo. El porqué está explicado donde ahora se pasan.
    */
-  if (alta.oportunidadId != null && lead.programas_interes.length > 0) {
-    await supabase
-      .from("oportunidad_programas")
-      .insert(
-        lead.programas_interes.map((producto_id) => ({
-          oportunidad_id: alta.oportunidadId as number,
-          producto_id,
-        })),
-      );
-  }
 
   const { error } = await supabase.from("formulario_respuestas").insert({
     formulario_id: formulario.id,
