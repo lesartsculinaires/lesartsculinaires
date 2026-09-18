@@ -983,7 +983,9 @@ export function Inbox({
         {nuevoChat && (
           <NuevoChat
             oportunidades={oportunidades}
+            conversaciones={conversaciones}
             plantillas={plantillas}
+            canalesConectados={canalesConectados}
             accent={accent}
             onCerrar={() => setNuevoChat(false)}
             onAbierta={(id) => {
@@ -1253,9 +1255,24 @@ export function Inbox({
         <div style={{ overflowY: "auto", flex: 1 }}>
           {lista.length === 0 && (
             <p style={{ margin: 0, padding: 16, fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
+              {/*
+                El aviso habla del canal que se está mirando.
+                ----------------------------------------------------------------
+                Decía siempre «al número de WhatsApp de la escuela». Con el
+                filtro puesto en Instagram eso es directamente falso, y manda a
+                revisar la integración equivocada: se lee que se espera un
+                mensaje de WhatsApp en una pestaña que dice Instagram.
+
+                Sin filtro no se nombra ninguna red. Es el caso de todos los
+                días —la bandeja mezcla los canales— y nombrar uno solo ahí
+                volvería a mentir, esta vez al revés.
+              */}
               {verArchivadas
                 ? "No hay conversaciones archivadas."
-                : "Todavía no ha escrito nadie. Cuando llegue el primer mensaje al número de WhatsApp de la escuela, va a aparecer acá."}
+                : porCanal == null
+                  ? "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá."
+                  : `Todavía no ha escrito nadie por ${canalDe(porCanal).nombre}. ` +
+                    `Cuando llegue el primer mensaje ${canalDe(porCanal).porDondeLlega}, va a aparecer acá.`}
             </p>
           )}
 

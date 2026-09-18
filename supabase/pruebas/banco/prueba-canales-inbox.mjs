@@ -289,6 +289,41 @@ console.log("\n── y se puede filtrar por red ──");
   es("Y SE VA LA DE INSTAGRAM", /Canal Instagram/.test(nombres), false);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── LA BANDEJA VACÍA HABLA DEL CANAL QUE SE ESTÁ MIRANDO ──");
+// ══════════════════════════════════════════════════════════════════════════
+//
+// El aviso de «todavía no ha escrito nadie» decía siempre «al número de
+// WhatsApp de la escuela». Con el filtro puesto en Instagram eso es falso, y
+// peor que falso: manda a revisar la integración equivocada justo cuando se
+// está esperando el primer mensaje de la red nueva. Lo reportó la escuela con
+// una captura.
+//
+// Se borra el hilo de Instagram para dejar esa red sin nada, que es el estado
+// en el que aparece el aviso.
+{
+  sql(`
+    delete from public.mensajes where conversacion_id in
+      (select id from public.conversaciones where identificador = '${IGSID}');
+    delete from public.conversaciones where identificador = '${IGSID}';
+  `);
+
+  await p.reload({ waitUntil: "networkidle" });
+  await p.waitForTimeout(2600);
+  await p.locator('main button[title*="Instagram"]').first().click();
+  await p.waitForTimeout(1200);
+  await foto("7-vacia-instagram");
+
+  const t = await texto();
+  es("NOMBRA INSTAGRAM", /Todavía no ha escrito nadie por Instagram/.test(t), true);
+  es("Y NO NOMBRA WHATSAPP", /número de WhatsApp de la escuela/.test(t), false);
+  es(
+    "dice por dónde va a entrar ese primer mensaje",
+    /a la cuenta de Instagram de la escuela/.test(t),
+    true,
+  );
+}
+
 es("sin errores en la página", errores, []);
 
 await ctx.close();

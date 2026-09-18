@@ -151,5 +151,35 @@ console.log("\n── filtrar la lista entera ──");
   es("la lista original no se modifica", lista, copia);
 }
 
+console.log("\n── EL @USUARIO DE INSTAGRAM ──");
+/*
+ * En Instagram a nadie se lo conoce por su nombre completo.
+ *
+ * El hilo trae dos cosas: cómo se llama —«Sofía Martínez»— y cómo se la
+ * encuentra —«@sofi.mtz»—. Hasta ahora sólo se buscaba lo primero, que es justo
+ * lo que un asesor NO tiene a mano cuando le dicen «contestale a la del perfil
+ * sofi punto mtz».
+ */
+{
+  const ig = {
+    telefono: "",
+    nombrePerfil: "Sofía Martínez",
+    clienteId: null,
+    ultimoTexto: null,
+    usuario: "sofi.mtz",
+  };
+
+  es("se encuentra por su arroba", coincideHilo(ig, "sofi.mtz"), true);
+  es("ESCRIBIENDO LA ARROBA TAMBIÉN", coincideHilo(ig, "@sofi.mtz"), true);
+  es("y por un pedazo", coincideHilo(ig, "sofi"), true);
+  es("sigue encontrándose por el nombre del perfil", coincideHilo(ig, "Martínez"), true);
+  es("y no aparece por algo que no es suyo", coincideHilo(ig, "rodri"), false);
+
+  // Un hilo de WhatsApp no tiene arroba y no tiene que romperse por eso.
+  const wa = { telefono: "50370000000", nombrePerfil: "Majo", clienteId: null, ultimoTexto: null };
+  es("un hilo sin @usuario no se rompe", coincideHilo(wa, "@sofi"), false);
+  es("y se sigue encontrando por su número", coincideHilo(wa, "70000000"), true);
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

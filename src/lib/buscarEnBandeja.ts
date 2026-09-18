@@ -49,6 +49,15 @@ export interface HiloBuscable {
   nombrePerfil: string | null;
   clienteId: number | null;
   ultimoTexto: string | null;
+  /**
+   * El @usuario de Instagram.
+   *
+   * Es opcional porque un hilo de WhatsApp no tiene ninguno, pero cuando está
+   * es LA forma de nombrar a esa persona: en Instagram nadie dice «Sofía
+   * Martínez», dice «@sofi.mtz». Sin esto, un lead que llegó por ahí no se
+   * podía encontrar por lo único que se sabe de él.
+   */
+  usuario?: string | null;
 }
 
 /** Sólo los dígitos, para comparar teléfonos escritos de cualquier forma. */
@@ -80,8 +89,21 @@ export function coincideHilo(
     return true;
   }
 
-  const donde = [hilo.nombrePerfil, nombreEnElCrm, hilo.ultimoTexto];
-  return donde.some((t) => t != null && normalizarTexto(t).includes(q));
+  /*
+   * El @usuario se busca con y sin la arroba.
+   *
+   * Quien lo copia del perfil lo trae con «@» y quien lo escribe de memoria casi
+   * nunca la pone. Que una de las dos formas no encuentre nada haría parecer
+   * que ese lead no está.
+   */
+  const donde = [hilo.nombrePerfil, nombreEnElCrm, hilo.ultimoTexto, hilo.usuario];
+  const sinArroba = q.replace(/^@+/, "");
+  return donde.some(
+    (t) =>
+      t != null &&
+      (normalizarTexto(t).includes(q) ||
+        (sinArroba !== "" && normalizarTexto(t.replace(/^@+/, "")).includes(sinArroba))),
+  );
 }
 
 /**
