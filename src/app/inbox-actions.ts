@@ -22,6 +22,11 @@ import {
   hayInstagram,
 } from "@/lib/instagram/enviar";
 import {
+  enviarAdjuntoMsn,
+  enviarTextoMsn,
+  hayMessenger,
+} from "@/lib/messenger/enviar";
+import {
   enviarAudio,
   enviarDocumento,
   enviarImagen,
@@ -71,7 +76,7 @@ async function aQuienLeEscribimos(
   supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
   conversacionId: number,
 ): Promise<{
-  conv: { esInstagram: boolean; aQuien: string } | null;
+  conv: { canal: string; aQuien: string } | null;
   error: string | null;
 }> {
   const leer = async (columnas: string) =>
@@ -91,7 +96,16 @@ async function aQuienLeEscribimos(
 
   return {
     conv: {
-      esInstagram: String(fila.canal ?? "whatsapp").toLowerCase() === "instagram",
+      /*
+       * El canal tal cual, no un sí/no de Instagram.
+       *
+       * Acá había un booleano `esInstagram`, y con dos canales alcanzaba. Con
+       * tres deja de alcanzar, y el modo en que falla es el peor posible: un
+       * hilo de Messenger daría `false` y el mensaje saldría por WhatsApp, a un
+       * número que no existe. Con el canal como texto, lo que no se reconoce cae
+       * en WhatsApp sólo si de verdad dice «whatsapp».
+       */
+      canal: String(fila.canal ?? "whatsapp").toLowerCase(),
       /*
        * El identificador, y el teléfono como respaldo.
        *
@@ -135,7 +149,62 @@ export const salidaDisponible = async (): Promise<boolean> =>
 export const canalesListos = async (): Promise<Record<string, boolean>> => ({
   whatsapp: hayWhatsapp(),
   instagram: hayInstagram(),
+  messenger: hayMessenger(),
 });
+
+/**
+ * ¿Le faltan credenciales al canal de este hilo?
+ *
+ * Devuelve el texto que hay que mostrar, o null si está todo puesto. El texto
+ * NOMBRA el canal: decir «WhatsApp no está configurado» en un hilo de Messenger
+ * manda a revisar la integración equivocada, que es exactamente lo que le pasó a
+ * la escuela con Instagram.
+ */
+function faltaElCanal(canal: string): string | null {
+  if (canal === "instagram") {
+    return hayInstagram() ? null : "Instagram no está configurado en el servidor.";
+  }
+  if (canal === "messenger") {
+    return hayMessenger() ? null : "Messenger no está configurado en el servidor.";
+  }
+  return hayWhatsapp() ? null : "WhatsApp no está configurado en el servidor.";
+}
+
+/** Lo que devuelve cualquiera de los tres envíos, con la misma forma. */
+interface Salida {
+  ok: boolean;
+  waId: string | null;
+  error: string | null;
+}
+
+/**
+ * Manda un texto por donde corresponda.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ WHATSAPP ES EL ÚLTIMO Y NO EL PRIMERO
+ * ----------------------------------------------------------------------------
+ *
+ * Porque es el que se queda con lo que no se reconoce, y eso tiene que ser una
+ * decisión y no un descuido. Todas las conversaciones anteriores a que
+ * existieran los otros canales dicen «whatsapp», y las poquísimas que quedaron
+ * con el campo vacío también son de WhatsApp: era el único. Mandar por ahí lo
+ * desconocido es lo correcto hoy.
+ *
+ * El día que aparezca un cuarto canal hay que agregarlo ACÁ. Si se olvida, sus
+ * mensajes van a salir por WhatsApp a un identificador que no es un teléfono, y
+ * Meta los va a rechazar con un error que no dice nada de esto.
+ */
+async function mandarTextoPor(canal: string, aQuien: string, cuerpo: string): Promise<Salida> {
+  if (canal === "instagram") {
+    const r = await enviarTextoIg(aQuien, cuerpo);
+    return { ok: r.ok, waId: r.mid, error: r.error };
+  }
+  if (canal === "messenger") {
+    const r = await enviarTextoMsn(aQuien, cuerpo);
+    return { ok: r.ok, waId: r.mid, error: r.error };
+  }
+  return enviarTexto(aQuien, cuerpo);
+}
 
 /**
  * Responde a un hilo, por el canal que sea.
@@ -183,23 +252,13 @@ export async function responderConversacion(
   if (error) return { ok: false, error };
   if (!conv) return { ok: false, error: "No se encontró la conversación." };
 
-  const { esInstagram, aQuien } = conv;
+  const { canal, aQuien } = conv;
   if (!aQuien) return { ok: false, error: "Este hilo no tiene con quién comunicarse." };
 
-  if (esInstagram && !hayInstagram()) {
-    return { ok: false, error: "Instagram no está configurado en el servidor." };
-  }
-  if (!esInstagram && !hayWhatsapp()) {
-    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
-  }
+  const falta = faltaElCanal(canal);
+  if (falta) return { ok: false, error: falta };
 
-  const envio = esInstagram
-    ? await enviarTextoIg(aQuien, cuerpo).then((r) => ({
-        ok: r.ok,
-        waId: r.mid,
-        error: r.error,
-      }))
-    : await enviarTexto(aQuien, cuerpo);
+  const envio = await mandarTextoPor(canal, aQuien, cuerpo);
 
   if (!envio.ok) return { ok: false, error: envio.error };
 
@@ -1249,20 +1308,20 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     return { ok: false, error: "No se encontró la conversación." };
   }
 
-  const { esInstagram, aQuien } = conv;
+  const { canal, aQuien } = conv;
+  // Instagram y Messenger mandan adjuntos exactamente igual; WhatsApp no. Es la
+  // única división que importa en esta función.
+  const esDeMeta = canal === "instagram" || canal === "messenger";
 
   if (!aQuien) {
     await limpiar();
     return { ok: false, error: "Este hilo no tiene con quién comunicarse." };
   }
 
-  if (esInstagram && !hayInstagram()) {
+  const falta = faltaElCanal(canal);
+  if (falta) {
     await limpiar();
-    return { ok: false, error: "Instagram no está configurado en el servidor." };
-  }
-  if (!esInstagram && !hayWhatsapp()) {
-    await limpiar();
-    return { ok: false, error: "WhatsApp no está configurado en el servidor." };
+    return { ok: false, error: falta };
   }
 
   /*
@@ -1281,19 +1340,23 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
   }
 
   /*
-   * Instagram no distingue foto de documento con cuerpos distintos.
+   * Instagram y Messenger no distinguen foto de documento con cuerpos distintos.
    *
    * WhatsApp tiene un tipo de mensaje por cada cosa y cada uno acepta lo suyo
-   * —el audio no lleva pie, el documento lleva nombre de archivo—. Instagram
-   * tiene uno solo, `attachment`, con la clase adentro. Por eso acá se resuelve
-   * con una llamada y allá con tres.
+   * —el audio no lleva pie, el documento lleva nombre de archivo—. Los dos de
+   * Meta tienen uno solo, `attachment`, con la clase adentro. Por eso acá se
+   * resuelve con una llamada y allá con tres.
    *
-   * Lo que se pierde es el pie: Instagram no lo acepta junto al adjunto. Se
-   * manda aparte, en un segundo mensaje, para que no se pierda lo que quien
+   * Lo que se pierde es el pie: ninguno de los dos lo acepta junto al adjunto.
+   * Se manda aparte, en un segundo mensaje, para que no se pierda lo que quien
    * atiende escribió junto a la cotización.
    */
-  const envio = esInstagram
-    ? await enviarAdjuntoIg(aQuien, firmado.signedUrl, claseDeAdjunto(datos.mime)).then((r) => ({
+  const envio = esDeMeta
+    ? await (canal === "messenger" ? enviarAdjuntoMsn : enviarAdjuntoIg)(
+        aQuien,
+        firmado.signedUrl,
+        claseDeAdjunto(datos.mime),
+      ).then((r) => ({
         ok: r.ok,
         waId: r.mid,
         error: r.error,
@@ -1311,9 +1374,9 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
           datos.pie,
         );
 
-  // El pie de un adjunto de Instagram, como mensaje aparte. Ver arriba.
-  if (esInstagram && envio.ok && !esAudio && datos.pie.trim()) {
-    await enviarTextoIg(aQuien, datos.pie.trim());
+  // El pie de un adjunto de Meta, como mensaje aparte. Ver arriba.
+  if (esDeMeta && envio.ok && !esAudio && datos.pie.trim()) {
+    await mandarTextoPor(canal, aQuien, datos.pie.trim());
   }
 
   if (!envio.ok) {

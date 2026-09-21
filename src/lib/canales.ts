@@ -185,14 +185,36 @@ export const CANALES: readonly Canal[] = [
     nombre: "Messenger",
     color: "#0084FF",
     icono: "💬",
-    disponible: false,
-    falta:
-      "Falta darle a la aplicación permiso sobre la página de Facebook de la escuela. " +
-      "Es el mismo panel de Meta donde está WhatsApp.",
+    /*
+     * El CRM ya sabe hablar Messenger.
+     *
+     * Están el webhook —`api/messenger/webhook`—, el envío
+     * —`lib/messenger/enviar.ts`— y la identidad del hilo en la base. Que además
+     * esté ENCHUFADO depende de que el token esté puesto en el servidor, y eso
+     * no se sabe desde acá: lo dice `hayMessenger()`. Son dos cosas distintas a
+     * propósito, y la bandeja mira las dos.
+     */
+    disponible: true,
+    falta: null,
     puede: {
-      reaccionar: "confirmar",
+      /*
+       * Se ven, no se ponen.
+       *
+       * Meta AVISA por el webhook cuando alguien reacciona a un mensaje nuestro
+       * —y esas reacciones aparecen en el hilo— pero su API no deja mandar una
+       * desde afuera de la aplicación. Igual que Instagram. Antes acá decía
+       * «confirmar» porque no se había probado; ya se probó.
+       */
+      reaccionar: "no",
       notaDeVoz: "si",
       archivos: "si",
+      /*
+       * No hay plantillas en Messenger.
+       *
+       * Existen las «etiquetas» —`HUMAN_AGENT` es la que usa el CRM— pero no
+       * sirven para escribir primero: abren la ventana a siete días para
+       * CONTESTAR. A quien nunca escribió no se le puede escribir.
+       */
       plantillas: "no",
       editar: "no",
     },

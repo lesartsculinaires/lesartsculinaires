@@ -163,12 +163,19 @@ console.log("── las cuatro redes están en la fila ──");
   for (const red of ["WhatsApp", "Instagram", "Messenger", "TikTok"]) {
     es(`está ${red}`, t.includes(red), true);
   }
-  // Las que no andan se marcan como tales, en vez de quedar apagadas sin
-  // explicación. Ahora son dos —Messenger y TikTok—: Instagram ya anda.
-  es("las que faltan dicen «pronto»", (t.match(/pronto/g) ?? []).length >= 2, true);
+  /*
+   * Las que no andan se marcan como tales, en vez de quedar apagadas sin
+   * explicación.
+   *
+   * Ya queda una sola: TikTok. Instagram se encendió primero y Messenger
+   * después, y las dos veces hubo que venir a tocar este número. Es a propósito
+   * que la prueba se ponga roja al conectar una red nueva: obliga a mirar si la
+   * pantalla quedó diciendo la verdad.
+   */
+  es("la que falta dice «pronto»", (t.match(/pronto/g) ?? []).length >= 1, true);
   es(
-    "Y INSTAGRAM YA NO ESTÁ ENTRE ELLAS",
-    await p.locator('main button[title*="Instagram"][title*="pronto"]').count(),
+    "Y NI INSTAGRAM NI MESSENGER ESTÁN ENTRE ELLAS",
+    await p.locator('main button[title*="pronto"]:not([title*="TikTok"])').count(),
     0,
   );
 }
@@ -192,18 +199,25 @@ console.log("\n── al tocar una que no anda, dice qué falta ──");
   );
 }
 
-console.log("\n── y una que sí se puede conectar dice otra cosa ──");
+console.log("\n── MESSENGER YA ESTÁ CONECTADO, Y DICE LO QUE PUEDE ──");
 {
-  // Messenger es ahora lo que Instagram era: algo que se enciende en el mismo
-  // panel de Meta, sin trámite con nadie.
+  /*
+   * Messenger dejó de ser «pronto».
+   *
+   * Antes esta sección comprobaba que dijera qué le faltaba. Ahora tiene que
+   * decir lo contrario: que está conectado, con la misma ficha honesta que
+   * Instagram —siete días, sin plantillas, y las reacciones se ven pero no se
+   * mandan porque la API de Meta no lo permite—.
+   */
   await p.locator('main button[title*="Messenger"]').first().click();
   await p.waitForTimeout(600);
   await foto("3-messenger");
 
   const t = await texto();
-  es("apunta al panel de Meta", /panel de Meta/.test(t), true);
-  es("y avisa que tampoco tiene plantillas", /tampoco tiene plantillas/.test(t), true);
+  es("NO dice que falte conectarlo", /todavía no conectado/.test(t), false);
+  es("avisa que tampoco tiene plantillas", /tampoco tiene plantillas|no hay plantillas|no tiene plantillas/.test(t), true);
   es("con su ventana de siete días", /[Ss]iete días/.test(t), true);
+  es("y que las reacciones no se pueden mandar", /Reacciones/.test(t), true);
 }
 
 console.log("\n── el hilo de WhatsApp, como siempre ──");

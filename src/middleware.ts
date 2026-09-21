@@ -69,12 +69,17 @@ export const config = {
     // afuera, o un enlace ya enviado moriría en el login en vez de llegar a su
     // redirección.
     //
-    // `api/instagram` queda afuera por lo mismo que `api/whatsapp`: lo llama
-    // Meta desde sus servidores, sin cookie de sesión y sin nadie detrás.
-    // Pasando por acá recibiría un 307 al login, y Meta lo leería como que la
-    // URL no contesta: primero no verificaría el webhook, y después lo
-    // desactivaría. Lo que lo protege no es la sesión sino la firma del cuerpo,
-    // que la propia ruta comprueba antes de mirar nada.
-    "/((?!api/v1|api/whatsapp|api/instagram|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // `api/instagram` y `api/messenger` quedan afuera por lo mismo que
+    // `api/whatsapp`: los llama Meta desde sus servidores, sin cookie de sesión
+    // y sin nadie detrás. Pasando por acá recibirían un 307 al login, y Meta lo
+    // leería como que la URL no contesta: primero no verificaría el webhook, y
+    // después lo desactivaría. Lo que los protege no es la sesión sino la firma
+    // del cuerpo, que cada ruta comprueba antes de mirar nada.
+    //
+    // ES EL PRIMER LUGAR DONDE HAY QUE ACORDARSE DE UN CANAL NUEVO. Al conectar
+    // Messenger, todo lo demás estaba hecho y los mensajes seguían sin entrar:
+    // llegaban acá y se iban al login. El síntoma es idéntico al de un webhook
+    // mal configurado en Meta, así que se busca del lado equivocado.
+    "/((?!api/v1|api/whatsapp|api/instagram|api/messenger|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
