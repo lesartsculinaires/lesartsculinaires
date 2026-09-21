@@ -9,6 +9,7 @@ import { AutorizacionesDelLead } from "@/components/modules/AutorizacionesDelLea
 import { Bitacora } from "@/components/modules/Bitacora";
 import { BotonLinkRegistro } from "@/components/modules/BotonLinkRegistro";
 import { CanalesDelContacto } from "@/components/modules/CanalesDelContacto";
+import { LineaDeTiempo } from "@/components/modules/LineaDeTiempo";
 import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { OtrosLeadsDelContacto } from "@/components/modules/OtrosLeadsDelContacto";
@@ -672,6 +673,16 @@ export function ClienteDrawer({
       {o.clienteId != null && (
         <CanalesDelContacto clienteId={o.clienteId} accent={accent} />
       )}
+
+      {/*
+        La conversación entera, cruzando canales.
+        ----------------------------------------------------------------------
+        Va pegada a los canales porque son las dos mitades de la misma pregunta:
+        arriba POR DÓNDE llegó esta persona, acá QUÉ se habló por cada lado, en
+        orden. Separarlas obligaría a mirar en dos lugares para reconstruir algo
+        que se lee de una sola vez.
+      */}
+      {o.clienteId != null && <LineaDeTiempo clienteId={o.clienteId} accent={accent} />}
 
       {/*
         Los otros leads de la misma persona.

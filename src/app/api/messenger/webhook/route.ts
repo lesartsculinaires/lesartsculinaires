@@ -46,7 +46,7 @@ const MESSENGER: CanalMeta = {
   clave: "messenger",
   nombreCatalogo: "Messenger",
   carpeta: "msn",
-  migracion: "20260921120000_messenger.sql",
+  migracion: "20261027120000_messenger.sql",
   resumen: resumenMsn,
   esArchivo: (clase) => ARCHIVO_MSN.has(clase),
   perfilDe: perfilDeMsn,
