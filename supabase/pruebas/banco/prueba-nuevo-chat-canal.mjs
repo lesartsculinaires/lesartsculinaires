@@ -153,13 +153,21 @@ console.log("── 1. LA CASILLA DE CANAL ESTÁ, CON LAS CUATRO REDES ──");
    * Esconderlos perdería el dato de que existen y están previstos; dejarlos
    * tocables llevaría a una lista vacía sin explicación.
    */
+  /*
+   * Messenger ya se puede elegir.
+   *
+   * Cuando se escribió esta prueba, Messenger todavía no estaba conectado y acá
+   * se comprobaba que estuviera apagado. Al conectarlo hubo que venir a
+   * cambiarlo, que es lo que se quería: una red nueva no puede encenderse sin
+   * que alguien mire si la pantalla sigue diciendo la verdad.
+   */
   es(
-    "Messenger está a la vista pero apagado",
+    "MESSENGER YA SE PUEDE ELEGIR",
     await dlg.locator('button[data-canal-nuevo="messenger"]').isDisabled(),
-    true,
+    false,
   );
   es(
-    "y TikTok también",
+    "y TikTok sigue apagado, que no depende de nosotros",
     await dlg.locator('button[data-canal-nuevo="tiktok"]').isDisabled(),
     true,
   );

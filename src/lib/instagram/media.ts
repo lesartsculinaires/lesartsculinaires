@@ -100,9 +100,22 @@ export async function bajarAdjuntoIg(
  * de base64, y aunque hoy no traiga barras, dejar que un valor externo arme una
  * ruta es cómo se sale de una carpeta.
  */
-export function rutaMediaIg(conversacionId: number, mid: string, mime: string): string {
+export function rutaMediaIg(
+  conversacionId: number,
+  mid: string,
+  mime: string,
+  /*
+   * La carpeta dentro del bucket. `ig` por omisión, que es como estaba.
+   *
+   * Messenger guarda igual que Instagram —mismo bucket, misma forma— pero bajo
+   * su propia carpeta, para poder mirarlas o limpiarlas por separado. El valor
+   * por omisión existe para que las rutas de Instagram que ya están guardadas
+   * sigan resolviendo exactamente igual.
+   */
+  prefijo = "ig",
+): string {
   const limpio = mid.replace(/[^A-Za-z0-9_-]/g, "") || String(Date.now());
-  return `ig/${conversacionId}/${limpio}${extensionDe(mime)}`;
+  return `${prefijo}/${conversacionId}/${limpio}${extensionDe(mime)}`;
 }
 
 /** La extensión que le corresponde al tipo, para que se abra bien al bajarla. */
