@@ -58,7 +58,7 @@ const INSTAGRAM: CanalMeta = {
   /*
    * Se sigue llamando a `cliente_de_instagram` y no a la general.
    *
-   * Desde `20260921120000_messenger.sql` la de Instagram es una línea que llama
+   * Desde `20261027120000_messenger.sql` la de Instagram es una línea que llama
    * a `cliente_de_canal`, así que las dos hacen lo mismo. Se deja la vieja para
    * que este código siga funcionando en una base donde esa migración todavía no
    * se corrió: entre desplegar y correr el SQL hay minutos con gente

@@ -18,6 +18,7 @@ import {
 } from "@/lib/montosDelLead";
 import { actualizarVarias, borrarLeads } from "@/app/actions";
 import { AccionesEnLote } from "@/components/modules/AccionesEnLote";
+import { DuplicadosSugeridos } from "@/components/modules/DuplicadosSugeridos";
 import { EnvioMasivo } from "@/components/modules/EnvioMasivo";
 import { NuevaBase } from "@/components/modules/NuevaBase";
 import { ConfirmarBorrado } from "@/components/modules/ConfirmarBorrado";
@@ -103,6 +104,15 @@ export function Clientes({
   const cat = useCatalogo();
   const [alta, setAlta] = useState(false);
   const [importando, setImportando] = useState(false);
+  /**
+   * La cola de duplicados, en lugar de la lista.
+   *
+   * Ocupa la pantalla entera y no una ventana flotante a propósito: revisar
+   * duplicados es una tarea de un rato —se miran diez o veinte pares seguidos—,
+   * y un diálogo modal con veinte tarjetas adentro se vuelve incómodo a la
+   * tercera. Se vuelve a Clientes con un enlace, no cerrando algo.
+   */
+  const [verDuplicados, setVerDuplicados] = useState(false);
   const [creado, setCreado] = useState<string | null>(null);
   /**
    * Las fichas marcadas para cambiarles algo a todas juntas.
@@ -369,6 +379,18 @@ export function Clientes({
     color: T.muted,
   };
 
+  if (verDuplicados) {
+    return (
+      <DuplicadosSugeridos
+        accent={accent}
+        onCerrar={() => setVerDuplicados(false)}
+        // Al unificar, la lista de Clientes quedó vieja: una de las dos fichas
+        // ya no existe y seguiría apareciendo hasta recargar a mano.
+        onCambio={onRefresh}
+      />
+    );
+  }
+
   return (
     <div>
       {/* La barra aparece sólo cuando hay algo marcado: una fila de controles
@@ -564,6 +586,34 @@ export function Clientes({
               Limpiar
             </button>
           )}
+
+          {/*
+            La entrada a la cola de duplicados.
+            ------------------------------------------------------------------
+            Va acá y no en la barra lateral como módulo propio porque es una
+            tarea de Clientes: la hace quien administra los contactos, sobre los
+            contactos, y termina volviendo a esta misma lista. Un módulo aparte
+            además necesitaría su fila de permisos, y el permiso que de verdad
+            importa —fusionar— ya lo pide la base.
+          */}
+          <button
+            type="button"
+            data-ver-duplicados
+            onClick={() => setVerDuplicados(true)}
+            title="Fichas que podrían ser la misma persona, sobre todo cuando alguien escribe por dos canales distintos"
+            style={{
+              height: 32,
+              padding: "0 14px",
+              fontSize: 12.5,
+              borderRadius: 6,
+              border: `1px solid ${T.border}`,
+              background: T.surface,
+              color: T.ink,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Duplicados sugeridos
+          </button>
 
           <button
             type="button"
