@@ -204,23 +204,56 @@ async function anotarPermiso(supabase: Cliente, pp: PermisoDeLlamada) {
 
   if (!conv) return;
 
-  const { error } = await supabase
-    .from("conversaciones")
-    .update({
-      llamada_permiso_respuesta: pp.acepto ? "acepto" : "rechazo",
-      // Un «no» borra el permiso que hubiera: la última palabra es la que vale.
-      llamada_permiso_hasta: pp.acepto ? (pp.vence?.toISOString() ?? null) : null,
-    })
-    .eq("id", Number(conv.id));
+  /*
+   * La escritura la decide la FECHA DEL EVENTO, no el orden en que llegamos.
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ NO ES UN `update` DIRECTO
+   * --------------------------------------------------------------------------
+   *
+   * Porque antes lo era, y por eso una clienta que había aceptado quedó con el
+   * botón de llamar escondido. Meta mandó los dos eventos en el mismo minuto
+   * —un «no» y después un «sí»—, esta función corre en paralelo en Netlify, y
+   * el rechazo se escribió último: borró el permiso que el «sí» acababa de
+   * poner. El dato para evitarlo siempre estuvo acá al lado, en `pp.cuando`;
+   * sólo que no se usaba.
+   *
+   * Ahora la comparación y la escritura pasan en una sola sentencia dentro de
+   * la base —ver `20261030120000_permiso_por_fecha.sql`—, así que dos webhooks
+   * simultáneos no se pueden pisar.
+   */
+  const { data: aplicada, error } = await supabase.rpc("anotar_permiso_llamada", {
+    p_conversacion: Number(conv.id),
+    p_acepto: pp.acepto,
+    p_hasta: pp.acepto ? (pp.vence?.toISOString() ?? null) : null,
+    p_cuando: pp.cuando.toISOString(),
+  });
 
-  if (error && faltaLaColumna(error)) {
-    console.error(
-      "[whatsapp] falta correr 20261018120000_permiso_de_llamada.sql;" +
-        " el permiso del cliente no se guarda y el botón de llamar no va a aparecer",
-    );
-    return;
+  if (error) {
+    if (faltaLaFuncion(error) || faltaLaColumna(error)) {
+      console.error(
+        "[whatsapp] falta correr 20261030120000_permiso_por_fecha.sql;" +
+          " el permiso del cliente no se guarda y el botón de llamar no va a aparecer",
+      );
+      return;
+    }
+    throw error;
   }
-  if (error) throw error;
+
+  /*
+   * Un descarte no es un error, pero se registra.
+   *
+   * Pasa cuando llega un evento más viejo que el guardado —un reintento de
+   * Meta, o el lote desordenado que causó todo esto—. Sin esta línea, el día
+   * que alguien pregunte «¿por qué no se guardó lo que el cliente contestó?»
+   * habría que volver a deducirlo desde cero.
+   */
+  if (aplicada === false) {
+    console.warn(
+      `[whatsapp] respuesta de permiso descartada por vieja: conversación ${conv.id},` +
+        ` ${pp.acepto ? "acepto" : "rechazo"} del ${pp.cuando.toISOString()}`,
+    );
+  }
 }
 
 /**

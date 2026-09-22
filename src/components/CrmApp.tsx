@@ -231,8 +231,28 @@ export default function CrmApp({
    * El repique. Suena sólo cuando la llamada está sonando de verdad y esta
    * pantalla la está mostrando: si sonara con la tarjeta de la esquina de
    * alguien que ya la vio atender, el equipo escucharía teléfonos fantasma.
+   *
+   * ==========================================================================
+   * Y CALLA APENAS ALGUIEN LA AGARRA, SIN ESPERAR AL CAMBIO DE ESTADO
+   * ==========================================================================
+   *
+   * Antes esto miraba sólo `estado === "sonando"`. El problema que reportó la
+   * escuela: alguien contesta y en las demás computadoras el teléfono sigue
+   * sonando un rato, así que nadie sabe si ya la agarraron o hay que correr a
+   * atenderla.
+   *
+   * `atendida_por` se escribe en el MISMO momento en que alguien la agarra
+   * —`atender_llamada` lo hace en una sola sentencia— y suele llegar antes que
+   * el estado definitivo. Mirarlo acá es lo que convierte esos segundos de
+   * teléfono fantasma en silencio inmediato.
+   *
+   * Se compara contra uno mismo y no se apaga a secas porque en una llamada
+   * SALIENTE la fila nace con `atendida_por` puesto: es de quien marcó, y a esa
+   * persona el tono de llamada le tiene que seguir sonando hasta que atiendan.
    */
-  const suena = llamadas.llamada?.estado === "sonando";
+  const laAgarroOtro =
+    llamadas.llamada?.atendidaPor != null && llamadas.llamada.atendidaPor !== yo;
+  const suena = llamadas.llamada?.estado === "sonando" && !laAgarroOtro;
   const repicar = campanita.repicar;
   useEffect(() => {
     repicar(Boolean(suena));
