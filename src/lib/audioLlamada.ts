@@ -112,6 +112,61 @@ export function esperarCandidatos(pc: RTCPeerConnection, topeMs = 2_000): Promis
 }
 
 /**
+ * ¿Esta conexión sigue sirviendo?
+ *
+ * ============================================================================
+ * POR QUÉ HAY QUE PREGUNTARLO DESPUÉS DE CADA ESPERA
+ * ============================================================================
+ *
+ * Contestar una llamada tiene cuatro esperas seguidas: el permiso del
+ * micrófono, la oferta remota, la respuesta local y los candidatos. Entre la
+ * primera y la última pueden pasar varios segundos, y en ese rato la llamada se
+ * puede morir sola: el cliente cuelga, vence el plazo de Meta, o la agarra otra
+ * asesora. Cuando eso pasa, la pantalla llama a `cerrarTodo` y la conexión
+ * queda cerrada.
+ *
+ * El código que estaba esperando no se entera y sigue. El error que veía la
+ * escuela era exactamente eso:
+ *
+ *     Failed to execute 'addTrack' on 'RTCPeerConnection':
+ *     The RTCPeerConnection's signalingState is 'closed'.
+ *
+ * `getUserMedia` resolvía después de que la conexión ya estaba cerrada, y
+ * `addTrack` reventaba contra ella. No era un problema de micrófono ni de red:
+ * era seguir trabajando sobre algo que ya no existía.
+ */
+export const sigueViva = (pc: RTCPeerConnection | null): boolean =>
+  pc != null && pc.signalingState !== "closed";
+
+/**
+ * ¿El SDP que vamos a mandar sirve?
+ *
+ * ============================================================================
+ * POR QUÉ SE REVISA ANTES DE MANDARLO
+ * ============================================================================
+ *
+ * Porque el otro error que veía la escuela era `SDP Validation error`, que lo
+ * devuelve Meta después de rechazarlo, cuando la llamada ya se perdió.
+ *
+ * Un SDP sin NINGUNA línea `a=candidate:` no le sirve a Meta: es una lista de
+ * por dónde hablar que no trae ningún camino. Pasa cuando `esperarCandidatos`
+ * se rinde a los dos segundos porque la red de la oficina bloquea el STUN.
+ * Mandarlo igual es gastar la llamada para recibir un error que no explica
+ * nada; revisarlo acá permite decir qué pasó y qué hacer.
+ *
+ * No se valida nada más. El resto del SDP lo arma el navegador y desconfiar de
+ * él sería inventarse una gramática propia que se va a desactualizar.
+ */
+export const sdpUsable = (sdp: string | null | undefined): boolean =>
+  typeof sdp === "string" && sdp.trim() !== "" && /^a=candidate:/m.test(sdp);
+
+/** Lo que se le dice a quien atiende cuando el SDP no sirve. */
+export const PORQUE_NO_SIRVE_EL_SDP =
+  "No se pudo encontrar un camino de audio hacia el cliente. Suele ser la red " +
+  "de la oficina bloqueando el tráfico de voz: probá desde otra conexión o " +
+  "pedí que se habilite STUN/TURN en el router.";
+
+/**
  * Cierra todo lo del audio: el micrófono, la conexión y el parlante.
  *
  * El micrófono importa más que lo demás. Una pista que no se detiene deja la

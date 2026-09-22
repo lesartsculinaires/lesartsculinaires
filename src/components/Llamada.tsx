@@ -14,7 +14,10 @@ import {
   crearConexion,
   esperarCandidatos,
   hayWebRTC,
+  PORQUE_NO_SIRVE_EL_SDP,
   porQueNoHayMicrofono,
+  sdpUsable,
+  sigueViva,
 } from "@/lib/audioLlamada";
 import {
   comoReloj,
@@ -192,15 +195,47 @@ export function Llamada({
       };
 
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      /*
+       * Entre que se apretó Atender y que el navegador dio el micrófono pueden
+       * pasar segundos, y en ese rato la llamada se puede haber muerto: colgó
+       * el cliente, venció el plazo, o la agarró otra asesora. Ahí el efecto de
+       * más arriba ya llamó a `soltarTodo` y esta conexión está cerrada.
+       *
+       * Sin esta guarda, la línea siguiente reventaba con «addTrack … the
+       * RTCPeerConnection's signalingState is 'closed'». Ver `sigueViva`.
+       */
+      if (pc.current !== conexion || !sigueViva(conexion)) {
+        for (const pista of mic.getTracks()) pista.stop();
+        return;
+      }
+
       micro.current = mic;
       for (const pista of mic.getTracks()) conexion.addTrack(pista, mic);
 
       await conexion.setRemoteDescription({ type: "offer", sdp: llamada.sdpRemoto });
+      if (pc.current !== conexion || !sigueViva(conexion)) return;
+
       await conexion.setLocalDescription(await conexion.createAnswer());
+      if (pc.current !== conexion || !sigueViva(conexion)) return;
+
       // Ver `esperarCandidatos`: con Meta el SDP se manda una sola vez.
       await esperarCandidatos(conexion);
+      if (pc.current !== conexion || !sigueViva(conexion)) return;
 
-      const r = await contestarLlamada(llamada.callId, conexion.localDescription?.sdp ?? "");
+      /*
+       * Antes acá iba `conexion.localDescription?.sdp ?? ""`, y un SDP sin
+       * caminos salía igual para que Meta lo rechazara con «SDP Validation
+       * error» cuando la llamada ya estaba perdida. Ahora se dice qué pasó.
+       */
+      const sdp = conexion.localDescription?.sdp;
+      if (!sdpUsable(sdp)) {
+        soltarTodo();
+        setError(PORQUE_NO_SIRVE_EL_SDP);
+        return;
+      }
+
+      const r = await contestarLlamada(llamada.callId, sdp!);
 
       if (!r.conseguida) {
         // La agarró otra persona primero. No es un error: es lo que tiene que
@@ -271,13 +306,31 @@ export function Llamada({
         };
 
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        // Mismas guardas que al atender, y por lo mismo: entre el permiso del
+        // micrófono y acá, quien marcó pudo haber cancelado. Ver `sigueViva`.
+        if (pc.current !== conexion || !sigueViva(conexion)) {
+          for (const pista of mic.getTracks()) pista.stop();
+          return;
+        }
+
         micro.current = mic;
         for (const pista of mic.getTracks()) conexion.addTrack(pista, mic);
 
         await conexion.setLocalDescription(await conexion.createOffer());
-        await esperarCandidatos(conexion);
+        if (pc.current !== conexion || !sigueViva(conexion)) return;
 
-        const r = await llamarA(conversacionId, conexion.localDescription?.sdp ?? "");
+        await esperarCandidatos(conexion);
+        if (pc.current !== conexion || !sigueViva(conexion)) return;
+
+        const sdp = conexion.localDescription?.sdp;
+        if (!sdpUsable(sdp)) {
+          soltarTodo();
+          setError(PORQUE_NO_SIRVE_EL_SDP);
+          return;
+        }
+
+        const r = await llamarA(conversacionId, sdp!);
 
         if (!r.ok || !r.callId) {
           soltarTodo();

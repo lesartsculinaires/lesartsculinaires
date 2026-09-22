@@ -109,12 +109,43 @@ const CADA_MS = 500;
  */
 const CADA_PREGUNTA_MS = 3_000;
 
+/**
+ * Y cada cuánto MIENTRAS UNA LLAMADA ESTÁ SONANDO.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ HAY DOS RITMOS
+ * ----------------------------------------------------------------------------
+ *
+ * Los tres segundos de arriba son el piso para enterarse de que ENTRÓ una
+ * llamada, y contra los treinta que da Meta para atender están bien.
+ *
+ * Pero sirven mal para lo contrario —enterarse de que alguien YA LA ATENDIÓ—,
+ * que es lo que la escuela reportó: «que cuando cayera la llamada al CRM, la
+ * persona que conteste ya no quedara como en lag el sonido en las otras
+ * computadoras». Tres segundos de teléfono sonando después de que una compañera
+ * levantó es exactamente eso.
+ *
+ * Mientras suena se pregunta cada 800 ms. No cuesta lo que parece: sólo corre
+ * con una llamada sonando en pantalla —segundos, y la escuela no vive en
+ * llamada— y en cuanto se atiende o se corta, vuelve al ritmo lento. El resto
+ * del día esta consulta sigue siendo una cada tres segundos.
+ */
+const CADA_PREGUNTA_SONANDO_MS = 800;
+
 export function useLlamadaEnVivo(): EnVivoDeLlamadas {
   const [llamada, setLlamada] = useState<LlamadaConSdp | null>(null);
   const [tecleoHaceMs, setTecleoHaceMs] = useState<number | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
 
   const ultimaTecla = useRef<number | null>(null);
+
+  /**
+   * ¿Hay una llamada sonando ahora mismo?
+   *
+   * Sale acá afuera, y como booleano, porque decide el ritmo de la consulta de
+   * respaldo de más abajo. Ver `CADA_PREGUNTA_SONANDO_MS`.
+   */
+  const estaSonando = llamada?.estado === "sonando";
 
   /*
    * El teclado y el arrastre.
@@ -333,7 +364,12 @@ export function useLlamadaEnVivo(): EnVivoDeLlamadas {
     const arrancar = () => {
       if (reloj != null) return;
       void preguntar();
-      reloj = window.setInterval(() => void preguntar(), CADA_PREGUNTA_MS);
+      reloj = window.setInterval(
+        () => void preguntar(),
+        // Rápido mientras suena, para que el timbre calle apenas alguien la
+        // agarra. Ver `CADA_PREGUNTA_SONANDO_MS`.
+        estaSonando ? CADA_PREGUNTA_SONANDO_MS : CADA_PREGUNTA_MS,
+      );
     };
 
     const parar = () => {
@@ -352,9 +388,19 @@ export function useLlamadaEnVivo(): EnVivoDeLlamadas {
       parar();
       document.removeEventListener("visibilitychange", segunSeVea);
     };
-  }, []);
+    /*
+     * Depende de un BOOLEANO, no de la llamada.
+     *
+     * Con `llamada` entero acá, este efecto se desarmaría y rearmaría con cada
+     * aviso que llega —incluido el propio resultado de `preguntar`—, y el
+     * intervalo se reiniciaría sin llegar a disparar nunca. Con el booleano se
+     * rehace sólo cuando de verdad cambia el ritmo: empieza a sonar, o deja de
+     * sonar.
+     */
+  }, [estaSonando]);
 
   const soltar = useCallback(() => setLlamada(null), []);
+
   const poner = useCallback((l: LlamadaConSdp) => setLlamada(l), []);
 
   return { llamada, tecleoHaceMs, arrastrando, soltar, poner };
