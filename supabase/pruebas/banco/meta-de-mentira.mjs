@@ -39,12 +39,141 @@ let n = 0;
 /** Lo que se le mandó, para poder revisarlo desde la prueba. */
 const recibidos = [];
 
+/**
+ * Si Meta deja leer el perfil de quien escribe.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ ARRANCA EN «NO»
+ * ----------------------------------------------------------------------------
+ *
+ * Porque es lo que hace Meta mientras la aplicación está en modo desarrollo, y
+ * es el estado en el que la escuela está hoy: los mensajes entran y los nombres
+ * no. Que el banco arranque igual que la realidad es lo que hace que una prueba
+ * que pasa acá signifique algo.
+ *
+ * `POST /__perfiles {"permite":true}` lo da vuelta. Eso es exactamente lo que
+ * pasa el día que Meta aprueba la revisión, y es el momento que hay que poder
+ * probar: que los hilos que ya habían entrado sin nombre se arreglen, en vez de
+ * quedarse con el número para siempre.
+ */
+let permitePerfiles = false;
+
+/** Cada consulta de perfil que llegó. Ver más abajo por qué no va en `recibidos`. */
+const perfilesPedidos = [];
+
+/**
+ * Los nombres inventados, POR LOS ÚLTIMOS CUATRO DÍGITOS del identificador.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ NO POR EL IDENTIFICADOR ENTERO
+ * ----------------------------------------------------------------------------
+ *
+ * Para que las pruebas puedan usar un identificador distinto en cada corrida y
+ * aun así saber qué nombre esperar.
+ *
+ * Hace falta porque el CRM se acuerda, dentro de la misma instancia, de a quién
+ * ya le preguntó el perfil —así no le pregunta a Meta una vez por mensaje—. Con
+ * identificadores fijos, la segunda corrida seguida de una prueba chocaba con
+ * ese recuerdo y fallaba por algo que en realidad estaba bien.
+ *
+ * Con el sufijo, cada corrida estrena gente y la anterior no la estorba.
+ */
+const PERFILES = {
+  "0001": { name: "Ana Beltrán", username: "anabeltran" },
+  "0002": { name: "Rosa Mejía", username: "rosamejia" },
+  "0003": { name: "Carlos Núñez" },
+  "0004": { name: "Lucía Paz", username: "luciapaz" },
+};
+
 const servidor = http.createServer((req, res) => {
   // Un GET a `/__recibidos` devuelve lo que llegó hasta ahora. No es parte de
   // la API de Meta: es la ventana que la prueba usa para mirar adentro.
   if (req.method === "GET" && req.url.startsWith("/__recibidos")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(recibidos));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/__perfiles-pedidos")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(perfilesPedidos));
+    return;
+  }
+
+  // El interruptor. Tampoco es parte de la API de Meta.
+  if (req.method === "POST" && req.url.startsWith("/__perfiles")) {
+    let crudo = "";
+    req.on("data", (t) => (crudo += t));
+    req.on("end", () => {
+      try {
+        permitePerfiles = Boolean(JSON.parse(crudo || "{}").permite);
+      } catch {
+        permitePerfiles = false;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ permite: permitePerfiles }));
+    });
+    return;
+  }
+
+  /*
+   * La consulta de perfil: `GET /v21.0/{id}?fields=name,username`.
+   *
+   * Se distingue del envío porque el envío es POST y termina en `/messages`.
+   * Acá sólo llegan los GET a un identificador pelado con `fields`.
+   */
+  const perfil = req.method === "GET" && /^\/v[\d.]+\/(\d+)\?fields=/.exec(req.url);
+  if (perfil) {
+    const quien = perfil[1];
+
+    /*
+     * Las consultas de perfil se anotan APARTE de `recibidos`.
+     *
+     * Si fueran a la misma lista, las pruebas que cuentan cuántos mensajes se
+     * mandaron —«antes» y «después» de apretar Enviar— contarían de más en
+     * cuanto el CRM preguntara un nombre en el medio, y se pondrían rojas por
+     * algo que no tiene nada que ver con lo que miden.
+     */
+    perfilesPedidos.push(req.url);
+
+    if (!permitePerfiles) {
+      // La forma exacta del error que devuelve Meta cuando a la aplicación le
+      // falta el permiso. El CRM lo traduce por el código, así que tiene que
+      // venir con código.
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message: "(#10) Application does not have permission for this action",
+            type: "OAuthException",
+            code: 10,
+          },
+        }),
+      );
+      return;
+    }
+
+    const datos = PERFILES[quien.slice(-4)];
+    if (!datos) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: { message: "Unsupported get request.", type: "GraphMethodException", code: 100 },
+        }),
+      );
+      return;
+    }
+
+    // Se devuelve sólo lo pedido, como Meta: Messenger no trae `username` y el
+    // CRM tiene que arreglárselas con el nombre solo.
+    const pedidos = new URL(req.url, "http://x").searchParams.get("fields") ?? "";
+    const salida = {};
+    for (const campo of pedidos.split(",")) {
+      if (datos[campo.trim()] != null) salida[campo.trim()] = datos[campo.trim()];
+    }
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(salida));
     return;
   }
 

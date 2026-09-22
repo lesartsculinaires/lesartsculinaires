@@ -1,5 +1,7 @@
 import "server-only";
 
+import { limpio, motivoDelPerfil, sinPerfil, type PerfilMeta } from "@/lib/meta/perfil";
+
 /**
  * Mandar y recibir por Messenger.
  *
@@ -252,26 +254,35 @@ function explicar(
  * Que no se pueda averiguar el nombre no puede costar el mensaje: el hilo se
  * abre igual y el nombre se completa la próxima vez que escriba.
  */
-export async function perfilDeMsn(
-  psid: string,
-): Promise<{ nombre: string | null; usuario: string | null }> {
+export async function perfilDeMsn(psid: string): Promise<PerfilMeta> {
   const token = elToken();
-  if (!token) return { nombre: null, usuario: null };
+  if (!token) {
+    return sinPerfil("Falta MESSENGER_TOKEN (o INSTAGRAM_TOKEN) en el servidor.");
+  }
 
   try {
     const r = await fetch(`${base()}/${psid}?fields=name`, {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    if (!r.ok) return { nombre: null, usuario: null };
+    const cuerpo = (await r.json().catch(() => null)) as
+      | { name?: string; error?: { code?: number; message?: string } }
+      | null;
 
-    const cuerpo = (await r.json().catch(() => null)) as { name?: string } | null;
-    const limpio = typeof cuerpo?.name === "string" && cuerpo.name.trim() !== ""
-      ? cuerpo.name.trim()
-      : null;
+    if (!r.ok) {
+      const motivo = motivoDelPerfil("Messenger", r.status, cuerpo);
+      console.warn(`[messenger] no se pudo leer el perfil de ${psid}: ${motivo}`);
+      return sinPerfil(motivo);
+    }
 
-    return { nombre: limpio, usuario: null };
-  } catch {
-    return { nombre: null, usuario: null };
+    // Messenger no entrega @usuario: el PSID es lo único que identifica a la
+    // persona frente a esta página. Poner algo en `usuario` sería inventarlo.
+    return { nombre: limpio(cuerpo?.name), usuario: null, motivo: null };
+  } catch (e) {
+    const motivo = `No se pudo hablar con Meta para leer el perfil: ${
+      e instanceof Error ? e.message : String(e)
+    }`;
+    console.warn(`[messenger] ${motivo}`);
+    return sinPerfil(motivo);
   }
 }

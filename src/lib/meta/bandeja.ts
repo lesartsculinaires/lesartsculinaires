@@ -3,6 +3,7 @@ import "server-only";
 import { abrirLeadSiEsNuevo, anotarElCanal, faltaLaFuncion } from "@/lib/crm/leadDeCanal";
 import { bajarAdjuntoIg, rutaMediaIg } from "@/lib/instagram/media";
 import type { MensajeIg, ReaccionIg } from "@/lib/instagram/mensajes";
+import type { PerfilMeta } from "@/lib/meta/perfil";
 import type { getAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -72,7 +73,7 @@ export interface CanalMeta {
    * mensaje. Messenger no entrega @usuario y devuelve null ahí, que es lo
    * correcto: inventarlo sería mostrar una arroba que no existe.
    */
-  perfilDe: (quien: string) => Promise<{ nombre: string | null; usuario: string | null }>;
+  perfilDe: (quien: string) => Promise<PerfilMeta>;
   /** La función de la base que resuelve de quién es este identificador. */
   rpcCliente: {
     nombre: string;
@@ -208,15 +209,43 @@ export async function conversacionDeMeta(
   const buscar = async () => {
     const { data } = await supabase
       .from("conversaciones")
-      .select("id")
+      .select("id, nombre_perfil, usuario")
       .eq("canal", canal.clave)
       .eq("identificador", quien)
       .maybeSingle();
-    return data ? Number(data.id) : null;
+    return data
+      ? {
+          id: Number(data.id),
+          sinNombre:
+            !String(data.nombre_perfil ?? "").trim() && !String(data.usuario ?? "").trim(),
+        }
+      : null;
   };
 
   const existente = await buscar();
-  if (existente != null) return existente;
+  if (existente != null) {
+    /*
+     * El hilo ya estaba, pero puede estar sin nombre.
+     *
+     * ------------------------------------------------------------------------
+     * POR QUÉ SE VUELVE A PREGUNTAR Y NO SE PREGUNTA UNA SOLA VEZ
+     * ------------------------------------------------------------------------
+     *
+     * Porque la primera vez puede fallar por algo TEMPORAL. El caso real que lo
+     * obligó: mientras la aplicación de Meta está en modo desarrollo, la
+     * consulta de perfil devuelve error de permisos, así que todos los hilos que
+     * entran en ese período se guardan sin nombre. Pidiéndolo una sola vez, el
+     * día que Meta aprueba la revisión esos hilos se quedan con el número
+     * PARA SIEMPRE, aunque a partir de ahí los nuevos sí traigan nombre.
+     *
+     * Se vuelve a preguntar SÓLO mientras falte. En cuanto hay nombre, esto no
+     * se ejecuta más y vuelve a ser una consulta por persona, no por mensaje.
+     */
+    if (existente.sinNombre) {
+      await completarPerfilSiFalta(supabase, canal, quien, existente.id);
+    }
+    return existente.id;
+  }
 
   /*
    * El nombre se pide UNA vez, acá.
@@ -244,7 +273,7 @@ export async function conversacionDeMeta(
 
   // Dos mensajes de la misma persona nueva llegando a la vez: el segundo choca
   // con la unicidad por canal y se queda con la que ganó.
-  if (error?.code === "23505") return buscar();
+  if (error?.code === "23505") return (await buscar())?.id ?? null;
 
   if (error) {
     if (esDeLaMigracion(error)) {
@@ -276,6 +305,94 @@ const esDeLaMigracion = (e: { code?: string; message?: string }): boolean =>
   /identificador|usuario/i.test(e.message ?? "");
 
 /**
+ * Cuándo se le volvió a preguntar a Meta por un perfil que faltaba.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ ALCANZA CON TENERLO EN MEMORIA
+ * ----------------------------------------------------------------------------
+ *
+ * Esto corre en funciones que se apagan solas, así que el mapa se vacía seguido
+ * y no es un freno exacto. No hace falta que lo sea: lo que tiene que evitar es
+ * que una ráfaga de diez mensajes de la misma persona dispare diez consultas
+ * iguales a Meta, y para eso una instancia tibia sobra.
+ *
+ * Guardarlo en la base sería exacto y costaría una columna, una migración y una
+ * escritura más por mensaje, para ahorrar una consulta cada tanto. No vale.
+ */
+const ultimoIntento = new Map<string, number>();
+
+/** Cada cuánto se reintenta un perfil que Meta no quiso dar. */
+const ESPERA_ENTRE_INTENTOS = 6 * 60 * 60 * 1000;
+
+/** Lo que hace falta de un canal para ir a buscar un nombre. */
+export type CanalParaPerfil = Pick<
+  CanalMeta,
+  "clave" | "migracion" | "perfilDe" | "rpcCliente"
+>;
+
+/** Cómo salió el intento de completar un nombre. */
+export interface IntentoDePerfil {
+  /** Si el hilo quedó con nombre. */
+  puesto: boolean;
+  /**
+   * Por qué no, cuando no. `null` con `puesto: false` quiere decir que Meta
+   * contestó bien y esa persona no tiene nombre visible, o que el freno de las
+   * seis horas hizo que ni se preguntara. Las dos cosas son normales.
+   */
+  motivo: string | null;
+}
+
+/**
+ * Le pregunta a Meta el nombre de alguien cuyo hilo ya existe sin nombre.
+ *
+ * Que falle no toca el mensaje: esto se llama antes de guardarlo y lo único que
+ * pasa si sale mal es que el hilo sigue titulado como estaba.
+ */
+export async function completarPerfilSiFalta(
+  supabase: Cliente,
+  canal: CanalParaPerfil,
+  quien: string,
+  conversacionId: number,
+  { forzar = false }: { forzar?: boolean } = {},
+): Promise<IntentoDePerfil> {
+  const llave = `${canal.clave}:${quien}`;
+  const previo = ultimoIntento.get(llave);
+
+  if (!forzar && previo != null && Date.now() - previo < ESPERA_ENTRE_INTENTOS) {
+    return { puesto: false, motivo: null };
+  }
+  ultimoIntento.set(llave, Date.now());
+
+  const perfil = await canal.perfilDe(quien);
+
+  if (!perfil.nombre && !perfil.usuario) return { puesto: false, motivo: perfil.motivo };
+
+  const { error } = await supabase
+    .from("conversaciones")
+    .update({
+      nombre_perfil: perfil.nombre ?? (perfil.usuario ? `@${perfil.usuario}` : null),
+      usuario: perfil.usuario,
+    })
+    .eq("id", conversacionId);
+
+  if (error) {
+    console.error(`[${canal.clave}] no se pudo guardar el nombre de ${quien}`, error.message);
+    return { puesto: false, motivo: error.message };
+  }
+
+  /*
+   * La ficha del cliente también se corrige, y por eso se vuelve a llamar a la
+   * función de la base en vez de escribir `clientes.nombre` desde acá.
+   *
+   * `cliente_de_canal` ya sabe cuándo puede pisar el nombre y cuándo no —si
+   * alguien lo escribió a mano, no se toca— y esa regla tiene que vivir en un
+   * solo lugar. Acá sólo se la invoca de nuevo, ahora que hay algo que darle.
+   */
+  await clienteDeMeta(supabase, canal, quien, perfil);
+  return { puesto: true, motivo: null };
+}
+
+/**
  * La ficha de esta persona: la que ya existe, o una nueva.
  *
  * La función de la base busca por el identificador en `contactos_canal` y, si no
@@ -288,7 +405,7 @@ const esDeLaMigracion = (e: { code?: string; message?: string }): boolean =>
  */
 async function clienteDeMeta(
   supabase: Cliente,
-  canal: CanalMeta,
+  canal: CanalParaPerfil,
   quien: string,
   perfil: { nombre: string | null; usuario: string | null },
 ): Promise<number | null> {

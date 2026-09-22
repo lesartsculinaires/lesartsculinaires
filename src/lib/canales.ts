@@ -269,6 +269,56 @@ const POR_CLAVE = new Map(CANALES.map((c) => [c.clave, c]));
 export const canalDe = (clave: string | null | undefined): Canal =>
   POR_CLAVE.get(String(clave ?? "").toLowerCase() as ClaveCanal) ?? CANALES[0];
 
+/**
+ * Cómo se titula un hilo en la bandeja.
+ *
+ * ============================================================================
+ * EL ORDEN, Y POR QUÉ EL ÚLTIMO ESCALÓN NO ES EL IDENTIFICADOR PELADO
+ * ============================================================================
+ *
+ * Primero el nombre, después el @usuario. Hasta ahí no hay discusión.
+ *
+ * Lo que sí hubo que pensar es el tercer escalón, para Instagram y Messenger
+ * cuando Meta todavía no deja leer el perfil. Antes se mostraba el identificador
+ * crudo, y una bandeja con dieciocho hilos titulados «29566976779558028» no se
+ * lee: son todos parecidos, empiezan igual y no se distinguen de un vistazo.
+ *
+ * Pero reemplazarlo por «Contacto de Instagram» a secas es peor todavía: los
+ * dieciocho quedarían IDÉNTICOS, y con eso no se puede ni pedirle a una
+ * compañera que abra uno en particular.
+ *
+ * Así que van las dos cosas: el canal, que es lo que ubica, y los últimos cuatro
+ * dígitos, que es lo que distingue. «Contacto de Instagram · 8028» se dice en
+ * voz alta, se busca con los ojos y no miente sobre lo que se sabe de esa
+ * persona, que es nada todavía.
+ *
+ * WhatsApp no pasa por acá con este problema: su identificador ES el teléfono,
+ * y un teléfono sí es un dato que sirve, así que se muestra entero.
+ */
+export function tituloDeHilo(hilo: {
+  nombrePerfil?: string | null;
+  usuario?: string | null;
+  identificador?: string | null;
+  canal?: string | null;
+}): string {
+  const nombre = (hilo.nombrePerfil ?? "").trim();
+  if (nombre) return nombre;
+
+  const usuario = (hilo.usuario ?? "").trim();
+  if (usuario) return usuario.startsWith("@") ? usuario : `@${usuario}`;
+
+  const id = (hilo.identificador ?? "").trim();
+  const canal = canalDe(hilo.canal);
+
+  // Sin identificador no hay nada que decir salvo por dónde entró.
+  if (!id) return `Contacto de ${canal.nombre}`;
+
+  // El de WhatsApp es un teléfono: se muestra tal cual, que es como lo buscan.
+  if (canal.clave === "whatsapp") return id;
+
+  return `Contacto de ${canal.nombre} · ${id.slice(-4)}`;
+}
+
 /** Los que ya se pueden usar. */
 export const conectados = (): Canal[] => CANALES.filter((c) => c.disponible);
 

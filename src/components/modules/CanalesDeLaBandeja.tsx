@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 
+import { refrescarNombresMeta } from "@/app/meta-nombres-actions";
 import { CANALES, CAPACIDADES, COMO_SE_DICE, canalDe, type Canal } from "@/lib/canales";
 import { T } from "@/lib/theme";
 
@@ -294,6 +295,98 @@ function Ficha({
           );
         })}
       </ul>
+
+      {(canal.clave === "instagram" || canal.clave === "messenger") && (
+        <NombresDeMeta canal={canal.nombre} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * «¿Por qué los hilos salen con un número en vez del nombre?»
+ *
+ * ============================================================================
+ * POR QUÉ ESTO ESTÁ ACÁ Y NO EN UNA PANTALLA DE AJUSTES
+ * ============================================================================
+ *
+ * Porque es acá donde se hace la pregunta. Quien la hace está mirando la lista
+ * de hilos con diecisiete dígitos por título, y este cuadro es justo el que
+ * explica qué puede y qué no puede hacer este canal. Mandarlo a buscar la
+ * respuesta a otro lado sería mandarlo a buscar.
+ *
+ * El botón hace dos cosas de una: arregla los que se puedan arreglar, y cuando
+ * no se puede DICE POR QUÉ, con lo que contestó Meta traducido. Esa segunda
+ * mitad es la que importa más: sin ella, «sigue saliendo el número» es
+ * indistinguible de «el CRM está roto», y no son lo mismo.
+ *
+ * ============================================================================
+ * POR QUÉ NO SE HACE SOLO
+ * ============================================================================
+ *
+ * Se hace solo, de a poco: cada vez que esa persona vuelve a escribir, el
+ * servidor le vuelve a preguntar el nombre a Meta mientras falte. Lo que este
+ * botón agrega es no tener que esperar a que escriban —que puede ser nunca— y
+ * poder comprobar en el momento si Meta ya está dejando.
+ */
+function NombresDeMeta({ canal }: { canal: string }) {
+  const [andando, setAndando] = useState(false);
+  const [dicho, setDicho] = useState<string | null>(null);
+
+  const pedir = async () => {
+    setAndando(true);
+    setDicho(null);
+    try {
+      const r = await refrescarNombresMeta();
+
+      if (!r.ok) {
+        setDicho(r.error ?? "No se pudo consultar.");
+      } else if (r.revisados === 0) {
+        setDicho("Todos los hilos ya tienen nombre.");
+      } else if (r.resueltos > 0) {
+        setDicho(
+          `Se resolvieron ${r.resueltos} de ${r.revisados}.` +
+            (r.motivo ? ` Los demás, no: ${r.motivo}` : ""),
+        );
+      } else {
+        // Ninguno se pudo: el motivo ES la respuesta. Si Meta contestó bien y
+        // esa gente sencillamente no tiene nombre visible, no hay motivo que
+        // mostrar y hay que decir eso, no inventar una falla.
+        setDicho(
+          r.motivo ??
+            `Meta no devolvió nombre para ninguno de los ${r.revisados} hilos revisados.`,
+        );
+      }
+    } catch (e) {
+      setDicho(e instanceof Error ? e.message : "No se pudo consultar.");
+    } finally {
+      setAndando(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 10, borderTop: `1px solid ${T.border}`, paddingTop: 9 }}>
+      <button
+        type="button"
+        onClick={pedir}
+        disabled={andando}
+        data-refrescar-nombres={canal}
+        style={{
+          fontSize: 11.5,
+          fontWeight: 600,
+          color: andando ? T.faint : T.ink,
+          textDecoration: "underline",
+          cursor: andando ? "default" : "pointer",
+        }}
+      >
+        {andando ? "Preguntándole a Meta…" : "Buscar los nombres que faltan"}
+      </button>
+
+      <p style={{ margin: "5px 0 0", fontSize: 11, lineHeight: 1.5, color: T.faint }}>
+        {dicho ??
+          `${canal} no manda el nombre junto al mensaje: hay que pedirlo aparte, y ` +
+            "mientras Meta no lo permita el hilo entra con el identificador por título."}
+      </p>
     </div>
   );
 }
