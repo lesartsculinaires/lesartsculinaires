@@ -227,6 +227,9 @@ async function anotarPermiso(supabase: Cliente, pp: PermisoDeLlamada) {
     p_acepto: pp.acepto,
     p_hasta: pp.acepto ? (pp.vence?.toISOString() ?? null) : null,
     p_cuando: pp.cuando.toISOString(),
+    // Sin esto, una aceptación permanente —que no trae fecha— se guardaba como
+    // si no se supiera nada, y el botón de llamar no aparecía nunca.
+    p_permanente: pp.acepto && pp.permanente,
   });
 
   if (error) {

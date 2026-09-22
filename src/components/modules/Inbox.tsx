@@ -552,6 +552,7 @@ export function Inbox({
 
   const permiso = {
     hasta: actual?.permisoLlamadaHasta ?? null,
+    permanente: actual?.permisoLlamadaPermanente === true,
     pedidoEn: actual?.permisoLlamadaPedidoEn ?? null,
     respuesta: actual?.permisoLlamadaRespuesta ?? null,
   };

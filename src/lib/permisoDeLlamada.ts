@@ -30,6 +30,19 @@
 export interface PermisoDelHilo {
   /** Hasta cuándo se puede llamar, según Meta. Nulo si nunca aceptó. */
   hasta: string | null;
+  /**
+   * `true` cuando aceptó PARA SIEMPRE y el permiso no vence.
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ NO ALCANZABA CON `hasta`
+   * --------------------------------------------------------------------------
+   *
+   * Meta manda dos formas de aceptación, y la permanente no trae fecha de
+   * vencimiento porque no la tiene. Con sólo `hasta`, esa aceptación llegaba
+   * como nula y era indistinguible de «nunca aceptó»: la persona que dio el
+   * permiso MÁS AMPLIO era justamente a la que el CRM no dejaba llamar.
+   */
+  permanente?: boolean;
   /** Cuándo se le mandó la última solicitud. */
   pedidoEn: string | null;
   /** Qué contestó la última vez. */
@@ -66,8 +79,15 @@ const horasDesde = (iso: string | null | undefined, ahora: number): number | nul
   return t == null ? null : (ahora - t) / 3_600_000;
 };
 
-/** Hay permiso vigente: se puede llamar ahora mismo. */
+/**
+ * Hay permiso vigente: se puede llamar ahora mismo.
+ *
+ * Dos formas de que sea verdad, y las dos vienen de Meta: un permiso permanente
+ * —que no vence, así que no hay fecha que mirar— o uno con fecha todavía por
+ * delante. Ver `PermisoDelHilo.permanente`.
+ */
 export function sePuedeLlamar(p: PermisoDelHilo, ahora: number = Date.now()): boolean {
+  if (p.permanente === true) return true;
   const vence = cuando(p.hasta);
   return vence != null && vence > ahora;
 }
@@ -143,6 +163,9 @@ export function queOfrecer(
 export function comoSeExplica(q: QueOfrecer, p: PermisoDelHilo): string {
   switch (q) {
     case "llamar": {
+      // El permanente se dice como lo que es: no hay plazo que informar, y
+      // poner una fecha inventada sería peor que no decir nada.
+      if (p.permanente === true) return "Aceptó que lo llamemos. El permiso no vence.";
       const vence = cuando(p.hasta);
       if (vence == null) return "Se le puede llamar por WhatsApp.";
       const dias = Math.floor((vence - Date.now()) / 86_400_000);

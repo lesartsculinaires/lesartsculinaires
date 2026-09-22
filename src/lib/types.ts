@@ -564,6 +564,8 @@ export interface Conversacion {
    * para casi todos falla. Nulo = nunca aceptó, o ya se venció.
    */
   permisoLlamadaHasta: string | null;
+  /** `true` cuando aceptó para siempre: el permiso no vence y no hay fecha. */
+  permisoLlamadaPermanente?: boolean;
   /** Cuándo se le mandó la última solicitud, para no pedírselo tres veces. */
   permisoLlamadaPedidoEn: string | null;
   /** Qué contestó. Distingue «nunca contestó» de «dijo que no». */

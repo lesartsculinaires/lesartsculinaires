@@ -59,7 +59,8 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
   const ORIGEN = ", origen";
   const MARCAS = ", no_leida, fijada, silenciada";
   const PERMISO =
-    ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta";
+    ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta" +
+    ", llamada_permiso_permanente";
 
   const COLUMNAS =
     "id, telefono, nombre_perfil, cliente_id, ultimo_mensaje_en, ultimo_texto, " +
@@ -321,6 +322,9 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
       // en null: el CRM ofrece pedir el permiso, que es lo correcto cuando no
       // hay forma de saber si lo dio.
       permisoLlamadaHasta: c.llamada_permiso_hasta ? String(c.llamada_permiso_hasta) : null,
+      // Sin la migración viene `undefined` y queda en false: el CRM ofrece
+      // pedir el permiso, que es lo correcto cuando no hay forma de saberlo.
+      permisoLlamadaPermanente: c.llamada_permiso_permanente === true,
       permisoLlamadaPedidoEn: c.llamada_permiso_pedido_en
         ? String(c.llamada_permiso_pedido_en)
         : null,
