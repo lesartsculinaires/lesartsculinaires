@@ -1,5 +1,13 @@
 import "server-only";
 
+import {
+  limpio,
+  motivoDelPerfil,
+  perfilPorConversacion,
+  sinPerfil,
+  type PerfilMeta,
+} from "@/lib/meta/perfil";
+
 /**
  * Envío por la API de mensajes de Instagram.
  *
@@ -373,11 +381,9 @@ function explicar(
  * @usuario, y si no hay ninguno «Contacto de Instagram». Lo que nunca se usa de
  * nombre es el IGSID, que no le dice nada a nadie.
  */
-export async function perfilDe(
-  igsid: string,
-): Promise<{ nombre: string | null; usuario: string | null }> {
+export async function perfilDe(igsid: string): Promise<PerfilMeta> {
   const token = process.env.INSTAGRAM_TOKEN;
-  if (!token) return { nombre: null, usuario: null };
+  if (!token) return sinPerfil("Falta INSTAGRAM_TOKEN en el servidor.");
 
   try {
     const r = await fetch(
@@ -385,19 +391,51 @@ export async function perfilDe(
       { headers: { authorization: `Bearer ${token}` } },
     );
 
-    if (!r.ok) return { nombre: null, usuario: null };
-
     const cuerpo = (await r.json().catch(() => null)) as
-      | { name?: string; username?: string }
+      | { name?: string; username?: string; error?: { code?: number; message?: string } }
       | null;
 
-    const limpio = (v: unknown) =>
-      typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+    if (!r.ok) {
+      const motivo = motivoDelPerfil("Instagram", r.status, cuerpo);
 
-    return { nombre: limpio(cuerpo?.name), usuario: limpio(cuerpo?.username) };
-  } catch {
+      /*
+       * El segundo camino: preguntar por la conversación.
+       *
+       * Hoy el de arriba funciona para Instagram —devuelve nombre y @usuario—,
+       * así que esto casi nunca corre. Se deja porque el caso en que hace falta
+       * es justamente el que dejó a la escuela mirando números: cuando Meta
+       * empieza a negar la consulta por persona, sin avisar y sin que cambie
+       * nada de este lado. Ver `meta/perfil.ts`.
+       */
+      const pagina = process.env.INSTAGRAM_ACCOUNT_ID;
+      if (pagina) {
+        const porHilo = await perfilPorConversacion(
+          "Instagram",
+          base(),
+          token,
+          pagina,
+          "instagram",
+          igsid,
+        );
+        if (porHilo.nombre || porHilo.usuario) return porHilo;
+      }
+
+      console.warn(`[instagram] no se pudo leer el perfil de ${igsid}: ${motivo}`);
+      return sinPerfil(motivo);
+    }
+
+    return {
+      nombre: limpio(cuerpo?.name),
+      usuario: limpio(cuerpo?.username),
+      motivo: null,
+    };
+  } catch (e) {
     // Que no se pueda averiguar el nombre no puede costar el mensaje. El hilo
     // se abre igual y el nombre se completa la próxima vez que escriba.
-    return { nombre: null, usuario: null };
+    const motivo = `No se pudo hablar con Meta para leer el perfil: ${
+      e instanceof Error ? e.message : String(e)
+    }`;
+    console.warn(`[instagram] ${motivo}`);
+    return sinPerfil(motivo);
   }
 }

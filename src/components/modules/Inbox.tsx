@@ -23,7 +23,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
 import { pedirPermisoDeLlamada } from "@/app/llamadas-actions";
-import { canalDe } from "@/lib/canales";
+import { canalDe, tituloDeHilo } from "@/lib/canales";
 import {
   comoSeExplica,
   comoSeLlamaElBoton,
@@ -1358,7 +1358,7 @@ export function Inbox({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {c.nombrePerfil ?? (c.usuario ? `@${c.usuario}` : c.identificador)}
+                      {tituloDeHilo(c)}
                     </span>
                     {c.silenciada && (
                       <span title="Silenciada: no cuenta para el número rojo" style={{ fontSize: 10, flexShrink: 0 }}>
@@ -1467,8 +1467,7 @@ export function Inbox({
             <div style={{ ...th, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <span>
                 <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>
-                  {actual.nombrePerfil ??
-                    (actual.usuario ? `@${actual.usuario}` : actual.identificador)}
+                  {tituloDeHilo(actual)}
                 </span>
                 <span
                   className="mono"

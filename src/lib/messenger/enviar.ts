@@ -1,5 +1,13 @@
 import "server-only";
 
+import {
+  limpio,
+  motivoDelPerfil,
+  perfilPorConversacion,
+  sinPerfil,
+  type PerfilMeta,
+} from "@/lib/meta/perfil";
+
 /**
  * Mandar y recibir por Messenger.
  *
@@ -244,6 +252,23 @@ function explicar(
 /**
  * El nombre de esa persona, preguntándoselo a Meta.
  *
+ * ============================================================================
+ * SON DOS CAMINOS, Y EL SEGUNDO ES EL QUE FUNCIONA
+ * ============================================================================
+ *
+ * `GET /{psid}?fields=name` es el camino documentado y acá DEVUELVE ERROR
+ * SIEMPRE. Medido el 22 de septiembre de 2026 contra tres personas que le habían
+ * escrito a la Página esa misma madrugada, con el token de Página bueno:
+ *
+ *     (#100, subcódigo 33) Object with ID '29566976779558028' does not exist,
+ *     cannot be loaded due to missing permissions, or does not support this
+ *     operation
+ *
+ * No es el token ni un permiso pendiente: un PSID no es un objeto que se pueda
+ * leer suelto. Por eso se intenta igual —si algún día Meta lo habilita, es una
+ * llamada más barata— y cuando falla se pregunta por la CONVERSACIÓN, que sí
+ * contesta con el nombre. El porqué está escrito en `meta/perfil.ts`.
+ *
  * Messenger da nombre y apellido pero NO da @usuario: en Facebook la gente no
  * tiene arroba. Se devuelve null ahí a propósito, en vez de inventar una con el
  * nombre: la bandeja muestra la arroba tal cual cuando existe, y una inventada
@@ -252,26 +277,55 @@ function explicar(
  * Que no se pueda averiguar el nombre no puede costar el mensaje: el hilo se
  * abre igual y el nombre se completa la próxima vez que escriba.
  */
-export async function perfilDeMsn(
-  psid: string,
-): Promise<{ nombre: string | null; usuario: string | null }> {
+export async function perfilDeMsn(psid: string): Promise<PerfilMeta> {
   const token = elToken();
-  if (!token) return { nombre: null, usuario: null };
+  const pagina = laPagina();
+  if (!token) {
+    return sinPerfil("Falta MESSENGER_TOKEN (o INSTAGRAM_TOKEN) en el servidor.");
+  }
 
   try {
     const r = await fetch(`${base()}/${psid}?fields=name`, {
       headers: { authorization: `Bearer ${token}` },
     });
 
-    if (!r.ok) return { nombre: null, usuario: null };
+    const cuerpo = (await r.json().catch(() => null)) as
+      | { name?: string; error?: { code?: number; message?: string } }
+      | null;
 
-    const cuerpo = (await r.json().catch(() => null)) as { name?: string } | null;
-    const limpio = typeof cuerpo?.name === "string" && cuerpo.name.trim() !== ""
-      ? cuerpo.name.trim()
-      : null;
+    if (!r.ok) {
+      const motivo = motivoDelPerfil("Messenger", r.status, cuerpo);
 
-    return { nombre: limpio, usuario: null };
-  } catch {
-    return { nombre: null, usuario: null };
+      /*
+       * El camino que de verdad contesta.
+       *
+       * Se guarda el motivo del primero por si el segundo tampoco puede: el
+       * error útil para entender qué pasa es casi siempre el de arriba.
+       */
+      if (pagina) {
+        const porHilo = await perfilPorConversacion(
+          "Messenger",
+          base(),
+          token,
+          pagina,
+          "messenger",
+          psid,
+        );
+        if (porHilo.nombre || porHilo.usuario) return porHilo;
+      }
+
+      console.warn(`[messenger] no se pudo leer el perfil de ${psid}: ${motivo}`);
+      return sinPerfil(motivo);
+    }
+
+    // Messenger no entrega @usuario: el PSID es lo único que identifica a la
+    // persona frente a esta página. Poner algo en `usuario` sería inventarlo.
+    return { nombre: limpio(cuerpo?.name), usuario: null, motivo: null };
+  } catch (e) {
+    const motivo = `No se pudo hablar con Meta para leer el perfil: ${
+      e instanceof Error ? e.message : String(e)
+    }`;
+    console.warn(`[messenger] ${motivo}`);
+    return sinPerfil(motivo);
   }
 }

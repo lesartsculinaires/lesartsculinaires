@@ -4,10 +4,9 @@ import {
   avisarCargaVacia,
   guardarEntranteMeta,
   guardarReaccionMeta,
-  type CanalMeta,
 } from "@/lib/meta/bandeja";
-import { perfilDeMsn } from "@/lib/messenger/enviar";
-import { ARCHIVO_MSN, leerWebhookMsn, resumenMsn } from "@/lib/messenger/mensajes";
+import { canalDeLaCarga, MESSENGER } from "@/lib/meta/canales";
+import { leerWebhookMsn } from "@/lib/messenger/mensajes";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 
@@ -25,41 +24,24 @@ import { firmaValida } from "@/lib/whatsapp/firma";
  * canal se escribe en la conversación.
  *
  * ============================================================================
- * POR QUÉ ES UNA RUTA APARTE Y NO LA MISMA DE INSTAGRAM
+ * POR QUÉ SIGUE SIENDO UNA RUTA APARTE, Y QUÉ CAMBIÓ
  * ============================================================================
  *
- * Porque en Meta se configuran por separado: el webhook de Instagram apunta a su
- * URL y el de Messenger —objeto `page`— a la suya. Podrían compartir dirección y
- * decidir por el campo `object` de la carga, y sería una dirección que si se
- * rompe se rompen las dos.
+ * La idea era que en Meta se configuraran por separado: Instagram a su URL y
+ * Messenger —objeto `page`— a la suya, y que cada ruta supiera quién es sin
+ * preguntar. En la práctica las dos suscripciones de esta escuela apuntaban a la
+ * de Instagram, y todo lo de Messenger se guardó como Instagram durante días.
  *
- * Separadas, un problema en Messenger no toca Instagram, y en el registro de
- * Netlify se ve de una cuál de las dos está llamando y cuál no. Que es
- * exactamente la pregunta que costó días contestar con Instagram.
+ * Así que el canal ya NO lo decide la ruta: lo decide el campo `object` de la
+ * carga, acá y allá. La consulta que lo demostró está en `meta/canales.ts`.
+ *
+ * Las dos rutas se mantienen igual, porque siguen valiendo las dos razones de
+ * antes: un problema en una no toca la otra, y en el registro de Netlify se ve
+ * por dónde entró cada cosa. Lo que ya no hacen es suponer.
  */
 
 /** Nunca cachear: cada llamada trae mensajes distintos. */
 export const dynamic = "force-dynamic";
-
-/** La ficha de este canal para la bandeja compartida. */
-const MESSENGER: CanalMeta = {
-  clave: "messenger",
-  nombreCatalogo: "Messenger",
-  carpeta: "msn",
-  migracion: "20261027120000_messenger.sql",
-  resumen: resumenMsn,
-  esArchivo: (clase) => ARCHIVO_MSN.has(clase),
-  perfilDe: perfilDeMsn,
-  rpcCliente: {
-    nombre: "cliente_de_canal",
-    argumentos: (psid, perfil) => ({
-      p_canal: "Messenger",
-      p_identificador: psid,
-      p_usuario: perfil.usuario,
-      p_nombre: perfil.nombre,
-    }),
-  },
-};
 
 /**
  * Alta del webhook.
@@ -169,24 +151,27 @@ export async function POST(req: NextRequest) {
 
   const { mensajes, reacciones, lecturas } = leerWebhookMsn(carga);
 
+  // El canal lo dice la carga, no la URL. Ver el encabezado.
+  const canal = canalDeLaCarga(carga, MESSENGER);
+
   if (mensajes.length === 0 && reacciones.length === 0 && lecturas.length === 0) {
-    avisarCargaVacia(MESSENGER, carga);
+    avisarCargaVacia(canal, carga);
   }
 
   for (const m of mensajes) {
     try {
-      await guardarEntranteMeta(supabase, MESSENGER, m);
+      await guardarEntranteMeta(supabase, canal, m);
     } catch (e) {
       // Un mensaje que no se pudo guardar no debe impedir los demás.
-      console.error("[messenger] no se pudo guardar el mensaje", m.mid, e);
+      console.error(`[${canal.clave}] no se pudo guardar el mensaje`, m.mid, e);
     }
   }
 
   for (const r of reacciones) {
     try {
-      await guardarReaccionMeta(supabase, MESSENGER, r);
+      await guardarReaccionMeta(supabase, canal, r);
     } catch (e) {
-      console.error("[messenger] no se pudo guardar la reacción", r.sobreMid, e);
+      console.error(`[${canal.clave}] no se pudo guardar la reacción`, r.sobreMid, e);
     }
   }
 
