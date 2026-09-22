@@ -102,6 +102,14 @@ export interface PermisoDeLlamada {
    * no—, y ahí el CRM no inventa un plazo: sin fecha, no se puede llamar.
    */
   vence: Date | null;
+  /**
+   * `true` cuando el permiso NO vence.
+   *
+   * Meta manda una aceptación permanente sin `expiration_timestamp`, así que
+   * `vence` viene nulo y esto es lo único que distingue «aceptó para siempre»
+   * de «no se pudo saber hasta cuándo». Ver `leerPermiso`.
+   */
+  permanente: boolean;
   cuando: Date;
 }
 
@@ -235,6 +243,7 @@ export function leerWebhook(carga: unknown): {
             telefono: de.replace(/\D/g, ""),
             acepto: permiso.acepto,
             vence: permiso.vence,
+            permanente: permiso.permanente,
             cuando,
           });
         }
@@ -580,7 +589,7 @@ function leerMedia(msg: Record<string, unknown>, tipo: string): MediaEntrante | 
 function leerPermiso(
   msg: Record<string, unknown>,
   tipo: string,
-): { acepto: boolean; vence: Date | null } | null {
+): { acepto: boolean; vence: Date | null; permanente: boolean } | null {
   if (tipo !== "interactive") return null;
 
   const inter = obj(msg.interactive);
@@ -594,9 +603,31 @@ function leerPermiso(
   const segundos =
     typeof marca === "number" ? marca : typeof marca === "string" ? Number(marca) : NaN;
 
+  /*
+   * `is_permanent` es la otra forma de decir que sí, y la que faltaba leer.
+   *
+   * --------------------------------------------------------------------------
+   * LAS DOS FORMAS, COMO LLEGAN DE VERDAD
+   * --------------------------------------------------------------------------
+   *
+   * Sacadas de los mensajes guardados de la escuela, no de la documentación:
+   *
+   *   {"response":"accept","is_permanent":false,
+   *    "response_source":"user_action","expiration_timestamp":1790704138}
+   *
+   *   {"response":"accept","is_permanent":true,
+   *    "response_source":"user_action"}
+   *
+   * El permanente NO trae fecha, porque no vence. Leyendo sólo la fecha, una
+   * clienta que había dado el permiso MÁS AMPLIO quedaba como si no lo hubiera
+   * dado, y el botón de llamar no aparecía nunca.
+   */
+  const permanente = cuerpo?.is_permanent === true || cuerpo?.is_permanent === "true";
+
   return {
     acepto: respuesta === "accept" || respuesta === "accepted",
     vence: Number.isFinite(segundos) && segundos > 0 ? new Date(segundos * 1000) : null,
+    permanente,
   };
 }
 

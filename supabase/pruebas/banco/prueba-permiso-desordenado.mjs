@@ -100,7 +100,7 @@ const comoMeta = async (carga) => {
  * `segundos` es CUÁNDO ocurrió, que es lo que esta prueba manipula. `vence` va
  * sólo en las aceptaciones: un rechazo no trae plazo.
  */
-const respuesta = (acepto, segundos, mid) => ({
+const respuesta = (acepto, segundos, mid, permanente = false) => ({
   object: "whatsapp_business_account",
   entry: [
     {
@@ -120,9 +120,20 @@ const respuesta = (acepto, segundos, mid) => ({
                 type: "interactive",
                 interactive: {
                   type: "call_permission_reply",
+                  /*
+                   * Las dos formas que manda Meta de verdad, copiadas de los
+                   * mensajes guardados de la escuela:
+                   *
+                   *   temporal   is_permanent:false + expiration_timestamp
+                   *   permanente is_permanent:true  y NINGUNA fecha
+                   *
+                   * La segunda es la que dejaba a una clienta sin botón de
+                   * llamar: el lector sólo buscaba la fecha.
+                   */
                   call_permission_reply: {
                     response: acepto ? "accept" : "reject",
-                    ...(acepto
+                    ...(acepto ? { is_permanent: permanente } : {}),
+                    ...(acepto && !permanente
                       ? { expiration_timestamp: segundos + 7 * 24 * 3600 }
                       : {}),
                   },
@@ -141,6 +152,7 @@ const guardado = () =>
   sql(`
     select coalesce(llamada_permiso_respuesta, '-')
         || '|' || (case when llamada_permiso_hasta is null then 'sin-fecha' else 'con-fecha' end)
+        || '|' || (case when llamada_permiso_permanente then 'permanente' else 'temporal' end)
       from public.conversaciones where telefono = '${TEL}';
   `);
 
@@ -167,7 +179,7 @@ console.log("── 1. EL CASO DE LA ESCUELA: los dos en el mismo segundo ──
     200,
   );
 
-  es("GANA EL «SÍ», que es lo que la clienta contestó", guardado(), "acepto|con-fecha");
+  es("GANA EL «SÍ», que es lo que la clienta contestó", guardado(), "acepto|con-fecha|temporal");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -184,7 +196,7 @@ console.log("\n── 2. UN RECHAZO VIEJO QUE LLEGA TARDE NO BORRA EL PERMISO �
     await comoMeta(respuesta(false, AHORA - 3600, `m_viejo_${marca}`)),
     200,
   );
-  es("y NO pisó nada: el permiso sigue vigente", guardado(), "acepto|con-fecha");
+  es("y NO pisó nada: el permiso sigue vigente", guardado(), "acepto|con-fecha|temporal");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -198,7 +210,7 @@ console.log("\n── 3. UN RECHAZO NUEVO SÍ MANDA ──");
     await comoMeta(respuesta(false, AHORA + 60, `m_no2_${marca}`)),
     200,
   );
-  es("y ahora sí borra el permiso", guardado(), "rechazo|sin-fecha");
+  es("y ahora sí borra el permiso", guardado(), "rechazo|sin-fecha|temporal");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -210,11 +222,49 @@ console.log("\n── 4. Y SI VUELVE A ACEPTAR, VUELVE A VALER ──");
     await comoMeta(respuesta(true, AHORA + 120, `m_si2_${marca}`)),
     200,
   );
-  es("el permiso vuelve", guardado(), "acepto|con-fecha");
+  es("el permiso vuelve", guardado(), "acepto|con-fecha|temporal");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 5. los mensajes quedaron todos en el hilo ──");
+console.log("\n── 5. EL PERMISO PERMANENTE: acepta y NO manda fecha ──");
+// ══════════════════════════════════════════════════════════════════════════
+{
+  /*
+   * El caso que dejó a una clienta sin botón durante días.
+   *
+   * Meta manda `is_permanent: true` y NINGUNA fecha de vencimiento, porque no
+   * vence. El lector sólo buscaba la fecha, no la encontraba, y guardaba el
+   * permiso como si no se supiera nada: la persona que dio el permiso MÁS
+   * AMPLIO era justamente a la que el CRM no dejaba llamar.
+   */
+  es(
+    "la aceptación permanente entra",
+    await comoMeta(respuesta(true, AHORA + 180, `m_perm_${marca}`, true)),
+    200,
+  );
+
+  es(
+    "SE GUARDA COMO PERMANENTE, aunque no venga fecha",
+    guardado(),
+    "acepto|sin-fecha|permanente",
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 6. y un rechazo posterior borra también lo permanente ──");
+// ══════════════════════════════════════════════════════════════════════════
+{
+  // La última palabra del cliente vale, incluso contra un permiso sin plazo.
+  es(
+    "el rechazo entra",
+    await comoMeta(respuesta(false, AHORA + 240, `m_no3_${marca}`)),
+    200,
+  );
+  es("y no queda permiso de ninguna clase", guardado(), "rechazo|sin-fecha|temporal");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 7. los mensajes quedaron todos en el hilo ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   es(
@@ -222,7 +272,7 @@ console.log("\n── 5. los mensajes quedaron todos en el hilo ──");
     sql(`select count(*) from public.mensajes m
            join public.conversaciones c on c.id = m.conversacion_id
           where c.telefono = '${TEL}';`),
-    "5",
+    "7",
   );
 }
 
