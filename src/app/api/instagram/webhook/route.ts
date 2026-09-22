@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { perfilDe } from "@/lib/instagram/enviar";
-import { ARCHIVO_IG, leerWebhookIg, resumenIg } from "@/lib/instagram/mensajes";
+import { leerWebhookIg } from "@/lib/instagram/mensajes";
 import {
   avisarCargaVacia,
   guardarEntranteMeta,
   guardarReaccionMeta,
-  type CanalMeta,
 } from "@/lib/meta/bandeja";
+import { canalDeLaCarga, INSTAGRAM } from "@/lib/meta/canales";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 
@@ -35,44 +34,6 @@ import { firmaValida } from "@/lib/whatsapp/firma";
 
 /** Nunca cachear: cada llamada trae mensajes distintos. */
 export const dynamic = "force-dynamic";
-
-/**
- * La ficha de este canal para la bandeja compartida.
- *
- * Todo lo que se hace con un mensaje que entra —guardarlo, no duplicar un
- * reintento de Meta, bajar el adjunto, abrir el lead y sortear asesora— vive en
- * `lib/meta/bandeja.ts` y es idéntico para Instagram y Messenger. Acá queda sólo
- * lo que de verdad los distingue.
- *
- * `carpeta: "ig"` no se puede cambiar: es donde están guardados los archivos de
- * todos los mensajes de Instagram que ya entraron.
- */
-const INSTAGRAM: CanalMeta = {
-  clave: "instagram",
-  nombreCatalogo: "Instagram",
-  carpeta: "ig",
-  migracion: "20261024120000_instagram.sql",
-  resumen: resumenIg,
-  esArchivo: (clase) => ARCHIVO_IG.has(clase),
-  perfilDe,
-  /*
-   * Se sigue llamando a `cliente_de_instagram` y no a la general.
-   *
-   * Desde `20261027120000_messenger.sql` la de Instagram es una línea que llama
-   * a `cliente_de_canal`, así que las dos hacen lo mismo. Se deja la vieja para
-   * que este código siga funcionando en una base donde esa migración todavía no
-   * se corrió: entre desplegar y correr el SQL hay minutos con gente
-   * escribiendo, y en esos minutos Instagram tiene que seguir entrando.
-   */
-  rpcCliente: {
-    nombre: "cliente_de_instagram",
-    argumentos: (igsid, perfil) => ({
-      p_igsid: igsid,
-      p_usuario: perfil.usuario,
-      p_nombre: perfil.nombre,
-    }),
-  },
-};
 
 /**
  * Alta del webhook.
@@ -193,24 +154,33 @@ export async function POST(req: NextRequest) {
 
   const { mensajes, reacciones, lecturas } = leerWebhookIg(carga);
 
+  /*
+   * A esta URL también llega Messenger, y por eso se mira `object`.
+   *
+   * Las dos suscripciones de Meta apuntan acá —la de `instagram` y la de
+   * `page`—, así que la dirección no alcanza para saber de quién es el mensaje.
+   * El porqué, con la consulta que lo demostró, está en `meta/canales.ts`.
+   */
+  const canal = canalDeLaCarga(carga, INSTAGRAM);
+
   if (mensajes.length === 0 && reacciones.length === 0 && lecturas.length === 0) {
-    avisarCargaVacia(INSTAGRAM, carga);
+    avisarCargaVacia(canal, carga);
   }
 
   for (const m of mensajes) {
     try {
-      await guardarEntranteMeta(supabase, INSTAGRAM, m);
+      await guardarEntranteMeta(supabase, canal, m);
     } catch (e) {
       // Un mensaje que no se pudo guardar no debe impedir los demás.
-      console.error("[instagram] no se pudo guardar el mensaje", m.mid, e);
+      console.error(`[${canal.clave}] no se pudo guardar el mensaje`, m.mid, e);
     }
   }
 
   for (const r of reacciones) {
     try {
-      await guardarReaccionMeta(supabase, INSTAGRAM, r);
+      await guardarReaccionMeta(supabase, canal, r);
     } catch (e) {
-      console.error("[instagram] no se pudo guardar la reacción", r.sobreMid, e);
+      console.error(`[${canal.clave}] no se pudo guardar la reacción`, r.sobreMid, e);
     }
   }
 

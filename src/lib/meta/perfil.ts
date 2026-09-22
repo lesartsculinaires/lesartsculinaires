@@ -99,3 +99,80 @@ export function motivoDelPerfil(
 
   return crudo ?? `${canal} respondió con error ${estado} al preguntar por el perfil.`;
 }
+
+/**
+ * El nombre, buscándolo por la CONVERSACIÓN en vez de por la persona.
+ *
+ * ============================================================================
+ * POR QUÉ HACE FALTA UN SEGUNDO CAMINO
+ * ============================================================================
+ *
+ * El camino normal es preguntarle a Meta por la persona: `GET /{id}?fields=name`.
+ * En Instagram eso funciona. En Messenger NO, y no por un permiso que se pueda
+ * pedir: la Graph API contesta
+ *
+ *     (#100, subcódigo 33) Object with ID '…' does not exist, cannot be loaded
+ *     due to missing permissions, or does not support this operation
+ *
+ * para un PSID que está escribiéndole a la Página en este mismo momento. El PSID
+ * no es un objeto que se pueda leer suelto: sólo existe DENTRO de la
+ * conversación con esa Página.
+ *
+ * Y por esa puerta el nombre sí se puede leer. Medido contra la Página de la
+ * escuela el 22 de septiembre de 2026, con el mismo token que ya usa el CRM:
+ *
+ *     GET /{pagina}/conversations?platform=messenger
+ *         &user_id={psid}&fields=participants
+ *     → {"data":[{"participants":{"data":[
+ *          {"name":"…","id":"{psid}"},
+ *          {"name":"Les Arts Culinaires","id":"{pagina}"}]}}]}
+ *
+ * Una llamada, una conversación, el nombre adentro. Es lo que convierte los
+ * hilos titulados con diecisiete dígitos en hilos con el nombre de la persona.
+ *
+ * ----------------------------------------------------------------------------
+ * POR QUÉ SE FILTRA POR `id` Y NO SE DESCARTA «EL OTRO»
+ * ----------------------------------------------------------------------------
+ *
+ * Porque quién es «el otro» cambia según la plataforma: en Messenger el
+ * participante que no es la persona es la PÁGINA, y en Instagram es la CUENTA DE
+ * INSTAGRAM, que es otro identificador. Buscar el que coincide con quien
+ * escribió no depende de eso y no se puede equivocar de persona.
+ */
+export async function perfilPorConversacion(
+  canal: string,
+  base: string,
+  token: string,
+  pagina: string,
+  plataforma: "messenger" | "instagram",
+  quien: string,
+): Promise<PerfilMeta> {
+  const url =
+    `${base}/${pagina}/conversations?platform=${plataforma}` +
+    `&user_id=${encodeURIComponent(quien)}&fields=participants`;
+
+  const r = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+
+  const cuerpo = (await r.json().catch(() => null)) as {
+    data?: { participants?: { data?: { id?: string; name?: string; username?: string }[] } }[];
+    error?: { code?: number; message?: string };
+  } | null;
+
+  if (!r.ok) return sinPerfil(motivoDelPerfil(canal, r.status, cuerpo));
+
+  const participantes = (cuerpo?.data ?? []).flatMap((c) => c.participants?.data ?? []);
+  const suyo = participantes.find((p) => String(p?.id ?? "") === quien);
+
+  if (!suyo) {
+    /*
+     * Sin conversación no hay nada que decir, y no es un error.
+     *
+     * Pasa cuando el hilo se borró del lado de Meta, y pasa también con los ecos
+     * de un mensaje que mandó la escuela antes de que la persona contestara. El
+     * mensaje ya está guardado; lo único que falta es el nombre.
+     */
+    return sinPerfil(null);
+  }
+
+  return { nombre: limpio(suyo.name), usuario: limpio(suyo.username), motivo: null };
+}

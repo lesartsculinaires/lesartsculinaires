@@ -1,6 +1,12 @@
 import "server-only";
 
-import { limpio, motivoDelPerfil, sinPerfil, type PerfilMeta } from "@/lib/meta/perfil";
+import {
+  limpio,
+  motivoDelPerfil,
+  perfilPorConversacion,
+  sinPerfil,
+  type PerfilMeta,
+} from "@/lib/meta/perfil";
 
 /**
  * Envío por la API de mensajes de Instagram.
@@ -391,6 +397,29 @@ export async function perfilDe(igsid: string): Promise<PerfilMeta> {
 
     if (!r.ok) {
       const motivo = motivoDelPerfil("Instagram", r.status, cuerpo);
+
+      /*
+       * El segundo camino: preguntar por la conversación.
+       *
+       * Hoy el de arriba funciona para Instagram —devuelve nombre y @usuario—,
+       * así que esto casi nunca corre. Se deja porque el caso en que hace falta
+       * es justamente el que dejó a la escuela mirando números: cuando Meta
+       * empieza a negar la consulta por persona, sin avisar y sin que cambie
+       * nada de este lado. Ver `meta/perfil.ts`.
+       */
+      const pagina = process.env.INSTAGRAM_ACCOUNT_ID;
+      if (pagina) {
+        const porHilo = await perfilPorConversacion(
+          "Instagram",
+          base(),
+          token,
+          pagina,
+          "instagram",
+          igsid,
+        );
+        if (porHilo.nombre || porHilo.usuario) return porHilo;
+      }
+
       console.warn(`[instagram] no se pudo leer el perfil de ${igsid}: ${motivo}`);
       return sinPerfil(motivo);
     }

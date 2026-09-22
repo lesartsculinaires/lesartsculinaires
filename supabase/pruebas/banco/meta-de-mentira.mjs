@@ -58,6 +58,20 @@ const recibidos = [];
  */
 let permitePerfiles = false;
 
+/**
+ * Y si deja leerlos por la CONVERSACIÓN, que es la otra puerta.
+ *
+ * Son dos interruptores porque en la realidad son dos puertas distintas y no se
+ * abren juntas: hoy, contra la Página de la escuela, la consulta por persona
+ * está cerrada para Messenger y la de la conversación está abierta. Con un solo
+ * interruptor no se podría imitar eso, que es justo el caso que hay que probar.
+ *
+ * `POST /__perfiles {"permite":false,"hilos":true}` arma esa asimetría. Cuando
+ * no se manda `hilos`, sigue a `permite`: las pruebas que sólo quieren decir
+ * «Meta no da nada» no tienen que enterarse de que hay dos puertas.
+ */
+let permiteHilos = false;
+
 /** Cada consulta de perfil que llegó. Ver más abajo por qué no va en `recibidos`. */
 const perfilesPedidos = [];
 
@@ -106,13 +120,87 @@ const servidor = http.createServer((req, res) => {
     req.on("data", (t) => (crudo += t));
     req.on("end", () => {
       try {
-        permitePerfiles = Boolean(JSON.parse(crudo || "{}").permite);
+        const pedido = JSON.parse(crudo || "{}");
+        permitePerfiles = Boolean(pedido.permite);
+        // Sin `hilos`, la otra puerta sigue a ésta. Ver arriba.
+        permiteHilos = pedido.hilos === undefined ? permitePerfiles : Boolean(pedido.hilos);
       } catch {
         permitePerfiles = false;
+        permiteHilos = false;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ permite: permitePerfiles }));
+      res.end(JSON.stringify({ permite: permitePerfiles, hilos: permiteHilos }));
     });
+    return;
+  }
+
+  /*
+   * El OTRO camino para el nombre: por la conversación.
+   *
+   *     GET /v21.0/{pagina}/conversations?platform=…&user_id=…&fields=participants
+   *
+   * Existe porque en Messenger el camino normal —`GET /{psid}?fields=name`— NO
+   * funciona: Meta contesta «#100 subcódigo 33, does not exist» para un PSID que
+   * está escribiendo en ese mismo momento. Medido contra la Página de la escuela
+   * el 22 de septiembre de 2026.
+   *
+   * Acá se imita esa asimetría a propósito: esta puerta tiene su propio
+   * interruptor —`permiteHilos`— y una prueba puede dejarla abierta con la otra
+   * cerrada, que es justo el caso real. Si las dos fueran siempre juntas, la
+   * prueba del nombre dejaría de probar nada.
+   */
+  const porHilo =
+    req.method === "GET" && /^\/v[\d.]+\/(\d+)\/conversations\?/.exec(req.url);
+  if (porHilo) {
+    const q = new URL(req.url, "http://x").searchParams;
+    const quien = q.get("user_id") ?? "";
+    const datos = PERFILES[quien.slice(-4)];
+
+    perfilesPedidos.push(req.url);
+
+    if (!permiteHilos) {
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message: "(#10) Application does not have permission for this action",
+            type: "OAuthException",
+            code: 10,
+          },
+        }),
+      );
+      return;
+    }
+
+    // Sin conversación, Meta devuelve la lista vacía y no un error.
+    if (!datos) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [] }));
+      return;
+    }
+
+    /*
+     * Messenger no entrega `username` por ninguna puerta, ni por ésta.
+     *
+     * Se recorta acá y no en el CRM para que la prueba falle si algún día el
+     * código empieza a inventar una arroba de Facebook, que no existe.
+     */
+    const suyo =
+      q.get("platform") === "messenger"
+        ? { id: quien, name: datos.name }
+        : { id: quien, username: datos.username, ...(datos.name ? { name: datos.name } : {}) };
+
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        data: [
+          {
+            id: `t_${quien}`,
+            participants: { data: [suyo, { id: porHilo[1], name: "Les Arts Culinaires" }] },
+          },
+        ],
+      }),
+    );
     return;
   }
 

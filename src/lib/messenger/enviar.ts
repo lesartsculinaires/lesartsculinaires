@@ -1,6 +1,12 @@
 import "server-only";
 
-import { limpio, motivoDelPerfil, sinPerfil, type PerfilMeta } from "@/lib/meta/perfil";
+import {
+  limpio,
+  motivoDelPerfil,
+  perfilPorConversacion,
+  sinPerfil,
+  type PerfilMeta,
+} from "@/lib/meta/perfil";
 
 /**
  * Mandar y recibir por Messenger.
@@ -246,6 +252,23 @@ function explicar(
 /**
  * El nombre de esa persona, preguntándoselo a Meta.
  *
+ * ============================================================================
+ * SON DOS CAMINOS, Y EL SEGUNDO ES EL QUE FUNCIONA
+ * ============================================================================
+ *
+ * `GET /{psid}?fields=name` es el camino documentado y acá DEVUELVE ERROR
+ * SIEMPRE. Medido el 22 de septiembre de 2026 contra tres personas que le habían
+ * escrito a la Página esa misma madrugada, con el token de Página bueno:
+ *
+ *     (#100, subcódigo 33) Object with ID '29566976779558028' does not exist,
+ *     cannot be loaded due to missing permissions, or does not support this
+ *     operation
+ *
+ * No es el token ni un permiso pendiente: un PSID no es un objeto que se pueda
+ * leer suelto. Por eso se intenta igual —si algún día Meta lo habilita, es una
+ * llamada más barata— y cuando falla se pregunta por la CONVERSACIÓN, que sí
+ * contesta con el nombre. El porqué está escrito en `meta/perfil.ts`.
+ *
  * Messenger da nombre y apellido pero NO da @usuario: en Facebook la gente no
  * tiene arroba. Se devuelve null ahí a propósito, en vez de inventar una con el
  * nombre: la bandeja muestra la arroba tal cual cuando existe, y una inventada
@@ -256,6 +279,7 @@ function explicar(
  */
 export async function perfilDeMsn(psid: string): Promise<PerfilMeta> {
   const token = elToken();
+  const pagina = laPagina();
   if (!token) {
     return sinPerfil("Falta MESSENGER_TOKEN (o INSTAGRAM_TOKEN) en el servidor.");
   }
@@ -271,6 +295,25 @@ export async function perfilDeMsn(psid: string): Promise<PerfilMeta> {
 
     if (!r.ok) {
       const motivo = motivoDelPerfil("Messenger", r.status, cuerpo);
+
+      /*
+       * El camino que de verdad contesta.
+       *
+       * Se guarda el motivo del primero por si el segundo tampoco puede: el
+       * error útil para entender qué pasa es casi siempre el de arriba.
+       */
+      if (pagina) {
+        const porHilo = await perfilPorConversacion(
+          "Messenger",
+          base(),
+          token,
+          pagina,
+          "messenger",
+          psid,
+        );
+        if (porHilo.nombre || porHilo.usuario) return porHilo;
+      }
+
       console.warn(`[messenger] no se pudo leer el perfil de ${psid}: ${motivo}`);
       return sinPerfil(motivo);
     }
