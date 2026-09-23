@@ -291,11 +291,38 @@ function Seccion({
       )}
 
       {usable && total > 0 && (
+        /*
+         * El cero se muestra. Antes se escondía, y era peor.
+         *
+         * ----------------------------------------------------------------------
+         * POR QUÉ CAMBIÓ
+         * ----------------------------------------------------------------------
+         *
+         * La idea era que cuatro filas diciendo «0/…» fueran ruido compitiendo
+         * con el número que sí importa, así que sin pendientes se mostraba sólo
+         * el total. La escuela preguntó, mirando la pantalla:
+         *
+         *   «¿por qué sólo Instagram no aparece así como los demás?»
+         *
+         * Instagram decía «10» —diez hilos, ninguno pendiente— al lado de
+         * WhatsApp diciendo «1/324». Y un «10» suelto se lee como diez
+         * pendientes, que es exactamente lo contrario de lo que significa.
+         *
+         * Un número que se puede leer al revés es peor que un cero de más. Ahora
+         * las cuatro filas tienen la misma forma y la posición de cada número
+         * siempre quiere decir lo mismo; el cero va apagado para que no compita
+         * con los que sí tienen algo esperando.
+         */
         <span style={{ fontSize: 11, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
-          {sinLeer > 0 && (
-            <strong style={{ color: accent, fontWeight: 700 }}>{sinLeer}</strong>
-          )}
-          {sinLeer > 0 && <span style={{ color: T.faint }}>/</span>}
+          <strong
+            style={{
+              color: sinLeer > 0 ? accent : T.faint,
+              fontWeight: sinLeer > 0 ? 700 : 400,
+            }}
+          >
+            {sinLeer}
+          </strong>
+          <span style={{ color: T.faint }}>/</span>
           {total}
         </span>
       )}
