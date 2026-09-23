@@ -174,11 +174,62 @@ async function contarSinVer(
     data?.visto_en ??
     new Date(Date.now() - DIAS_PRIMERA_VEZ * 24 * 3600 * 1000).toISOString();
 
+  /*
+   * El globito cuenta DECISIONES, no todo lo que se guardó.
+   *
+   * ==========================================================================
+   * POR QUÉ, CON LOS NÚMEROS QUE LO OBLIGARON
+   * ==========================================================================
+   *
+   * Contaba todo, y por eso decía «99+» permanentemente. Medido sobre siete
+   * días reales de la escuela:
+   *
+   *     oportunidad · creó   562      nota · creó      116
+   *     cliente     · creó   562      adjunto/enlace    18
+   *     oportunidad · editó  358      ────────────────────
+   *     cliente     · editó  314      total          1932
+   *
+   * Son 276 movimientos por día, y de ellos 1124 son «creó»: leads entrando por
+   * webhook y por formularios. De esos, 176 ni siquiera tienen autor porque los
+   * escribe el sistema.
+   *
+   * Un número que siempre dice «99+» no informa nada: no distingue un día
+   * tranquilo de uno en que alguien reasignó veinte leads. Y lo que enseña es a
+   * ignorarlo, que es peor que no tenerlo.
+   *
+   * --------------------------------------------------------------------------
+   * QUÉ QUEDA FUERA, Y DÓNDE SE SIGUE VIENDO
+   * --------------------------------------------------------------------------
+   *
+   * Los leads que entran. No porque no importen —importan más que nada— sino
+   * porque no requieren que nadie mire ESTE panel: ya están en el Dashboard, en
+   * Clientes y en la bandeja, y llegan solos. El globito es para lo que hizo
+   * otra persona y uno podría necesitar saber.
+   *
+   * El MÓDULO sigue mostrando todo, con sus filtros. Acá no se esconde nada: se
+   * decide por qué cosas suena la campana.
+   *
+   * Lo que escribió el sistema —`actor_id` nulo— tampoco cuenta. «Alguien hizo
+   * algo» y «el webhook guardó un mensaje» son dos cosas distintas, y sólo la
+   * primera es un aviso.
+   */
   const { count } = await supabase
     .from("actividad")
     .select("id", { count: "exact", head: true })
     .gt("creado_en", desde)
-    .or(`actor_id.is.null,actor_id.neq.${user.id}`);
+    // Con dueño humano, y que no sea uno mismo: nadie necesita un aviso rojo de
+    // lo que acaba de hacer.
+    .not("actor_id", "is", null)
+    .neq("actor_id", user.id)
+    /*
+     * «No es la creación de un lead o de un contacto», escrito al revés.
+     *
+     * PostgREST no filtra por dos columnas juntas, así que la condición que se
+     * quiere —NO (entidad ∈ {oportunidad, cliente} Y acción = creó)— se escribe
+     * como su equivalente: (entidad ∉ {…}) O (acción ≠ creó). Son la misma
+     * regla; la segunda es la que el servidor entiende.
+     */
+    .or("entidad.not.in.(oportunidad,cliente),accion.neq.creo");
 
   return count ?? 0;
 }

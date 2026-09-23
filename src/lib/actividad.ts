@@ -167,6 +167,59 @@ export function redactar(e: Evento, catalogo: Catalogo): string {
     return anulado ? `Anuló el link de registro${de}` : `Cambió el link de registro${de}`;
   }
 
+  if (e.entidad === "conversacion") {
+    /*
+     * El chat no cuelga de una oportunidad, así que no lleva código de ficha.
+     *
+     * Y las tres cosas se dicen distinto a propósito: «reasignó» es de quién
+     * pasa a ser el cliente, «archivó» lo saca de la lista de todo el equipo, y
+     * cambiar el contacto es mover el chat a otra ficha. Un genérico «cambió el
+     * chat» obligaría a abrir el detalle para saber cuál de las tres fue, que es
+     * justo lo que este renglón existe para evitar.
+     */
+    const asesora = e.campos?.vendedor_id;
+    if (asesora) {
+      const nombre = catalogo.vendedores.find((v) => v.id === asesora.despues)?.nombre;
+      return nombre ? `Reasignó un chat a ${nombre}` : "Dejó un chat sin asignar";
+    }
+
+    const archivada = e.campos?.archivada;
+    if (archivada) {
+      return archivada.despues === true ? "Archivó un chat" : "Sacó un chat del archivo";
+    }
+
+    if (e.campos?.cliente_id) return "Movió un chat a otro contacto";
+
+    return "Cambió un chat";
+  }
+
+  if (e.entidad === "etiqueta_chat") {
+    return e.accion === "creo" ? "Etiquetó un chat" : "Le quitó una etiqueta a un chat";
+  }
+
+  if (e.entidad === "llamada") {
+    /*
+     * Quién atendió importa más que el estado, así que se mira primero.
+     *
+     * Cuando las dos cosas cambian en el mismo movimiento —alguien la agarra y
+     * pasa a «en curso»— lo que la escuela quiere leer es el nombre, no la
+     * palabra «en_curso».
+     */
+    const quien = e.campos?.atendida_por;
+    if (quien?.despues) return "Atendió una llamada";
+
+    const estado = e.campos?.estado;
+    const comoSeLee: Record<string, string> = {
+      perdida: "Se perdió una llamada",
+      rechazada: "Rechazó una llamada",
+      terminada: "Terminó una llamada",
+      en_curso: "Empezó a hablar en una llamada",
+      contestando: "Atendió una llamada",
+    };
+    const texto = typeof estado?.despues === "string" ? comoSeLee[estado.despues] : undefined;
+    return texto ?? "Cambió una llamada";
+  }
+
   if (e.entidad === "cliente") {
     if (e.accion === "creo") return `Cargó un contacto nuevo`;
     if (e.accion === "borro") return `Borró un contacto`;
@@ -312,6 +365,9 @@ export const ENTIDADES: { valor: string; nombre: string }[] = [
   { valor: "curso", nombre: "Cursos realizados" },
   { valor: "programa", nombre: "Catálogo de programas" },
   { valor: "vendedor", nombre: "Vendedores" },
+  { valor: "conversacion", nombre: "Chats" },
+  { valor: "etiqueta_chat", nombre: "Etiquetas de chats" },
+  { valor: "llamada", nombre: "Llamadas" },
 ];
 
 export const ACCIONES: { valor: string; nombre: string }[] = [
