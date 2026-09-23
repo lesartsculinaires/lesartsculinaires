@@ -419,6 +419,58 @@ function Ficha({
         })}
       </ul>
 
+      {/*
+        Las llamadas de Messenger: por qué no están y qué hay que pedir.
+
+        ========================================================================
+        POR QUÉ ESTO SE ESCRIBE EN LA PANTALLA
+        ========================================================================
+
+        Porque la pregunta ya se hizo —«poné el botón de llamar en Messenger»—
+        y la respuesta no se puede deducir de nada visible: la API existe, el
+        CRM sabría usarla, y aun así no se puede. Sin este cartel, la próxima
+        persona que se lo pregunte vuelve a averiguarlo desde cero, o peor,
+        alguien pone el botón y las asesoras descubren el límite con un cliente
+        del otro lado esperando.
+
+        Se nombra el error exacto de Meta a propósito: es lo que hay que
+        mencionar al pedir la habilitación, y es lo que permite comprobar de un
+        vistazo si ya la dieron.
+      */}
+      {canal.clave === "messenger" && canal.puede.llamadas === "pendiente" && (
+        <div
+          style={{
+            margin: "9px 0 0",
+            padding: "8px 10px",
+            borderRadius: 7,
+            background: "#FBF7EA",
+            border: "1px solid #E8DCB8",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
+            <strong>Llamadas:</strong> Messenger sí tiene API de llamadas, y no es sólo el
+            botón de llamar —tampoco se pueden <em>atender</em> las entrantes—. Las cinco
+            acciones devuelven:
+          </p>
+          <p
+            style={{
+              margin: "5px 0 0",
+              fontSize: 11,
+              fontFamily: "ui-monospace, monospace",
+              color: "#8A7020",
+              wordBreak: "break-word",
+            }}
+          >
+            (#-1, 2018389) Page is not allowlisted to access this feature
+          </p>
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
+            Hay que pedirle a Meta que habilite la página para llamadas de Messenger. Mientras
+            tanto, las llamadas de Messenger se contestan desde la aplicación de Messenger o
+            desde Meta Business Suite, no acá.
+          </p>
+        </div>
+      )}
+
       {(canal.clave === "instagram" || canal.clave === "messenger") && (
         <NombresDeMeta canal={canal.nombre} />
       )}

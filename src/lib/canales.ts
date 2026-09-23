@@ -60,7 +60,15 @@ export type ClaveCanal = "whatsapp" | "instagram" | "messenger" | "tiktok";
  * alcanza y hay que probarlo con la cuenta de la escuela. Marcarlo como «sí»
  * por las dudas haría que la pantalla ofrezca un botón que falla.
  */
-export type Soporte = "si" | "no" | "confirmar";
+/**
+ * Qué tanto se puede hacer algo en un canal.
+ *
+ * `pendiente` es distinto de `no`, y la diferencia importa: `no` quiere decir
+ * que la API no lo ofrece y no hay nada que esperar; `pendiente` quiere decir
+ * que la API SÍ lo ofrece y lo que falta es un permiso que Meta tiene que dar.
+ * Decir «no» en los dos casos haría que nadie pida lo que ya se puede pedir.
+ */
+export type Soporte = "si" | "no" | "confirmar" | "pendiente";
 
 export interface Canal {
   clave: ClaveCanal;
@@ -86,6 +94,68 @@ export interface Canal {
     plantillas: Soporte;
     /** Editar un mensaje ya enviado. Ninguna API lo permite hoy. */
     editar: Soporte;
+    /**
+     * Llamar y atender llamadas desde el CRM.
+     *
+     * ------------------------------------------------------------------------
+     * LO QUE SE MIDIÓ, CANAL POR CANAL
+     * ------------------------------------------------------------------------
+     *
+     * WhatsApp anda y está en producción. Messenger es el caso interesante: la
+     * API existe —`POST /{page-id}/calls` acepta ACCEPT, CONNECT, MEDIA_UPDATE,
+     * REJECT y TERMINATE— pero contra la página de la escuela las CINCO
+     * acciones devuelven lo mismo:
+     *
+     *     (#-1, subcódigo 2018389) Page is not allowlisted to access this feature
+     *
+     * O sea que no es sólo el botón de llamar: tampoco se pueden ATENDER las
+     * entrantes. Por eso `pendiente` y no `si`.
+     *
+     * ------------------------------------------------------------------------
+     * LO QUE SÍ SE PUEDE HOY, Y ES LA MITAD DEL CAMINO
+     * ------------------------------------------------------------------------
+     *
+     * El permiso del cliente NO está bloqueado por la lista blanca. Consultado
+     * el mismo día contra dos personas reales de la página:
+     *
+     *     GET /{page-id}/messenger_call_permissions?psid={psid}
+     *     → {"permission":{"status":"NO_PERMISSION"},
+     *        "actions":[
+     *          {"action_name":"send_call_permission_request","can_perform":true,
+     *           "limits":[{"time_period":"PT24H","max_allowed":2,"current_usage":0}]},
+     *          {"action_name":"start_call","can_perform":false}]}
+     *
+     * Es el mismo modelo que WhatsApp —la persona tiene que aceptar antes— con
+     * un límite propio: DOS solicitudes por persona cada 24 horas. El CRM ya
+     * tiene toda esa lógica escrita en `lib/permisoDeLlamada.ts`.
+     *
+     * ------------------------------------------------------------------------
+     * QUÉ HAY QUE TOCAR EL DÍA QUE META HABILITE LA PÁGINA
+     * ------------------------------------------------------------------------
+     *
+     * 1. Comprobar que se levantó, sin escribir código:
+     *
+     *      POST /{page-id}/calls  action=CONNECT  to={psid inventado}
+     *
+     *    Mientras devuelva 2018389 sigue bloqueado. Cuando devuelva un error de
+     *    DESTINATARIO —como el #100 de Instagram— está habilitada.
+     *
+     * 2. Suscribir el campo de llamadas en el webhook de la página. Hoy están
+     *    `messages`, `message_echoes`, `message_reads` y compañía, y ninguno de
+     *    llamadas: sin eso, una entrante no llega al CRM aunque todo lo demás
+     *    funcione.
+     *
+     * 3. Cambiar esta palabra a `"si"`. La pantalla entera lee de acá —el panel
+     *    del canal, la bandeja, el cartel de la lista blanca— así que con eso
+     *    deja de decir que falta.
+     *
+     * 4. Escribir `lib/messenger/llamadas.ts` al lado de `lib/whatsapp/llamadas.ts`.
+     *    La forma es la misma: las cinco acciones y SDP por WebRTC. La interfaz
+     *    —el pop-up, la tarjeta de la esquina, el micrófono— no hay que
+     *    tocarla: ya está en `components/Llamada.tsx` y no sabe de qué canal
+     *    viene la llamada.
+     */
+    llamadas: Soporte;
   };
   /** Horas para contestar libremente desde el último mensaje de la persona. */
   ventanaHoras: number;
@@ -118,6 +188,8 @@ export const CANALES: readonly Canal[] = [
       // No existe en la API. La aplicación del teléfono sí lo tiene; la API,
       // no. No es algo que falte programar.
       editar: "no",
+      // Anda y está en producción: es el único de los cuatro.
+      llamadas: "si",
     },
     ventanaHoras: 24,
     laVentana:
@@ -163,6 +235,8 @@ export const CANALES: readonly Canal[] = [
        */
       plantillas: "no",
       editar: "no",
+      // La API de mensajería de Instagram no ofrece llamadas.
+      llamadas: "no",
     },
     /*
      * Siete días, no 24 horas.
@@ -217,6 +291,13 @@ export const CANALES: readonly Canal[] = [
        */
       plantillas: "no",
       editar: "no",
+      /*
+       * La API existe; la página no está habilitada. Medido el 23 de
+       * septiembre de 2026: las cinco acciones de `POST /{page}/calls`
+       * devuelven «(#-1) Page is not allowlisted to access this feature».
+       * Ver el comentario del tipo `Canal["puede"]["llamadas"]`.
+       */
+      llamadas: "pendiente",
     },
     ventanaHoras: 24 * 7,
     laVentana:
@@ -249,6 +330,8 @@ export const CANALES: readonly Canal[] = [
       archivos: "confirmar",
       plantillas: "no",
       editar: "no",
+      // TikTok no ofrece llamadas por API.
+      llamadas: "no",
     },
     ventanaHoras: 24 * 7,
     laVentana: "Todavía no se sabe: depende de las reglas que ponga TikTok al aprobar.",
@@ -340,6 +423,7 @@ export const COMO_SE_DICE: Record<Soporte, string> = {
   // «api», que se lee como una palabra que no es.
   no: "no lo permite la API",
   confirmar: "hay que confirmarlo al conectar",
+  pendiente: "la API lo permite, falta que Meta habilite la cuenta",
 };
 
 /** Las capacidades, en el orden en que se muestran. */
@@ -349,4 +433,5 @@ export const CAPACIDADES: { clave: keyof Canal["puede"]; nombre: string }[] = [
   { clave: "reaccionar", nombre: "Reacciones a los mensajes" },
   { clave: "plantillas", nombre: "Escribir primero, fuera de la ventana" },
   { clave: "editar", nombre: "Editar un mensaje enviado" },
+  { clave: "llamadas", nombre: "Llamadas desde el CRM" },
 ];
