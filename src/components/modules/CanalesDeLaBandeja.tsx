@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 
+import { IconoDeCanal } from "@/components/IconoDeCanal";
 import { refrescarNombresMeta } from "@/app/meta-nombres-actions";
 import { CANALES, CAPACIDADES, COMO_SE_DICE, canalDe, type Canal } from "@/lib/canales";
 import { T } from "@/lib/theme";
@@ -43,16 +44,33 @@ import { T } from "@/lib/theme";
  * tienen los demás, que es justamente lo que la escuela pidió dejar preparado.
  */
 export function CanalesDeLaBandeja({
-  /** Cuántos hilos hay por canal, para poder decirlo en la pestaña. */
+  /** Cuántos hilos hay por canal, para poder decirlo en la sección. */
   cuantos,
-  elegido,
+  /**
+   * Cuántos están sin leer por canal.
+   *
+   * --------------------------------------------------------------------------
+   * QUÉ CUENTA COMO «SIN LEER»
+   * --------------------------------------------------------------------------
+   *
+   * Dos cosas, sumadas: los mensajes que entraron y nadie abrió —el contador
+   * que sube solo con cada mensaje del cliente— y los hilos que una asesora
+   * marcó a mano como no leídos para volver después.
+   *
+   * Se suman porque para quien atiende son lo mismo: «esto me falta ver».
+   * Separarlas obligaría a explicar la diferencia en la pantalla para no ganar
+   * ninguna decisión distinta.
+   */
+  sinLeer,
+  abiertos,
   conectados,
   accent,
-  onElegir,
+  onAlternar,
 }: {
   cuantos: Record<string, number>;
-  /** Null = todos los canales juntos. */
-  elegido: string | null;
+  sinLeer: Record<string, number>;
+  /** Qué secciones están desplegadas. Vacío = se ve todo junto. */
+  abiertos: ReadonlySet<string>;
   /**
    * Cuáles tienen sus credenciales puestas en el servidor.
    *
@@ -80,91 +98,78 @@ export function CanalesDeLaBandeja({
    */
   conectados: Record<string, boolean>;
   accent: string;
-  onElegir: (clave: string | null) => void;
+  /** Despliega o repliega una sección. `null` = la de «Todos». */
+  onAlternar: (clave: string | null) => void;
 }) {
   /** Cuál se está mirando en la ficha de abajo. Null = ninguna abierta. */
   const [mirando, setMirando] = useState<string | null>(null);
 
   const total = Object.values(cuantos).reduce((a, b) => a + b, 0);
+  const sinLeerTotal = Object.values(sinLeer).reduce((a, b) => a + b, 0);
 
   return (
     <div style={{ borderBottom: `1px solid ${T.border}` }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 4,
-          padding: "8px 12px 7px",
-          alignItems: "center",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => onElegir(null)}
-          style={pestana(elegido == null, accent)}
-        >
-          Todos
-          {total > 0 && <span style={numerito(elegido == null)}>{total}</span>}
-        </button>
+      {/*
+        Una lista vertical, no una fila de pestañas.
+
+        ========================================================================
+        POR QUÉ CAMBIÓ
+        ========================================================================
+
+        Como fila de pestañas, los canales competían por el ancho con el
+        buscador y el filtro de asesora, los contadores no entraban, y sobre
+        todo no se leía como lo que son: las cuatro puertas por donde entra un
+        cliente. En vertical cada una tiene lugar para su logotipo, su nombre y
+        sus dos números, y la que está abierta se ve abierta.
+
+        «Todos» va primero y es lo que se abre al entrar: la bandeja mezclada es
+        como trabaja la escuela hoy —318 de 363 hilos son de WhatsApp— y separar
+        por canal desde el arranque le cambiaría el día a las asesoras para
+        resolver un problema que todavía no tienen.
+      */}
+      <div role="list" style={{ padding: "4px 0" }}>
+        <Seccion
+          nombre="Todos"
+          clave={null}
+          total={total}
+          sinLeer={sinLeerTotal}
+          abierta={abiertos.size === 0}
+          accent={accent}
+          onAlternar={() => onAlternar(null)}
+        />
 
         {CANALES.map((c) => {
-          const n = cuantos[c.clave] ?? 0;
-          const puesto = elegido === c.clave;
           // Sabe hablarlo, pero todavía no tiene con qué. Ver `conectados`.
           const faltaElToken = c.disponible && conectados[c.clave] === false;
+          const usable = c.disponible && !faltaElToken;
 
           return (
-            <button
+            <Seccion
               key={c.clave}
-              type="button"
-              onClick={() => {
-                // Un canal que no anda no filtra nada: lo que hace es explicar
-                // qué le falta. Filtrar por él dejaría la lista vacía y eso no
-                // dice nada. Lo mismo el que está hecho pero sin credenciales:
-                // su lista está vacía por una razón que hay que contar.
-                if (c.disponible && !faltaElToken) onElegir(puesto ? null : c.clave);
+              nombre={c.nombre}
+              clave={c.clave}
+              total={cuantos[c.clave] ?? 0}
+              sinLeer={sinLeer[c.clave] ?? 0}
+              abierta={abiertos.has(c.clave)}
+              usable={usable}
+              /*
+                «Pronto» y «falta la llave» son dos esperas distintas, y quien
+                las resuelve es distinto: «pronto» es trabajo de programación y
+                no depende de la escuela; la llave es una variable en Netlify
+                que la escuela sí puede cargar hoy. Decir lo mismo en los dos
+                casos haría que nadie cargue nada, esperando algo que ya está
+                listo.
+              */
+              nota={!c.disponible ? "pronto" : faltaElToken ? "falta la llave" : null}
+              accent={accent}
+              onAlternar={() => {
+                // Un canal que no anda no despliega nada: lo que hace es
+                // explicar qué le falta. Abrirlo mostraría una lista vacía, y
+                // una lista vacía no dice por qué está vacía.
+                if (usable) onAlternar(c.clave);
                 setMirando(mirando === c.clave ? null : c.clave);
               }}
-              title={
-                faltaElToken
-                  ? `${c.nombre}: listo en el CRM, falta cargar las credenciales`
-                  : c.disponible
-                    ? `Ver sólo ${c.nombre}`
-                    : `${c.nombre}: todavía no está conectado`
-              }
-              style={{
-                ...pestana(puesto, accent),
-                // Los que no andan van en gris y con el borde punteado: se ve
-                // que están y se ve que todavía no. El que está hecho pero sin
-                // enchufar va igual, porque desde la bandeja da lo mismo: no se
-                // puede usar. Lo que cambia es lo que dice al tocarlo.
-                borderStyle: c.disponible && !faltaElToken ? "solid" : "dashed",
-                opacity: c.disponible && !faltaElToken ? 1 : 0.72,
-              }}
-            >
-              <span aria-hidden style={{ fontSize: 11 }}>{c.icono}</span>
-              {c.nombre}
-              {c.disponible && !faltaElToken && n > 0 && (
-                <span style={numerito(puesto)}>{n}</span>
-              )}
-              {!c.disponible && (
-                <span style={{ fontSize: 9.5, color: T.faint, fontWeight: 600 }}>pronto</span>
-              )}
-              {/*
-                «Falta la llave» y no «pronto».
-
-                Son dos esperas distintas y quien las resuelve es distinto:
-                «pronto» es trabajo de programación y no depende de la escuela;
-                esto es una variable en Netlify que la escuela sí puede cargar
-                hoy. Decir lo mismo en los dos casos haría que nadie cargue
-                nada, esperando algo que ya está listo.
-              */}
-              {faltaElToken && (
-                <span style={{ fontSize: 9.5, color: "#8A7020", fontWeight: 600 }}>
-                  falta la llave
-                </span>
-              )}
-            </button>
+            />
           );
         })}
       </div>
@@ -177,6 +182,124 @@ export function CanalesDeLaBandeja({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Una fila de la lista: el logotipo, el nombre y los dos números.
+ *
+ * ============================================================================
+ * POR QUÉ SON DOS NÚMEROS Y NO UNO
+ * ============================================================================
+ *
+ * «12/318» contesta dos preguntas distintas de un vistazo: cuánto hay pendiente
+ * ahora —que es lo que decide a qué se sienta la asesora— y qué tan cargado
+ * está ese canal en general, que es lo que la escuela mira para decidir dónde
+ * pautar. Un solo número obligaría a elegir cuál de las dos se muestra.
+ *
+ * El de sin leer va primero y resaltado porque es el que se mira todo el día.
+ * Cuando es cero desaparece en vez de mostrar «0/318»: un cero permanente en
+ * cuatro filas es ruido que compite con el que sí importa.
+ */
+function Seccion({
+  nombre,
+  clave,
+  total,
+  sinLeer,
+  abierta,
+  usable = true,
+  nota = null,
+  accent,
+  onAlternar,
+}: {
+  nombre: string;
+  /** Null es la de «Todos». */
+  clave: string | null;
+  total: number;
+  sinLeer: number;
+  abierta: boolean;
+  /** False en los que no se pueden usar todavía: no despliegan, explican. */
+  usable?: boolean;
+  /** «pronto» o «falta la llave». Null cuando el canal anda. */
+  nota?: string | null;
+  accent: string;
+  onAlternar: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="listitem"
+      onClick={onAlternar}
+      data-canal-seccion={clave ?? "todos"}
+      data-abierta={abierta ? "si" : "no"}
+      title={
+        nota === "falta la llave"
+          ? `${nombre}: listo en el CRM, falta cargar las credenciales`
+          : nota === "pronto"
+            ? `${nombre}: todavía no está conectado`
+            : abierta
+              ? `Replegar ${nombre}`
+              : `Ver ${nombre}`
+      }
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        width: "100%",
+        padding: "7px 12px",
+        textAlign: "left",
+        fontSize: 12.5,
+        fontWeight: abierta ? 700 : 500,
+        color: usable ? T.ink : T.faint,
+        background: abierta ? `${accent}12` : "transparent",
+        // La línea de color a la izquierda es lo que hace que la sección
+        // abierta se vea abierta sin tener que leer nada.
+        borderLeft: `3px solid ${abierta ? accent : "transparent"}`,
+        opacity: usable ? 1 : 0.75,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 13,
+          fontSize: 10,
+          color: T.faint,
+          transition: "none",
+        }}
+      >
+        {abierta ? "▾" : "▸"}
+      </span>
+
+      {clave ? (
+        <IconoDeCanal canal={clave} tamano={15} mono={!usable} />
+      ) : (
+        <span aria-hidden style={{ width: 15 }} />
+      )}
+
+      <span style={{ flex: 1 }}>{nombre}</span>
+
+      {nota && (
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 600,
+            color: nota === "falta la llave" ? "#8A7020" : T.faint,
+          }}
+        >
+          {nota}
+        </span>
+      )}
+
+      {usable && total > 0 && (
+        <span style={{ fontSize: 11, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
+          {sinLeer > 0 && (
+            <strong style={{ color: accent, fontWeight: 700 }}>{sinLeer}</strong>
+          )}
+          {sinLeer > 0 && <span style={{ color: T.faint }}>/</span>}
+          {total}
+        </span>
+      )}
+    </button>
   );
 }
 

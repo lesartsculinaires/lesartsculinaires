@@ -15,6 +15,7 @@
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
+import os from "node:os";
 import crypto from "node:crypto";
 import { execSync } from "node:child_process";
 const sql = (q) => execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c \\"${q}\\""`, {encoding:"utf8"}).trim();
@@ -81,7 +82,7 @@ console.log("── la foto recibida abre el visor ──");
   es("SE ABRE LA VENTANA", await visor.count(), 1);
   es("con el nombre del archivo", (await visor.innerText()).includes("comprobante.jpg"), true);
   es("y la foto en grande adentro", await visor.locator("img").count(), 1);
-  await p.screenshot({path: process.env.SP + "/visor-recibido.png"});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/visor-recibido.png"});
 
   await p.keyboard.press("Escape");
   await p.waitForTimeout(600);
@@ -104,7 +105,7 @@ console.log("\n── mandar una foto pide confirmación ──");
   // planillas y presentaciones, y un documento no lleva pie de foto.
   es("ofrece escribir un mensaje", await visor.locator('input[placeholder*="junto al archivo"]').count(), 1);
   es("y los dos botones", /Cancelar/.test(t) && /Enviar/.test(t), true);
-  await p.screenshot({path: process.env.SP + "/visor-envio.png"});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/visor-envio.png"});
 
   const antes = sql(`select count(*) from mensajes where conversacion_id=${conv}`);
   await visor.locator('button:text-is("Cancelar")').click();

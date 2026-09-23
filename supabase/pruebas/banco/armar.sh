@@ -200,7 +200,43 @@ echo "   proxy $(curl -s -o /dev/null -w '%{http_code}' --noproxy '*' \
 
 echo ""
 echo "Listo. Para la aplicación, desde la raíz del repo:"
-echo "  printf 'NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:3141\\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\\n' \"\$(cat $AQUI/anon.txt)\" > .env.local"
-echo "  npm run build && npx next start -p 3142"
+echo ""
+cat <<'RECETA'
+  printf 'NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:3141
+NEXT_PUBLIC_SUPABASE_ANON_KEY=%s
+SUPABASE_SERVICE_ROLE_KEY=%s
+WHATSAPP_APP_SECRET=secreto-de-prueba
+WHATSAPP_VERIFY_TOKEN=token-de-prueba
+WHATSAPP_TOKEN=token-de-prueba
+WHATSAPP_PHONE_NUMBER_ID=1210850100000
+WHATSAPP_GRAPH_URL=http://127.0.0.1:3144
+INSTAGRAM_GRAPH_URL=http://127.0.0.1:3144
+INSTAGRAM_TOKEN=token-de-prueba
+INSTAGRAM_ACCOUNT_ID=17841400000000000
+MESSENGER_GRAPH_URL=http://127.0.0.1:3144
+MESSENGER_TOKEN=token-de-prueba
+MESSENGER_PAGE_ID=107321267900000
+' "$(cat supabase/pruebas/banco/anon.txt)" "$(cat supabase/pruebas/banco/jwt-servicio.txt)" > .env.local
+
+  node supabase/pruebas/banco/meta-de-mentira.mjs &   # el Meta de mentira, en 3144
+  npm run build && npx next start -p 3142
+RECETA
+echo ""
+cat <<'PORQUE'
+POR QUÉ LA RECETA ES TAN LARGA, Y POR QUÉ NO CONVIENE RECORTARLA
+
+Antes acá salían sólo las dos variables de Supabase, y eso costó una tarde de
+diagnóstico equivocado: sin WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID el CRM
+considera que WhatsApp NO está conectado, y entonces su pestaña deja de filtrar
+y pasa a explicar qué falta. Las pruebas que la usan para filtrar se quedan
+esperando una lista que nunca aparece, fallan con un error de Playwright que no
+menciona ninguna variable, y parecen un producto roto cuando lo único que
+faltaba era el entorno.
+
+Los valores son todos de mentira menos las llaves de Supabase: lo único que les
+importa a `hayWhatsapp()`, `hayInstagram()` y `hayMessenger()` es que estén
+puestas. Las tres URLs de Graph apuntan al Meta de mentira, que es lo que
+permite probar los envíos sin una cuenta real.
+PORQUE
 echo ""
 echo "Ojo: .env.local queda apuntando al banco. Restauralo antes de desplegar."

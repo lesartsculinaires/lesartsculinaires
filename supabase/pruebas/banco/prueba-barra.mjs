@@ -12,6 +12,7 @@
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
+import os from "node:os";
 import { execSync } from "node:child_process";
 const sql = (q) => execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c \\"${q}\\""`, {encoding:"utf8"}).trim();
 let f=0; const es=(t,r,e)=>{const ok=JSON.stringify(r)===JSON.stringify(e);
@@ -74,7 +75,7 @@ console.log("\n── el aviso de mensajes sin leer ──");
      await inbox.getAttribute("aria-label"), `Inbox, ${total} sin leer`);
   es("los demás módulos no tienen número",
      await p.locator('aside nav button').filter({hasText:"Clientes"}).getAttribute("aria-label"), null);
-  await p.locator("aside").screenshot({path: process.env.SP + "/barra.png"});
+  await p.locator("aside").screenshot({path: (process.env.SP ?? os.tmpdir()) + "/barra.png"});
 }
 
 console.log("\n── «Sin asignar» en una sola línea ──");
@@ -93,8 +94,8 @@ console.log("\n── «Sin asignar» en una sola línea ──");
     return Math.round(r.height / linea);
   });
   es("Y OCUPA UN SOLO RENGLÓN", lineas <= 1, true);
-  await p.locator("main").screenshot({path: process.env.SP + "/chips.png", clip: undefined}).catch(()=>{});
-  await p.screenshot({path: process.env.SP + "/inbox.png"});
+  await p.locator("main").screenshot({path: (process.env.SP ?? os.tmpdir()) + "/chips.png", clip: undefined}).catch(()=>{});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/inbox.png"});
 }
 
 es("sin errores en la página", errores, []);

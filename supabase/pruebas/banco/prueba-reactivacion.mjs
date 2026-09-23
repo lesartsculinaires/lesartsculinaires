@@ -12,6 +12,7 @@
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
+import os from "node:os";
 import { execSync } from "node:child_process";
 const sql = (q) => execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c \\"${q}\\""`, {encoding:"utf8"}).trim();
 let f=0; const es=(t,r,e)=>{const ok=JSON.stringify(r)===JSON.stringify(e);
@@ -114,7 +115,7 @@ console.log("\n── se ve en Recordatorios ──");
   es("con el rótulo de reactivación", /Reactivación/.test(t), true);
   es("y con el nombre «Volver a escribirle» en su detalle o rótulo",
      /Reactivación/.test(t) && /no le interesa/i.test(t), true);
-  await p.screenshot({path: process.env.SP + "/reactivar.png", fullPage:true});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/reactivar.png", fullPage:true});
 }
 
 es("sin errores en la página", errores, []);

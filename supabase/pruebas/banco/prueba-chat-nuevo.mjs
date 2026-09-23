@@ -15,6 +15,7 @@
  */
 import { chromium } from "playwright";
 import fs from "node:fs";
+import os from "node:os";
 import { execSync } from "node:child_process";
 const sql = (q) => execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c \\"${q}\\""`, {encoding:"utf8"}).trim();
 /** Para las consultas con comillas simples adentro, que no sobreviven al -c. */
@@ -69,7 +70,7 @@ console.log("\n── al elegir el contacto aparece la plantilla ──");
   es("APARECE EL BLOQUE DE PLANTILLA", /Con qué le escribimos/.test(t), true);
   es("y explica por qué", /sólo deja mandarle una plantilla aprobada/.test(t), true);
   es("el botón dice que abre sin enviar", /Abrir chat sin enviar/.test(t), true);
-  await p.screenshot({path: process.env.SP + "/nuevo-chat.png"});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/nuevo-chat.png"});
 }
 
 console.log("\n── sólo se ofrecen las aprobadas ──");
@@ -100,7 +101,7 @@ console.log("\n── elegir una pide sus huecos y muestra cómo queda ──");
   console.log(`   (${(t2.match(/Hola María[^]{0,80}/) ?? ["—"])[0]})`);
   es("la vista previa se arma con lo escrito", /Hola María, gracias por tu interés/.test(t2), true);
   es("y ahora sí se puede mandar", await boton.isDisabled(), false);
-  await p.screenshot({path: process.env.SP + "/nuevo-chat-lista.png"});
+  await p.screenshot({path: (process.env.SP ?? os.tmpdir()) + "/nuevo-chat-lista.png"});
 }
 
 console.log("\n── el envío falla (no hay WhatsApp de verdad) y se avisa ──");

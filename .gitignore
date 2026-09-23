@@ -12,3 +12,8 @@ next-env.d.ts
 .DS_Store
 npm-debug.log*
 yarn-error.log*
+
+# Capturas que dejan las pruebas cuando se corren sin SP.
+# La carpeta se llamaba literalmente «undefined»: es `process.env.SP + "/..."`
+# con SP sin definir. Los guiones ahora usan `process.env.SP ?? os.tmpdir()`.
+undefined/

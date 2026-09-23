@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
+import { IconoDeCanal } from "@/components/IconoDeCanal";
 import { archivar, marcarLeida } from "@/app/whatsapp-actions";
 import {
   abrirLeadDelHilo,
@@ -208,7 +209,51 @@ export function Inbox({
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   /** Null = todas las redes juntas, que es como se trabaja hoy. */
-  const [porCanal, setPorCanal] = useState<string | null>(null);
+  /**
+   * Qué secciones de canal están desplegadas. Vacío = se ve todo junto.
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ UN CONJUNTO Y NO «UNO O NINGUNO»
+   * --------------------------------------------------------------------------
+   *
+   * Era `porCanal: string | null`: o un canal, o todos. Con las secciones
+   * desplegables se pueden tener dos abiertas a la vez —WhatsApp e Instagram
+   * mientras se espera una respuesta por las dos— y eso no se puede expresar
+   * con un solo valor.
+   *
+   * Vacío quiere decir «Todos», que es como se entra. No es lo mismo que
+   * «ninguno»: con las cuatro replegadas no se esconde nada, se ve la bandeja
+   * mezclada de siempre.
+   */
+  const [abiertos, setAbiertos] = useState<ReadonlySet<string>>(() => new Set());
+
+  /**
+   * Despliega una sección y repliega las demás. `null` vuelve a «Todos».
+   *
+   * --------------------------------------------------------------------------
+   * POR QUÉ SE ABRE UNA SOLA Y NO VARIAS
+   * --------------------------------------------------------------------------
+   *
+   * La primera versión dejaba varias abiertas a la vez, y al probarla se vio
+   * por qué no sirve: con dos o tres desplegadas la lista queda igual que
+   * «Todos» —los mismos hilos mezclados— pero con tres secciones marcadas como
+   * abiertas, así que la pantalla dice que estás filtrando cuando no estás
+   * filtrando nada.
+   *
+   * Y rompía el gesto que la gente espera: tocar «Instagram» quiere decir
+   * «mostrame Instagram», no «agregá Instagram a lo que ya estaba». La prueba
+   * del banco lo tenía escrito desde antes —tocar una red deja la suya y se
+   * lleva las otras— y fue la que lo puso en evidencia.
+   *
+   * Tocar la que ya está abierta la repliega y vuelve a «Todos», que es la
+   * forma de salir sin tener que buscar el botón de «Todos».
+   */
+  const alternarCanal = useCallback((clave: string | null) => {
+    setAbiertos((antes) => {
+      if (clave == null || antes.has(clave)) return new Set<string>();
+      return new Set([clave]);
+    });
+  }, []);
   /**
    * De qué asesora son los hilos que se están mirando. Null = de todas.
    *
@@ -268,7 +313,7 @@ export function Inbox({
     setAbierta(abrirHilo.conversacionId);
     setBusqueda("");
     setPorEtiqueta(null);
-    setPorCanal(null);
+    setAbiertos(new Set());
     setPorVendedor(null);
     setSoloSinAsignar(false);
     setVerArchivadas(false);
@@ -338,7 +383,7 @@ export function Inbox({
               ((verTodas || c.archivada === verArchivadas) &&
                 (!soloSinAsignar || c.vendedorId == null) &&
                 (porVendedor == null || c.vendedorId === porVendedor) &&
-                (porCanal == null || c.canal === porCanal) &&
+                (abiertos.size === 0 || abiertos.has(c.canal)) &&
                 (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
             (!buscando || coincideHilo(c, busqueda, nombreEnElCrm(c.clienteId))),
         )
@@ -355,7 +400,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porVendedor, porCanal, porEtiqueta, buscando, busqueda, nombreEnElCrm],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -364,6 +409,22 @@ export function Inbox({
     for (const c of conversaciones) {
       if (c.archivada) continue;
       m[c.canal] = (m[c.canal] ?? 0) + 1;
+    }
+    return m;
+  }, [conversaciones]);
+
+  /**
+   * Cuántos hilos tienen algo sin ver, por red.
+   *
+   * Suma dos cosas que para quien atiende son la misma: los mensajes que entró
+   * el cliente y nadie abrió, y los hilos que alguien marcó a mano como no
+   * leídos para volver después. El porqué está en `CanalesDeLaBandeja`.
+   */
+  const sinLeerPorRed = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of conversaciones) {
+      if (c.archivada) continue;
+      if (c.sinLeer > 0 || c.noLeida) m[c.canal] = (m[c.canal] ?? 0) + 1;
     }
     return m;
   }, [conversaciones]);
@@ -1208,10 +1269,11 @@ export function Inbox({
         */}
         <CanalesDeLaBandeja
           cuantos={porRed}
-          elegido={porCanal}
+          sinLeer={sinLeerPorRed}
+          abiertos={abiertos}
           conectados={canalesConectados}
           accent={accent}
-          onElegir={setPorCanal}
+          onAlternar={alternarCanal}
         />
 
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
@@ -1270,10 +1332,14 @@ export function Inbox({
               */}
               {verArchivadas
                 ? "No hay conversaciones archivadas."
-                : porCanal == null
+                : abiertos.size === 0
                   ? "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá."
-                  : `Todavía no ha escrito nadie por ${canalDe(porCanal).nombre}. ` +
-                    `Cuando llegue el primer mensaje ${canalDe(porCanal).porDondeLlega}, va a aparecer acá.`}
+                  : abiertos.size === 1
+                    ? `Todavía no ha escrito nadie por ${canalDe([...abiertos][0]).nombre}. ` +
+                      `Cuando llegue el primer mensaje ${canalDe([...abiertos][0]).porDondeLlega}, va a aparecer acá.`
+                    : `Todavía no ha escrito nadie por ${[...abiertos]
+                        .map((k) => canalDe(k).nombre)
+                        .join(" ni ")}.`}
             </p>
           )}
 
@@ -1346,10 +1412,34 @@ export function Inbox({
                     */}
                     {variasRedes && (
                       <span
+                        /*
+                          El nombre de la red va en el `title` del envoltorio y
+                          no en el dibujo.
+
+                          El icono es decorativo —`aria-hidden`— porque al lado
+                          está el nombre de quien escribió, no el de la red. El
+                          `title` acá es para el mouse: pasar por encima y que
+                          diga «Instagram» es la única forma de saber de qué red
+                          es esa marca la primera vez que se la ve.
+                        */
                         title={canalDe(c.canal).nombre}
-                        style={{ fontSize: 10, flexShrink: 0 }}
+                        style={{ display: "flex", flexShrink: 0 }}
                       >
-                        {canalDe(c.canal).icono}
+                      <IconoDeCanal
+                        canal={c.canal}
+                        tamano={11}
+                        /*
+                          En un solo tono a propósito.
+
+                          Cuarenta filas con cuatro logotipos de color compiten
+                          con lo único que importa acá, que es el nombre de
+                          quien escribió y si tiene algo sin leer. El color de
+                          marca va donde sí ayuda a reconocer: el encabezado de
+                          cada sección.
+                        */
+                        mono
+                        style={{ opacity: 0.55 }}
+                      />
                       </span>
                     )}
                     <span
