@@ -39,7 +39,20 @@ import type { Urgencia } from "@/lib/recordatorios";
  * tercero no sale de ninguna nota: lo deja el CRM cuando alguien marca un lead
  * como perdido por falta de interés, para volver a escribirle más adelante.
  */
-export type TipoSeguimiento = "pago" | "cierre" | "reactivacion" | "recuperacion";
+export type TipoSeguimiento =
+  | "pago"
+  | "cierre"
+  | "reactivacion"
+  | "recuperacion"
+  /**
+   * Puesto a mano desde la ficha: el asesor eligió la fecha y escribió por qué.
+   *
+   * Es el único que no deduce el CRM. Va como tipo propio y no colgado de
+   * `cierre` porque en la lista se lee distinto: dice que lo decidió una
+   * persona, y no que salió de leer una nota. Esa diferencia importa cuando
+   * alguien revisa por qué hay una llamada agendada para el martes.
+   */
+  | "manual";
 
 /** Cuándo hay que volver: una vez, o el mismo día de cada mes. */
 export type Cuando =
@@ -365,25 +378,39 @@ export function detectarSeguimiento(nota: string, hoy: string): Detectado | null
 
 // -------------------------------------------------------------- lo que se lee
 
+/*
+ * Los nombres, en una tabla y no en una cadena de condiciones.
+ *
+ * Con `? :` encadenados, el último tipo no se compara con nada: es el «si no,
+ * esto otro». Así, agregar uno nuevo lo dejaba silenciosamente con el nombre
+ * del anterior —pasó al sumar `manual`, que salía como «Volver a escribirle»—
+ * y eso en la lista se lee como un recordatorio de otra cosa. En una tabla,
+ * TypeScript exige la entrada del tipo nuevo y el error salta al compilar.
+ */
+
 /** El nombre del recordatorio. */
+const TITULO: Record<TipoSeguimiento, string> = {
+  pago: "Seguimiento de pago",
+  cierre: "Seguimiento de cierre",
+  recuperacion: "Llamar para recuperar",
+  reactivacion: "Volver a escribirle",
+  manual: "Recordatorio",
+};
+
 export const tituloDe = (tipo: TipoSeguimiento): string =>
-  tipo === "pago"
-    ? "Seguimiento de pago"
-    : tipo === "cierre"
-      ? "Seguimiento de cierre"
-      : tipo === "recuperacion"
-        ? "Llamar para recuperar"
-        : "Volver a escribirle";
+  TITULO[tipo] ?? "Recordatorio";
 
 /** El rótulo corto, el de la pastilla en la lista. */
+const ROTULO: Record<TipoSeguimiento, string> = {
+  pago: "Pago",
+  cierre: "Cierre",
+  recuperacion: "Recuperación",
+  reactivacion: "Reactivación",
+  manual: "A mano",
+};
+
 export const rotuloDe = (tipo: TipoSeguimiento): string =>
-  tipo === "pago"
-    ? "Pago"
-    : tipo === "cierre"
-      ? "Cierre"
-      : tipo === "recuperacion"
-        ? "Recuperación"
-        : "Reactivación";
+  ROTULO[tipo] ?? "Recordatorio";
 
 /**
  * Lo que la nota decía, recortado.

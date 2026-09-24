@@ -14,30 +14,12 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
-// El módulo es TypeScript; se compila a un archivo suelto para poder correrlo
-// sin montar todo el empaquetador.
-const RAIZ = "/home/user/lesartsculinaires";
-const salida = fs.mkdtempSync(path.join(os.tmpdir(), "fmt-"));
-execFileSync(
-  "npx",
-  [
-    "tsc",
-    path.join(RAIZ, "src/lib/formatoDeWhatsapp.ts"),
-    "--outDir", salida,
-    "--module", "esnext",
-    "--target", "es2022",
-    "--moduleResolution", "bundler",
-  ],
-  { cwd: RAIZ, stdio: "pipe" },
+import { compilar } from "./compilar.mjs";
+
+const { alternarMarca, aPedazos, textoPlano } = await compilar(
+  "src/lib/formatoDeWhatsapp.ts",
 );
-const js = path.join(salida, "formatoDeWhatsapp.js");
-fs.renameSync(js, js.replace(/\.js$/, ".mjs"));
-const { alternarMarca, aPedazos, textoPlano } = await import(js.replace(/\.js$/, ".mjs"));
 
 /** Lo que dibuja el lector, en una línea legible. */
 const leido = (t) =>

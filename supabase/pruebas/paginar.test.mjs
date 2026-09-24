@@ -1,11 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * ¿Se traen todas las filas, o sólo las primeras mil?
  *
- *     npx esbuild src/lib/supabase/paginar.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src \
- *       --alias:server-only=./supabase/pruebas/server-only-vacio.mjs \
- *       --outfile=/tmp/pag.mjs
- *     node supabase/pruebas/paginar.test.mjs /tmp/pag.mjs
+ *     node --test supabase/pruebas/paginar.test.mjs
  *
  * ------------------------------------------------------------------------
  * POR QUÉ SE PRUEBA CON UNA BASE DE MENTIRA
@@ -21,7 +19,7 @@
  */
 // Dinámico y no estático: la ruta del archivo armado llega por argumento, y un
 // `import` de los de arriba sólo acepta una ruta escrita a mano.
-const { traerTodo, POR_TANDA } = await import(process.argv[2] ?? "/tmp/pag.mjs");
+const { traerTodo, POR_TANDA } = await compilar("src/lib/supabase/paginar.ts");
 
 let f = 0;
 const es = (t, r, e) => {

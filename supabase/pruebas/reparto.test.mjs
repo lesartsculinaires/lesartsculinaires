@@ -1,4 +1,12 @@
-import { sortear, yaEsLead, fechaDeReactivacion, MESES_PARA_REACTIVAR } from "./reparto.mjs";
+/**
+ * El reparto automático de leads nuevos.
+ *
+ *     node --test supabase/pruebas/reparto.test.mjs
+ */
+import { compilar } from "./compilar.mjs";
+
+const { sortear, yaEsLead, fechaDeReactivacion, MESES_PARA_REACTIVAR } =
+  await compilar("src/lib/reparto.ts");
 
 let f = 0;
 const es = (t, r, e) => {

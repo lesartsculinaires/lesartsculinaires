@@ -1,11 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * ¿Qué le mandamos a Meta cuando sale un documento?
  *
- *     npx esbuild src/lib/whatsapp/enviar.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src \
- *       --alias:server-only=./supabase/pruebas/server-only-vacio.mjs \
- *       --outfile=/tmp/env.mjs
- *     node --experimental-strip-types supabase/pruebas/adjuntos.test.mjs /tmp/env.mjs
+ *     node --test supabase/pruebas/adjuntos.test.mjs
  *
  * El `--experimental-strip-types` es para poder leer el tope desde el mismo
  * archivo que usa la aplicación, en vez de repetir el número acá. Y ojo con el
@@ -33,7 +31,7 @@
  * módulo existe para que el build falle si alguien importa esto desde el
  * navegador, y acá se corre en Node a propósito, que es donde vive de verdad.
  */
-const { enviarDocumento, enviarImagen } = await import(process.argv[2] ?? "/tmp/env.mjs");
+const { enviarDocumento, enviarImagen } = await compilar("src/lib/whatsapp/enviar.ts");
 const { TOPE_DOCUMENTO_BYTES } = await import("../../src/lib/whatsapp/adjuntos.ts");
 
 let f = 0;

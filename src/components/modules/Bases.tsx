@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { BorrarBases } from "@/components/modules/BorrarBases";
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
-import { agruparBases, repetidas, resumirBase } from "@/lib/bases";
+import { agruparBases, buscarBases, repetidas, resumirBase } from "@/lib/bases";
 import { fechaCorta, horaDe, money } from "@/lib/format";
 import { T, softer } from "@/lib/theme";
 import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
@@ -58,9 +58,22 @@ export function Bases({
   onAbrir,
   onRefrescar,
 }: Props) {
-  const bases = useMemo(
+  const todasLasBases = useMemo(
     () => agruparBases(oportunidades, importaciones),
     [oportunidades, importaciones],
+  );
+  const [busqueda, setBusqueda] = useState("");
+  /*
+   * Lo que se ve en la tabla: las bases que pasan el buscador.
+   *
+   * Sólo filtra la TABLA. Los totales de arriba y el botón de borrar
+   * duplicadas siguen mirando todas, a propósito: un resumen que cambia
+   * mientras se escribe en un buscador deja de ser un resumen, y borrar «las
+   * duplicadas» tiene que querer decir todas y no las que quedaron a la vista.
+   */
+  const bases = useMemo(
+    () => buscarBases(todasLasBases, busqueda),
+    [todasLasBases, busqueda],
   );
   const [abierta, setAbierta] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -73,7 +86,7 @@ export function Bases({
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [borrando, setBorrando] = useState(false);
 
-  const repes = useMemo(() => repetidas(bases), [bases]);
+  const repes = useMemo(() => repetidas(todasLasBases), [bases]);
   const elegidas = bases.filter((b) => marcadas.includes(b.clave));
 
   const marcar = (clave: string) =>
@@ -331,6 +344,50 @@ export function Bases({
               ? "Clic en una para ver sus registros."
               : "El detalle de cada base es solo para administradores."}
           </p>
+
+          {/*
+            El buscador.
+
+            Busca por el nombre del archivo, por la fecha y por un cliente que
+            la base haya traído: «¿de qué base salió este contacto?» es la
+            pregunta que se hace de verdad, y sin esto hay que abrirlas una por
+            una hasta encontrarlo.
+          */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por archivo, fecha o un cliente que trajo…"
+              aria-label="Buscar bases"
+              data-buscar-bases
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 32,
+                padding: "0 10px",
+                fontSize: 12.5,
+                border: `1px solid ${busqueda ? accent : T.border}`,
+                borderRadius: 7,
+                background: T.surface,
+                color: T.ink,
+              }}
+            />
+            {busqueda && (
+              <>
+                <span style={{ fontSize: 11.5, color: T.muted, whiteSpace: "nowrap" }}>
+                  {bases.length} de {todasLasBases.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBusqueda("")}
+                  aria-label="Borrar la búsqueda"
+                  style={{ fontSize: 15, color: T.faint, cursor: "pointer" }}
+                >
+                  ×
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -510,8 +567,14 @@ export function Bases({
               {bases.length === 0 && (
                 <tr>
                   <td colSpan={(puedeAbrir ? 7 : 4) + (esAdmin ? 1 : 0)} style={{ padding: "26px 18px", fontSize: 12.5, color: T.faint }}>
-                    Todavía no hay bases cargadas. Subí una desde Clientes → Subir
-                    base de datos.
+                    {/*
+                      Dos vacíos distintos, y decirlo importa: «no hay bases»
+                      cuando en realidad hay veinte y ninguna coincide manda a
+                      buscar el problema donde no está.
+                    */}
+                    {busqueda
+                      ? `Ninguna base coincide con «${busqueda}». Se busca por el nombre del archivo, la fecha y los clientes que trajo.`
+                      : "Todavía no hay bases cargadas. Subí una desde Clientes → Subir base de datos."}
                   </td>
                 </tr>
               )}

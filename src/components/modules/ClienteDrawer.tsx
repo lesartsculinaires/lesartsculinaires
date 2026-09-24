@@ -14,6 +14,7 @@ import { ConfirmarCambios } from "@/components/modules/ConfirmarCambios";
 import { CursosRealizados } from "@/components/modules/CursosRealizados";
 import { OtrosLeadsDelContacto } from "@/components/modules/OtrosLeadsDelContacto";
 import { ProgramasDeInteres } from "@/components/modules/ProgramasDeInteres";
+import { RecordatorioDelLead } from "@/components/modules/RecordatorioDelLead";
 import { EtiquetasDelLead } from "@/components/modules/EtiquetasConversacion";
 import { CampoEditable } from "@/components/ui/CampoEditable";
 import { Drawer, DrawerClose, SectionLabel } from "@/components/ui/Drawer";
@@ -37,6 +38,7 @@ import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { promocionesUsadas } from "@/lib/promociones";
 import { estadoTone } from "@/lib/selectors";
+import type { SeguimientoPendiente } from "@/lib/seguimientos";
 import { T, softer } from "@/lib/theme";
 import {
   activosCon,
@@ -53,6 +55,14 @@ interface Props {
   oportunidad: Oportunidad;
   /** El catálogo de etiquetas, el mismo que usa la bandeja. */
   etiquetas: readonly Etiqueta[];
+  /**
+   * Los recordatorios que ya están agendados, de todos los leads.
+   *
+   * Se filtran acá adentro por el lead abierto. Llegan enteros y no ya
+   * filtrados para no tener que volver a pedirlos cada vez que se cambia de
+   * ficha: la pantalla de arriba ya los tiene.
+   */
+  seguimientos: readonly SeguimientoPendiente[];
   /** Para ofrecer las promociones ya escritas en otras oportunidades. */
   todas: readonly Oportunidad[];
   accent: string;
@@ -107,6 +117,7 @@ const oMonto = (s: string): number | null => {
 export function ClienteDrawer({
   oportunidad: o,
   etiquetas,
+  seguimientos,
   todas,
   accent,
   menu,
@@ -850,6 +861,21 @@ export function ClienteDrawer({
           onCambio={() => setRefrescoBitacora((n) => n + 1)}
         />
       </section>
+
+      {/*
+        El recordatorio a mano.
+
+        Va acá, después de las etiquetas, porque es de la misma familia: cosas
+        que el asesor anota sobre el lead y que el CRM no deduce solo. Y va
+        antes de la bitácora a propósito —lo que se agenda sale de lo que se
+        acaba de hablar, y la bitácora es larga—.
+      */}
+      <RecordatorioDelLead
+        oportunidadId={o.id}
+        pendientes={seguimientos}
+        accent={accent}
+        onCambio={() => setRefrescoBitacora((n) => n + 1)}
+      />
 
       {/*
         Por qué se perdió: aparece sólo cuando el estado es «Perdido».
