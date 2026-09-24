@@ -364,7 +364,24 @@ export interface NuevoEvento {
   canal: string;
 }
 
-/** Used by "Nuevo evento" and by the follow-up booked when closing one. */
+/**
+ * Used by "Nuevo evento" and by the follow-up booked when closing one.
+ *
+ * ------------------------------------------------------------------------
+ * QUIÉN LO AGENDÓ NO SE ESCRIBE ACÁ
+ * ------------------------------------------------------------------------
+ *
+ * `eventos.creado_por` tiene como valor por omisión `public.mi_vendedor_id()`
+ * —lo pone `20261103120000_quien_agendo_el_evento.sql`—, así que la base lo
+ * anota sola con la sesión que está escribiendo.
+ *
+ * Es a propósito y no es pereza: mandarlo desde acá significaría que el
+ * próximo lugar que cree un evento se puede olvidar, y el dato faltaría sin
+ * que nadie se entere hasta que alguien no reciba su aviso. Desde la base no
+ * se puede olvidar. Y de paso no se puede falsear: un cliente que mandara
+ * `creado_por` de otra persona no cambiaría nada, porque la función mira la
+ * sesión y no lo que vino en el pedido.
+ */
 export async function createEvento(
   evento: NuevoEvento,
 ): Promise<ActionResult & { id: number | null }> {
