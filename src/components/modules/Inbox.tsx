@@ -23,6 +23,7 @@ import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
+import { alternarMarca, textoPlano, type Marca } from "@/lib/formatoDeWhatsapp";
 import { pedirPermisoDeLlamada } from "@/app/llamadas-actions";
 import { canalDe, tituloDeHilo } from "@/lib/canales";
 import {
@@ -36,6 +37,8 @@ import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
 import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
+import { BarraDeFormato, BOTONES } from "@/components/ui/BarraDeFormato";
+import { TextoConFormato } from "@/components/ui/TextoConFormato";
 import { EstadoDelLead } from "@/components/modules/EstadoDelLead";
 import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacion";
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
@@ -887,6 +890,27 @@ export function Inbox({
     });
   };
 
+  /**
+   * Pone o quita una marca de formato alrededor de lo seleccionado.
+   *
+   * Vuelve a enfocar el cuadro y deja la selección donde estaba: sin eso, cada
+   * pulsación obliga a volver a marcar el texto con el ratón, y poner dos
+   * palabras en negrita se vuelve un ejercicio de paciencia. Es la misma razón
+   * por la que `ponerEmoji` devuelve el cursor.
+   */
+  const ponerFormato = (marca: Marca) => {
+    const caja = cajaTexto.current;
+    const desde = caja?.selectionStart ?? texto.length;
+    const hasta = caja?.selectionEnd ?? texto.length;
+    const r = alternarMarca(texto, desde, hasta, marca);
+
+    setTexto(r.valor);
+    requestAnimationFrame(() => {
+      caja?.focus();
+      caja?.setSelectionRange(r.inicio, r.fin);
+    });
+  };
+
   const enviar = async () => {
     if (!actual || !texto.trim()) return;
     setEnviando(true);
@@ -1473,7 +1497,20 @@ export function Inbox({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {c.ultimoTexto ?? "—"}
+                  {/*
+                    Sin las marcas, y sólo donde son marcas.
+
+                    La fila es una línea recortada: ahí un `*Hola*` gasta dos
+                    caracteres del poco lugar que hay en decorar algo que no se
+                    puede decorar. Se quitan según el canal del hilo, porque en
+                    Instagram esos asteriscos son asteriscos de verdad y
+                    borrarlos sería cambiar lo que dijo la persona.
+                  */}
+                  {c.ultimoTexto == null
+                    ? "—"
+                    : canalDe(c.canal).puede.formato === "si"
+                      ? textoPlano(c.ultimoTexto)
+                      : c.ultimoTexto}
                 </span>
 
                 <span style={{ display: "flex", gap: 4, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
@@ -1831,7 +1868,20 @@ export function Inbox({
                         es otra. WhatsApp lo dibuja igual, por lo mismo.
                       */}
                       {m.origen && <DeDondeVino origen={m.origen} mio={mio} />}
-                      {contenido(m)}
+                      {/*
+                        El texto, dibujado como lo dibuja el teléfono.
+
+                        Sin esto la asesora pulsa «negrita», manda, y en su
+                        propia burbuja relee `*Hola*` con los asteriscos a la
+                        vista: el mensaje salió bien pero parece que el botón
+                        falló. `conMarcas` sale de la ficha del canal, así que
+                        en Instagram y Messenger —donde el cliente recibe los
+                        asteriscos— se muestra crudo, que es la verdad.
+                      */}
+                      <TextoConFormato
+                        texto={contenido(m)}
+                        conMarcas={canal.puede.formato === "si"}
+                      />
                       <MediaMensaje
                         mensaje={m}
                         url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
@@ -1992,6 +2042,25 @@ export function Inbox({
               Nota interna — la ve el equipo, no el cliente
             </label>
 
+            {/*
+              La barra de formato.
+
+              Sólo donde la red de verdad dibuja las marcas —hoy WhatsApp—. En
+              Instagram y Messenger los asteriscos le llegan al cliente como
+              asteriscos, así que ofrecerla ahí sería ofrecer un botón que
+              ensucia el mensaje. Quién puede sale de la ficha del canal, igual
+              que las plantillas y la nota de voz.
+
+              Mientras se graba no va: la fila entera es del grabador y una
+              nota de voz no lleva texto.
+            */}
+            {canal.puede.formato === "si" && !grabando && (
+              <BarraDeFormato
+                onMarca={ponerFormato}
+                disabled={!nota && !puedeResponder}
+              />
+            )}
+
             <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
               {/* El clip: fotos y documentos —PDF, Word, Excel, PowerPoint—,
                   que es lo que Meta deja mandar. La lista sale de la misma
@@ -2094,6 +2163,16 @@ export function Inbox({
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void enviar();
+                  }
+                  // Ctrl+B y Ctrl+I, que es lo que la mano ya sabe. Sólo donde
+                  // la marca se dibuja de verdad: en Instagram el atajo
+                  // escribiría asteriscos que le llegan al cliente.
+                  if ((e.ctrlKey || e.metaKey) && canal.puede.formato === "si") {
+                    const b = BOTONES.find((x) => x.atajo === e.key.toLowerCase());
+                    if (b) {
+                      e.preventDefault();
+                      ponerFormato(b.marca);
+                    }
                   }
                 }}
                 /*

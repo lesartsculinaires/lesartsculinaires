@@ -257,11 +257,29 @@ export function NuevoChat({
         if (e.target === e.currentTarget && !abriendo) onCerrar();
       }}
     >
+      {/*
+        TRES FRANJAS, Y POR QUÉ.
+        ----------------------------------------------------------------------
+        Cabecera fija, medio que rueda, botones fijos abajo.
+
+        Antes era una sola columna con `maxHeight` y sin nadie que rodara. Con
+        una plantilla elegida —las de la escuela son largas— el contenido
+        pasaba el alto del cuadro, y lo que se salía por abajo eran justo los
+        botones: no se podía enviar, no se podía cancelar, y no había forma de
+        llegar a lo que quedaba tapado. El cuadro se veía roto.
+
+        La regla que lo hace andar es `minHeight: 0` en la franja del medio.
+        Un hijo de flex no baja de la altura de su contenido salvo que se le
+        diga, y sin eso `overflowY: auto` no tiene de dónde recortar: el cuadro
+        vuelve a crecer y el problema queda igual.
+      */}
       <div
         style={{
           width: "100%",
-          maxWidth: 460,
-          maxHeight: "82vh",
+          // 560 y no 460: con la plantilla armada al lado del formulario, a
+          // 460 el texto entraba en columnas de cinco palabras.
+          maxWidth: 560,
+          maxHeight: "86vh",
           display: "flex",
           flexDirection: "column",
           background: T.surface,
@@ -349,6 +367,20 @@ export function NuevoChat({
           autoFocus
         />
 
+        {/* ── el medio: lo único que rueda ────────────────────────────────── */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            // El margen negativo y el relleno devuelven el aire de los lados:
+            // así la barra de desplazamiento queda pegada al borde del cuadro y
+            // no flotando a veinte píxeles del contenido.
+            margin: "0 -20px",
+            padding: "0 20px",
+          }}
+        >
         {/*
           Instagram y Messenger: sólo abrir un hilo que ya existe.
           --------------------------------------------------------------------
@@ -358,7 +390,7 @@ export function NuevoChat({
           primero, para no quedarse esperando una respuesta que nunca pidió.
         */}
         {!esWhatsapp && (
-          <div style={{ flex: 1, overflowY: "auto", marginTop: 10, minHeight: 60 }}>
+          <div style={{ marginTop: 10, minHeight: 60 }}>
             <p style={{ margin: "0 0 9px", fontSize: 11.5, color: T.muted, lineHeight: 1.55 }}>
               En {canalDe(canal).nombre} la conversación la empieza siempre la persona:
               no hay plantillas y Meta no deja escribir primero. Acá se abre un hilo
@@ -404,7 +436,7 @@ export function NuevoChat({
         )}
 
         {esWhatsapp && !elegido && !dandoAlta && (
-          <div style={{ flex: 1, overflowY: "auto", marginTop: 10, minHeight: 60 }}>
+          <div style={{ marginTop: 10, minHeight: 60 }}>
             {busqueda.trim() === "" ? (
               <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
                 Escribí algo para buscar.
@@ -534,7 +566,7 @@ export function NuevoChat({
         )}
 
         {dandoAlta && (
-          <div style={{ marginTop: 12, overflowY: "auto" }}>
+          <div style={{ marginTop: 12 }}>
             <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
               Se da de alta el contacto <strong>y su oportunidad</strong>, para que
               aparezca en Clientes y en el pipeline y no sólo acá. Después se le abre
@@ -691,7 +723,22 @@ export function NuevoChat({
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 14 }}>
+        </div>
+        {/* ── fin del medio; de acá abajo no se mueve nada ─────────────────── */}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 9,
+            marginTop: 14,
+            paddingTop: 12,
+            // La línea separa el pie de lo que está rodando arriba: sin ella,
+            // el texto que pasa por debajo de los botones se lee como si
+            // siguiera y quedara cortado.
+            borderTop: `1px solid ${T.border}`,
+          }}
+        >
           <button
             type="button"
             onClick={() => (dandoAlta ? setDandoAlta(false) : onCerrar())}
