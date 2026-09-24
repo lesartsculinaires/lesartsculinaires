@@ -16,7 +16,7 @@ import { ETIQUETA_CAMPO, type Choque } from "@/lib/fusion";
 import { ETIQUETA_LEAD, type CampoLead } from "@/lib/leadRepetido";
 import { PAISES_POR_GRUPO } from "@/lib/paises";
 import { promocionesUsadas } from "@/lib/promociones";
-import { activos, esMenor } from "@/lib/types";
+import { activos, esMenor, programasElegibles } from "@/lib/types";
 import { T } from "@/lib/theme";
 import { ROTULO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
 import {
@@ -550,7 +550,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
           </p>
           <div style={{ ...grid, marginBottom: 20 }}>
             <Etiqueta texto="Programa">
-              <Select valor={d.producto_id} items={cat.productos} onPick={(v) => set("producto_id", v)} />
+              <Select valor={d.producto_id} items={programasElegibles(cat.productos, d.producto_id)} onPick={(v) => set("producto_id", v)} />
             </Etiqueta>
             <Etiqueta texto="Vendedor">
               <Select valor={d.vendedor_id} items={activos(cat.vendedores)} onPick={(v) => set("vendedor_id", v)} />
@@ -593,7 +593,7 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
                 ¿Preguntó por más de un programa? Marcá los demás.
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {cat.productos.map((prod) => {
+                {programasElegibles(cat.productos, d.producto_id).map((prod) => {
                   const esPrincipal = prod.id === d.producto_id;
                   const puesto = esPrincipal || (d.programas_interes ?? []).includes(prod.id);
                   return (

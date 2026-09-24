@@ -5,6 +5,7 @@ import { useState } from "react";
 import { guardarProgramasDeInteres } from "@/app/actions";
 import { useCatalogo } from "@/lib/catalog";
 import { T } from "@/lib/theme";
+import { programasElegibles } from "@/lib/types";
 
 /**
  * Por qué programas preguntó este lead.
@@ -152,7 +153,7 @@ export function ProgramasDeInteres({
           </p>
 
           <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 3 }}>
-            {cat.productos.map((prod) => {
+            {programasElegibles(cat.productos, ...elegidos).map((prod) => {
               const marcado = elegidos.includes(prod.id);
               const esPrincipal = prod.id === principalId;
 

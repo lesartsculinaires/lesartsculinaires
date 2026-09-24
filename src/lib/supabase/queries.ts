@@ -329,6 +329,7 @@ export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
         categoria: str(r.categoria, "Otro") as ProductoCategoria,
         precio: numOrNull(r.precio),
         horario: r.horario ? str(r.horario) : null,
+        activo: r.activo !== false,
       }),
     ),
     territorios: rows(terr).map((r) => ({ id: num(r.id), nombre: str(r.nombre) })),

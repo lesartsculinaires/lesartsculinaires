@@ -56,13 +56,56 @@ const sinDecidir = (): Record<Accion, boolean> => ({
   eliminar: false,
 });
 
+/**
+ * Los módulos donde escribir es de dirección, y no hay casilla que lo cambie.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ SE QUITAN LAS CASILLAS EN VEZ DE DEJARLAS
+ * ------------------------------------------------------------------------
+ *
+ * Porque mienten. El catálogo de programas lo protege la política
+ * `productos_administrar` —de `20260827120000_catalogo_programas.sql`—, que
+ * pide `es_admin()` y no mira `rol_permisos` para nada. O sea que se le podía
+ * marcar «crear» y «editar» a Jefe de Ventas, guardar, y el rol seguía sin
+ * poder: el botón no aparecía y, si alguien llegaba igual, la base lo
+ * rechazaba.
+ *
+ * Eso es exactamente lo que reportó la escuela, y es un control que no hace
+ * nada: quien lo usa se queda creyendo que configuró algo. Ya pasó una vez con
+ * la casilla «ver», y la conclusión fue la misma —está escrita en
+ * `20260927120000_modulos_por_rol.sql`—: o el control manda, o no está.
+ *
+ * Acá no puede mandar. Es una decisión de la escuela, no una limitación:
+ * renombrar un programa le cambia el nombre a los leads de todo el equipo, a
+ * los cortes del Dashboard y al historial de cursos. Así que se va la casilla.
+ *
+ * «Ver» sí queda, y sigue valiendo: se le puede esconder Programas a un rol.
+ * Lo que no se puede es dejarlo escribir.
+ */
+const SOLO_DIRECCION_ESCRIBE: Record<string, string> = {
+  programas:
+    "Crear y cambiar programas es de dirección: el catálogo lo comparten todas " +
+    "las pantallas y la base lo exige aparte. «Ver» sí se puede destildar.",
+};
+
+/** Un módulo donde sólo «ver» es una casilla de verdad. */
+const soloVer = (clave: string) => clave in SOLO_DIRECCION_ESCRIBE;
+
 function aBorrador(permisos: readonly Permiso[], rolId: number, claves: string[]): Borrador {
   const out: Borrador = {};
   for (const clave of claves) {
     const p = permisos.find((x) => x.rolId === rolId && x.modulo === clave);
-    out[clave] = p
+    const guardado = p
       ? { ver: p.ver, crear: p.crear, editar: p.editar, eliminar: p.eliminar }
       : sinDecidir();
+
+    // Los «sí» que quedaron guardados de cuando la casilla existía no valen
+    // nada, pero si se mostraran se seguiría leyendo que el rol puede. Se
+    // muestran en «no», que es lo que pasa de verdad, y el primer guardado los
+    // deja así en la base.
+    out[clave] = soloVer(clave)
+      ? { ...guardado, crear: false, editar: false, eliminar: false }
+      : guardado;
   }
   return out;
 }
@@ -109,6 +152,7 @@ export function UsuariosRoles({
 
   const toggle = (modulo: string, accion: Accion) => {
     if (rol?.esAdmin) return; // el administrador siempre puede todo
+    if (accion !== "ver" && soloVer(modulo)) return; // ahí no hay nada que marcar
     const base = borrador ?? (rol ? aBorrador(accesos.permisos, rol.id, claves) : {});
     setBorrador({
       ...base,
@@ -123,7 +167,14 @@ export function UsuariosRoles({
     setError(null);
     const r = await guardarPermisos(
       rol.id,
-      claves.map((clave) => ({ modulo: clave, ...(borrador[clave] ?? vacio()) })),
+      claves.map((clave) => {
+        const fila = borrador[clave] ?? vacio();
+        // Donde no hay casilla no se escribe un «sí» viejo: se guarda lo que
+        // la pantalla muestra, que es lo que pasa de verdad.
+        return soloVer(clave)
+          ? { modulo: clave, ver: fila.ver, crear: false, editar: false, eliminar: false }
+          : { modulo: clave, ...fila };
+      }),
     );
     setBusy(false);
     if (!r.ok) {
@@ -1113,6 +1164,26 @@ export function UsuariosRoles({
                       </td>
                       {ACCIONES.map((a) => {
                         const on = rol?.esAdmin ? true : fila[a];
+
+                        // Sin casillas, y dicho una vez sobre las tres: un
+                        // hueco sin explicación se lee como que falta algo, no
+                        // como que es así a propósito.
+                        if (a !== "ver" && soloVer(m.clave)) {
+                          if (a !== "crear") return null;
+                          return (
+                            <td
+                              key={a}
+                              colSpan={3}
+                              style={{ padding: "8px", textAlign: "center" }}
+                              title={SOLO_DIRECCION_ESCRIBE[m.clave]}
+                            >
+                              <span style={{ fontSize: 11.5, color: T.faint }}>
+                                Crear, editar y eliminar: sólo dirección
+                              </span>
+                            </td>
+                          );
+                        }
+
                         return (
                           <td key={a} style={{ padding: "8px", textAlign: "center" }}>
                             <button
@@ -1153,6 +1224,23 @@ export function UsuariosRoles({
                 })}
               </tbody>
             </table>
+
+            <p
+              style={{
+                margin: 0,
+                padding: "11px 18px",
+                fontSize: 11.5,
+                color: T.muted,
+                lineHeight: 1.55,
+                borderTop: `1px solid ${T.border}`,
+              }}
+            >
+              Programas no tiene casillas de crear, editar ni eliminar: el catálogo lo
+              comparten todas las pantallas —un programa renombrado cambia el nombre en
+              los leads de todo el equipo y en los cortes del Dashboard— y la base sólo
+              deja escribirlo a dirección. Las tenía, y no hacían nada. «Ver» sí vale:
+              con eso se le esconde la pantalla a un rol.
+            </p>
 
             {borrador && (
               <p

@@ -10,6 +10,7 @@ import {
 } from "@/app/cursos-actions";
 import { useCatalogo } from "@/lib/catalog";
 import type { Cambio, Pendientes } from "@/lib/cambios";
+import { programasElegibles } from "@/lib/types";
 import { fechaCorta } from "@/lib/format";
 import { T } from "@/lib/theme";
 
@@ -233,7 +234,7 @@ export function CursosRealizados({
           style={CAMPO}
         >
           <option value="">Otro (lo escribo)</option>
-          {cat.productos.map((p) => (
+          {programasElegibles(cat.productos).map((p) => (
             <option key={p.id} value={p.id}>
               {p.nombre}
             </option>

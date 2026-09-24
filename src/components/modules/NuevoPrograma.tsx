@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { crearPrograma } from "@/app/programas-actions";
+import { CAMPO, ETIQUETA } from "@/components/modules/estilosDePrograma";
 import { CATEGORIAS } from "@/lib/programas";
 import { T } from "@/lib/theme";
 
@@ -208,23 +209,3 @@ export function NuevoPrograma({ accent, onCerrar, onCreado }: Props) {
     </div>
   );
 }
-
-const CAMPO: React.CSSProperties = {
-  width: "100%",
-  height: 34,
-  padding: "0 9px",
-  fontSize: 13,
-  border: `1px solid ${T.border}`,
-  borderRadius: 7,
-  background: T.surface,
-  color: T.ink,
-};
-
-const ETIQUETA: React.CSSProperties = {
-  display: "block",
-  marginBottom: 3,
-  fontSize: 10.5,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  color: T.faint,
-};

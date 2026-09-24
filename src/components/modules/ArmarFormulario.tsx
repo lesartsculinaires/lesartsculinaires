@@ -11,6 +11,7 @@ import {
 import { useCatalogo } from "@/lib/catalog";
 import type { Formulario, Mapeo, TipoCampo } from "@/lib/formularios";
 import { T } from "@/lib/theme";
+import { programasElegibles } from "@/lib/types";
 
 /**
  * El constructor: armar el formulario de una feria.
@@ -222,7 +223,7 @@ export function ArmarFormulario({
           indice={i}
           total={campos.length}
           accent={accent}
-          programas={cat.productos}
+          programas={programasElegibles(cat.productos)}
           territorios={cat.territorios}
           onCambiar={(patch) => cambiar(campo.clave, patch)}
           onMover={(hacia) => mover(i, hacia)}

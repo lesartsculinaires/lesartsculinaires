@@ -33,7 +33,7 @@ import {
   pasa,
   type Elegidos,
 } from "@/lib/filtros";
-import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos } from "@/lib/types";
+import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos, programasElegibles } from "@/lib/types";
 import type { Etiqueta, Importacion, Oportunidad, Plantilla } from "@/lib/types";
 
 interface Props {
@@ -838,7 +838,7 @@ export function Clientes({
                       {marcadas.includes(o.id) ? (
                         <CeldaEnLote
                           valorActual={o.producto}
-                          items={cat.productos}
+                          items={programasElegibles(cat.productos)}
                           cuantas={marcadas.length}
                           campo="el programa"
                           ocupado={cambiando === "producto_id"}
