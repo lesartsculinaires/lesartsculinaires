@@ -376,6 +376,10 @@ export async function fetchEventos(): Promise<LoadResult<Evento[]>> {
       oportunidadId: num(r.oportunidad_id),
       tipoId: num(r.tipo_id),
       vendedorId: numOrNull(r.vendedor_id),
+      // Nulo mientras la migración 20261103120000 no esté corrida, y en los
+      // eventos de antes. El aviso lo trata como «no sé quién lo agendó», que
+      // es la verdad.
+      creadoPor: numOrNull(r.creado_por),
       iniciaEn: str(r.inicia_en),
       duracionMin: num(r.duracion_min, 30),
       canal: str(r.canal, "Llamada") as Evento["canal"],

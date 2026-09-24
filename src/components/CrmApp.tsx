@@ -37,6 +37,8 @@ import { useEnVivo } from "@/hooks/useEnVivo";
 import { useLlamadaEnVivo } from "@/hooks/useLlamadaEnVivo";
 import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
+import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
+import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
 import { friosDe } from "@/lib/frios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
@@ -477,6 +479,25 @@ export default function CrmApp({
     actividadSinVer: mod === "Notificaciones" ? 0 : actividadSinVer,
   });
   const llamadasDeHoy = seguimientosParaInterrumpir(pendientes);
+
+  /*
+   * El aviso de que falta poco para una llamada agendada.
+   *
+   * Le salta a quien tiene que atenderla y a quien la agendó —pueden ser dos
+   * personas distintas: la jefa agenda y la asesora atiende—. La regla vive en
+   * `@/lib/avisoDeEvento`, aparte de esta pantalla, porque lo que puede fallar
+   * es el reloj y eso se prueba mejor pasándole la hora que esperando diez
+   * minutos con un navegador abierto.
+   */
+  const agenda = useAvisoDeEvento(
+    eventos,
+    { vendedorId: accesos.yo?.vendedorId ?? null },
+    (evento) => {
+      const o = oportunidades.find((x) => x.id === evento.oportunidadId);
+      const tipo = catalogo.tiposEvento.find((t) => t.id === evento.tipoId);
+      return `${tipo?.nombre ?? "Evento"} con ${o?.cliente ?? "un cliente"}`;
+    },
+  );
 
   // La ventana emergente: sólo por lo de hoy y lo vencido, y una vez por día.
   const aviso = useAvisoDiario(
@@ -925,6 +946,31 @@ export default function CrmApp({
               onCerrar={aviso.cerrar}
             />
           )}
+
+          {/*
+            El aviso de agenda va en una esquina y no tapa la pantalla.
+
+            A diferencia del de reservas —que salta una vez por día y es sobre
+            plata—, éste puede saltar seis veces en una tarde y llega justo
+            mientras alguien le está escribiendo a un cliente. Taparle la
+            pantalla ahí le hace perder lo que estaba escribiendo.
+          */}
+          <AvisoDeAgenda
+            avisos={agenda.pendientes}
+            accent={accent}
+            rotular={(a) => {
+              const o = oportunidades.find((x) => x.id === a.evento.oportunidadId);
+              const tipo = catalogo.tiposEvento.find((t) => t.id === a.evento.tipoId);
+              const asesora = catalogo.vendedores.find((v) => v.id === a.evento.vendedorId);
+              return {
+                titulo: `${tipo?.nombre ?? "Evento"} con ${o?.cliente ?? "un cliente"}`,
+                detalle:
+                  [o?.producto, asesora?.nombre].filter(Boolean).join(" · ") || null,
+              };
+            }}
+            onAbrirFicha={(id) => abrirFicha(id)}
+            onDescartar={(a) => agenda.descartar(a.evento)}
+          />
 
           {/* Click-away layer: any open dropdown closes when the page is clicked. */}
           {state.menu && (

@@ -419,6 +419,17 @@ export interface Evento {
   oportunidadId: number;
   tipoId: number;
   vendedorId: number | null;
+  /**
+   * Quién lo agendó.
+   *
+   * Distinto de `vendedorId`, que es a quién le toca atenderlo: la jefa puede
+   * agendarle una llamada a una asesora. Se usa para que el aviso de «falta
+   * poco» le llegue a los dos.
+   *
+   * Nulo cuando lo creó una integración sin sesión, o cuando el evento es
+   * anterior a que se guardara este dato.
+   */
+  creadoPor: number | null;
   /** ISO timestamp. */
   iniciaEn: string;
   duracionMin: number;
