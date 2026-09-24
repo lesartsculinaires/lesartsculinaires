@@ -921,6 +921,9 @@ export default function CrmApp({
             <ClienteDrawer
               oportunidad={seleccionada}
               etiquetas={etiquetas}
+              // Enteros y no filtrados por el lead abierto: esta pantalla ya
+              // los tiene, y la ficha cambia de lead sin volver a pedir nada.
+              seguimientos={pendientes}
               todas={oportunidades}
               accent={accent}
               menu={state.menu}

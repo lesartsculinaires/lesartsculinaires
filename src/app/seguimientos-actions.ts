@@ -200,3 +200,98 @@ export async function programarReactivacion(
   revalidatePath("/");
   return bien;
 }
+
+/**
+ * Un recordatorio puesto a mano desde la ficha.
+ *
+ * ------------------------------------------------------------------------
+ * POR QUÉ CAE EN LA MISMA TABLA QUE LOS OTROS
+ * ------------------------------------------------------------------------
+ *
+ * Porque «recordatorio» es lo mismo que el CRM ya venía anotando solo: una
+ * fecha, un porqué y la ficha de la que cuelga. Guardarlo aparte obligaría a
+ * escribir de nuevo la lista del módulo, el globito de la barra y el aviso del
+ * día —y a la primera diferencia entre las dos listas nadie sabría cuál
+ * mirar—. Lo único distinto es de dónde salió la fecha, y para eso está el
+ * tipo `manual`.
+ *
+ * ------------------------------------------------------------------------
+ * EL PORQUÉ ES OBLIGATORIO, Y NO ES UN CAPRICHO
+ * ------------------------------------------------------------------------
+ *
+ * En la lista de Recordatorios, lo que el asesor lee para decidir qué hacer es
+ * ese texto. Un recordatorio que sólo dice «Recordatorio» y una fecha lo
+ * obliga a abrir la ficha para entender qué había quedado, y a la tercera vez
+ * deja de abrirlas. Es la misma razón por la que los que salen de una nota se
+ * traen el texto de la nota.
+ */
+export async function crearRecordatorio(
+  oportunidadId: number,
+  fecha: string,
+  motivo: string,
+): Promise<ResultadoSeguimiento> {
+  const supabase = await getServerClient();
+  if (!supabase) return sinSesion;
+
+  if (!Number.isInteger(oportunidadId) || oportunidadId <= 0) {
+    return { ok: false, faltaMigracion: false, error: "No se sabe de qué lead es." };
+  }
+
+  // La fecha se comprueba acá además de en la casilla del navegador: una
+  // acción de servidor se puede invocar sin pasar por la pantalla, y un
+  // «2026-13-45» guardado deja un recordatorio que no aparece nunca.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(fecha).getTime())) {
+    return { ok: false, faltaMigracion: false, error: "Elegí una fecha válida." };
+  }
+
+  const hoy = hoyEnSalvador();
+  if (fecha < hoy) {
+    return {
+      ok: false,
+      faltaMigracion: false,
+      error: "Esa fecha ya pasó. Poné el día en que hay que volver.",
+    };
+  }
+
+  const detalle = motivo.trim();
+  if (!detalle) {
+    return {
+      ok: false,
+      faltaMigracion: false,
+      error: "Escribí por qué esa fecha: es lo que vas a leer el día que aparezca.",
+    };
+  }
+  if (detalle.length > 400) {
+    return {
+      ok: false,
+      faltaMigracion: false,
+      error: "El motivo es demasiado largo. Con una línea alcanza.",
+    };
+  }
+
+  const { data: { user } = { user: null } } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from("seguimientos").insert({
+    oportunidad_id: oportunidadId,
+    tipo: "manual",
+    detalle,
+    proxima: fecha,
+    creado_por: user?.id ?? null,
+  });
+
+  if (error) {
+    // 23514: la restricción de tipos todavía no acepta `manual`. Decirlo por
+    // su nombre ahorra el rato de creer que se rompió la ficha.
+    if (error.code === "23514") {
+      return {
+        ok: false,
+        faltaMigracion: true,
+        error: "Falta correr la migración 20261104120000_recordatorio_a_mano.sql en Supabase.",
+      };
+    }
+    return explicar(error.code, error.message);
+  }
+
+  revalidatePath("/");
+  return bien;
+}

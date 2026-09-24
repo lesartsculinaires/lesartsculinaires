@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * ¿Cuándo hay que recordarle a alguien que cobre?
  *
- *     npx esbuild src/lib/recordatorios.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/rec.mjs
- *     node supabase/pruebas/recordatorios.test.mjs /tmp/rec.mjs
+ *     node --test supabase/pruebas/recordatorios.test.mjs
  *
  * La regla se toca poco y cuando se toca hay plata de por medio, así que
  * conviene que sus casos estén escritos. El que más importa es el de una venta
@@ -12,7 +12,7 @@
  * no «terminó de pagar».
  */
 const { necesitaRecordatorio, recordatoriosDe, paraInterrumpir, porAtender } =
-  await import(process.argv[2] ?? "/tmp/rec.mjs");
+  await compilar("src/lib/recordatorios.ts");
 
 let f = 0;
 const es = (t, r, e) => {

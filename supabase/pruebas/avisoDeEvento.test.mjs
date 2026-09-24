@@ -19,43 +19,11 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
-const RAIZ = "/home/user/lesartsculinaires";
-const salida = fs.mkdtempSync(path.join(os.tmpdir(), "avev-"));
+import { compilar } from "./compilar.mjs";
 
-/*
- * Se compila con un tsconfig propio y no con la línea de comandos suelta.
- *
- * El módulo importa `@/lib/types` —sólo el tipo, pero TypeScript igual lo
- * resuelve— y sin el mapa de rutas del proyecto la compilación falla con un
- * «cannot find module» que no tiene nada que ver con lo que se está probando.
- */
-const conf = path.join(salida, "tsconfig.json");
-fs.writeFileSync(
-  conf,
-  JSON.stringify({
-    compilerOptions: {
-      outDir: salida,
-      module: "esnext",
-      target: "es2022",
-      moduleResolution: "bundler",
-      baseUrl: RAIZ,
-      paths: { "@/*": ["src/*"] },
-      skipLibCheck: true,
-      types: [],
-    },
-    files: [path.join(RAIZ, "src/lib/avisoDeEvento.ts")],
-  }),
-);
-execFileSync("npx", ["tsc", "-p", conf], { cwd: RAIZ, stdio: "pipe" });
-const js = path.join(salida, "avisoDeEvento.js");
-fs.renameSync(js, js.replace(/\.js$/, ".mjs"));
 const { avisosDeAgenda, meToca, cuantoFalta, llaveDelAviso, minutosHasta } =
-  await import(js.replace(/\.js$/, ".mjs"));
+  await compilar("src/lib/avisoDeEvento.ts");
 
 const AHORA = new Date("2026-09-24T13:20:00.000Z");
 

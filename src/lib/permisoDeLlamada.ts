@@ -160,7 +160,23 @@ export function queOfrecer(
  * una ventana de 24 horas ni un permiso de llamada de la API. Lo que necesita
  * saber es qué puede hacer ahora y qué no.
  */
-export function comoSeExplica(q: QueOfrecer, p: PermisoDelHilo): string {
+export function comoSeExplica(
+  q: QueOfrecer,
+  p: PermisoDelHilo,
+  /*
+   * La hora, recibida y no leída del reloj.
+   *
+   * Sus hermanas —`sePuedeLlamar`, `queOfrecer`— ya la reciben, y ésta la
+   * leía por dentro con `Date.now()`. Eso la volvía imposible de probar: la
+   * prueba fija un día, arma un permiso que vence seis días después, y la
+   * función lo comparaba contra el día de hoy —que es otro— y contestaba que
+   * vencía hoy. La comprobación estaba escrita y en rojo, escondida detrás de
+   * un error de carga.
+   *
+   * Por omisión, el reloj: quien la llama desde la pantalla no cambia.
+   */
+  ahora: number = Date.now(),
+): string {
   switch (q) {
     case "llamar": {
       // El permanente se dice como lo que es: no hay plazo que informar, y
@@ -168,7 +184,7 @@ export function comoSeExplica(q: QueOfrecer, p: PermisoDelHilo): string {
       if (p.permanente === true) return "Aceptó que lo llamemos. El permiso no vence.";
       const vence = cuando(p.hasta);
       if (vence == null) return "Se le puede llamar por WhatsApp.";
-      const dias = Math.floor((vence - Date.now()) / 86_400_000);
+      const dias = Math.floor((vence - ahora) / 86_400_000);
       if (dias >= 1) return `Aceptó que lo llamemos. El permiso vale ${dias} día${dias === 1 ? "" : "s"} más.`;
       return "Aceptó que lo llamemos. El permiso vence hoy.";
     }

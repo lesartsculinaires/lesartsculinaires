@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Cuándo un lead que entra ES un lead que ya está.
  *
- *     npx esbuild src/lib/leadRepetido.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/leadRepetido.mjs
- *     node supabase/pruebas/leadRepetido.test.mjs /tmp/leadRepetido.mjs
+ *     node --test supabase/pruebas/leadRepetido.test.mjs
  *
  * ============================================================================
  * QUÉ PIDIÓ LA ESCUELA
@@ -37,7 +37,7 @@ const {
   estaCerrada,
   listarCamposDeLead,
   ETIQUETA_LEAD,
-} = await import(process.argv[2] ?? "/tmp/leadRepetido.mjs");
+} = await compilar("src/lib/leadRepetido.ts");
 
 let f = 0;
 const es = (t, r, e) => {

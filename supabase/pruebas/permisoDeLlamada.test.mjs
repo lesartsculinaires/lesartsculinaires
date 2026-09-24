@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * A quién se le puede llamar y a quién hay que pedirle permiso.
  *
- *     npx esbuild src/lib/permisoDeLlamada.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/perm.mjs
- *     node supabase/pruebas/permisoDeLlamada.test.mjs /tmp/perm.mjs
+ *     node --test supabase/pruebas/permisoDeLlamada.test.mjs
  *
  * ============================================================================
  * QUÉ SE ESTÁ PROBANDO
@@ -21,7 +21,7 @@ const {
   comoSeLlamaElBoton,
   comoSeExplica,
   ESPERA_PARA_VOLVER_A_PEDIR_HORAS,
-} = await import(process.argv[2] ?? "/tmp/perm.mjs");
+} = await compilar("src/lib/permisoDeLlamada.ts");
 
 let f = 0;
 const es = (t, r, e) => {
@@ -52,7 +52,7 @@ console.log("── CON PERMISO SE LLAMA ──");
   // Y se dice cuánto vale, que es lo que evita que alguien lo dé por eterno.
   es(
     "dice cuántos días quedan",
-    /vale \d+ días? más/.test(comoSeExplica("llamar", acepto)),
+    /vale \d+ días? más/.test(comoSeExplica("llamar", acepto, AHORA)),
     true,
   );
 }

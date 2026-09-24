@@ -8,6 +8,7 @@
  */
 
 import type { Importacion, Oportunidad } from "@/lib/types";
+import { normalizarTexto } from "@/lib/duplicados";
 
 export interface Base {
   /** `imp:12` para una importación registrada, `dia:2026-07-29` si no. */
@@ -190,4 +191,48 @@ export function resumirBase(b: Base): {
     ganados: b.oportunidades.filter((o) => o.estado === "Ganado").length,
     cerrado: b.oportunidades.reduce((a, o) => a + (o.cerrada ?? 0), 0),
   };
+}
+
+/**
+ * Buscar una base entre todas las subidas.
+ *
+ * ============================================================================
+ * QUÉ SE BUSCA, Y POR QUÉ TAMBIÉN POR CLIENTE
+ * ============================================================================
+ *
+ * Por el nombre del archivo y por la fecha, que es lo obvio. Y además por el
+ * nombre o el correo de alguien que la base trajo, que es lo que en la práctica
+ * se pregunta: «¿de qué base salió este contacto?». Sin eso hay que abrir las
+ * bases una por una hasta encontrarlo.
+ *
+ * Es una función pura sobre lo que ya está en pantalla —no hay consulta nueva—,
+ * así que buscar por cliente sale gratis y no le muestra a nadie nada que no
+ * estuviera viendo: la lista llega filtrada de la base.
+ *
+ * ============================================================================
+ * TODAS LAS PALABRAS, EN CUALQUIER ORDEN
+ * ============================================================================
+ *
+ * «feria julio» encuentra «Base feria - 12 julio.xlsx» y también
+ * «julio, stand de la feria.csv». Buscar la frase entera fallaría con la
+ * segunda, y buscar cualquiera de las dos palabras traería todos los archivos
+ * de julio: ni una cosa ni la otra es lo que se quiso pedir.
+ */
+export function buscarBases(bases: readonly Base[], texto: string): Base[] {
+  const palabras = normalizarTexto(texto).split(" ").filter(Boolean);
+  if (palabras.length === 0) return [...bases];
+
+  return bases.filter((b) => {
+    // Todo lo buscable de esta base, en una sola cadena. Se arma una vez por
+    // base y no una por palabra.
+    const heno = normalizarTexto(
+      [
+        b.titulo,
+        b.fecha ?? "",
+        b.momento ?? "",
+        ...b.oportunidades.flatMap((o) => [o.cliente, o.correo ?? "", o.codigo]),
+      ].join(" "),
+    );
+    return palabras.every((p) => heno.includes(p));
+  });
 }

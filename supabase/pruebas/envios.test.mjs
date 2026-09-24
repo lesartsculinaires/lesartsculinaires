@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Las reglas de un envío masivo: a quién NO se le manda.
  *
- *     npx esbuild src/lib/envios.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/envios.mjs
- *     node supabase/pruebas/envios.test.mjs /tmp/envios.mjs
+ *     node --test supabase/pruebas/envios.test.mjs
  *
  * ============================================================================
  * POR QUÉ ESTO SE PRUEBA APARTE, Y CON CUIDADO
@@ -21,7 +21,7 @@
  */
 const { repartir, paraMeta, nombreDePila, valoresPara, telefonoUtil, cuantosQuedan,
         NIVELES, TOPE_DIARIO, MARGEN } =
-  await import(process.argv[2] ?? "/tmp/envios.mjs");
+  await compilar("src/lib/envios.ts");
 
 let f = 0;
 const es = (t, r, e) => {
