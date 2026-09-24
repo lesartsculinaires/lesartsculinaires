@@ -95,6 +95,23 @@ export interface Canal {
     /** Editar un mensaje ya enviado. Ninguna API lo permite hoy. */
     editar: Soporte;
     /**
+     * Dar formato al texto: negrita, cursiva, tachado, monoespaciado.
+     *
+     * --------------------------------------------------------------------
+     * NO ES TEXTO CON FORMATO, SON MARCAS
+     * --------------------------------------------------------------------
+     *
+     * Ninguna de estas APIs manda texto enriquecido. WhatsApp manda texto
+     * pelado con unas marcas —`*negrita*`, `_cursiva_`, `~tachado~` y
+     * ```monoespaciado```— y es la aplicación de la persona la que las
+     * dibuja. Son cuatro: NO HAY SUBRAYADO, no existe la marca.
+     *
+     * Instagram y Messenger no dibujan ninguna: los asteriscos le llegan al
+     * cliente como asteriscos. Por eso va `no` y no `confirmar`; ofrecer la
+     * barra ahí sería ofrecer un botón que ensucia el mensaje.
+     */
+    formato: Soporte;
+    /**
      * Llamar y atender llamadas desde el CRM.
      *
      * ------------------------------------------------------------------------
@@ -188,6 +205,7 @@ export const CANALES: readonly Canal[] = [
       // No existe en la API. La aplicación del teléfono sí lo tiene; la API,
       // no. No es algo que falte programar.
       editar: "no",
+      formato: "si",
       // Anda y está en producción: es el único de los cuatro.
       llamadas: "si",
     },
@@ -235,6 +253,7 @@ export const CANALES: readonly Canal[] = [
        */
       plantillas: "no",
       editar: "no",
+      formato: "no",
       // La API de mensajería de Instagram no ofrece llamadas.
       llamadas: "no",
     },
@@ -291,6 +310,7 @@ export const CANALES: readonly Canal[] = [
        */
       plantillas: "no",
       editar: "no",
+      formato: "no",
       /*
        * La API existe; la página no está habilitada. Medido el 23 de
        * septiembre de 2026: las cinco acciones de `POST /{page}/calls`
@@ -330,6 +350,7 @@ export const CANALES: readonly Canal[] = [
       archivos: "confirmar",
       plantillas: "no",
       editar: "no",
+      formato: "no",
       // TikTok no ofrece llamadas por API.
       llamadas: "no",
     },

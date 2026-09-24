@@ -130,12 +130,29 @@ export function SelectorPlantilla({
             />
           ))}
 
-          {/* Cómo va a quedar. Una plantilla se manda a ciegas si no se ve
-              armada, y el nombre solo no dice qué le llega a la persona. */}
-          <p
+          {/*
+            Cómo va a quedar.
+            ------------------------------------------------------------------
+            Una plantilla se manda a ciegas si no se ve armada, y el nombre solo
+            no dice qué le llega a la persona.
+
+            LA ALTURA ESTÁ ATADA A PROPÓSITO. Sin tope, la vista previa crece
+            tanto como el texto de la plantilla, y las de la escuela son largas
+            —el saludo inicial lista los cinco diplomados y los cursos cortos—.
+            Eso empujaba el cuadro entero más allá de la pantalla: el botón de
+            enviar quedaba abajo del borde y no había forma de llegar a él ni de
+            ver lo que estaba tapando. Acotada, la plantilla se lee rodando
+            acá adentro y el resto del cuadro no se mueve.
+          */}
+          <p style={{ margin: "7px 0 3px", fontSize: 10.5, color: T.faint }}>
+            Así le va a llegar
+          </p>
+          <div
             style={{
-              margin: "4px 0 0",
               padding: "7px 9px",
+              maxHeight: 190,
+              overflowY: "auto",
+              overscrollBehavior: "contain",
               fontSize: 11.5,
               lineHeight: 1.5,
               color: T.ink,
@@ -146,7 +163,7 @@ export function SelectorPlantilla({
             }}
           >
             {vistaPrevia(plantilla.cuerpo, valores)}
-          </p>
+          </div>
         </div>
       )}
     </div>
