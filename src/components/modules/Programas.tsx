@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { guardarHorarioDePrograma } from "@/app/programas-actions";
+import { EditarPrograma } from "@/components/modules/EditarPrograma";
 import { NuevoPrograma } from "@/components/modules/NuevoPrograma";
 import { useCatalogo } from "@/lib/catalog";
 import { money } from "@/lib/format";
@@ -18,10 +18,11 @@ interface Props {
   onCategoria: (c: string) => void;
   onVerLeads: (productoId: number) => void;
   /**
-   * Crear programas es cosa de dirección: el catálogo lo comparten todas las
-   * pantallas, y un nombre de más parte los reportes de todo el equipo. La
-   * base lo hace cumplir aparte; esto sólo evita ofrecer un botón que iba a
-   * fallar.
+   * Crear y cambiar programas es cosa de dirección: el catálogo lo comparten
+   * todas las pantallas, y un nombre de más parte los reportes de todo el
+   * equipo. La base lo hace cumplir aparte —la política `productos_administrar`
+   * exige `es_admin()`, no mira `rol_permisos`—; esto sólo evita ofrecer un
+   * botón que iba a fallar.
    */
   esAdmin: boolean;
   /** Para volver a pedir el catálogo cuando se crea uno. */
@@ -42,6 +43,12 @@ export function Programas({
   const { productos } = useCatalogo();
   const soft = softer(accent);
   const [creando, setCreando] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
+
+  // Del catálogo y no del estado local: después de guardar, `onRefrescar`
+  // vuelve a pedirlo, y el cuadro tiene que quedar mostrando lo que se guardó
+  // y no la copia con la que se abrió.
+  const enEdicion = productos.find((p) => p.id === editando) ?? null;
 
   const visibles = productos.filter(
     (p) => categoria === "Todos" || p.categoria === categoria,
@@ -88,6 +95,15 @@ export function Programas({
           accent={accent}
           onCerrar={() => setCreando(false)}
           onCreado={onRefrescar}
+        />
+      )}
+
+      {esAdmin && enEdicion && (
+        <EditarPrograma
+          producto={enEdicion}
+          accent={accent}
+          onCerrar={() => setEditando(null)}
+          onGuardado={onRefrescar}
         />
       )}
 
@@ -195,35 +211,81 @@ export function Programas({
                 >
                   {p.categoria}
                 </span>
-                {inscritos > 0 && (
-                  <span
+                <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                  {/*
+                    Dado de baja se avisa acá y no se esconde la tarjeta: esta
+                    pantalla es el catálogo, y un programa que desaparece de su
+                    propio catálogo no se puede volver a activar.
+                  */}
+                  {!p.activo && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 9px",
+                        borderRadius: 20,
+                        whiteSpace: "nowrap",
+                        background: "#F6EEDC",
+                        color: "#7A5A12",
+                      }}
+                    >
+                      Dado de baja
+                    </span>
+                  )}
+                  {inscritos > 0 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "3px 9px",
+                        borderRadius: 20,
+                        whiteSpace: "nowrap",
+                        background: "#E6F0E9",
+                        color: "#2F6B4F",
+                      }}
+                    >
+                      {inscritos} {inscritos === 1 ? "inscrito" : "inscritos"}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <h3
+                  className="dsp"
+                  style={{ margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}
+                >
+                  {p.nombre}
+                </h3>
+                {esAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setEditando(p.id)}
+                    aria-label={`Editar ${p.nombre}`}
                     style={{
-                      fontSize: 11,
-                      padding: "3px 9px",
-                      borderRadius: 20,
-                      whiteSpace: "nowrap",
-                      background: "#E6F0E9",
-                      color: "#2F6B4F",
+                      flexShrink: 0,
+                      height: 26,
+                      padding: "0 10px",
+                      fontSize: 11.5,
+                      borderRadius: 6,
+                      border: `1px solid ${T.border}`,
+                      background: T.surface,
+                      color: accent,
+                      cursor: "pointer",
                     }}
                   >
-                    {inscritos} {inscritos === 1 ? "inscrito" : "inscritos"}
-                  </span>
+                    Editar
+                  </button>
                 )}
               </div>
 
-              <h3
-                className="dsp"
-                style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}
-              >
-                {p.nombre}
-              </h3>
-
-              <HorarioDelPrograma
-                producto={p}
-                accent={accent}
-                puedeEditar={esAdmin}
-                onGuardado={onRefrescar}
-              />
+              <HorarioDelPrograma producto={p} />
 
               <div
                 style={{
@@ -296,7 +358,7 @@ export function Programas({
 }
 
 /**
- * El horario vigente del programa, editable por dirección.
+ * El horario vigente del programa.
  *
  * ------------------------------------------------------------------------
  * QUÉ ES Y QUÉ NO ES
@@ -306,152 +368,42 @@ export function Programas({
  * que entra a su ficha con un clic. NO es lo que dice ningún recibo ya
  * emitido: cada inscripción guardó su propio horario el día que se cerró.
  *
- * Eso es lo que hace que se pueda tocar sin miedo, y por eso el cartel de
- * abajo lo dice con todas las letras. La escuela cambia el horario cada año, y
- * la pregunta que se va a hacer quien esté por editarlo es exactamente «¿esto
- * le va a cambiar el horario a los que ya inscribí?».
- *
  * ------------------------------------------------------------------------
- * POR QUÉ SE VE AUNQUE NO SE PUEDA EDITAR
+ * POR QUÉ ACÁ SÓLO SE LEE
  * ------------------------------------------------------------------------
  *
- * Porque a un asesor le sirve leerlo: es el horario que va a copiar en la
- * ficha. Lo que se esconde es el botón de editar, no el dato.
+ * Tenía su propio botón de editar, de cuando era lo único que se podía cambiar
+ * de un programa sin entrar a la base. Ahora el horario se cambia en el mismo
+ * cuadro que el nombre, la categoría y el precio, porque en la escuela se
+ * deciden juntos: cuando un diplomado cambia de nombre, casi siempre cambia
+ * también de horario. Con dos lugares para lo mismo, el segundo se olvida.
+ *
+ * Se sigue viendo para todos, se pueda editar o no: a un asesor le sirve
+ * leerlo, es el horario que va a copiar en la ficha.
  */
-function HorarioDelPrograma({
-  producto,
-  accent,
-  puedeEditar,
-  onGuardado,
-}: {
-  producto: Producto;
-  accent: string;
-  puedeEditar: boolean;
-  onGuardado: () => void;
-}) {
-  const [editando, setEditando] = useState(false);
-  const [texto, setTexto] = useState(producto.horario ?? "");
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const guardar = async () => {
-    setGuardando(true);
-    setError(null);
-    const r = await guardarHorarioDePrograma(producto.id, texto);
-    setGuardando(false);
-    if (!r.ok) {
-      setError(r.error ?? "No se pudo guardar.");
-      return;
-    }
-    setEditando(false);
-    onGuardado();
-  };
-
-  if (!editando) {
-    return (
-      <div
-        style={{
-          marginBottom: 12,
-          padding: "8px 11px",
-          borderRadius: 7,
-          background: T.paper,
-          border: `1px solid ${T.border}`,
-        }}
-      >
-        <p style={{ margin: "0 0 3px", fontSize: 10.5, color: T.muted }}>Horario vigente</p>
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12.5,
-            lineHeight: 1.45,
-            whiteSpace: "pre-wrap",
-            color: producto.horario ? T.ink : T.faint,
-          }}
-        >
-          {producto.horario ?? "Sin cargar"}
-        </p>
-        {puedeEditar && (
-          <button
-            type="button"
-            onClick={() => {
-              setTexto(producto.horario ?? "");
-              setEditando(true);
-            }}
-            style={{ marginTop: 5, fontSize: 11.5, color: accent }}
-          >
-            {producto.horario ? "Cambiar" : "Cargar horario"}
-          </button>
-        )}
-      </div>
-    );
-  }
-
+function HorarioDelPrograma({ producto }: { producto: Producto }) {
   return (
     <div
       style={{
         marginBottom: 12,
-        padding: "9px 11px",
+        padding: "8px 11px",
         borderRadius: 7,
         background: T.paper,
-        border: `1px solid ${accent}`,
+        border: `1px solid ${T.border}`,
       }}
     >
-      <p style={{ margin: "0 0 5px", fontSize: 10.5, color: T.muted }}>Horario vigente</p>
-      <textarea
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        rows={3}
-        autoFocus
-        placeholder="Ej.: Sábados de 8:00 a 12:00, del 15/02 al 20/06"
+      <p style={{ margin: "0 0 3px", fontSize: 10.5, color: T.muted }}>Horario vigente</p>
+      <p
         style={{
-          width: "100%",
-          padding: "6px 8px",
+          margin: 0,
           fontSize: 12.5,
           lineHeight: 1.45,
-          resize: "vertical",
-          border: `1px solid ${T.border}`,
-          borderRadius: 6,
-          background: T.surface,
-          color: T.ink,
+          whiteSpace: "pre-wrap",
+          color: producto.horario ? T.ink : T.faint,
         }}
-      />
-      <p style={{ margin: "6px 0 0", fontSize: 11, color: T.faint, lineHeight: 1.45 }}>
-        Es el borrador para los leads nuevos. Las inscripciones que ya se cerraron
-        conservan el horario con el que se cerraron; esto no las toca.
+      >
+        {producto.horario ?? "Sin cargar"}
       </p>
-      {error && (
-        <p style={{ margin: "5px 0 0", fontSize: 11.5, color: T.warn, lineHeight: 1.45 }}>
-          {error}
-        </p>
-      )}
-      <div style={{ display: "flex", gap: 10, marginTop: 7 }}>
-        <button
-          type="button"
-          onClick={() => void guardar()}
-          disabled={guardando}
-          style={{
-            height: 28,
-            padding: "0 12px",
-            fontSize: 12,
-            borderRadius: 6,
-            background: accent,
-            color: "#fff",
-          }}
-        >
-          {guardando ? "Guardando…" : "Guardar"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setEditando(false);
-            setError(null);
-          }}
-          disabled={guardando}
-          style={{ fontSize: 12, color: T.muted }}
-        >
-          Cancelar
-        </button>
-      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCatalogo } from "@/lib/catalog";
 import { T } from "@/lib/theme";
-import { activos } from "@/lib/types";
+import { activos, programasElegibles } from "@/lib/types";
 
 /** Los cuatro campos que se pueden cambiar de a varios. */
 export type CampoEnLote = "vendedor_id" | "etapa_id" | "producto_id" | "estado_id";
@@ -70,7 +70,7 @@ export function AccionesEnLote({
   }[] = [
     { campo: "vendedor_id", etiqueta: "Asignar vendedor", items: activos(cat.vendedores) },
     { campo: "etapa_id", etiqueta: "Cambiar etapa", items: cat.etapas },
-    { campo: "producto_id", etiqueta: "Cambiar programa", items: cat.productos },
+    { campo: "producto_id", etiqueta: "Cambiar programa", items: programasElegibles(cat.productos) },
     { campo: "estado_id", etiqueta: "Cambiar estado", items: cat.estados },
   ];
 

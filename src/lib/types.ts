@@ -84,7 +84,34 @@ export interface Producto extends CatalogItem {
    * cosa cuando dirección actualice el calendario.
    */
   horario: string | null;
+  /**
+   * ¿Sigue ofreciéndose?
+   *
+   * Un programa que ya no se dicta no se borra: de él cuelgan las
+   * inscripciones, los cortes del Dashboard y el historial de cursos, y
+   * borrarlo dejaría todo eso apuntando a un hueco. Se da de baja, que es
+   * otra cosa: deja de ofrecerse y sigue nombrándose donde ya se usó.
+   */
+  activo: boolean;
 }
+
+/**
+ * Los programas que se pueden ELEGIR hoy, sin esconder los que ya están
+ * elegidos.
+ *
+ * Es la misma regla que `activosCon` para los vendedores, y por el mismo
+ * motivo: si un lead del año pasado quedó cargado con un diplomado que después
+ * se dio de baja, sacarlo de la lista haría que el desplegable se viera vacío
+ * justo donde hay un dato, y el primer guardado lo perdería.
+ *
+ * Sólo va donde se ELIGE. Donde se NOMBRA —los filtros, la importación, los
+ * cortes del Dashboard, el historial de cursos— va el catálogo entero, o los
+ * programas viejos desaparecerían de sus propios reportes.
+ */
+export const programasElegibles = (
+  lista: readonly Producto[],
+  ...yaElegidos: readonly (number | null | undefined)[]
+): Producto[] => lista.filter((p) => p.activo || yaElegidos.includes(p.id));
 
 export interface TipoEvento extends CatalogItem {
   /** Two-letter badge code. */
