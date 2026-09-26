@@ -118,7 +118,22 @@ export async function refrescarNombresMeta(tope = 40): Promise<ResultadoNombres>
     };
   }
 
-  const { data, error } = await admin
+  /*
+   * DOS LISTAS, PORQUE EL PROBLEMA TIENE DOS FORMAS.
+   *
+   * La primera es la obvia: el hilo entró sin nombre y muestra el
+   * identificador. Ésa se buscaba desde el principio.
+   *
+   * La segunda cuesta más de ver y es la que reportó la escuela: el HILO tiene
+   * el nombre bueno pero la FICHA del cliente sigue llamándose «Contacto de
+   * Instagram». Pasa cuando el nombre del hilo lo puso una migración, que
+   * arregla `conversaciones` y no toca `clientes`. Como este botón sólo miraba
+   * los hilos sin nombre, esas fichas no se revisaban nunca y se quedaban así
+   * para siempre —ocho de ellas, en producción—.
+   *
+   * Se juntan sin repetir: un hilo puede estar en las dos listas.
+   */
+  const sinNombre = await admin
     .from("conversaciones")
     .select("id, canal, identificador, nombre_perfil, usuario")
     .in("canal", Object.keys(CANALES))
@@ -126,11 +141,64 @@ export async function refrescarNombresMeta(tope = 40): Promise<ResultadoNombres>
     .order("ultimo_mensaje_en", { ascending: false })
     .limit(tope);
 
-  if (error) {
-    return { ok: false, revisados: 0, resueltos: 0, motivo: null, error: error.message };
+  if (sinNombre.error) {
+    return { ok: false, revisados: 0, resueltos: 0, motivo: null, error: sinNombre.error.message };
   }
 
-  const filas = (data ?? []) as Record<string, unknown>[];
+  /*
+   * Los respaldos se nombran uno por uno y no con un «Contacto de %».
+   *
+   * Con el comodín se pisaría también una ficha que alguien llamó a mano
+   * «Contacto de la feria de septiembre», que es justo lo contrario de lo que
+   * esto tiene que hacer. Es la misma decisión que ya está tomada dentro de
+   * `cliente_de_canal`, y por el mismo motivo.
+   */
+  const RESPALDOS = Object.values(CANALES).map(
+    (c) => `Contacto de ${c.clave === "instagram" ? "Instagram" : "Messenger"}`,
+  );
+
+  /*
+   * Dos consultas planas y no una con join incrustado.
+   *
+   * PostgREST sabe hacer el join —`clientes!inner(nombre)`— pero eso depende de
+   * que tenga la clave foránea en su caché de esquema, y ese caché se queda
+   * viejo después de cada migración hasta que alguien lo recarga. La primera
+   * versión de esto devolvía cero filas por ese motivo, en silencio y sin
+   * error: el botón parecía andar y no arreglaba nada. Con dos consultas por
+   * columnas propias no hay nada que se pueda quedar viejo.
+   */
+  const conRespaldo = await admin.from("clientes").select("id").in("nombre", RESPALDOS);
+
+  // Que esta parte falle no puede tumbar la primera: sin ella el botón hace
+  // menos, pero sigue arreglando los hilos sin nombre.
+  if (conRespaldo.error) {
+    console.warn("[meta] no se pudieron buscar las fichas de respaldo", conRespaldo.error.message);
+  }
+
+  const idsDeFichas = (conRespaldo.data ?? []).map((c) => Number((c as { id: unknown }).id));
+
+  const fichaVieja = idsDeFichas.length
+    ? await admin
+        .from("conversaciones")
+        .select("id, canal, identificador, nombre_perfil, usuario")
+        .in("canal", Object.keys(CANALES))
+        .in("cliente_id", idsDeFichas)
+        .order("ultimo_mensaje_en", { ascending: false })
+        .limit(tope)
+    : { data: [], error: null };
+
+  if (fichaVieja.error) {
+    console.warn("[meta] no se pudieron buscar los hilos de esas fichas", fichaVieja.error.message);
+  }
+
+  const porId = new Map<number, Record<string, unknown>>();
+  for (const fila of [...(sinNombre.data ?? []), ...(fichaVieja.data ?? [])]) {
+    const f = fila as Record<string, unknown>;
+    if (porId.size >= tope && !porId.has(Number(f.id))) continue;
+    porId.set(Number(f.id), f);
+  }
+
+  const filas = [...porId.values()];
   let resueltos = 0;
   let motivo: string | null = null;
 
@@ -150,10 +218,43 @@ export async function refrescarNombresMeta(tope = 40): Promise<ResultadoNombres>
       forzar: true,
     });
 
-    if (intento.puesto) resueltos += 1;
+    if (intento.puesto) {
+      resueltos += 1;
+      continue;
+    }
+
+    /*
+     * Meta no dio nada, pero el HILO puede tener ya el nombre bueno.
+     *
+     * Es el caso de las fichas que arregló una migración: el hilo quedó con el
+     * nombre de verdad y la ficha se quedó en «Contacto de Instagram». Acá no
+     * hace falta preguntarle nada a nadie —el dato ya está—, sólo bajarlo a la
+     * ficha llamando a la misma función de la base que usa el webhook.
+     *
+     * Se la llama a ella y no se escribe `clientes.nombre` desde acá porque es
+     * la que sabe cuándo puede pisar un nombre y cuándo no: si alguien lo
+     * escribió a mano, no se toca. Esa regla vive en un solo lugar.
+     */
+    const delHilo = String(fila.nombre_perfil ?? "").trim();
+    const usuario = String(fila.usuario ?? "").trim() || null;
+    const esRespaldo = RESPALDOS.includes(delHilo) || delHilo === `@${usuario ?? ""}`;
+
+    if (delHilo && !esRespaldo) {
+      const { error: errRpc } = await admin.rpc(
+        canal.rpcCliente.nombre,
+        canal.rpcCliente.argumentos(quien, { nombre: delHilo, usuario }),
+      );
+      if (!errRpc) {
+        resueltos += 1;
+        continue;
+      }
+      motivo ??= errRpc.message;
+      continue;
+    }
+
     // Se guarda el primer motivo y no el último: cuando falta el permiso todos
     // dicen lo mismo, y repetirlo cuarenta veces no agrega nada.
-    else motivo ??= intento.motivo;
+    motivo ??= intento.motivo;
   }
 
   if (resueltos > 0) revalidatePath("/");
