@@ -251,9 +251,20 @@ es(
      join public.conversaciones v on v.cliente_id = c.id
      where v.identificador = '${IGSID}';
   `),
-  // Sin nombre ni @usuario —el banco no tiene a Meta a quién preguntarle— la
-  // ficha se llama así, que es lo que dice la migración que debe pasar.
-  "Contacto de Instagram",
+  /*
+   * Sin nombre ni @usuario —Meta niega el perfil— la ficha se llama con el
+   * nombre de respaldo Y LOS ÚLTIMOS CUATRO DÍGITOS del identificador.
+   *
+   * Los dígitos los agregó `20261107120000_respaldo_distinguible.sql`: antes
+   * todas las fichas sin nombre se llamaban igual y en el módulo de Clientes
+   * eran veintitrés filas indistinguibles. Es la misma regla que la bandeja ya
+   * usaba para titular el hilo.
+   *
+   * Lo que esta comprobación vigila no es el texto sino que sea UNA FICHA
+   * PROPIA: que el IGSID no se haya confundido con el teléfono parecido de la
+   * fila de al lado.
+   */
+  `Contacto de Instagram · ${IGSID.slice(-4)}`,
 );
 es(
   "la ficha de la otra persona sigue intacta, con su teléfono",
