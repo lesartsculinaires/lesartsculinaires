@@ -5,10 +5,16 @@ import { revalidatePath } from "next/cache";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla } from "@/lib/whatsapp/enviar";
-import { conValores, cuantosHuecos } from "@/lib/whatsapp/huecos";
+import { conValores } from "@/lib/whatsapp/huecos";
 import { hayWaba, panelDeMeta, traerPlantillas } from "@/lib/whatsapp/plantillas";
 import type { Plantilla } from "@/lib/types";
-import { componentesPara, loQueFalta, quePide } from "@/lib/whatsapp/piezas";
+import {
+  componentesPara,
+  loQueFalta,
+  pedidosDe,
+  quePide,
+  repartirValores,
+} from "@/lib/whatsapp/piezas";
 
 /**
  * Las plantillas de WhatsApp.
@@ -208,21 +214,6 @@ export async function enviarPlantillaAConversacion(
   }
 
   /*
-   * Cuántos huecos tiene, contados del CUERPO y no de la columna.
-   *
-   * La columna `variables` se llenó cuando se sincronizó, con el contador
-   * viejo que sólo veía `{{1}}`. Para una plantilla con nombres —`{{order_id}}`,
-   * la que tiene cargada la escuela— dice cero, y con cero el envío salía sin
-   * parámetros y Meta lo rechazaba. Leerlo del cuerpo lo arregla sin tener que
-   * volver a sincronizar.
-   */
-  const faltan = cuantosHuecos(plantilla.cuerpo ? String(plantilla.cuerpo) : null);
-  const dados = valores.filter((v) => v.trim() !== "").length;
-  if (dados < faltan) {
-    return { ok: false, error: `Faltan datos: la plantilla tiene ${faltan} y se dieron ${dados}.` };
-  }
-
-  /*
    * Las piezas, no sólo el cuerpo.
    *
    * Una plantilla puede llevar encabezado y botones con dato, y faltando
@@ -231,7 +222,29 @@ export async function enviarPlantillaAConversacion(
    * Required parameter is missing» de Meta, que no dice cuál.
    */
   const pide = quePide(plantilla.payload, plantilla.cuerpo ? String(plantilla.cuerpo) : null);
-  const datos = { encabezado: [], cuerpo: valores.slice(0, faltan), botones: [] };
+
+  /*
+   * LOS VALORES SE REPARTEN ENTRE LAS PIEZAS. ACÁ SE TIRABAN.
+   *
+   * Esto decía `{ encabezado: [], cuerpo: valores.slice(0, faltan), botones: [] }`,
+   * o sea: todo lo que no fuera del cuerpo se descartaba. Con una plantilla de
+   * imagen —la del workshop de la escuela— el envío quedaba imposible: aunque
+   * la pantalla hubiera mandado la dirección de la imagen, acá se perdía, y
+   * `loQueFalta` contestaba «lleva una imagen de encabezado, y hay que darle su
+   * dirección» sin que hubiera forma de dársela.
+   *
+   * `repartirValores` es la misma función que usa el envío masivo, que sí
+   * mandaba estas plantillas. Ahora las dos pantallas reparten igual.
+   */
+  const datos = repartirValores(pide, valores);
+
+  // Cuántas casillas pide de verdad: encabezado, cuerpo y botones. Contar sólo
+  // los huecos del texto dejaba pasar un envío al que le faltaba la imagen.
+  const faltan = pedidosDe(pide).length;
+  const dados = valores.filter((v) => v.trim() !== "").length;
+  if (dados < faltan) {
+    return { ok: false, error: `Faltan datos: la plantilla pide ${faltan} y se dieron ${dados}.` };
+  }
 
   const falta = loQueFalta(pide, datos);
   if (falta) return { ok: false, error: falta };
@@ -247,7 +260,9 @@ export async function enviarPlantillaAConversacion(
 
   // Se guarda el texto ya con los valores puestos: en el hilo hay que leer lo
   // que recibió la persona, no «{{1}}».
-  const texto = conValores(plantilla.cuerpo ? String(plantilla.cuerpo) : "", valores);
+  // Sólo los del cuerpo: con la lista entera, la dirección de la imagen se
+  // colaría dentro del texto que se guarda en el hilo.
+  const texto = conValores(plantilla.cuerpo ? String(plantilla.cuerpo) : "", datos.cuerpo);
 
   const { error: errGuardar } = await supabase.from("mensajes").insert({
     conversacion_id: conversacionId,

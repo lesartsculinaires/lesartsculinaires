@@ -1,6 +1,7 @@
 "use client";
 
-import { conValores, huecosDe } from "@/lib/whatsapp/huecos";
+import { conValores } from "@/lib/whatsapp/huecos";
+import { pedidosDe, repartirValores } from "@/lib/whatsapp/piezas";
 import { T } from "@/lib/theme";
 import type { Plantilla } from "@/lib/types";
 
@@ -23,22 +24,44 @@ import type { Plantilla } from "@/lib/types";
 export const aprobadas = (plantillas: readonly Plantilla[]): Plantilla[] =>
   plantillas.filter((p) => p.estado.toUpperCase() === "APPROVED");
 
-/** ¿Está lista para mandar? Meta rechaza el envío si falta un hueco. */
+/**
+ * ¿Está lista para mandar? Meta rechaza el envío si falta una sola pieza.
+ *
+ * ----------------------------------------------------------------------------
+ * TODAS LAS PIEZAS, NO SÓLO LOS HUECOS DEL TEXTO
+ * ----------------------------------------------------------------------------
+ *
+ * Acá se miraba `huecosDe(plantilla.cuerpo)`: sólo el cuerpo. Con una
+ * plantilla que lleva imagen de encabezado —la del workshop de la escuela— eso
+ * daba «lista» sin haber pedido la imagen, el envío salía incompleto y el CRM
+ * contestaba que faltaba la dirección de la imagen sin ofrecer dónde ponerla.
+ *
+ * `pedidosDe` devuelve todo lo que hay que llenar, en el orden en que Meta lo
+ * espera: encabezado, cuerpo y botones. Es lo mismo que ya usaba el envío
+ * masivo, que sí podía mandar estas plantillas.
+ */
 export const listaParaMandar = (
   plantilla: Plantilla | null,
   valores: readonly string[],
 ): boolean =>
   plantilla != null &&
-  // Del cuerpo y no de `plantilla.variables`: esa columna se llenó al
-  // sincronizar con el contador viejo, que sólo veía `{{1}}` y decía cero para
-  // las plantillas con nombres. Con cero, el botón se encendía sin pedir nada
-  // y el envío fallaba en Meta.
-  huecosDe(plantilla.cuerpo).every((_, i) => (valores[i] ?? "").trim() !== "");
+  pedidosDe(plantilla.pide).every((_, i) => (valores[i] ?? "").trim() !== "");
 
-/** El cuerpo con lo que se escribió puesto en su lugar. */
-export function vistaPrevia(cuerpo: string | null, valores: readonly string[]): string {
+/**
+ * El cuerpo con lo que se escribió puesto en su lugar.
+ *
+ * `valores` viene con TODAS las piezas —la dirección de la imagen primero, si
+ * la hay—, así que se reparte antes de mirar el texto. Sin eso, la vista previa
+ * mostraba el enlace de la imagen metido dentro de la primera frase.
+ */
+export function vistaPrevia(
+  cuerpo: string | null,
+  valores: readonly string[],
+  pide?: Plantilla["pide"],
+): string {
   if (!cuerpo) return "(esta plantilla no tiene texto)";
-  return conValores(cuerpo, valores);
+  const delCuerpo = pide ? repartirValores(pide, valores).cuerpo : valores;
+  return conValores(cuerpo, delCuerpo);
 }
 
 export function SelectorPlantilla({
@@ -99,22 +122,36 @@ export function SelectorPlantilla({
 
       {plantilla && (
         <div style={{ marginTop: 7 }}>
-          {/* Los huecos, en el orden en que van. Se piden todos: Meta rechaza
-              el envío si falta uno, y el error que devuelve no dice cuál. */}
-          {huecosDe(plantilla.cuerpo).map((hueco, i) => (
+          {/*
+            TODO lo que la plantilla pide, no sólo los huecos del texto.
+            ------------------------------------------------------------------
+            Acá se dibujaban únicamente los `{{1}}` del cuerpo. Una plantilla
+            con imagen de encabezado —la del workshop— no tenía dónde poner la
+            imagen, así que el CRM avisaba que hacía falta su dirección y no
+            ofrecía ninguna casilla para dársela: no se podía mandar.
+
+            `pedidosDe` las devuelve todas en el orden en que Meta las espera,
+            y `repartirValores` las vuelve a separar del otro lado.
+          */}
+          {pedidosDe(plantilla.pide).map((pedido, i) => (
             <input
-              key={hueco.clave}
+              key={`${pedido.pieza}-${i}`}
               value={valores[i] ?? ""}
               onChange={(e) => {
                 const copia = [...valores];
                 copia[i] = e.target.value;
                 onValores(copia);
               }}
-              // La etiqueta sale del hueco: con posiciones dice «Dato 1», y
-              // con nombres dice el nombre que puso quien creó la plantilla,
-              // que es lo que de verdad le explica a la asesora qué escribir.
-              placeholder={hueco.etiqueta}
-              aria-label={hueco.etiqueta}
+              /*
+               * En una dirección de archivo se pide un enlace, no una palabra.
+               *
+               * Es la misma distinción que hace el envío masivo: «el nombre del
+               * cliente» no significa nada en el enlace de una imagen.
+               */
+              type={pedido.esArchivo ? "url" : "text"}
+              placeholder={pedido.esArchivo ? "https://… (enlace de la imagen)" : pedido.etiqueta}
+              aria-label={pedido.etiqueta}
+              title={pedido.etiqueta}
               style={{
                 display: "block",
                 width: "100%",
@@ -162,7 +199,7 @@ export function SelectorPlantilla({
               whiteSpace: "pre-wrap",
             }}
           >
-            {vistaPrevia(plantilla.cuerpo, valores)}
+            {vistaPrevia(plantilla.cuerpo, valores, plantilla.pide)}
           </div>
         </div>
       )}
