@@ -57,7 +57,11 @@ const loQueSeSubio = () => subido;
 const RUTA = "saliente/plantillas/workshop_es/9f3e";
 const MARCADA = `subida:${RUTA}`;
 
-/** Un Supabase de mentira que devuelve los bytes que se le digan. */
+/**
+ * Un Supabase de mentira: devuelve los bytes que se le digan y anota qué se
+ * guardó. La copia importa tanto como la subida —es lo que después dibuja el
+ * hilo— así que también se mira.
+ */
 const bajador = (respuesta) => ({
   storage: {
     from() {
@@ -65,6 +69,10 @@ const bajador = (respuesta) => ({
         async download(ruta) {
           bajador.pedida = ruta;
           return respuesta;
+        },
+        async upload(ruta, cuerpo, opciones) {
+          bajador.guardadas.push({ ruta, bytes: cuerpo, mime: opciones?.contentType });
+          return { error: null };
         },
       };
     },
@@ -78,6 +86,7 @@ test.beforeEach(() => {
   subido = [];
   rechazo = null;
   bajador.pedida = null;
+  bajador.guardadas = [];
   mock.restoreAll();
 });
 
@@ -87,7 +96,7 @@ test("── SIN ENCABEZADO DE ARCHIVO, NO SE LLAMA A NADIE ──", async () =>
    * subiera algo igual, cada envío común pagaría una llamada a Meta para nada.
    */
   for (const nada of ["", null, undefined, "   "]) {
-    const r = await encabezadoParaMeta(bajador({ data: null, error: null }), nada, subidor);
+    const r = await encabezadoParaMeta(bajador({ data: null, error: null }), nada, "plt", subidor);
     assert.equal(r.ok, true);
     assert.equal(r.id, null);
   }
@@ -96,10 +105,15 @@ test("── SIN ENCABEZADO DE ARCHIVO, NO SE LLAMA A NADIE ──", async () =>
 
 test("── UNA SUBIDA SE BAJA DEL BUCKET Y SE SUBE A META ──", async () => {
   const sb = bajador({ data: unPng(), error: null });
-  const r = await encabezadoParaMeta(sb, MARCADA, subidor);
+  const r = await encabezadoParaMeta(sb, MARCADA, "workshop_es", subidor);
 
   assert.equal(r.ok, true);
   assert.equal(r.id, "media-de-mentira-1");
+
+  // Ya estaba en el bucket: no se guarda otra copia. Guardar una por envío
+  // llenaría el bucket de la misma imagen repetida.
+  assert.equal(bajador.guardadas.length, 0);
+  assert.equal(r.ruta, RUTA);
 
   // Se bajó la ruta PELADA, sin la marca: con la marca adentro el
   // almacenamiento buscaría un archivo llamado «subida:saliente/…».
@@ -127,14 +141,28 @@ test("── UNA DIRECCIÓN TAMBIÉN SE BAJA Y SE SUBE ──", async () => {
   const r = await encabezadoParaMeta(
     bajador({ data: null, error: null }),
     "https://cdn.test/a.jpg",
+    "workshop_es",
     subidor,
   );
 
   assert.equal(r.ok, true);
   assert.equal(r.id, "media-de-mentira-1");
   assert.equal(loQueSeSubio()[0].mime, "image/jpeg");
-  // No se tocó el bucket: la dirección no es una subida.
+  // No se BAJÓ del bucket: la dirección no es una subida.
   assert.equal(bajador.pedida, null);
+
+  /*
+   * Pero sí se guardó una copia, en la carpeta de la plantilla.
+   *
+   * Es lo que permite dibujarla en el hilo —el identificador de Meta no se
+   * puede mostrar— y lo que hace que la próxima vez salga sola, sin volver a
+   * depender de que esa dirección siga andando.
+   */
+  assert.equal(bajador.guardadas.length, 1);
+  assert.ok(bajador.guardadas[0].ruta.startsWith("saliente/plantillas/workshop_es/"));
+  assert.equal(bajador.guardadas[0].mime, "image/jpeg");
+  assert.equal(r.ruta, bajador.guardadas[0].ruta);
+  assert.equal(r.mime, "image/jpeg");
 });
 
 test("── SI LA DIRECCIÓN NO SE PUEDE BAJAR, SE DICE QUÉ HACER ──", async () => {
@@ -148,6 +176,7 @@ test("── SI LA DIRECCIÓN NO SE PUEDE BAJAR, SE DICE QUÉ HACER ──", asy
   const r = await encabezadoParaMeta(
     bajador({ data: null, error: null }),
     "https://cdn.test/a.jpg",
+    "workshop_es",
     subidor,
   );
 
@@ -171,6 +200,7 @@ test("── UN ENLACE DE DRIVE DEVUELVE UNA PÁGINA, NO UNA IMAGEN ──", asy
   const r = await encabezadoParaMeta(
     bajador({ data: null, error: null }),
     "https://drive.test/x",
+    "workshop_es",
     subidor,
   );
 
@@ -181,7 +211,7 @@ test("── UN ENLACE DE DRIVE DEVUELVE UNA PÁGINA, NO UNA IMAGEN ──", asy
 
 test("── SI EL BUCKET NO LA TIENE, SE DICE ──", async () => {
   const sb = bajador({ data: null, error: { message: "Object not found" } });
-  const r = await encabezadoParaMeta(sb, MARCADA, subidor);
+  const r = await encabezadoParaMeta(sb, MARCADA, "workshop_es", subidor);
 
   assert.equal(r.ok, false);
   assert.match(r.error, /Object not found/);
@@ -193,7 +223,12 @@ test("── Y SI META RECHAZA LA SUBIDA, ESO SE DEVUELVE ──", async () => {
   // pasar tal cual: es lo único que explica por qué no salió.
   rechazo = "No se pudo subirle la imagen a Meta: archivo muy grande";
 
-  const r = await encabezadoParaMeta(bajador({ data: unPng(), error: null }), MARCADA, subidor);
+  const r = await encabezadoParaMeta(
+    bajador({ data: unPng(), error: null }),
+    MARCADA,
+    "workshop_es",
+    subidor,
+  );
 
   assert.equal(r.ok, false);
   assert.match(r.error, /archivo muy grande/);
@@ -208,6 +243,7 @@ test("── UNA DIRECCIÓN QUE NO ES DIRECCIÓN ──", async () => {
   const r = await encabezadoParaMeta(
     bajador({ data: null, error: null }),
     "4::aW1nL3BuZw==:ARZ",
+    "workshop_es",
     subidor,
   );
 

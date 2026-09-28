@@ -1,7 +1,7 @@
 import "server-only";
 
 import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
-import { rutaDeSubida } from "@/lib/whatsapp/imagenDeEncabezado";
+import { carpetaDePlantilla, rutaDeSubida } from "@/lib/whatsapp/imagenDeEncabezado";
 import { subirImagenAMeta, type Subida } from "@/lib/whatsapp/subirAMeta";
 
 /**
@@ -43,20 +43,48 @@ import { subirImagenAMeta, type Subida } from "@/lib/whatsapp/subirAMeta";
  *                     escuela son así y no tienen por qué pagar este camino.
  */
 
-/** Lo mínimo que se le pide a un cliente de Supabase para bajar del bucket. */
-export interface Bajador {
+/** Lo mínimo que se le pide a un cliente de Supabase para usar el bucket. */
+export interface Archivero {
   storage: {
     from(balde: string): {
       download(ruta: string): Promise<{
         data: Blob | null;
         error: { message: string } | null;
       }>;
+      upload(
+        ruta: string,
+        cuerpo: ArrayBuffer | Blob,
+        opciones?: { contentType?: string; upsert?: boolean },
+      ): Promise<{ error: { message: string } | null }>;
     };
   };
 }
 
 export type Resuelta =
-  | { ok: true; id: string | null }
+  | {
+      ok: true;
+      /** Con qué la conoce Meta. Null cuando la plantilla no lleva archivo. */
+      id: string | null;
+      /**
+       * Dónde quedó la copia, dentro del bucket.
+       *
+       * ======================================================================
+       * PARA QUÉ SE GUARDA UNA COPIA SI META YA LA TIENE
+       * ======================================================================
+       *
+       * Para que el hilo la muestre. El identificador de Meta sirve para
+       * mandar y para nada más: no se puede dibujar. Sin una copia nuestra, la
+       * asesora manda la plantilla del workshop, el cliente recibe la imagen…
+       * y en el CRM la burbuja sale con el texto solo. Se ve como si la imagen
+       * no hubiera salido.
+       *
+       * Y de paso es la que se reusa la próxima vez, así que la imagen que
+       * vino de Meta queda guardada y deja de depender de que su CDN la sirva.
+       */
+      ruta: string | null;
+      /** El tipo de la copia, para poder dibujarla. */
+      mime: string | null;
+    }
   | { ok: false; error: string };
 
 /**
@@ -80,27 +108,66 @@ export type Subidor = (bytes: ArrayBuffer, mime: string) => Promise<Subida>;
 const ESPERA_MS = 6000;
 
 export async function encabezadoParaMeta(
-  cliente: Bajador,
+  cliente: Archivero,
   /** Lo que guardó la pantalla: una ruta marcada, una dirección, o vacío. */
   valor: string | null | undefined,
+  /** De qué plantilla es, para saber en qué carpeta guardar la copia. */
+  plantillaId: string,
   subir: Subidor = subirImagenAMeta,
 ): Promise<Resuelta> {
   const puesto = (valor ?? "").trim();
-  if (puesto === "") return { ok: true, id: null };
+  if (puesto === "") return { ok: true, id: null, ruta: null, mime: null };
 
-  const ruta = rutaDeSubida(puesto);
+  const yaEstaba = rutaDeSubida(puesto);
 
-  const traida = ruta != null ? await delBucket(cliente, ruta) : await deLaDireccion(puesto);
+  const traida =
+    yaEstaba != null ? await delBucket(cliente, yaEstaba) : await deLaDireccion(puesto);
   if (!traida.ok) return traida;
 
-  return subir(traida.bytes, traida.mime);
+  const subida = await subir(traida.bytes, traida.mime);
+  if (!subida.ok) return subida;
+
+  /*
+   * Si la imagen vino de una dirección, se guarda una copia.
+   *
+   * Es lo que permite dibujarla en el hilo —el identificador de Meta no se
+   * puede mostrar— y lo que hace que la próxima vez salga sola en vez de
+   * volver a depender de que esa dirección siga andando.
+   *
+   * Que la copia falle NO frena el envío: el mensaje ya se puede mandar y
+   * perderlo por no haber podido archivar una foto sería cambiar un problema
+   * chico por uno grande. Lo que se pierde es la miniatura del hilo.
+   */
+  const ruta =
+    yaEstaba ?? (await guardarCopia(cliente, plantillaId, traida.bytes, traida.mime));
+
+  return { ok: true, id: subida.id, ruta, mime: traida.mime };
+}
+
+async function guardarCopia(
+  cliente: Archivero,
+  plantillaId: string,
+  bytes: ArrayBuffer,
+  mime: string,
+): Promise<string | null> {
+  if (plantillaId === "") return null;
+
+  const ruta = `${carpetaDePlantilla(plantillaId)}/${crypto.randomUUID()}`;
+  try {
+    const { error } = await cliente.storage
+      .from(BALDE_WHATSAPP)
+      .upload(ruta, bytes, { contentType: mime, upsert: false });
+    return error ? null : ruta;
+  } catch {
+    return null;
+  }
 }
 
 type Traida =
   | { ok: true; bytes: ArrayBuffer; mime: string }
   | { ok: false; error: string };
 
-async function delBucket(cliente: Bajador, ruta: string): Promise<Traida> {
+async function delBucket(cliente: Archivero, ruta: string): Promise<Traida> {
   try {
     const { data, error } = await cliente.storage.from(BALDE_WHATSAPP).download(ruta);
 

@@ -1899,17 +1899,40 @@ export function Inbox({
                         en Instagram y Messenger —donde el cliente recibe los
                         asteriscos— se muestra crudo, que es la verdad.
                       */}
+                      {/*
+                        En una plantilla, la imagen va ARRIBA.
+                        --------------------------------------------------------
+                        Porque eso es un encabezado: Meta lo dibuja sobre el
+                        texto y así le llega al cliente. Con la imagen abajo, la
+                        burbuja del CRM no se parece a la que la persona tiene en
+                        el teléfono, y comparar las dos es justamente lo que hace
+                        una asesora cuando quiere saber qué se mandó.
+
+                        En un mensaje suelto se queda abajo: ahí el texto es el
+                        pie de la foto, no su encabezado.
+                      */}
+                      {m.tipo === "template" && (
+                        <MediaMensaje
+                          mensaje={m}
+                          url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
+                          mio={mio}
+                          oportunidadId={suOportunidad?.id ?? null}
+                          onGuardado={onRefrescar}
+                        />
+                      )}
                       <TextoConFormato
                         texto={contenido(m)}
                         conMarcas={canal.puede.formato === "si"}
                       />
-                      <MediaMensaje
-                        mensaje={m}
-                        url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
-                        mio={mio}
-                        oportunidadId={suOportunidad?.id ?? null}
-                        onGuardado={onRefrescar}
-                      />
+                      {m.tipo !== "template" && (
+                        <MediaMensaje
+                          mensaje={m}
+                          url={m.mediaRuta ? (urls[m.mediaRuta] ?? null) : null}
+                          mio={mio}
+                          oportunidadId={suOportunidad?.id ?? null}
+                          onGuardado={onRefrescar}
+                        />
+                      )}
                       <span
                         className="mono"
                         style={{

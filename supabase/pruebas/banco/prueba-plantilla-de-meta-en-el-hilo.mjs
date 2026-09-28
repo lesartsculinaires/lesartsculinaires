@@ -365,6 +365,45 @@ es(
   "order_id",
 );
 es("no quedó ningún error en la pantalla", /131008|Required parameter/i.test(await texto()), false);
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 6. Y EN EL HILO SE VE LA IMAGEN ──");
+// ══════════════════════════════════════════════════════════════════════════
+/*
+ * El envío puede salir perfecto y la pantalla seguir mintiendo.
+ *
+ * Pasó: la plantilla salió, el cliente la recibió con su imagen, y en el CRM la
+ * burbuja apareció con el texto solo. Para quien atiende eso se lee como «la
+ * imagen no salió», y no hay forma de saber que sí salió sin pedirle al cliente
+ * una captura.
+ *
+ * El identificador que devuelve Meta sirve para mandar y no se puede dibujar,
+ * así que el CRM guarda una copia de la imagen en su bucket y es ésa la que se
+ * ve acá.
+ */
+{
+  await p.waitForTimeout(1500);
+
+  es(
+    "LA BURBUJA GUARDÓ LA IMAGEN",
+    sql(`
+      select count(*) from public.mensajes
+       where conversacion_id = (select id from public.conversaciones where telefono = '${TEL}')
+         and direccion = 'saliente'
+         and media_ruta like 'saliente/plantillas/%'
+         and media_mime like 'image/%';
+    `),
+    "1",
+  );
+
+  // Y se dibuja: una imagen dentro del hilo, con su dirección firmada.
+  es(
+    "y se dibuja en la conversación",
+    await p.locator('main img[src*="/storage/v1/object/"]').count() >= 1,
+    true,
+  );
+}
+
 await foto("5-mandada");
 
 await nav.close();

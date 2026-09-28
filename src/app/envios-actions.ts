@@ -409,7 +409,7 @@ export async function mandarTanda(
    * para obtener siempre lo mismo.
    */
   const laImagen = repartirValores(pide, valoresPara(valores, "Ejemplo")).archivoEncabezado;
-  const subida = await encabezadoParaMeta(supabase, laImagen);
+  const subida = await encabezadoParaMeta(supabase, laImagen, String(plantilla.id));
   if (!subida.ok) return { ...SIN_TANDA, ok: false, error: subida.error };
 
   for (const d of (pendientes ?? []) as unknown as Record<string, unknown>[]) {
@@ -452,6 +452,9 @@ export async function mandarTanda(
         envio.waId,
         user.id,
         d.cliente_id == null ? null : Number(d.cliente_id),
+        // La imagen del encabezado, para que el hilo la muestre igual que
+        // cuando se manda desde la conversación.
+        { ruta: subida.ruta, mime: subida.mime },
       );
     } else {
       /*
@@ -579,6 +582,8 @@ async function dejarEnElHilo(
   usuarioId: string,
   /** Para que el hilo nazca de quien atiende ese lead. */
   clienteId: number | null,
+  /** La imagen del encabezado, cuando la plantilla lleva una. */
+  imagen: { ruta: string | null; mime: string | null } = { ruta: null, mime: null },
 ) {
   try {
     const numero = paraMeta(telefono);
@@ -591,10 +596,12 @@ async function dejarEnElHilo(
       conversacion_id: conversacionId,
       wa_id: waId,
       direccion: "saliente",
-      tipo: "text",
+      tipo: imagen.ruta ? "template" : "text",
       texto,
       estado: "enviado",
       enviado_por: usuarioId,
+      media_ruta: imagen.ruta,
+      media_mime: imagen.ruta ? imagen.mime : null,
     });
 
     // 23505: la tanda se reintentó y este mensaje ya estaba. No es un error.

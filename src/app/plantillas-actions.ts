@@ -276,7 +276,11 @@ export async function enviarPlantillaAConversacion(
    * y si algo falla, falla ACÁ: antes de mandarle nada a nadie, y con un
    * motivo que se puede leer.
    */
-  const laImagen = await encabezadoParaMeta(supabase, datos.archivoEncabezado);
+  const laImagen = await encabezadoParaMeta(
+    supabase,
+    datos.archivoEncabezado,
+    plantillaId,
+  );
   if (!laImagen.ok) return { ok: false, error: laImagen.error };
 
   const paraMandar = { ...datos, idEncabezado: laImagen.id };
@@ -304,6 +308,16 @@ export async function enviarPlantillaAConversacion(
     texto,
     estado: "enviado",
     enviado_por: user.id,
+    /*
+     * La imagen del encabezado, para que el hilo la muestre.
+     *
+     * Sin esto, la asesora manda la plantilla del workshop, el cliente recibe
+     * la imagen, y en el CRM la burbuja sale con el texto solo: se ve como si
+     * la imagen no hubiera salido. Lo que se guarda es la copia del bucket
+     * —el identificador de Meta sirve para mandar y no se puede dibujar—.
+     */
+    media_ruta: laImagen.ruta,
+    media_mime: laImagen.ruta ? laImagen.mime : null,
   });
 
   if (errGuardar) {
