@@ -354,6 +354,26 @@ export interface DatosDeLaPlantilla {
   botones: string[];
   /** La dirección del archivo, cuando el encabezado es imagen/video/documento. */
   archivoEncabezado?: string | null;
+  /**
+   * El identificador con que Meta conoce la imagen, cuando se le subió antes.
+   *
+   * ==========================================================================
+   * POR QUÉ ES MEJOR QUE LA DIRECCIÓN, Y POR QUÉ ESTÁN LAS DOS
+   * ==========================================================================
+   *
+   * Con una dirección, Meta acepta el mensaje y DESPUÉS va a bajar la imagen;
+   * si no puede, el mensaje ya salió y muere en el camino con «Media upload
+   * error». Pasó incluso usando la dirección de la imagen que Meta tenía
+   * aprobada de esa misma plantilla: su propio CDN no la vuelve a servir.
+   *
+   * Con un identificador, la imagen ya está en Meta y el envío no depende de
+   * que alcance ningún servidor. Es el camino que usa el CRM.
+   *
+   * La dirección se conserva porque sigue siendo lo que la pantalla guarda y
+   * muestra —y lo que se sube—; el identificador es el último paso, del lado
+   * del servidor.
+   */
+  idEncabezado?: string | null;
   /** El nombre con que se muestra un documento de encabezado. */
   nombreArchivo?: string | null;
 }
@@ -379,7 +399,7 @@ export function componentesPara(
 ): { type: string; [k: string]: unknown }[] | undefined {
   const partes: { type: string; [k: string]: unknown }[] = [];
 
-  if (pide.encabezado?.esArchivo && dio.archivoEncabezado) {
+  if (pide.encabezado?.esArchivo && (dio.idEncabezado || dio.archivoEncabezado)) {
     const clase = pide.encabezado.formato.toLowerCase();
     partes.push({
       type: "header",
@@ -387,7 +407,18 @@ export function componentesPara(
         {
           type: clase,
           [clase]: {
-            link: dio.archivoEncabezado,
+            /*
+             * El identificador manda sobre la dirección.
+             *
+             * Los dos son válidos para Meta, pero no fallan igual: con la
+             * dirección, Meta acepta el mensaje y después no puede bajarla, así
+             * que el fallo llega tarde y como «no se pudo entregar». Con el
+             * identificador la imagen ya está de su lado. La dirección queda
+             * sólo para cuando no se pudo subir.
+             */
+            ...(dio.idEncabezado
+              ? { id: dio.idEncabezado }
+              : { link: dio.archivoEncabezado }),
             // Sólo los documentos llevan nombre; en una imagen Meta lo rechaza.
             ...(pide.encabezado.formato === "DOCUMENT" && dio.nombreArchivo
               ? { filename: dio.nombreArchivo }

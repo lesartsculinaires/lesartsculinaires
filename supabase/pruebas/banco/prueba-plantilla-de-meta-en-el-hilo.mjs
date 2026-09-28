@@ -324,13 +324,40 @@ console.log("\n── 5. LO QUE LE LLEGÓ A META ──");
 const llegaron = await recibidos();
 es("llegó un envío", llegaron.length > antes, true);
 
-const piezas = llegaron[llegaron.length - 1]?.cuerpo?.template?.components ?? [];
+/*
+ * El ÚLTIMO mensaje, no la última llamada.
+ *
+ * Antes de mandar, el CRM le sube la imagen a Meta, así que `/media` queda
+ * anotado después. Tomando la última entrada a secas se leería la subida y no
+ * el envío, y todas las comprobaciones de abajo dirían que falta todo.
+ */
+const mensajes = llegaron.filter((x) => /\/messages/.test(x.url ?? ""));
+const piezas = mensajes[mensajes.length - 1]?.cuerpo?.template?.components ?? [];
 const encabezado = piezas.find((c) => c?.type === "header");
 const cuerpo = piezas.find((c) => c?.type === "body");
 
 es("VA EL ENCABEZADO", encabezado != null, true);
 es("como imagen", encabezado?.parameters?.[0]?.type, "image");
-es("CON LA IMAGEN QUE META YA TENÍA", encabezado?.parameters?.[0]?.image?.link, LA_DE_META);
+
+/*
+ * La imagen de Meta se BAJÓ y se volvió a SUBIR; no se le pasó su dirección.
+ *
+ * Suena redondo pasarle a Meta una dirección suya, y no lo es: en producción
+ * Meta aceptó el mensaje con esa misma dirección y después no la volvió a
+ * bajar. En el hilo de la escuela quedó «No se pudo entregar · Media upload
+ * error». Por eso lo que viaja es el identificador.
+ */
+es(
+  "SE SUBIÓ ANTES DE MANDAR",
+  llegaron.filter((x) => /\/media/.test(x.url ?? "")).length,
+  1,
+);
+es(
+  "Y VA SU IDENTIFICADOR",
+  /^media\.FALSO\./.test(encabezado?.parameters?.[0]?.image?.id ?? ""),
+  true,
+);
+es("no la dirección del CDN", encabezado?.parameters?.[0]?.image?.link, undefined);
 es("y el cuerpo con el nombre", cuerpo?.parameters?.[0]?.text, "Diego");
 es(
   "con el nombre del hueco, que esta plantilla usa",

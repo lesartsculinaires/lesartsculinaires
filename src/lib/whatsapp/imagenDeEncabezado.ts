@@ -17,22 +17,20 @@
  * POR QUÉ SE GUARDA LA RUTA Y NO LA DIRECCIÓN
  * ============================================================================
  *
- * Porque el bucket es privado, y así se queda. Meta necesita poder bajar la
- * imagen, así que hace falta una dirección pública —pero no hace falta que sea
- * PERMANENTE—: se le firma una que caduca, Meta la baja mientras contesta la
- * llamada, y después esa dirección no le sirve a nadie. Es exactamente lo que
- * ya hace el Inbox con las fotos que manda una asesora.
- *
- * Entonces lo que se guarda en el envío es la ruta dentro del bucket, marcada
- * con `subida:` para distinguirla de un enlace pegado a mano. La firma se hace
- * en el último momento, del lado del servidor.
+ * Porque el bucket es privado, y así se queda. Lo que se guarda como valor es
+ * la ruta dentro del bucket, marcada con `subida:` para distinguirla de un
+ * enlace pegado a mano; los bytes los va a buscar el servidor en el último
+ * momento y se los SUBE a Meta —ver `encabezadoParaMeta.ts`—.
  *
  * ESO IMPORTA DE VERDAD EN EL ENVÍO MASIVO. Una campaña de trescientos sale por
- * tandas y puede quedar a medias horas —o días— si Meta corta. Si en
- * `envios.valores` se hubiera guardado una dirección firmada, la campaña se
- * moriría a los cinco minutos y el resto de la lista fallaría con un error que
- * no menciona ninguna firma. Con la ruta guardada, cada tanda firma la suya.
+ * tandas y puede quedar a medias horas —o días— si Meta corta. Guardar en
+ * `envios.valores` algo que caduca —una dirección firmada, o el identificador
+ * que devuelve Meta al subir, que dura treinta días— dejaría la campaña muerta
+ * a mitad de camino con un error que no menciona ninguna imagen. Con la ruta
+ * guardada, cada tanda resuelve la suya.
  */
+
+import { CARPETA_SALIENTE } from "@/lib/whatsapp/adjuntos";
 
 /**
  * La marca que distingue una ruta del bucket de un enlace escrito a mano.
@@ -46,6 +44,34 @@ export const MARCA_DE_SUBIDA = "subida:";
 
 /** Dónde viven, dentro de «saliente/». Una carpeta propia para poder mirarlas. */
 export const CARPETA_DE_PLANTILLAS = "plantillas";
+
+/**
+ * La carpeta de UNA plantilla, para no tener que subir la imagen cada vez.
+ *
+ * ============================================================================
+ * POR QUÉ UNA CARPETA Y NO UN ARCHIVO CON NOMBRE FIJO
+ * ============================================================================
+ *
+ * Porque un nombre fijo obligaría a PISAR el archivo cuando alguien quisiera
+ * cambiar la imagen, y el bucket no deja: las políticas permiten crear y borrar
+ * lo propio, no modificar lo ajeno. La asesora que subiera la segunda imagen
+ * chocaría con un error de permisos sobre el archivo de la primera.
+ *
+ * Con una carpeta por plantilla, cada quien agrega el suyo y vale el más
+ * nuevo. Nadie pisa nada, no hace falta ninguna política nueva, y queda el
+ * rastro de lo que se usó antes.
+ *
+ * ============================================================================
+ * POR QUÉ SE LIMPIA EL IDENTIFICADOR
+ * ============================================================================
+ *
+ * El id de una plantilla lo pone Meta y no hay ninguna promesa sobre qué
+ * caracteres trae. Uno con una barra partiría la ruta en dos carpetas y la
+ * imagen se guardaría donde no se la busca después —sin fallar, que es lo
+ * peor—. Lo que no es letra, número, guion o guion bajo se reemplaza.
+ */
+export const carpetaDePlantilla = (plantillaId: string): string =>
+  `${CARPETA_SALIENTE}/${CARPETA_DE_PLANTILLAS}/${plantillaId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
 /**
  * Lo que acepta Meta en el encabezado de una plantilla.
@@ -78,77 +104,6 @@ export const esSubida = (valor: string | null | undefined): boolean =>
 /** La ruta dentro del bucket, o null si el valor no es una subida. */
 export const rutaDeSubida = (valor: string | null | undefined): string | null =>
   esSubida(valor) ? (valor as string).slice(MARCA_DE_SUBIDA.length) : null;
-
-/**
- * Lo mínimo que se le pide a un cliente de Supabase para poder firmar.
- *
- * Se describe por su forma y no se importa el tipo de Supabase para que esta
- * función se pueda probar con un doble, sin levantar nada. Firmar es la parte
- * que más callada falla —devuelve una dirección que Meta no puede bajar— así
- * que conviene que tenga prueba.
- */
-export interface Firmante {
-  storage: {
-    from(balde: string): {
-      createSignedUrl(
-        ruta: string,
-        segundos: number,
-      ): Promise<{
-        data: { signedUrl: string } | null;
-        error: { message: string } | null;
-      }>;
-    };
-  };
-}
-
-/**
- * Cuánto dura la firma.
- *
- * Meta baja la imagen mientras contesta la llamada —un par de segundos—, así
- * que con un minuto alcanzaría. Se dan diez porque una tanda de envío masivo
- * son cien mensajes seguidos y la misma firma se usa para todos: que la última
- * del lote se caiga por tiempo sería un fallo intermitente, de los que no se
- * reproducen mirando.
- *
- * Sigue siendo muy menos que lo que dura un descuido, que es lo que esta
- * caducidad protege.
- */
-export const MINUTOS_DE_FIRMA = 10;
-
-export type Firmada =
-  | { ok: true; enlace: string }
-  | { ok: false; error: string };
-
-/**
- * La dirección que se le da a Meta para que baje la imagen.
- *
- * Un enlace pegado a mano vuelve tal cual: ya es público y no hay nada que
- * firmar. Una subida se firma contra el bucket.
- */
-export async function enlaceParaMeta(
-  cliente: Firmante,
-  balde: string,
-  valor: string,
-): Promise<Firmada> {
-  const ruta = rutaDeSubida(valor);
-  if (ruta == null) return { ok: true, enlace: valor };
-
-  const { data, error } = await cliente.storage
-    .from(balde)
-    .createSignedUrl(ruta, MINUTOS_DE_FIRMA * 60);
-
-  if (error || !data?.signedUrl) {
-    return {
-      ok: false,
-      error:
-        "No se pudo preparar la imagen del encabezado" +
-        (error?.message ? `: ${error.message}` : "") +
-        ". Probá subirla de nuevo.",
-    };
-  }
-
-  return { ok: true, enlace: data.signedUrl };
-}
 
 /**
  * Cómo se nombra una subida en la pantalla.

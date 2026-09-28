@@ -6,8 +6,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla } from "@/lib/whatsapp/enviar";
 import { conValores } from "@/lib/whatsapp/huecos";
-import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
-import { enlaceParaMeta } from "@/lib/whatsapp/imagenDeEncabezado";
+import { encabezadoParaMeta } from "@/lib/whatsapp/encabezadoParaMeta";
 import { hayWaba, panelDeMeta, traerPlantillas } from "@/lib/whatsapp/plantillas";
 import type { Plantilla } from "@/lib/types";
 import {
@@ -261,23 +260,26 @@ export async function enviarPlantillaAConversacion(
   if (falta) return { ok: false, error: falta };
 
   /*
-   * La imagen del encabezado, firmada recién ahora.
+   * La imagen del encabezado se le SUBE a Meta antes de mandar.
    *
-   * Lo que llegó de la pantalla es la RUTA dentro del bucket, no una dirección:
-   * el bucket es privado y se queda así. Acá se le firma a Meta una dirección
-   * que caduca en diez minutos, Meta baja la imagen mientras contesta la
-   * llamada, y después esa dirección no le sirve a nadie.
+   * ==========================================================================
+   * ESTO ANTES LE PASABA UNA DIRECCIÓN, Y ASÍ FALLÓ EN PRODUCCIÓN
+   * ==========================================================================
    *
-   * Un enlace pegado a mano pasa de largo: ya es público y no hay nada que
-   * firmar.
+   * Con una dirección, Meta acepta el mensaje y después va a bajar la imagen.
+   * Si no puede, el mensaje ya salió: en el hilo queda «No se pudo entregar ·
+   * Media upload error» y no hay nada que hacer. Falló incluso con la dirección
+   * de la imagen que Meta tenía aprobada de esa misma plantilla —su propio CDN
+   * no la vuelve a servir—.
+   *
+   * Subiéndola antes, el envío no depende de que Meta alcance ningún servidor,
+   * y si algo falla, falla ACÁ: antes de mandarle nada a nadie, y con un
+   * motivo que se puede leer.
    */
-  const conImagen = await enlaceParaMeta(supabase, BALDE_WHATSAPP, datos.archivoEncabezado ?? "");
-  if (!conImagen.ok) return { ok: false, error: conImagen.error };
+  const laImagen = await encabezadoParaMeta(supabase, datos.archivoEncabezado);
+  if (!laImagen.ok) return { ok: false, error: laImagen.error };
 
-  const paraMandar = {
-    ...datos,
-    archivoEncabezado: datos.archivoEncabezado ? conImagen.enlace : null,
-  };
+  const paraMandar = { ...datos, idEncabezado: laImagen.id };
 
   const envio = await enviarPlantilla(
     String(conv.telefono),

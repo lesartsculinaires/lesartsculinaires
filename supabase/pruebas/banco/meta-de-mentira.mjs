@@ -108,6 +108,9 @@ const PERFILES = {
   "0004": { name: "Lucía Paz", username: "luciapaz" },
 };
 
+/** Cuántas imágenes se subieron, para darle a cada una un id distinto. */
+let subidas = 0;
+
 const servidor = http.createServer((req, res) => {
   // Un GET a `/__recibidos` devuelve lo que llegó hasta ahora. No es parte de
   // la API de Meta: es la ventana que la prueba usa para mirar adentro.
@@ -290,6 +293,52 @@ const servidor = http.createServer((req, res) => {
     return;
   }
 
+  /*
+   * EL CDN DE META: la imagen de muestra que quedó al aprobar una plantilla.
+   *
+   * Meta la devuelve en `example.header_handle` y el CRM la baja desde el
+   * servidor para subírsela de vuelta. Suena redondo y no lo es: en producción
+   * Meta acepta el mensaje con esa misma dirección y después NO la vuelve a
+   * bajar —«Media upload error»—, que es por lo que ahora se sube.
+   *
+   * Acá se sirve para poder probar el camino entero. Que el banco la sirva no
+   * dice nada sobre si el CDN de verdad la sirve: lo que se está probando es
+   * que, cuando se puede bajar, termine subida y no mandada como dirección.
+   */
+  if (req.method === "GET" && req.url.startsWith("/cdn/")) {
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    res.writeHead(200, { "content-type": "image/png", "content-length": png.length });
+    res.end(png);
+    return;
+  }
+
+  /*
+   * SUBIR UNA IMAGEN: `POST /{numero}/media`.
+   *
+   * Es el camino nuevo y el que arregló el «Media upload error». En vez de
+   * darle a Meta una dirección para que la baje —que falla tarde, con el
+   * mensaje ya mandado— el CRM le sube la imagen antes y manda el
+   * identificador que Meta devuelve acá.
+   *
+   * El cuerpo es multipart, así que no se intenta leerlo como JSON: alcanza
+   * con anotar que llegó y con cuántos bytes, que es lo que una prueba querría
+   * mirar. Los bytes se tiran.
+   */
+  if (req.method === "POST" && /^\/v[\d.]+\/\d+\/media/.test(req.url)) {
+    let bytes = 0;
+    req.on("data", (t) => (bytes += t.length));
+    req.on("end", () => {
+      subidas += 1;
+      recibidos.push({ url: req.url, subida: { bytes } });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ id: `media.FALSO.${subidas}` }));
+    });
+    return;
+  }
+
   let cuerpo = "";
   req.on("data", (t) => (cuerpo += t));
   req.on("end", () => {
@@ -345,6 +394,40 @@ const servidor = http.createServer((req, res) => {
      * es exactamente lo que le pasó a la escuela. Un Meta de mentira que
      * aceptara todo no habría encontrado nunca ese fallo.
      */
+    /*
+     * UNA IMAGEN MANDADA POR DIRECCIÓN: «Media upload error».
+     *
+     * ------------------------------------------------------------------------
+     * ESTO ES LO QUE PASÓ EN PRODUCCIÓN, PUESTO ACÁ PARA QUE NO VUELVA
+     * ------------------------------------------------------------------------
+     *
+     * Meta acepta las dos formas —`image: { link }` e `image: { id }`— pero no
+     * fallan igual. Con `link`, Meta ACEPTA el mensaje y después va a bajar la
+     * imagen; si no puede, el mensaje ya salió y en el hilo queda «No se pudo
+     * entregar · Media upload error». A la escuela le pasó con dos mensajes, y
+     * también con la dirección de la imagen que Meta tenía aprobada de esa
+     * misma plantilla: su propio CDN no la vuelve a servir.
+     *
+     * El banco no puede reproducir un fallo de entrega posterior, así que lo
+     * adelanta al envío: rechaza el `link` con el mismo texto. Es más estricto
+     * que Meta a propósito. Si alguien vuelve a mandar la imagen por dirección,
+     * esto se pone en rojo acá en vez de descubrirse en el hilo de un cliente.
+     */
+    for (const parte of leido?.template?.components ?? []) {
+      for (const par of parte?.parameters ?? []) {
+        const archivo = par?.image ?? par?.video ?? par?.document;
+        if (archivo && archivo.link && !archivo.id) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: { message: "Media upload error", code: 131053, type: "OAuthException" },
+            }),
+          );
+          return;
+        }
+      }
+    }
+
     if (/_con_header/.test(leido?.template?.name ?? "")) {
       const partes = (leido?.template?.components ?? []).map((c) => c?.type);
       if (!partes.includes("header")) {

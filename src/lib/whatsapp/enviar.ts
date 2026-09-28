@@ -56,6 +56,20 @@ function base(): string {
   return "https://graph.facebook.com";
 }
 
+/**
+ * La misma dirección de Graph, para los módulos vecinos.
+ *
+ * `base()` queda privada porque su valor lo decide la regla de arriba —sólo
+ * acepta una costura hacia esta misma máquina, para que el token no pueda
+ * viajar a ningún lado— y esa regla tiene que vivir en un solo lugar.
+ * `subirAMeta.ts` habla con el mismo Graph y con el mismo token, así que usa
+ * ésta en vez de armar la dirección por su cuenta.
+ */
+export const baseDeGraph = (): string => base();
+
+/** La versión de la API con la que habla el CRM, para los módulos vecinos. */
+export const VERSION_DE_GRAPH = VERSION;
+
 export interface ResultadoEnvio {
   ok: boolean;
   /** Id que le puso Meta al mensaje; sirve para seguirle el estado. */

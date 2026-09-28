@@ -361,17 +361,35 @@ es("VA EL COMPONENTE DE ENCABEZADO", encabezado != null, true);
 es("como imagen", encabezado?.parameters?.[0]?.type, "image");
 
 /*
- * Y lo que va es una dirección FIRMADA, no la ruta marcada.
+ * Y LO QUE VA ES UN IDENTIFICADOR, NO UNA DIRECCIÓN.
  *
- * Es la mitad del arreglo que no se ve en la pantalla: el navegador guarda la
- * ruta, y el servidor la cambia por una dirección que Meta pueda bajar justo
- * antes de mandar. Si acá viajara «subida:saliente/…», Meta contestaría que no
- * pudo bajar la imagen y el error no mencionaría ninguna ruta.
+ * ----------------------------------------------------------------------------
+ * ESTA COMPROBACIÓN DECÍA LO CONTRARIO, Y POR ESO FALLABA EN PRODUCCIÓN
+ * ----------------------------------------------------------------------------
+ *
+ * Antes el servidor cambiaba la ruta por una dirección firmada y se la daba a
+ * Meta para que la bajara. Meta acepta el mensaje y baja la imagen DESPUÉS: si
+ * no puede, el mensaje ya salió y en el hilo queda «No se pudo entregar · Media
+ * upload error». Es lo que le pasó a la escuela —dos veces— y también con la
+ * dirección de la imagen que Meta tenía aprobada de esa misma plantilla.
+ *
+ * Ahora el servidor le SUBE la imagen a Meta antes de mandar y manda el
+ * identificador. El envío deja de depender de que Meta alcance ningún servidor.
  */
-const enlace = encabezado?.parameters?.[0]?.image?.link ?? "";
-es("LA DIRECCIÓN VA FIRMADA, NO LA RUTA", /^https?:\/\//.test(enlace), true);
-es("y no quedó la marca de subida", enlace.includes(MARCA), false);
-es("apunta al archivo que se subió", /\/storage\/v1\/object\//.test(enlace), true);
+const imagen = encabezado?.parameters?.[0]?.image ?? {};
+es("VA EL IDENTIFICADOR QUE DEVOLVIÓ META", /^media\.FALSO\./.test(imagen.id ?? ""), true);
+es("y NO una dirección para que la baje", imagen.link, undefined);
+es("ni quedó la marca de subida", JSON.stringify(imagen).includes(MARCA), false);
+
+/*
+ * Y la imagen se subió de verdad: una llamada a `/media` antes del envío. Sin
+ * esto, un identificador inventado pasaría la comprobación de arriba.
+ */
+es(
+  "ANTES DEL ENVÍO SE SUBIÓ LA IMAGEN",
+  llegaron.filter((x) => /\/media/.test(x.url ?? "")).length,
+  1,
+);
 
 /*
  * Y el cuerpo no va con un parámetro de más. Esta plantilla no tiene huecos:

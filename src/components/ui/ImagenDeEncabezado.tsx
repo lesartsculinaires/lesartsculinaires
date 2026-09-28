@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getBrowserClient } from "@/lib/supabase/browser";
-import { BALDE_WHATSAPP, CARPETA_SALIENTE } from "@/lib/whatsapp/adjuntos";
+import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
 import {
   ACEPTA_ENCABEZADO,
-  CARPETA_DE_PLANTILLAS,
   IMAGENES_DE_ENCABEZADO,
   TOPE_ENCABEZADO_BYTES,
+  carpetaDePlantilla,
   comoSubida,
   esSubida,
 } from "@/lib/whatsapp/imagenDeEncabezado";
@@ -80,6 +80,7 @@ const ENLACE: React.CSSProperties = {
 export function ImagenDeEncabezado({
   valor,
   etiqueta,
+  plantillaId,
   yaAprobada = null,
   onValor,
 }: {
@@ -87,6 +88,15 @@ export function ImagenDeEncabezado({
   valor: string;
   /** Cómo se llama este pedido, para lectores de pantalla. */
   etiqueta: string;
+  /**
+   * Qué plantilla es, para acordarse de su imagen.
+   *
+   * La imagen de una plantilla es SIEMPRE la misma —la invitación al workshop
+   * no cambia entre un cliente y el siguiente—, así que subirla en cada envío
+   * sería trabajo repetido todos los días. Se guarda en una carpeta con este
+   * nombre y la próxima vez aparece sola.
+   */
+  plantillaId: string;
   /**
    * La imagen que Meta ya tiene aprobada para esta plantilla, si la hay.
    *
@@ -106,6 +116,9 @@ export function ImagenDeEncabezado({
   const [mira, setMira] = useState<string | null>(null);
   const [pegando, setPegando] = useState(false);
 
+  /** La miniatura de la imagen que quedó guardada de otra vez. */
+  const [guardada, setGuardada] = useState<string | null>(null);
+
   /*
    * `createObjectURL` reserva memoria hasta que se la suelta. Una asesora que
    * prueba tres imágenes antes de decidirse deja tres reservadas si no se
@@ -114,6 +127,65 @@ export function ImagenDeEncabezado({
   useEffect(() => () => {
     if (mira) URL.revokeObjectURL(mira);
   }, [mira]);
+
+  /*
+   * ¿Ya hay una imagen guardada para esta plantilla?
+   *
+   * ==========================================================================
+   * POR QUÉ ESTO EXISTE
+   * ==========================================================================
+   *
+   * La imagen de una plantilla no cambia entre un cliente y el siguiente: la
+   * invitación al workshop es la misma para los trescientos. Sin esto habría
+   * que buscarla en la computadora y subirla en CADA envío, todos los días, y
+   * ésa es exactamente la clase de trabajo repetido por el que la escuela se
+   * quejó de esta pantalla.
+   *
+   * Se lista la carpeta de la plantilla y vale el archivo más nuevo. Que
+   * gane el más nuevo es lo que deja cambiar la imagen: quien suba otra la
+   * agrega, y desde ahí es la que va, sin tener que pisar la de nadie.
+   */
+  useEffect(() => {
+    let vigente = true;
+
+    const buscar = async () => {
+      if (plantillaId === "") return;
+
+      try {
+        const carpeta = carpetaDePlantilla(plantillaId);
+        const { data } = await getBrowserClient()
+          .storage.from(BALDE_WHATSAPP)
+          .list(carpeta, { limit: 1, sortBy: { column: "created_at", order: "desc" } });
+
+        const archivo = data?.[0];
+        if (!vigente || !archivo) return;
+
+        const ruta = `${carpeta}/${archivo.name}`;
+
+        /*
+         * La miniatura se pide firmada porque el bucket es privado. Si no sale,
+         * no pasa nada: se sigue sabiendo que hay una imagen guardada, que es lo
+         * que decide si se puede mandar.
+         */
+        const { data: firma } = await getBrowserClient()
+          .storage.from(BALDE_WHATSAPP)
+          .createSignedUrl(ruta, 600);
+
+        if (!vigente) return;
+        setGuardada(firma?.signedUrl ?? null);
+        onValor(comoSubida(ruta));
+      } catch {
+        // Sin imagen guardada se sigue como siempre: con el botón de subir.
+      }
+    };
+
+    void buscar();
+    return () => {
+      vigente = false;
+    };
+    // Sólo cuando cambia la plantilla: `onValor` se vuelve a crear en cada
+    // pintada y ponerlo acá dispararía la búsqueda sin parar.
+  }, [plantillaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subir = async (f: File) => {
     setAviso(null);
@@ -129,11 +201,13 @@ export function ImagenDeEncabezado({
     }
 
     /*
-     * Un nombre nuevo, sin relación con el original. Dos personas subiendo
-     * «portada.jpg» el mismo día no se pisan, y el nombre de verdad no hace
-     * falta: a Meta le llega la imagen, no cómo se llamaba el archivo.
+     * Dentro de la carpeta de ESTA plantilla, con un nombre nuevo.
+     *
+     * La carpeta es lo que permite encontrarla la próxima vez. El nombre nuevo
+     * es lo que permite cambiarla sin pisar la de nadie: se agrega, y desde ahí
+     * gana la más nueva.
      */
-    const ruta = `${CARPETA_SALIENTE}/${CARPETA_DE_PLANTILLAS}/${crypto.randomUUID()}`;
+    const ruta = `${carpetaDePlantilla(plantillaId)}/${crypto.randomUUID()}`;
 
     setSubiendo(true);
     try {
@@ -155,6 +229,7 @@ export function ImagenDeEncabezado({
       if (mira) URL.revokeObjectURL(mira);
       setMira(URL.createObjectURL(f));
       setNombre(f.name);
+      setGuardada(null);
       onValor(comoSubida(ruta));
     } catch (e) {
       setAviso(`No se pudo subir la imagen: ${e instanceof Error ? e.message : String(e)}`);
@@ -169,6 +244,7 @@ export function ImagenDeEncabezado({
     if (mira) URL.revokeObjectURL(mira);
     setMira(null);
     setNombre(null);
+    setGuardada(null);
     setAviso(null);
     onValor("");
   };
@@ -185,7 +261,9 @@ export function ImagenDeEncabezado({
    * pedía de nuevo una imagen que ya estaba en la plantilla.
    */
   const vaLaDeMeta = !hayImagen && yaAprobada != null;
-  const miniatura = mira ?? (vaLaDeMeta ? yaAprobada : null);
+  /** Va la que quedó guardada de otra vez: ni recién elegida ni la de Meta. */
+  const vaLaGuardada = hayImagen && guardada != null && mira == null;
+  const miniatura = mira ?? guardada ?? (vaLaDeMeta ? yaAprobada : null);
 
   return (
     /*
@@ -232,9 +310,9 @@ export function ImagenDeEncabezado({
           />
         )}
 
-        {vaLaDeMeta && (
+        {(vaLaDeMeta || vaLaGuardada) && (
           <span style={{ fontSize: 11.5, color: T.muted, lineHeight: 1.35 }}>
-            Va con la imagen aprobada en Meta.
+            {vaLaGuardada ? "Va con la imagen guardada." : "Va con la imagen aprobada en Meta."}
           </span>
         )}
 
@@ -246,9 +324,9 @@ export function ImagenDeEncabezado({
         >
           {subiendo
             ? "Subiendo…"
-            : hayImagen
+            : hayImagen && !vaLaGuardada
               ? "Cambiar imagen"
-              : vaLaDeMeta
+              : vaLaDeMeta || vaLaGuardada
                 ? "Usar otra imagen"
                 : "Subir imagen"}
         </button>

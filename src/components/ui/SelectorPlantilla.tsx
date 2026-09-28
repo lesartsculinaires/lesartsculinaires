@@ -166,6 +166,7 @@ export function SelectorPlantilla({
                   key={`${pedido.pieza}-${i}`}
                   valor={valores[i] ?? ""}
                   etiqueta={pedido.etiqueta}
+                  plantillaId={plantilla.id}
                   yaAprobada={pedido.porOmision}
                   onValor={poner}
                 />

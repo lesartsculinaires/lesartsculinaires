@@ -520,15 +520,34 @@ try {
     es("EL ENVÍO SALE", /1 enviados/.test(await texto()), true);
 
     const conImagen = await loQueLlegoAMeta();
-    const piezas = conImagen[conImagen.length - 1]?.cuerpo?.template?.components ?? [];
+    /*
+     * El último MENSAJE, no la última llamada: antes de mandar, el CRM le sube
+     * la imagen a Meta y esa subida queda anotada después.
+     */
+    const mensajes = conImagen.filter((x) => /\/messages/.test(x.url ?? ""));
+    const piezas = mensajes[mensajes.length - 1]?.cuerpo?.template?.components ?? [];
     const encabezado = piezas.find((c) => c.type === "header");
 
     es("A META LE LLEGA EL ENCABEZADO", encabezado != null, true);
     es("como imagen", encabezado?.parameters?.[0]?.type, "image");
 
-    const enlace = encabezado?.parameters?.[0]?.image?.link ?? "";
-    es("CON UNA DIRECCIÓN FIRMADA, NO LA RUTA", /^https?:\/\//.test(enlace), true);
-    es("y sin la marca de subida", enlace.includes("subida:"), false);
+    /*
+     * Y va el IDENTIFICADOR, no una dirección.
+     *
+     * Acá se exigía una dirección firmada, que es como se mandaba antes: Meta
+     * acepta el mensaje y baja la imagen después, y si no puede, en el hilo
+     * queda «No se pudo entregar · Media upload error». Le pasó a la escuela.
+     * Ahora la imagen se le sube a Meta antes de mandar.
+     */
+    const imagen = encabezado?.parameters?.[0]?.image ?? {};
+    es("CON SU IDENTIFICADOR, NO UNA DIRECCIÓN", /^media\.FALSO\./.test(imagen.id ?? ""), true);
+    es("y sin dirección que Meta tenga que bajar", imagen.link, undefined);
+    es("ni la marca de subida", JSON.stringify(imagen).includes("subida:"), false);
+    es(
+      "porque se subió antes del envío",
+      conImagen.filter((x) => /\/media/.test(x.url ?? "")).length >= 1,
+      true,
+    );
 
     // Y en la columna sí quedó la ruta: es lo que hace que la tanda siguiente
     // pueda firmar la suya.

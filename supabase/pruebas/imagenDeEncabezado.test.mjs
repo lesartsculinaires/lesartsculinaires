@@ -1,5 +1,5 @@
 /**
- * La imagen de encabezado: se guarda la ruta, se firma al mandar.
+ * La imagen de encabezado: qué se guarda como valor, y dónde vive.
  *
  *     node --test supabase/pruebas/imagenDeEncabezado.test.mjs
  *
@@ -7,18 +7,19 @@
  * QUÉ SE ESTÁ CUIDANDO
  * ============================================================================
  *
- * Que lo que queda guardado sea la RUTA dentro del bucket y no una dirección
- * firmada. Parece un detalle y decide si una campaña larga llega al final:
+ * Que lo que queda guardado sea la RUTA dentro del bucket y no algo que caduca.
+ * Parece un detalle y decide si una campaña larga llega al final:
  *
- *   CON LA RUTA        Cada tanda del envío masivo firma la suya. Una campaña
- *                      que quedó a medias el martes sigue el jueves.
+ *   CON LA RUTA        Cada tanda del envío masivo resuelve la suya. Una
+ *                      campaña que quedó a medias el martes sigue el jueves.
  *
- *   CON LA DIRECCIÓN   Se muere a los diez minutos, y del destinatario ciento
- *                      uno en adelante Meta contesta que no pudo bajar la
- *                      imagen —un error que no menciona ninguna firma, así que
- *                      se busca donde no es—.
+ *   CON ALGO QUE VENCE Una dirección firmada dura minutos; el identificador
+ *                      que devuelve Meta al subir una imagen, treinta días.
+ *                      Guardar cualquiera de los dos mata la campaña a mitad
+ *                      de camino, con un error que no menciona ninguna imagen.
  *
- * Y que un enlace pegado a mano pase de largo sin tocarse: ya es público.
+ * Y que la carpeta de cada plantilla se arme siempre igual: es lo que permite
+ * encontrar la imagen la próxima vez en vez de tener que subirla de nuevo.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,32 +31,13 @@ const {
   comoSubida,
   esSubida,
   rutaDeSubida,
-  enlaceParaMeta,
   comoSeLlama,
-  MINUTOS_DE_FIRMA,
+  carpetaDePlantilla,
   IMAGENES_DE_ENCABEZADO,
 } = await compilar("src/lib/whatsapp/imagenDeEncabezado.ts");
 
-const RUTA = "saliente/plantillas/9f3e-0000-4444";
+const RUTA = "saliente/plantillas/workshop_es/9f3e-0000-4444";
 const PEGADO = "https://ejemplo.test/ya-publicada.jpg";
-
-/** Un Supabase de mentira que anota qué le pidieron firmar. */
-const firmante = (respuesta) => {
-  const pedidos = [];
-  return {
-    pedidos,
-    storage: {
-      from(balde) {
-        return {
-          async createSignedUrl(ruta, segundos) {
-            pedidos.push({ balde, ruta, segundos });
-            return respuesta;
-          },
-        };
-      },
-    },
-  };
-};
 
 test("── LA MARCA DISTINGUE UNA SUBIDA DE UN ENLACE ──", () => {
   const valor = comoSubida(RUTA);
@@ -75,70 +57,42 @@ test("── LA MARCA DISTINGUE UNA SUBIDA DE UN ENLACE ──", () => {
   }
 });
 
-test("── UNA SUBIDA SE FIRMA CONTRA EL BUCKET ──", async () => {
-  const sb = firmante({ data: { signedUrl: "https://supabase.test/firmada?token=x" }, error: null });
-  const r = await enlaceParaMeta(sb, "whatsapp", comoSubida(RUTA));
-
-  assert.equal(r.ok, true);
-  assert.equal(r.enlace, "https://supabase.test/firmada?token=x");
-
-  // Y se firmó la ruta pelada, sin la marca: con la marca adentro el
-  // almacenamiento buscaría un archivo llamado «subida:saliente/…» que no existe.
-  assert.deepEqual(sb.pedidos, [
-    { balde: "whatsapp", ruta: RUTA, segundos: MINUTOS_DE_FIRMA * 60 },
-  ]);
-});
-
-test("── UN ENLACE PEGADO PASA DE LARGO ──", async () => {
-  const sb = firmante({ data: null, error: { message: "no tendría que llamarse" } });
-  const r = await enlaceParaMeta(sb, "whatsapp", PEGADO);
-
-  assert.equal(r.ok, true);
-  assert.equal(r.enlace, PEGADO);
-  // Lo importante: NO se fue a firmar nada. Ya es público.
-  assert.equal(sb.pedidos.length, 0);
-});
-
-test("── SIN NADA QUE FIRMAR, TAMPOCO SE LLAMA ──", async () => {
+test("── CADA PLANTILLA TIENE SU CARPETA, Y SIEMPRE LA MISMA ──", () => {
   /*
-   * Es el caso de una plantilla sin encabezado de archivo, que es la mayoría.
-   * Si acá se firmara igual, cada envío de una plantilla común pagaría una
-   * llamada al almacenamiento para nada.
+   * Es lo que permite encontrar la imagen la próxima vez. Si esto devolviera
+   * algo distinto en cada llamada, la imagen se guardaría bien y no se
+   * encontraría nunca —sin fallar, que es lo peor—.
    */
-  const sb = firmante({ data: null, error: { message: "no tendría que llamarse" } });
-  const r = await enlaceParaMeta(sb, "whatsapp", "");
-
-  assert.equal(r.ok, true);
-  assert.equal(r.enlace, "");
-  assert.equal(sb.pedidos.length, 0);
+  assert.equal(
+    carpetaDePlantilla("workshop_barra_dubai_es"),
+    "saliente/plantillas/workshop_barra_dubai_es",
+  );
+  assert.equal(
+    carpetaDePlantilla("workshop_barra_dubai_es"),
+    carpetaDePlantilla("workshop_barra_dubai_es"),
+  );
 });
 
-test("── SI LA FIRMA FALLA, SE DICE Y NO SE MANDA ──", async () => {
+test("── Y UN IDENTIFICADOR RARO NO PARTE LA RUTA ──", () => {
   /*
-   * Mandar igual sería mandarle a Meta una dirección vacía: rechaza el mensaje
-   * con «falta un parámetro», que manda a buscar el problema a la plantilla
-   * cuando el problema es el archivo.
+   * El id lo pone Meta y no hay ninguna promesa sobre qué caracteres trae. Uno
+   * con una barra partiría la ruta en dos carpetas y la imagen quedaría donde
+   * no se la busca; uno con «..» apuntaría fuera de «saliente/», que es la
+   * única carpeta donde el bucket deja escribir.
    */
-  const sb = firmante({ data: null, error: { message: "Object not found" } });
-  const r = await enlaceParaMeta(sb, "whatsapp", comoSubida(RUTA));
+  assert.equal(carpetaDePlantilla("a/b"), "saliente/plantillas/a_b");
+  assert.equal(carpetaDePlantilla("../otro"), "saliente/plantillas/___otro");
+  assert.equal(carpetaDePlantilla("con espacio"), "saliente/plantillas/con_espacio");
 
-  assert.equal(r.ok, false);
-  assert.match(r.error, /imagen/i);
-  assert.match(r.error, /Object not found/);
-});
-
-test("── UNA FIRMA VACÍA TAMBIÉN ES UN FALLO ──", async () => {
-  // El almacenamiento puede contestar sin error y sin dirección. Tratarlo como
-  // éxito mandaría `link: undefined`.
-  const sb = firmante({ data: { signedUrl: "" }, error: null });
-  const r = await enlaceParaMeta(sb, "whatsapp", comoSubida(RUTA));
-
-  assert.equal(r.ok, false);
+  // Y todas quedan colgando de «saliente/», que es lo que mira la política.
+  for (const id of ["a/b", "../otro", "x?y=1"]) {
+    assert.ok(carpetaDePlantilla(id).startsWith("saliente/plantillas/"));
+  }
 });
 
 test("── LA RUTA NO SE MUESTRA NUNCA COMO TEXTO ──", () => {
-  // «saliente/plantillas/9f3e…» no le dice nada a nadie y encima se vería
-  // dentro de la vista previa del mensaje.
+  // «saliente/plantillas/…» no le dice nada a nadie y encima se vería dentro de
+  // la vista previa del mensaje.
   assert.equal(comoSeLlama(comoSubida(RUTA)), "la imagen subida");
   assert.equal(comoSeLlama(PEGADO), PEGADO);
 });

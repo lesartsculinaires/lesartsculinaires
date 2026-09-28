@@ -3,10 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
-import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
+import { encabezadoParaMeta } from "@/lib/whatsapp/encabezadoParaMeta";
 import { enviarPlantilla, esDeLaCuenta, hayWhatsapp } from "@/lib/whatsapp/enviar";
 import { conValores } from "@/lib/whatsapp/huecos";
-import { enlaceParaMeta } from "@/lib/whatsapp/imagenDeEncabezado";
 import {
   componentesPara,
   loQueFalta,
@@ -391,7 +390,7 @@ export async function mandarTanda(
   let fallidos = 0;
 
   /*
-   * La imagen del encabezado, firmada UNA VEZ PARA TODA LA TANDA.
+   * La imagen del encabezado, SUBIDA A META una vez para toda la tanda.
    *
    * ==========================================================================
    * POR QUÉ ACÁ Y NO AL GUARDAR EL ENVÍO
@@ -400,17 +399,18 @@ export async function mandarTanda(
    * Lo que quedó guardado en `envios.valores` es la RUTA dentro del bucket, no
    * una dirección. Es la diferencia que hace que una campaña larga funcione:
    * una campaña de trescientos sale por tandas y puede quedar a medias durante
-   * horas —o días, si Meta corta por la calificación del número—. Una dirección
-   * firmada guardada en la columna se moriría a los diez minutos, y el resto de
-   * la lista fallaría con un error que no menciona ninguna firma.
+   * horas —o días, si Meta corta por la calificación del número—. Lo que Meta
+   * devuelve al subir una imagen dura treinta días, así que guardarlo en la
+   * columna dejaría la campaña muerta pasado ese plazo, con un error que no
+   * menciona ninguna imagen.
    *
-   * Con la ruta guardada, cada tanda firma la suya. Una sola vez para las cien
-   * de la tanda: firmar por destinatario serían cien llamadas de más al
-   * almacenamiento para obtener siempre lo mismo.
+   * Con la ruta guardada, cada tanda sube la suya. Una sola vez para las cien
+   * de la tanda: subirla por destinatario serían cien llamadas de más a Meta
+   * para obtener siempre lo mismo.
    */
   const laImagen = repartirValores(pide, valoresPara(valores, "Ejemplo")).archivoEncabezado;
-  const conImagen = await enlaceParaMeta(supabase, BALDE_WHATSAPP, laImagen ?? "");
-  if (!conImagen.ok) return { ...SIN_TANDA, ok: false, error: conImagen.error };
+  const subida = await encabezadoParaMeta(supabase, laImagen);
+  if (!subida.ok) return { ...SIN_TANDA, ok: false, error: subida.error };
 
   for (const d of (pendientes ?? []) as unknown as Record<string, unknown>[]) {
     const nombre = d.nombre == null ? null : String(d.nombre);
@@ -424,10 +424,7 @@ export async function mandarTanda(
       String(plantilla.idioma ?? "es"),
       // Los valores de cada quien: el cuerpo lleva su nombre, el resto de las
       // piezas es igual para todos.
-      componentesPara(pide, {
-        ...datos,
-        archivoEncabezado: datos.archivoEncabezado ? conImagen.enlace : null,
-      }),
+      componentesPara(pide, { ...datos, idEncabezado: subida.id }),
     );
 
     if (envio.ok) {

@@ -396,6 +396,7 @@ export function EnvioMasivo({
                             <ImagenDeEncabezado
                               valor={valores[i]?.de === "texto" ? valores[i].texto : ""}
                               etiqueta={h.etiqueta}
+                              plantillaId={plantilla.id}
                               yaAprobada={h.porOmision}
                               onValor={(nuevo) =>
                                 setValores((v) =>
