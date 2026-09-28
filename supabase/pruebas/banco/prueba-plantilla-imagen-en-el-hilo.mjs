@@ -31,6 +31,25 @@
  * eso es lo que hacía difícil de ver el defecto: «a veces sí y a veces no».
  *
  * ------------------------------------------------------------------------
+ * Y DESPUÉS: SE SUBE, NO SE PEGA
+ * ------------------------------------------------------------------------
+ *
+ * El primer arreglo pedía la dirección de la imagen. Andaba, pero supone tener
+ * la foto publicada con un enlace que Meta pueda bajar, y eso no es algo que
+ * una asesora tenga. Ahora hay un botón que sube el archivo.
+ *
+ * Eso parte el camino en dos mitades, y las dos se prueban acá:
+ *
+ *   EL NAVEGADOR SUBE   y guarda como valor la RUTA dentro del bucket, marcada
+ *                       con `subida:`. Esa ruta no se muestra en ningún lado.
+ *
+ *   EL SERVIDOR FIRMA   y le cambia la ruta por una dirección que caduca, justo
+ *                       antes de mandar. Lo que le llega a Meta tiene que ser
+ *                       esa dirección; si viajara la ruta marcada, Meta diría
+ *                       que no pudo bajar la imagen y el error no nombraría
+ *                       ninguna ruta.
+ *
+ * ------------------------------------------------------------------------
  * POR QUÉ LA PLANTILLA SE LLAMA `..._con_header`
  * ------------------------------------------------------------------------
  *
@@ -91,7 +110,24 @@ const es = (t, r, e) => {
 
 const TEL = "50370999044";
 const ID = "prueba_workshop_con_header_es";
-const LA_IMAGEN = "https://ejemplo.test/barra-dubai.jpg";
+const MARCA = "subida:";
+
+/*
+ * Un PNG de verdad, de un píxel.
+ *
+ * Tiene que ser un archivo real en el disco: la pantalla mira el tipo y el
+ * tamaño antes de subir nada —Meta sólo acepta JPG y PNG en un encabezado, y
+ * hasta 5 MB—, así que un archivo inventado se rechazaría antes de llegar a
+ * probar lo que importa.
+ */
+const ARCHIVO = path.join(os.tmpdir(), `barra-dubai.png`);
+fs.writeFileSync(
+  ARCHIVO,
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
 
 const limpiar = () => {
   sql(`
@@ -250,7 +286,7 @@ await p.waitForTimeout(2600);
 await p.locator('aside button[data-mod="Inbox"]').click();
 await p.waitForTimeout(2200);
 
-console.log("── 1. EL HILO PIDE LA DIRECCIÓN DE LA IMAGEN ──");
+console.log("── 1. EL HILO OFRECE SUBIR LA IMAGEN ──");
 await p.getByText("Imagen Prueba", { exact: false }).first().click();
 await p.waitForTimeout(1800);
 
@@ -258,52 +294,61 @@ await p.locator("main select").last().selectOption(ID);
 await p.waitForTimeout(900);
 await foto("1-elegida");
 
-const casilla = p.locator('main input[type="url"]');
-const hayCasilla = (await casilla.count()) === 1;
-es("APARECE UNA CASILLA PARA EL ENLACE", await casilla.count(), 1);
+
+const subir = p.getByRole("button", { name: "Subir imagen", exact: true });
+const haySubir = (await subir.count()) === 1;
+es("APARECE EL BOTÓN DE SUBIR IMAGEN", await subir.count(), 1);
 
 /*
- * Si la casilla no está, todo lo que sigue no tiene dónde escribir y Playwright
- * se quedaría treinta segundos esperándola por cada paso, para terminar
- * reventando con un error de espera que no nombra el defecto. Es justo lo que
- * hacía el código viejo. Se corta acá y se dice qué pasó.
+ * Si el botón no está, todo lo que sigue no tiene dónde elegir el archivo y
+ * Playwright se quedaría treinta segundos esperándolo en cada paso, para
+ * terminar reventando con un error de espera que no nombra el defecto. Es justo
+ * lo que hacía el código viejo. Se corta acá y se dice qué pasó.
  */
-if (!hayCasilla) {
-  await foto("1-sin-casilla");
+if (!haySubir) {
+  await foto("1-sin-boton");
   await nav.close();
   parar(PUERTO_META);
   limpiar();
   console.log(
-    "\nLa plantilla lleva imagen y la pantalla no pidió su dirección:\n" +
-      "sin esa casilla no hay forma de mandarla. El resto no se puede probar.",
+    "\nLa plantilla lleva imagen y la pantalla no ofreció subirla:\n" +
+      "sin ese botón no hay forma de mandarla. El resto no se puede probar.",
   );
   process.exit(1);
 }
 
-es(
-  "y dice que es el enlace de la imagen",
-  /enlace de la imagen/.test((await casilla.first().getAttribute("placeholder")) ?? ""),
-  true,
-);
-
 const boton = p.getByRole("button", { name: "Mandar", exact: true });
-es("el botón está, pero apagado hasta que se llene", await boton.first().isDisabled(), true);
+es("Mandar está apagado hasta que haya imagen", await boton.first().isDisabled(), true);
 
-console.log("\n── 2. CON EL ENLACE PUESTO, SALE ──");
-await casilla.first().fill(LA_IMAGEN);
-await p.waitForTimeout(700);
+console.log("\n── 2. SE ELIGE EL ARCHIVO Y SUBE ──");
+/*
+ * El selector del encabezado, no el del clip del chat.
+ *
+ * En la pantalla hay dos `input[type=file]`: éste y el de adjuntar un archivo
+ * a la conversación. Se elige por el grupo, que lleva el nombre del pedido.
+ */
+await p
+  .getByRole("group", { name: "La imagen del encabezado" })
+  .locator('input[type="file"]')
+  .setInputFiles(ARCHIVO);
+await p.waitForTimeout(2500);
+await foto("2-subida");
+
 es("ahora sí deja mandar", await boton.first().isDisabled(), false);
+es("se ve el nombre del archivo", /barra-dubai\.png/.test(await texto()), true);
+es("y el botón pasa a decir «Cambiar imagen»", await p.getByRole("button", { name: "Cambiar imagen", exact: true }).count(), 1);
 
 /*
- * La vista previa NO tiene que mostrar el enlace: la imagen va arriba, no
- * metida adentro de la frase. Antes, con el reparto hecho a mano, el enlace
- * se colaba en el primer hueco del cuerpo.
+ * Y NO se ve ninguna ruta del bucket.
+ *
+ * Lo que queda guardado como valor es «subida:saliente/plantillas/…». Si eso
+ * se mostrara, aparecería dentro de la vista previa del mensaje —o sea, en lo
+ * que quien manda cree que le va a llegar al cliente—.
  */
-es("el enlace no se metió dentro del texto", /ejemplo\.test/.test(await texto()), false);
+es("la ruta del bucket no se ve por ningún lado", /subida:|saliente\//.test(await texto()), false);
 
-await foto("2-con-el-enlace");
 await boton.first().click();
-await p.waitForTimeout(3000);
+await p.waitForTimeout(3500);
 
 console.log("\n── 3. LO QUE LE LLEGÓ A META ──");
 const llegaron = await recibidos();
@@ -314,7 +359,19 @@ const encabezado = piezas.find((c) => c?.type === "header");
 
 es("VA EL COMPONENTE DE ENCABEZADO", encabezado != null, true);
 es("como imagen", encabezado?.parameters?.[0]?.type, "image");
-es("CON LA DIRECCIÓN QUE SE ESCRIBIÓ", encabezado?.parameters?.[0]?.image?.link, LA_IMAGEN);
+
+/*
+ * Y lo que va es una dirección FIRMADA, no la ruta marcada.
+ *
+ * Es la mitad del arreglo que no se ve en la pantalla: el navegador guarda la
+ * ruta, y el servidor la cambia por una dirección que Meta pueda bajar justo
+ * antes de mandar. Si acá viajara «subida:saliente/…», Meta contestaría que no
+ * pudo bajar la imagen y el error no mencionaría ninguna ruta.
+ */
+const enlace = encabezado?.parameters?.[0]?.image?.link ?? "";
+es("LA DIRECCIÓN VA FIRMADA, NO LA RUTA", /^https?:\/\//.test(enlace), true);
+es("y no quedó la marca de subida", enlace.includes(MARCA), false);
+es("apunta al archivo que se subió", /\/storage\/v1\/object\//.test(enlace), true);
 
 /*
  * Y el cuerpo no va con un parámetro de más. Esta plantilla no tiene huecos:
@@ -333,6 +390,7 @@ await foto("3-mandada");
 
 await nav.close();
 parar(PUERTO_META);
+fs.rmSync(ARCHIVO, { force: true });
 limpiar();
 es(
   "no quedó basura de la prueba",

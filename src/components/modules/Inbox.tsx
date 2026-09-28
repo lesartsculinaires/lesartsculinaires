@@ -19,6 +19,7 @@ import {
   CARPETA_SALIENTE,
   TOPE_DOCUMENTO_BYTES,
 } from "@/lib/whatsapp/adjuntos";
+import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
@@ -286,6 +287,23 @@ export function Inbox({
    */
   const [porEnviar, setPorEnviar] = useState<{ archivo: File; url: string } | null>(null);
   const [nota, setNota] = useState(false);
+  /**
+   * El selector de plantillas, abierto a mano con la ventana todavía ABIERTA.
+   *
+   * ==========================================================================
+   * POR QUÉ HACE FALTA
+   * ==========================================================================
+   *
+   * Las plantillas aparecían sólo cuando ya no se podía escribir libre: eran la
+   * salida de emergencia de un callejón sin salida. Pero el equipo de ventas
+   * las usa también dentro de las 24 horas —la invitación al workshop con su
+   * imagen es la misma esté abierta o cerrada la ventana—, y ahí no había forma
+   * de mandarlas desde el chat: había que armar un envío masivo de una persona.
+   *
+   * Cerrada la ventana el selector se sigue mostrando solo, porque ahí es
+   * obligatorio y esconderlo detrás de un botón sería esconder la única salida.
+   */
+  const [plantillaAMano, setPlantillaAMano] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -574,6 +592,9 @@ export function Inbox({
   useEffect(() => {
     setAviso(null);
     setNota(false);
+    // El selector de plantillas también: abierto en un chat, quedarse abierto
+    // en el siguiente haría parecer que ahí hay algo a medio mandar.
+    setPlantillaAMano(false);
   }, [actual?.id]);
 
   /**
@@ -1915,9 +1936,18 @@ export function Inbox({
                           />
                         )}
                       </span>
+                      {/*
+                        El motivo, en castellano.
+                        ------------------------------------------------------
+                        Acá salía lo que manda Meta y nada más, o sea «Media
+                        upload error» en medio de una pantalla en español. Es de
+                        los errores que no dicen nada hasta que se sabe qué
+                        significan —Meta no pudo bajar la imagen del encabezado—
+                        y que se arreglan solos una vez dicho.
+                      */}
                       {m.error && (
                         <span style={{ display: "block", marginTop: 3, fontSize: 10.5, color: "#FFD9D4" }}>
-                          {m.error}
+                          {porQueNoLlego(m.error)}
                         </span>
                       )}
                       </div>
@@ -2023,6 +2053,98 @@ export function Inbox({
                     accent={accent}
                     onEnviado={onRefrescar}
                   />
+                )}
+              </div>
+            )}
+
+            {/*
+              Y con la ventana ABIERTA, detrás de un botón.
+              ------------------------------------------------------------------
+              Misma herramienta, otro momento: acá escribir libre funciona, así
+              que la plantilla es una opción más y no la única salida. Por eso va
+              plegada —desplegada empujaría la caja de texto hacia abajo en todos
+              los chats, para algo que se usa de vez en cuando— y por eso el
+              cuadro de escribir sigue estando arriba de todo.
+            */}
+            {!ventanaCerrada && canal.puede.plantillas === "si" && (
+              <div style={{ padding: "8px 12px 0" }}>
+                {plantillaAMano ? (
+                  <div
+                    style={{
+                      padding: "9px 11px",
+                      background: T.surface,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <strong style={{ fontSize: 11.5, color: T.muted }}>
+                        Usar una plantilla
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => setPlantillaAMano(false)}
+                        style={{
+                          padding: 0,
+                          fontSize: 11,
+                          color: T.faint,
+                          background: "none",
+                          border: "none",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                    <MandarPlantilla
+                      conversacionId={actual.id}
+                      plantillas={plantillas}
+                      accent={accent}
+                      onEnviado={() => {
+                        setPlantillaAMano(false);
+                        onRefrescar();
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPlantillaAMano(true)}
+                    style={{
+                      height: 26,
+                      padding: "0 10px",
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      color: T.muted,
+                      background: T.surface,
+                      border: `1px solid ${T.border}`,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {/*
+                      «Usar», no «Mandar».
+                      ------------------------------------------------------
+                      Este botón no manda nada: abre el selector. El que manda
+                      es el «Mandar» de adentro, una vez elegida la plantilla y
+                      llenados sus datos.
+
+                      Y además quedaban dos botones con la misma palabra a un
+                      centímetro de distancia —éste y el «Enviar» del cuadro de
+                      texto, que en modo nota dice «Guardar nota»—. La prueba de
+                      la nota interna lo agarró apretando el que no era; una
+                      persona apurada haría lo mismo.
+                    */}
+                    Usar una plantilla
+                  </button>
                 )}
               </div>
             )}

@@ -20,9 +20,24 @@
  *                         «false» y el mensaje se iba por WhatsApp, a un número
  *                         que no existe. Acá se comprueba que sale por Messenger.
  *
- *   CON QUÉ ETIQUETA      `HUMAN_AGENT`, que es la que abre los siete días en
- *                         vez de 24 horas. Sin ella, contestar el día tres se
- *                         rechaza, y ése es el caso normal de la escuela.
+ *   CON QUÉ SOBRE          Dentro de las 24 horas, `RESPONSE` y NADA MÁS.
+ *
+ *                         Esto decía lo contrario: exigía la etiqueta
+ *                         `HUMAN_AGENT` —la que estira la ventana a siete
+ *                         días— y sembraba el mensaje entrante con dos días de
+ *                         antigüedad para que hiciera falta.
+ *
+ *                         En producción eso dejó a la escuela sin poder
+ *                         contestar NADA por Messenger: esa etiqueta es un
+ *                         permiso que Meta da por App Review, la aplicación no
+ *                         lo tiene, y el envío rebotaba con «(#100) No se puede
+ *                         agregar la etiqueta HUMAN_AGENT» incluso un minuto
+ *                         después de que el cliente escribiera.
+ *
+ *                         El arreglo está hecho y su gemela de Instagram ya se
+ *                         corrigió; ésta quedó atrás, en rojo, asegurando la
+ *                         conducta que se sacó a propósito. Una prueba así es
+ *                         peor que no tenerla: manda a «arreglar» el arreglo.
  *
  * Necesita el banco armado, el Meta de mentira en 3144 y la aplicación en 3142
  * con `MESSENGER_GRAPH_URL=http://127.0.0.1:3144`, `MESSENGER_TOKEN` y
@@ -89,11 +104,10 @@ sql(`
     (telefono, identificador, usuario, nombre_perfil, canal, ultimo_mensaje_en, ultimo_texto)
   values
     (null, '${PSID}', null, '${PERFIL}', 'messenger',
-     now() - interval '2 days', 'Hola, vi la página');
+     now(), 'Hola, vi la página');
 
   insert into public.mensajes (conversacion_id, wa_id, direccion, tipo, texto, creado_en)
-  select c.id, 'm_SEED.' || c.id, 'entrante', 'text', 'Hola, vi la página',
-         now() - interval '2 days'
+  select c.id, 'm_SEED.' || c.id, 'entrante', 'text', 'Hola, vi la página', now()
     from public.conversaciones c where c.identificador = '${PSID}';
 `);
 
@@ -166,8 +180,21 @@ const envio = recibidos[recibidos.length - 1] ?? {};
 es("LE PEGÓ A LA PÁGINA, no a la cuenta de Instagram", envio.url, `/v21.0/${PAGINA}/messages`);
 es("A QUIÉN: el PSID de esa persona", envio.cuerpo?.recipient?.id, PSID);
 es("QUÉ: lo que escribió la asesora", envio.cuerpo?.message?.text, LA_RESPUESTA);
-es("CON LA ETIQUETA QUE ABRE LOS SIETE DÍAS", envio.cuerpo?.tag, "HUMAN_AGENT");
-es("y el tipo que la acompaña", envio.cuerpo?.messaging_type, "MESSAGE_TAG");
+/*
+ * SIN ETIQUETA, Y ES LO CORRECTO.
+ *
+ * La persona acaba de escribir, así que la ventana de 24 horas está abierta y
+ * el mensaje sale como `RESPONSE`, que no pide ningún permiso. El Meta del
+ * banco rechaza `HUMAN_AGENT` igual que el de verdad, así que si alguien
+ * vuelve a mandarla de más, esto se pone en rojo.
+ *
+ * El otro lado de la regla —pasadas las 24 horas la etiqueta es la única forma
+ * de escribir, y Meta la rechaza hasta que aprueben el permiso— se prueba en
+ * `prueba-instagram-contestar.mjs`, que comparte este código. Acá se mide lo
+ * que es propio de Messenger: a qué página le pega y por qué canal sale.
+ */
+es("SIN LA ETIQUETA: la persona acaba de escribir", envio.cuerpo?.tag, undefined);
+es("y sale como respuesta normal", envio.cuerpo?.messaging_type, "RESPONSE");
 
 // ══════════════════════════════════════════════════════════════════════════
 console.log("\n── 3. Y QUEDÓ EN EL HILO ──");

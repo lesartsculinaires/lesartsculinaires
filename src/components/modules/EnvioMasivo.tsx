@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { mandarTanda, prepararEnvio, type Preparado } from "@/app/envios-actions";
+import { ImagenDeEncabezado } from "@/components/ui/ImagenDeEncabezado";
 import { aprobadas } from "@/components/ui/SelectorPlantilla";
 import { MARGEN, POR_QUE, TOPE_DIARIO, cuantosQuedan, type Valor } from "@/lib/envios";
 import { T } from "@/lib/theme";
@@ -108,10 +109,19 @@ export function EnvioMasivo({
     // Depende del id y no del arreglo: `huecos` se recalcula en cada pintada.
   }, [elegida]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /*
+   * Las opcionales no frenan la campaña.
+   *
+   * Hoy es una sola: la imagen del encabezado cuando Meta ya tiene una
+   * aprobada. Dejándola vacía se manda ésa, así que exigirla dejaba el botón
+   * apagado para una plantilla que se puede mandar tal cual.
+   */
   const completa =
     plantilla != null &&
     valores.length === huecos.length &&
-    valores.every((v) => v.de === "nombre" || v.texto.trim() !== "");
+    valores.every(
+      (v, i) => huecos[i]?.opcional || v.de === "nombre" || v.texto.trim() !== "",
+    );
 
   /*
    * Cuántas conversaciones quedan hoy, y si esta campaña se pasa.
@@ -374,18 +384,26 @@ export function EnvioMasivo({
                           dirección que no existe.
                         */}
                         {h.esArchivo ? (
-                          <input
-                            value={valores[i]?.de === "texto" ? valores[i].texto : ""}
-                            onChange={(e) =>
-                              setValores((v) =>
-                                v.map((x, k) =>
-                                  k === i ? { de: "texto", texto: e.target.value } : x,
-                                ),
-                              )
-                            }
-                            placeholder="https://…"
-                            style={campo}
-                          />
+                          /*
+                            Y se elige, no se escribe. Acá había una casilla de
+                            enlace: pedía la dirección pública de la imagen, que
+                            quien arma la campaña no tiene. Lo que tiene es el
+                            archivo. Sube al bucket y lo que queda guardado en
+                            `envios.valores` es la ruta; la dirección que ve Meta
+                            se firma en cada tanda, del lado del servidor.
+                          */
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <ImagenDeEncabezado
+                              valor={valores[i]?.de === "texto" ? valores[i].texto : ""}
+                              etiqueta={h.etiqueta}
+                              yaAprobada={h.porOmision}
+                              onValor={(nuevo) =>
+                                setValores((v) =>
+                                  v.map((x, k) => (k === i ? { de: "texto", texto: nuevo } : x)),
+                                )
+                              }
+                            />
+                          </div>
                         ) : (
                           <>
                         <select

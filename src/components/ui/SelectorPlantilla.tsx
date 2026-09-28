@@ -1,5 +1,6 @@
 "use client";
 
+import { ImagenDeEncabezado } from "@/components/ui/ImagenDeEncabezado";
 import { conValores } from "@/lib/whatsapp/huecos";
 import { pedidosDe, repartirValores } from "@/lib/whatsapp/piezas";
 import { T } from "@/lib/theme";
@@ -45,7 +46,17 @@ export const listaParaMandar = (
   valores: readonly string[],
 ): boolean =>
   plantilla != null &&
-  pedidosDe(plantilla.pide).every((_, i) => (valores[i] ?? "").trim() !== "");
+  /*
+   * Los opcionales no frenan.
+   *
+   * Hoy es uno solo: la imagen del encabezado cuando Meta ya tiene una
+   * aprobada. Exigirla igual dejaba el botón apagado para una plantilla que se
+   * puede mandar tal cual —que es de lo que se quejó la escuela: «vuelve a
+   * pedir la imagen que ya está en la plantilla»—.
+   */
+  pedidosDe(plantilla.pide).every(
+    (pedido, i) => pedido.opcional || (valores[i] ?? "").trim() !== "",
+  );
 
 /**
  * El cuerpo con lo que se escribió puesto en su lugar.
@@ -133,39 +144,58 @@ export function SelectorPlantilla({
             `pedidosDe` las devuelve todas en el orden en que Meta las espera,
             y `repartirValores` las vuelve a separar del otro lado.
           */}
-          {pedidosDe(plantilla.pide).map((pedido, i) => (
-            <input
-              key={`${pedido.pieza}-${i}`}
-              value={valores[i] ?? ""}
-              onChange={(e) => {
-                const copia = [...valores];
-                copia[i] = e.target.value;
-                onValores(copia);
-              }}
-              /*
-               * En una dirección de archivo se pide un enlace, no una palabra.
-               *
-               * Es la misma distinción que hace el envío masivo: «el nombre del
-               * cliente» no significa nada en el enlace de una imagen.
-               */
-              type={pedido.esArchivo ? "url" : "text"}
-              placeholder={pedido.esArchivo ? "https://… (enlace de la imagen)" : pedido.etiqueta}
-              aria-label={pedido.etiqueta}
-              title={pedido.etiqueta}
-              style={{
-                display: "block",
-                width: "100%",
-                height: 28,
-                marginBottom: 5,
-                padding: "0 8px",
-                fontSize: 12,
-                border: `1px solid ${T.border}`,
-                borderRadius: 6,
-                background: T.surface,
-                color: T.ink,
-              }}
-            />
-          ))}
+          {pedidosDe(plantilla.pide).map((pedido, i) => {
+            const poner = (v: string) => {
+              const copia = [...valores];
+              copia[i] = v;
+              onValores(copia);
+            };
+
+            /*
+             * Un archivo se elige, no se escribe.
+             *
+             * Acá había una casilla de enlace. Pedía la dirección pública de la
+             * imagen, que es algo que quien manda no tiene: lo que tiene es el
+             * archivo —el mismo que se le subió a Meta al crear la plantilla—.
+             * `ImagenDeEncabezado` lo sube y deja la ruta como valor, y adentro
+             * sigue ofreciendo pegar una dirección para quien sí la tenga.
+             */
+            if (pedido.esArchivo) {
+              return (
+                <ImagenDeEncabezado
+                  key={`${pedido.pieza}-${i}`}
+                  valor={valores[i] ?? ""}
+                  etiqueta={pedido.etiqueta}
+                  yaAprobada={pedido.porOmision}
+                  onValor={poner}
+                />
+              );
+            }
+
+            return (
+              <input
+                key={`${pedido.pieza}-${i}`}
+                value={valores[i] ?? ""}
+                onChange={(e) => poner(e.target.value)}
+                type="text"
+                placeholder={pedido.etiqueta}
+                aria-label={pedido.etiqueta}
+                title={pedido.etiqueta}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  height: 28,
+                  marginBottom: 5,
+                  padding: "0 8px",
+                  fontSize: 12,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 6,
+                  background: T.surface,
+                  color: T.ink,
+                }}
+              />
+            );
+          })}
 
           {/*
             Cómo va a quedar.

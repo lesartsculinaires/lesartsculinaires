@@ -124,6 +124,22 @@ const GENTE = [
   { nombre: "Dani Piezas PRUEBA", tel: "50370800558" },
 ];
 
+/*
+ * Un PNG de verdad, de un píxel, para la campaña con imagen.
+ *
+ * Tiene que existir en el disco: la pantalla mira el tipo y el tamaño antes de
+ * subir nada —en un encabezado Meta sólo acepta JPG y PNG, y hasta 5 MB—, así
+ * que un archivo inventado se rechazaría antes de llegar a probar lo que importa.
+ */
+const UNA_IMAGEN = path.join(os.tmpdir(), "piezas-encabezado.png");
+fs.writeFileSync(
+  UNA_IMAGEN,
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
+
 const limpiar = () =>
   sql(`
     delete from public.envio_destinatarios where envio_id in
@@ -438,23 +454,92 @@ try {
   // ══════════════════════════════════════════════════════════════════════
   //
   // Una plantilla con imagen de encabezado necesita esa imagen en cada envío.
-  // La pantalla pide la dirección en vez de dejar mandar algo que Meta va a
-  // rechazar trescientas veces seguidas.
+  // La pantalla la pide en vez de dejar mandar algo que Meta va a rechazar
+  // trescientas veces seguidas.
+  //
+  // SE PIDE EL ARCHIVO, NO SU DIRECCIÓN. Antes acá había una casilla de enlace.
+  // Andaba, pero supone tener la foto publicada con una dirección que Meta pueda
+  // bajar, y eso no es algo que quien arma la campaña tenga: lo que tiene es el
+  // archivo. Ahora hay un botón que lo sube.
   {
     const dlg = await armarCampana("PRUEBA Piezas con imagen", CON_IMAGEN, GENTE[1].nombre);
     await foto("4-imagen");
     const t = (await dlg.innerText()).replace(/\s+/g, " ");
 
-    es("PIDE LA DIRECCIÓN DE LA IMAGEN", /Dirección de la imagen del encabezado/.test(t), true);
+    es("NOMBRA LA IMAGEN DEL ENCABEZADO", /La imagen del encabezado/.test(t), true);
     es(
-      "con una casilla de enlace, no un selector",
-      await dlg.locator('input[placeholder="https://…"]').count(),
+      "CON UN BOTÓN PARA SUBIRLA",
+      await dlg.getByRole("button", { name: "Subir imagen", exact: true }).count(),
+      1,
+    );
+    // El camino de atrás sigue estando, plegado, para quien ya tenga la
+    // dirección publicada.
+    es(
+      "y ofrece pegar una dirección, para quien la tenga",
+      await dlg.getByRole("button", { name: "o pegar una dirección", exact: true }).count(),
       1,
     );
     es(
       "y no deja mandar hasta que se llene",
       await p.getByRole("button", { name: /^Mandar a 1$/ }).isDisabled(),
       true,
+    );
+
+    /*
+     * Y ahora se sube de verdad y se manda.
+     * ----------------------------------------------------------------------
+     * Comprobar sólo que la pantalla la pide dejaba afuera la mitad que más
+     * calla: lo que queda guardado en `envios.valores` es la RUTA dentro del
+     * bucket —«subida:saliente/plantillas/…»—, y el servidor la cambia por una
+     * dirección firmada recién al mandar cada tanda.
+     *
+     * Se guarda la ruta y no la dirección porque una campaña de trescientos
+     * sale por tandas y puede quedar a medias durante horas. Una dirección
+     * firmada guardada en la columna se moriría a los diez minutos y el resto
+     * de la lista fallaría con un error que no menciona ninguna firma.
+     */
+    await dlg.locator('input[type="file"]').setInputFiles(UNA_IMAGEN);
+    await p.waitForTimeout(2500);
+    await foto("4b-imagen-subida");
+
+    es(
+      "SUBIDA LA IMAGEN, YA DEJA MANDAR",
+      await p.getByRole("button", { name: /^Mandar a 1$/ }).isDisabled(),
+      false,
+    );
+    es(
+      "la ruta del bucket no se ve en la pantalla",
+      /subida:|saliente\//.test((await dlg.innerText()).replace(/\s+/g, " ")),
+      false,
+    );
+
+    await p.getByRole("button", { name: /^Mandar a 1$/ }).click();
+    await p.waitForTimeout(7000);
+    await foto("4c-imagen-mandada");
+
+    es("EL ENVÍO SALE", /1 enviados/.test(await texto()), true);
+
+    const conImagen = await loQueLlegoAMeta();
+    const piezas = conImagen[conImagen.length - 1]?.cuerpo?.template?.components ?? [];
+    const encabezado = piezas.find((c) => c.type === "header");
+
+    es("A META LE LLEGA EL ENCABEZADO", encabezado != null, true);
+    es("como imagen", encabezado?.parameters?.[0]?.type, "image");
+
+    const enlace = encabezado?.parameters?.[0]?.image?.link ?? "";
+    es("CON UNA DIRECCIÓN FIRMADA, NO LA RUTA", /^https?:\/\//.test(enlace), true);
+    es("y sin la marca de subida", enlace.includes("subida:"), false);
+
+    // Y en la columna sí quedó la ruta: es lo que hace que la tanda siguiente
+    // pueda firmar la suya.
+    es(
+      "PERO EN EL ENVÍO QUEDÓ GUARDADA LA RUTA",
+      sql(`
+        select count(*) from public.envios
+         where nombre = 'PRUEBA Piezas con imagen'
+           and valores::text like '%subida:saliente/plantillas/%';
+      `),
+      "1",
     );
   }
 

@@ -6,6 +6,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla } from "@/lib/whatsapp/enviar";
 import { conValores } from "@/lib/whatsapp/huecos";
+import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
+import { enlaceParaMeta } from "@/lib/whatsapp/imagenDeEncabezado";
 import { hayWaba, panelDeMeta, traerPlantillas } from "@/lib/whatsapp/plantillas";
 import type { Plantilla } from "@/lib/types";
 import {
@@ -238,10 +240,19 @@ export async function enviarPlantillaAConversacion(
    */
   const datos = repartirValores(pide, valores);
 
-  // Cuántas casillas pide de verdad: encabezado, cuerpo y botones. Contar sólo
-  // los huecos del texto dejaba pasar un envío al que le faltaba la imagen.
-  const faltan = pedidosDe(pide).length;
-  const dados = valores.filter((v) => v.trim() !== "").length;
+  /*
+   * Cuántas casillas hay que llenar de verdad.
+   *
+   * Son las de las tres piezas —encabezado, cuerpo y botones—, no sólo los
+   * huecos del texto: contar sólo el texto dejaba pasar un envío al que le
+   * faltaba la imagen.
+   *
+   * Y sin las opcionales. La imagen del encabezado no cuenta cuando Meta ya
+   * tiene una aprobada: ahí no falta nada, se manda ésa.
+   */
+  const pedidos = pedidosDe(pide);
+  const faltan = pedidos.filter((p) => !p.opcional).length;
+  const dados = pedidos.filter((p, i) => !p.opcional && (valores[i] ?? "").trim() !== "").length;
   if (dados < faltan) {
     return { ok: false, error: `Faltan datos: la plantilla pide ${faltan} y se dieron ${dados}.` };
   }
@@ -249,11 +260,30 @@ export async function enviarPlantillaAConversacion(
   const falta = loQueFalta(pide, datos);
   if (falta) return { ok: false, error: falta };
 
+  /*
+   * La imagen del encabezado, firmada recién ahora.
+   *
+   * Lo que llegó de la pantalla es la RUTA dentro del bucket, no una dirección:
+   * el bucket es privado y se queda así. Acá se le firma a Meta una dirección
+   * que caduca en diez minutos, Meta baja la imagen mientras contesta la
+   * llamada, y después esa dirección no le sirve a nadie.
+   *
+   * Un enlace pegado a mano pasa de largo: ya es público y no hay nada que
+   * firmar.
+   */
+  const conImagen = await enlaceParaMeta(supabase, BALDE_WHATSAPP, datos.archivoEncabezado ?? "");
+  if (!conImagen.ok) return { ok: false, error: conImagen.error };
+
+  const paraMandar = {
+    ...datos,
+    archivoEncabezado: datos.archivoEncabezado ? conImagen.enlace : null,
+  };
+
   const envio = await enviarPlantilla(
     String(conv.telefono),
     String(plantilla.nombre),
     String(plantilla.idioma),
-    componentesPara(pide, datos),
+    componentesPara(pide, paraMandar),
   );
 
   if (!envio.ok) return { ok: false, error: envio.error };

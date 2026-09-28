@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
+import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
 import { enviarPlantilla, esDeLaCuenta, hayWhatsapp } from "@/lib/whatsapp/enviar";
 import { conValores } from "@/lib/whatsapp/huecos";
+import { enlaceParaMeta } from "@/lib/whatsapp/imagenDeEncabezado";
 import {
   componentesPara,
   loQueFalta,
@@ -388,9 +390,32 @@ export async function mandarTanda(
   let enviados = 0;
   let fallidos = 0;
 
+  /*
+   * La imagen del encabezado, firmada UNA VEZ PARA TODA LA TANDA.
+   *
+   * ==========================================================================
+   * POR QUÉ ACÁ Y NO AL GUARDAR EL ENVÍO
+   * ==========================================================================
+   *
+   * Lo que quedó guardado en `envios.valores` es la RUTA dentro del bucket, no
+   * una dirección. Es la diferencia que hace que una campaña larga funcione:
+   * una campaña de trescientos sale por tandas y puede quedar a medias durante
+   * horas —o días, si Meta corta por la calificación del número—. Una dirección
+   * firmada guardada en la columna se moriría a los diez minutos, y el resto de
+   * la lista fallaría con un error que no menciona ninguna firma.
+   *
+   * Con la ruta guardada, cada tanda firma la suya. Una sola vez para las cien
+   * de la tanda: firmar por destinatario serían cien llamadas de más al
+   * almacenamiento para obtener siempre lo mismo.
+   */
+  const laImagen = repartirValores(pide, valoresPara(valores, "Ejemplo")).archivoEncabezado;
+  const conImagen = await enlaceParaMeta(supabase, BALDE_WHATSAPP, laImagen ?? "");
+  if (!conImagen.ok) return { ...SIN_TANDA, ok: false, error: conImagen.error };
+
   for (const d of (pendientes ?? []) as unknown as Record<string, unknown>[]) {
     const nombre = d.nombre == null ? null : String(d.nombre);
     const suyos = valoresPara(valores, nombre);
+    const datos = repartirValores(pide, suyos);
 
     const envio = await enviarPlantilla(
       // Ya viene normalizado de cuando se armó el envío.
@@ -399,7 +424,10 @@ export async function mandarTanda(
       String(plantilla.idioma ?? "es"),
       // Los valores de cada quien: el cuerpo lleva su nombre, el resto de las
       // piezas es igual para todos.
-      componentesPara(pide, repartirValores(pide, suyos)),
+      componentesPara(pide, {
+        ...datos,
+        archivoEncabezado: datos.archivoEncabezado ? conImagen.enlace : null,
+      }),
     );
 
     if (envio.ok) {

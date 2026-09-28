@@ -70,6 +70,32 @@ export interface QuePide {
     huecos: Hueco[];
     /** El encabezado es una imagen, un video o un documento. */
     esArchivo: boolean;
+    /**
+     * La imagen que YA quedó aprobada en Meta, cuando se puede reusar.
+     *
+     * ========================================================================
+     * POR QUÉ ESTO EXISTE
+     * ========================================================================
+     *
+     * Meta exige el archivo del encabezado en cada envío: la plantilla guarda
+     * el diseño, no la foto. Eso es cierto y no cambia.
+     *
+     * Pero al aprobar la plantilla Meta se queda con la imagen de muestra, y
+     * cuando se piden las plantillas la devuelve en `example.header_handle`.
+     * En las versiones actuales de la API eso es una dirección de su propio
+     * CDN, pública y que Meta puede bajar sin problema.
+     *
+     * Si está, el CRM la usa sola y no le pide nada a nadie: es exactamente lo
+     * que espera quien mira la plantilla en Meta y ve la foto ahí puesta.
+     * Pedirle la imagen de nuevo, para mandar la misma, es trabajo inventado —y
+     * es de donde salió el «Media upload error»: al no tenerla a mano, se pegó
+     * una dirección que Meta no podía bajar—.
+     *
+     * Cuando `header_handle` trae la forma vieja —un identificador de subida
+     * como `4::aW1n…`, que no es una dirección— esto queda en null y entonces
+     * sí hay que subir la imagen.
+     */
+    imagenAprobada: string | null;
   } | null;
   /** Los huecos del cuerpo. Es lo único que el CRM sabía pedir. */
   cuerpo: Hueco[];
@@ -87,6 +113,45 @@ const lista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const texto = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+
+/**
+ * La imagen de muestra que Meta guardó al aprobar la plantilla.
+ *
+ * ============================================================================
+ * LAS DOS FORMAS DE `header_handle`, Y POR QUÉ SÓLO SIRVE UNA
+ * ============================================================================
+ *
+ * Meta devuelve el encabezado de archivo con un `example.header_handle`, y ahí
+ * puede venir una de dos cosas:
+ *
+ *   UNA DIRECCIÓN     `https://scontent.whatsapp.net/…`. Es su propio CDN,
+ *                     público, y Meta lo puede bajar sin permiso. Sirve tal
+ *                     cual como imagen del envío.
+ *
+ *   UN IDENTIFICADOR  `4::aW1n…`. Es el comprobante de la subida que se hizo al
+ *                     CREAR la plantilla, y no es una dirección: mandarlo como
+ *                     si lo fuera termina en «Media upload error», que es
+ *                     exactamente el error que se está arreglando.
+ *
+ * Por eso se exige que empiece con http. Distinguir por la forma y no por la
+ * versión de la API es lo que hace que esto siga andando cuando Meta cambie.
+ *
+ * `header_url` es la otra clave con que aparece según la versión; se miran las
+ * dos porque la que falte devuelve null y no cuesta nada.
+ */
+function laDeMeta(ejemplo: unknown): string | null {
+  const e = obj(ejemplo);
+  if (!e) return null;
+
+  const candidatos = [...lista(e.header_handle), ...lista(e.header_url)];
+
+  for (const c of candidatos) {
+    const dir = texto(c);
+    if (dir && /^https?:\/\//i.test(dir)) return dir;
+  }
+
+  return null;
+}
 
 /**
  * Lee la definición que dio Meta y dice qué hace falta para mandarla.
@@ -144,6 +209,7 @@ export function quePide(
         formato,
         huecos: esArchivo ? [] : huecosDe(texto(parte.text)),
         esArchivo,
+        imagenAprobada: esArchivo ? laDeMeta(parte.example) : null,
       };
       continue;
     }
@@ -230,7 +296,9 @@ export function loQueFalta(pide: QuePide, dio: DatosDeLaPlantilla): string | nul
     };
     return (
       `Esta plantilla lleva ${comoSeLlama[pide.encabezado.formato] ?? "un archivo"} de ` +
-      "encabezado, y hay que darle su dirección para poder mandarla."
+      "encabezado. Hay que subirla con el botón «Subir imagen» antes de mandarla: " +
+      "la que se le subió a Meta al crear la plantilla es sólo la muestra de la revisión, " +
+      "y no viaja con el mensaje."
     );
   }
 
@@ -471,21 +539,47 @@ export interface Pedido {
    * ofrecer «el nombre del cliente», que en una imagen no significa nada.
    */
   esArchivo: boolean;
+  /**
+   * Se puede mandar sin llenarlo.
+   *
+   * Hoy es un solo caso: la imagen del encabezado cuando Meta ya tiene una
+   * aprobada y el CRM la puede reusar. La casilla se sigue ofreciendo —porque a
+   * veces se quiere mandar OTRA imagen— pero no frena el envío.
+   *
+   * El pedido NO se saca de la lista aunque no haga falta. `pedidosDe` y
+   * `repartirValores` son inversos y se cuentan por posición: sacando uno de un
+   * lado y no del otro, el nombre del cliente terminaría en el botón y la fecha
+   * en el texto, sin que nada falle. Se marca, no se quita.
+   */
+  opcional: boolean;
+  /** Lo que se va a mandar si se deja en blanco. Hoy, la imagen ya aprobada. */
+  porOmision: string | null;
 }
 
 export function pedidosDe(pide: QuePide): Pedido[] {
   const salida: Pedido[] = [];
 
   if (pide.encabezado?.esArchivo) {
+    /*
+     * Se nombra la COSA, no su dirección.
+     *
+     * Decía «Dirección de la imagen del encabezado», de cuando había que pegar
+     * un enlace. Ahora hay un botón que sube el archivo, y pedir una dirección
+     * describe el camino de atrás como si fuera el principal.
+     */
     const como: Record<string, string> = {
-      IMAGE: "Dirección de la imagen del encabezado",
-      VIDEO: "Dirección del video del encabezado",
-      DOCUMENT: "Dirección del documento del encabezado",
+      IMAGE: "La imagen del encabezado",
+      VIDEO: "El video del encabezado",
+      DOCUMENT: "El documento del encabezado",
     };
     salida.push({
-      etiqueta: como[pide.encabezado.formato] ?? "Dirección del archivo del encabezado",
+      etiqueta: como[pide.encabezado.formato] ?? "El archivo del encabezado",
       pieza: "encabezado",
       esArchivo: true,
+      // Si Meta ya tiene la imagen aprobada, no hay nada que pedir: se manda
+      // ésa. La casilla queda por si se quiere mandar otra.
+      opcional: pide.encabezado.imagenAprobada != null,
+      porOmision: pide.encabezado.imagenAprobada,
     });
   } else {
     for (const h of pide.encabezado?.huecos ?? []) {
@@ -493,12 +587,20 @@ export function pedidosDe(pide: QuePide): Pedido[] {
         etiqueta: `Encabezado — ${h.etiqueta}`,
         pieza: "encabezado",
         esArchivo: false,
+        opcional: false,
+        porOmision: null,
       });
     }
   }
 
   for (const h of pide.cuerpo) {
-    salida.push({ etiqueta: h.etiqueta, pieza: "cuerpo", esArchivo: false });
+    salida.push({
+      etiqueta: h.etiqueta,
+      pieza: "cuerpo",
+      esArchivo: false,
+      opcional: false,
+      porOmision: null,
+    });
   }
 
   for (const b of pide.botones) {
@@ -509,6 +611,8 @@ export function pedidosDe(pide: QuePide): Pedido[] {
           : `Botón «${b.etiqueta}» — la parte variable de su dirección`,
       pieza: "boton",
       esArchivo: false,
+      opcional: false,
+      porOmision: null,
     });
   }
 
@@ -525,7 +629,21 @@ export function pedidosDe(pide: QuePide): Pedido[] {
 export function repartirValores(pide: QuePide, planos: readonly string[]): DatosDeLaPlantilla {
   let i = 0;
 
-  const archivoEncabezado = pide.encabezado?.esArchivo ? (planos[i++] ?? null) : null;
+  /*
+   * La imagen: lo que se eligió, y si no, la que Meta ya tiene aprobada.
+   *
+   * El respaldo va ACÁ y en ningún otro lado. `repartirValores` es el único
+   * paso por el que pasan todos los caminos —el hilo, el chat nuevo, cada tanda
+   * del envío masivo— así que poniéndolo acá las tres pantallas mandan lo
+   * mismo. Repartido entre ellas, una se olvidaría y esa plantilla volvería a
+   * pedir una imagen que no hace falta.
+   */
+  const puesta = pide.encabezado?.esArchivo ? (planos[i++] ?? "") : "";
+  const archivoEncabezado = pide.encabezado?.esArchivo
+    ? puesta.trim() !== ""
+      ? puesta
+      : (pide.encabezado.imagenAprobada ?? null)
+    : null;
 
   const encabezado = pide.encabezado?.esArchivo
     ? []

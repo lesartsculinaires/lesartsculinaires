@@ -115,7 +115,35 @@ const servidor = http.createServer((req, res) => {
 
 /** Las tres partes del almacenamiento de mentira. */
 function responder(url, req, res, permisos) {
+  /*
+   * Firmar una dirección, en las DOS formas que tiene Supabase.
+   *
+   * --------------------------------------------------------------------------
+   * ESTO ESTABA MAL Y NO SE NOTABA
+   * --------------------------------------------------------------------------
+   *
+   * Contestaba siempre un ARREGLO, que es lo que devuelve `createSignedUrls`
+   * —en plural, la que firma varias de una—. La aplicación usa la de a una,
+   * `createSignedUrl`, que espera un OBJETO con `signedURL`. Leyendo un arreglo
+   * como objeto, esa clave sale `undefined`, y `supabase-js` arma con eso la
+   * dirección «…/storage/v1undefined» sin devolver ningún error.
+   *
+   * O sea: el banco daba por buena una firma rota. Todo lo que manda archivos
+   * —las fotos del Inbox, las notas de voz, la imagen de encabezado de una
+   * plantilla— salía en verde acá mandándole a Meta una dirección que no existe,
+   * porque el Meta de mentira acepta cualquier cosa. En producción Meta la
+   * intenta bajar y falla.
+   *
+   * Y el prefijo tampoco iba: `supabase-js` le pega adelante la dirección del
+   * almacenamiento, así que mandando `/storage/v1/object/…` quedaba repetido y
+   * el archivo no se encontraba.
+   *
+   * La diferencia entre las dos formas es la ruta: en plural se firma contra el
+   * bucket y las rutas van en el cuerpo; en singular la ruta va en la dirección.
+   */
   if (url.pathname.startsWith("/storage/v1/object/sign/")) {
+    const deLaDireccion = url.pathname.slice("/storage/v1/object/sign/".length);
+
     let cuerpo = "";
     req.on("data", (t) => (cuerpo += t));
     req.on("end", () => {
@@ -125,16 +153,25 @@ function responder(url, req, res, permisos) {
       } catch {
         // Un cuerpo ilegible se contesta como «ninguna ruta».
       }
+
+      const firma = (ruta) => `/object/inventado/${encodeURIComponent(ruta)}`;
+
       res.writeHead(200, { ...permisos, "content-type": "application/json" });
-      res.end(
-        JSON.stringify(
-          rutas.map((ruta) => ({
-            error: null,
-            path: ruta,
-            signedURL: `/storage/v1/object/inventado/${encodeURIComponent(ruta)}`,
-          })),
-        ),
-      );
+
+      // Con `paths` en el cuerpo es la de a varias: contesta un arreglo.
+      if (rutas.length > 0) {
+        res.end(
+          JSON.stringify(
+            rutas.map((ruta) => ({ error: null, path: ruta, signedURL: firma(ruta) })),
+          ),
+        );
+        return;
+      }
+
+      // Si no, es la de a una: la ruta viene en la dirección —después del
+      // bucket— y se contesta un objeto.
+      const ruta = deLaDireccion.split("/").slice(1).join("/");
+      res.end(JSON.stringify({ signedURL: firma(decodeURIComponent(ruta)) }));
     });
     return;
   }
