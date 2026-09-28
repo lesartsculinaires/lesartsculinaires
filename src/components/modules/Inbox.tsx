@@ -12,6 +12,7 @@ import {
   noEraLead,
   responderConversacion,
   urlsDeMedia,
+  contactosDeMensajes,
 } from "@/app/inbox-actions";
 import {
   ACEPTA_ADJUNTOS,
@@ -20,6 +21,8 @@ import {
   TOPE_DOCUMENTO_BYTES,
 } from "@/lib/whatsapp/adjuntos";
 import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
+import type { ContactoCompartido } from "@/lib/whatsapp/contactos";
+import { ContactoDelMensaje } from "@/components/modules/ContactoDelMensaje";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
@@ -544,6 +547,34 @@ export function Inbox({
    * alguien llegara a ese hilo las firmas ya habrían caducado.
    */
   const [urls, setUrls] = useState<Record<string, string>>({});
+
+  /**
+   * Los contactos compartidos del hilo abierto.
+   *
+   * Se piden aparte del hilo porque salen de `mensajes.payload` —el cuerpo
+   * entero que mandó Meta— y la consulta de la bandeja trae hasta cuatro mil
+   * mensajes: sumarlo ahí multiplicaría lo que viaja en cada refresco para un
+   * dato que aparece en uno de cada mil. Es el mismo criterio que las
+   * direcciones firmadas de los archivos.
+   */
+  const [contactos, setContactos] = useState<Record<number, ContactoCompartido[]>>({});
+
+  useEffect(() => {
+    const ids = delHilo.filter((m) => m.tipo === "contacts").map((m) => m.id);
+
+    if (ids.length === 0) {
+      setContactos({});
+      return;
+    }
+
+    let vigente = true;
+    void contactosDeMensajes(ids).then((r) => {
+      if (vigente) setContactos(r);
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [delHilo]);
 
   useEffect(() => {
     const rutas = delHilo
@@ -1920,10 +1951,18 @@ export function Inbox({
                           onGuardado={onRefrescar}
                         />
                       )}
-                      <TextoConFormato
-                        texto={contenido(m)}
-                        conMarcas={canal.puede.formato === "si"}
-                      />
+                      {/*
+                        Con la tarjeta del contacto puesta, el texto sobra: el
+                        mensaje dice «Contacto: Mami❤️» y la tarjeta ya lo
+                        encabeza con ese mismo nombre. Repetido se lee como si
+                        fueran dos cosas distintas.
+                      */}
+                      {!contactos[m.id] && (
+                        <TextoConFormato
+                          texto={contenido(m)}
+                          conMarcas={canal.puede.formato === "si"}
+                        />
+                      )}
                       {m.tipo !== "template" && (
                         <MediaMensaje
                           mensaje={m}
@@ -1931,6 +1970,22 @@ export function Inbox({
                           mio={mio}
                           oportunidadId={suOportunidad?.id ?? null}
                           onGuardado={onRefrescar}
+                        />
+                      )}
+
+                      {/*
+                        El contacto compartido, con su número.
+                        ------------------------------------------------------
+                        Acá se leía sólo el nombre —«Contacto: Mami❤️»— y el
+                        número, que Meta manda en el mismo mensaje, no aparecía
+                        por ningún lado: había que abrir WhatsApp en el teléfono
+                        para copiarlo.
+                      */}
+                      {contactos[m.id] && (
+                        <ContactoDelMensaje
+                          contactos={contactos[m.id]}
+                          mio={mio}
+                          onAbierto={onRefrescar}
                         />
                       )}
                       <span

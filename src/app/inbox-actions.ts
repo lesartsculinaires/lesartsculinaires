@@ -8,6 +8,7 @@ import type { Coincidencia } from "@/lib/duplicados";
 import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { comoLosLee } from "@/lib/supabase/inbox";
+import { leerContactos, type ContactoCompartido } from "@/lib/whatsapp/contactos";
 import type { Mensaje } from "@/lib/types";
 import {
   BALDE_WHATSAPP,
@@ -830,6 +831,48 @@ export async function urlsDeMedia(rutas: string[]): Promise<Record<string, strin
  * dando vueltas si alguien la copia de la barra del navegador.
  */
 const VIGENCIA_MEDIA_S = 60 * 60;
+
+/**
+ * Los contactos que alguien compartió, sacados del cuerpo que mandó Meta.
+ *
+ * ============================================================================
+ * POR QUÉ SE PIDEN APARTE Y NO VIENEN CON EL HILO
+ * ============================================================================
+ *
+ * Porque `payload` es el cuerpo ENTERO del webhook y la consulta de la bandeja
+ * trae hasta cuatro mil mensajes. Sumarlo a esa consulta multiplicaría por
+ * mucho lo que viaja en cada refresco para un dato que aparece en uno de cada
+ * mil mensajes.
+ *
+ * Así que se pide sólo para los mensajes de tipo `contacts` del hilo abierto,
+ * que son un puñado. Es el mismo criterio que `urlsDeMedia`: lo caro se pide
+ * cuando alguien de verdad lo va a mirar.
+ *
+ * Y como el dato ya estaba guardado, esto vale para los contactos que llegaron
+ * ANTES de que existiera esta pantalla: no hay que esperar a que manden otro.
+ */
+export async function contactosDeMensajes(
+  ids: number[],
+): Promise<Record<number, ContactoCompartido[]>> {
+  if (ids.length === 0) return {};
+
+  const supabase = await getServerClient();
+  if (!supabase) return {};
+
+  const { data } = await supabase
+    .from("mensajes")
+    .select("id, payload")
+    // Un tope por si un hilo trajera muchos: más que esto no se lee de una
+    // sentada, y la lista de ids viaja en la dirección.
+    .in("id", ids.slice(0, 200));
+
+  const porMensaje: Record<number, ContactoCompartido[]> = {};
+  for (const fila of (data ?? []) as unknown as Record<string, unknown>[]) {
+    const leidos = leerContactos(fila.payload);
+    if (leidos.length > 0) porMensaje[Number(fila.id)] = leidos;
+  }
+  return porMensaje;
+}
 
 /**
  * Abre un chat con alguien que ya está en la base.
