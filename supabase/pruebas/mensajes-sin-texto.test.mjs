@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Los mensajes que no traen texto: ¿dicen qué son, o dicen «Mensaje»?
  *
- *     npx esbuild src/lib/whatsapp/mensajes.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/mensajes.mjs
- *     node supabase/pruebas/mensajes-sin-texto.test.mjs /tmp/mensajes.mjs
+ *     node --test supabase/pruebas/mensajes-sin-texto.test.mjs
  *
  * ============================================================================
  * QUÉ REPORTÓ LA ESCUELA
@@ -43,7 +43,7 @@
  * Y no se perdió nada: el JSON entero se guarda en `mensajes.payload` desde el
  * primer día, que es lo que permite recuperar los que ya entraron.
  */
-const { leerWebhook, resumen } = await import(process.argv[2] ?? "/tmp/mensajes.mjs");
+const { leerWebhook, resumen } = await compilar("src/lib/whatsapp/mensajes.ts");
 
 let f = 0;
 const es = (t, r, e) => {

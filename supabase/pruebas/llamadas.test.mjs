@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Cuándo una llamada interrumpe y cuándo no.
  *
- *     npx esbuild src/lib/llamadas.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/ll.mjs
- *     node supabase/pruebas/llamadas.test.mjs /tmp/ll.mjs
+ *     node --test supabase/pruebas/llamadas.test.mjs
  *
  * ============================================================================
  * QUÉ SE ESTÁ PROBANDO
@@ -20,7 +20,7 @@
  *    se visualice en una esquina.»
  */
 const { comoSeMuestra, comoReloj, comoSeLee, estaOcupado, quedoColgada, SEGUNDOS_QUE_SUENA } =
-  await import(process.argv[2] ?? "/tmp/ll.mjs");
+  await compilar("src/lib/llamadas.ts");
 
 let f = 0;
 const es = (t, r, e) => {

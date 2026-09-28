@@ -238,8 +238,78 @@ const envio = recibidos[recibidos.length - 1] ?? {};
 es("le pegó a la cuenta de Instagram, no a la de WhatsApp", envio.url, `/v21.0/${CUENTA}/messages`);
 es("A QUIÉN: el IGSID de esa persona", envio.cuerpo?.recipient?.id, IGSID);
 es("QUÉ: lo que escribió la asesora", envio.cuerpo?.message?.text, LA_RESPUESTA);
-es("CON LA ETIQUETA QUE ABRE LOS SIETE DÍAS", envio.cuerpo?.tag, "HUMAN_AGENT");
-es("y el tipo que la acompaña", envio.cuerpo?.messaging_type, "MESSAGE_TAG");
+/*
+ * SIN LA ETIQUETA, Y ES LO CORRECTO. ESTA COMPROBACIÓN DECÍA LO CONTRARIO.
+ *
+ * La persona acaba de escribir, así que la ventana de 24 horas está abierta y
+ * el mensaje sale como `RESPONSE`, que no pide ningún permiso.
+ *
+ * Antes el CRM mandaba SIEMPRE la etiqueta `HUMAN_AGENT` —que estira la
+ * ventana a siete días— y esta prueba lo daba por bueno. En producción eso
+ * dejó a la escuela sin poder contestar NADA por Messenger: esa etiqueta es un
+ * permiso que Meta da por App Review, la aplicación no lo tiene, y el envío
+ * rebotaba con «(#100) No se puede agregar la etiqueta HUMAN_AGENT» incluso un
+ * minuto después de que el cliente escribiera.
+ *
+ * El Meta del banco ahora la rechaza igual que el de verdad, así que si
+ * alguien vuelve a mandarla de más, esto se pone en rojo.
+ */
+es("SIN LA ETIQUETA: la persona acaba de escribir", envio.cuerpo?.tag, undefined);
+es("y sale como respuesta normal", envio.cuerpo?.messaging_type, "RESPONSE");
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 3b. PASADAS LAS 24 HORAS, AHÍ SÍ LA ETIQUETA ──");
+// ══════════════════════════════════════════════════════════════════════════
+{
+  /*
+   * El otro lado de la regla. Se envejece el mensaje entrante en vez de
+   * esperar un día: la ventana se calcula desde esa fecha.
+   *
+   * Pasadas las 24 horas la etiqueta es la ÚNICA forma de escribir, así que se
+   * manda aunque hoy Meta la rechace. Lo que importa es que el error diga QUÉ
+   * PERMISO FALTA, que es accionable, en vez del texto crudo en inglés.
+   */
+  sql(`
+    update public.mensajes
+       set creado_en = now() - interval '30 hours'
+     where conversacion_id = (select id from public.conversaciones
+                               where identificador = '${IGSID}')
+       and direccion = 'entrante';
+  `);
+
+  const antesDe = (await loQueLlegoAMeta()).length;
+  await p.reload({ waitUntil: "networkidle" });
+  await p.waitForTimeout(2600);
+  await p.locator('aside button[data-mod="Inbox"]').click();
+  await p.waitForTimeout(2200);
+  // La misma fila que arriba: es el hilo más reciente de la lista.
+  await p.locator("main button.row").first().click();
+  await p.waitForTimeout(1800);
+
+  const caja2 = p.locator('textarea[placeholder*="Escribí tu respuesta"]');
+  if (await caja2.count()) {
+    await caja2.fill("Segundo intento, fuera de la ventana");
+    await caja2.press("Enter");
+    await p.waitForTimeout(3000);
+
+    const todos = await loQueLlegoAMeta();
+    const ultimo = todos[todos.length - 1] ?? {};
+    es("salió el intento", todos.length - antesDe >= 1, true);
+    es("AHORA SÍ CON LA ETIQUETA", ultimo.cuerpo?.tag, "HUMAN_AGENT");
+    es("y con su tipo", ultimo.cuerpo?.messaging_type, "MESSAGE_TAG");
+
+    // Y Meta la rechaza, porque el permiso no está aprobado. Lo que se mide es
+    // que la pantalla lo explique.
+    const dicho = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+    es(
+      "LA PANTALLA DICE QUÉ PERMISO FALTA",
+      /Human Agent/i.test(dicho) && /App Review/i.test(dicho),
+      true,
+    );
+  } else {
+    console.log("   (el cuadro no está: la pantalla considera la ventana cerrada)");
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 console.log("\n── 4. Y QUEDÓ EN EL HILO ──");

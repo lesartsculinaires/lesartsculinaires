@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * ¿Cuál base está repetida, y cuál es la que se queda?
  *
- *     npx esbuild src/lib/bases.ts --bundle --format=esm --platform=node \
- *       --alias:@=./src --outfile=/tmp/bases.mjs
- *     node supabase/pruebas/bases.test.mjs /tmp/bases.mjs
+ *     node --test supabase/pruebas/bases.test.mjs
  *
  * ------------------------------------------------------------------------
  * POR QUÉ ESTO MERECE UNA PRUEBA PROPIA
@@ -23,7 +23,7 @@
  *   MARCAR LA MALA   cuando el doble clic pasó y alguien trabajó la SEGUNDA
  *                    tanda, la que se queda es esa, no la primera.
  */
-const { agruparBases, repetidas } = await import(process.argv[2] ?? "/tmp/bases.mjs");
+const { agruparBases, repetidas } = await compilar("src/lib/bases.ts");
 
 let f = 0;
 const es = (t, r, e) => {

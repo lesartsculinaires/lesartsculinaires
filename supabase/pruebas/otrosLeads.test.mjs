@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Los otros leads de la misma persona: ¿se ven, y se leen bien?
  *
- *     npx esbuild src/lib/otrosLeads.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/otros.mjs
- *     node supabase/pruebas/otrosLeads.test.mjs /tmp/otros.mjs
+ *     node --test supabase/pruebas/otrosLeads.test.mjs
  *
  * ============================================================================
  * QUÉ PIDIÓ LA ESCUELA
@@ -28,7 +28,7 @@
  * repetido y los una.
  */
 const { otrosLeadsDe, cuantosPorCliente, posicionEntreLosSuyos } =
-  await import(process.argv[2] ?? "/tmp/otros.mjs");
+  await compilar("src/lib/otrosLeads.ts");
 
 let f = 0;
 const es = (t, r, e) => {

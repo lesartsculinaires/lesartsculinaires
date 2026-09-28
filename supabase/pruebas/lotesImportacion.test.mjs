@@ -1,11 +1,11 @@
+
+import { compilar } from "./compilar.mjs";
+
 /**
  * Los lotes de una importación: ¿una persona puede partirse en dos fichas?
  *
- *     npx esbuild src/lib/planImportacion.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/plan.mjs
- *     npx esbuild src/lib/crm/lotesImportacion.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/lotes.mjs
- *     node supabase/pruebas/lotesImportacion.test.mjs /tmp/plan.mjs /tmp/lotes.mjs
+ *     node --test supabase/pruebas/lotesImportacion.test.mjs
+ *     node --test supabase/pruebas/lotesImportacion.test.mjs
  *
  * ============================================================================
  * EL CASO REAL
@@ -36,10 +36,8 @@
  * Que ninguna clave de grupo aparezca en dos lotes. Esa es la condición: si se
  * cumple, el servidor no puede duplicar; si se rompe, duplica siempre.
  */
-const { construirPlan, enLotes, seSumaAUnoAbierto } = await import(process.argv[2] ?? "/tmp/plan.mjs");
-const { agruparEnLeads, colgarDeLosQueYaEstan, repartir } = await import(
-  process.argv[3] ?? "/tmp/lotes.mjs"
-);
+const { construirPlan, enLotes, seSumaAUnoAbierto } = await compilar("src/lib/planImportacion.ts");
+const { agruparEnLeads, colgarDeLosQueYaEstan, repartir } = await compilar("src/lib/crm/lotesImportacion.ts");
 
 let f = 0;
 const es = (t, r, e) => {

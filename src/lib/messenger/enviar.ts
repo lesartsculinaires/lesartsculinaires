@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  esFaltaDePermisoHumanAgent,
+  sobreDeEnvio,
+  FALTA_HUMAN_AGENT,
+} from "@/lib/meta/ventana";
 
 import {
   limpio,
@@ -116,8 +121,19 @@ export const hayMessenger = (): boolean => Boolean(elToken() && laPagina());
  * quedó guardado en `conversaciones.identificador`. No es un número de teléfono,
  * no es su perfil de Facebook, y no sirve en ninguna otra página.
  */
-export async function enviarTextoMsn(psid: string, texto: string): Promise<ResultadoMsn> {
-  return mandar(psid, { text: texto });
+export async function enviarTextoMsn(
+  psid: string,
+  texto: string,
+  /**
+   * Cuándo escribió la persona por última vez.
+   *
+   * Decide si el mensaje sale como respuesta normal o con la etiqueta que
+   * estira la ventana a siete días. El porqué está en `@/lib/meta/ventana`.
+   * Sin este dato se supone la ventana abierta, que es lo que falla mejor.
+   */
+  ultimoEntranteEn?: string | null,
+): Promise<ResultadoMsn> {
+  return mandar(psid, { text: texto }, ultimoEntranteEn);
 }
 
 /**
@@ -131,6 +147,7 @@ export async function enviarAdjuntoMsn(
   psid: string,
   enlace: string,
   clase: "image" | "video" | "audio" | "file",
+  ultimoEntranteEn?: string | null,
 ): Promise<ResultadoMsn> {
   return mandar(psid, {
     attachment: {
@@ -142,7 +159,7 @@ export async function enviarAdjuntoMsn(
         is_reusable: false,
       },
     },
-  });
+  }, ultimoEntranteEn);
 }
 
 /** Qué clase de adjunto es, según su tipo de archivo. */
@@ -155,7 +172,11 @@ export function claseDeAdjuntoMsn(mime: string | null): "image" | "video" | "aud
 }
 
 /** El envío en sí. Uno solo para texto y adjuntos: a Meta le va el mismo cuerpo. */
-async function mandar(psid: string, mensaje: unknown): Promise<ResultadoMsn> {
+async function mandar(
+  psid: string,
+  mensaje: unknown,
+  ultimoEntranteEn?: string | null,
+): Promise<ResultadoMsn> {
   const token = elToken();
   const pagina = laPagina();
 
@@ -174,15 +195,20 @@ async function mandar(psid: string, mensaje: unknown): Promise<ResultadoMsn> {
         recipient: { id: psid },
         message: mensaje,
         /*
-         * La etiqueta que abre los siete días.
+         * El sobre, según cuánto hace que la persona escribió.
          *
-         * Sin esto la ventana son 24 horas y un mensaje del día tres se rechaza
-         * aunque Meta todavía lo permitiera. En esta bandeja siempre contesta
-         * una persona del equipo, así que la etiqueta dice la verdad, que es la
-         * condición que pone Meta para aceptarla.
+         * Antes acá iba SIEMPRE la etiqueta `HUMAN_AGENT`, y eso rompía todo:
+         * esa etiqueta es un permiso que Meta da por App Review, la escuela no
+         * lo tiene, y el envío rebotaba con «(#100) No se puede agregar la
+         * etiqueta HUMAN_AGENT» hasta un minuto después de que el cliente
+         * escribiera —cuando no hacía ninguna falta—.
+         *
+         * Dentro de las 24 horas va `RESPONSE`, que no pide permiso. La
+         * etiqueta se reserva para cuando es la única forma de escribir. La
+         * regla vive en `@/lib/meta/ventana`, aparte, porque es la misma para
+         * Instagram y se prueba sin red.
          */
-        messaging_type: "MESSAGE_TAG",
-        tag: "HUMAN_AGENT",
+        ...sobreDeEnvio(ultimoEntranteEn),
       }),
     });
 
@@ -213,6 +239,10 @@ function explicar(
   error: { message?: string; code?: number; error_subcode?: number } | undefined,
   estado: number,
 ): string {
+  // Antes que los demás: el 100 es genérico y lo que lo identifica es que el
+  // texto nombre la etiqueta.
+  if (esFaltaDePermisoHumanAgent(error)) return FALTA_HUMAN_AGENT;
+
   if (error?.error_subcode === 2534022 || error?.code === 10) {
     return (
       "Pasaron más de siete días desde el último mensaje de esta persona. " +

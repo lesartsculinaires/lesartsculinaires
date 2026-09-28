@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Un formulario donde se pueden marcar VARIOS programas.
  *
- *     npx esbuild src/lib/formularios.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/form.mjs
- *     node supabase/pruebas/formularioVariosProgramas.test.mjs /tmp/form.mjs
+ *     node --test supabase/pruebas/formularioVariosProgramas.test.mjs
  *
  * ============================================================================
  * QUÉ PIDIÓ LA ESCUELA
@@ -25,7 +25,7 @@
  * O sea que en la feria alguien decía «me interesan Pastelería y Barismo», lo
  * marcaba, y entraba al CRM como si sólo hubiera preguntado por Pastelería.
  */
-const { armarLead } = await import(process.argv[2] ?? "/tmp/form.mjs");
+const { armarLead } = await compilar("src/lib/formularios.ts");
 
 let f = 0;
 const es = (t, r, e) => {

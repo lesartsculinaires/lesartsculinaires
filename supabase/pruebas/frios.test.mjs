@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Cuándo un lead está frío.
  *
- *     npx esbuild src/lib/frios.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/fr.mjs
- *     node supabase/pruebas/frios.test.mjs /tmp/fr.mjs
+ *     node --test supabase/pruebas/frios.test.mjs
  *
  * ============================================================================
  * POR QUÉ ESTO SE PRUEBA APARTE DE LA PANTALLA
@@ -19,7 +19,7 @@
  * se puede hacer mirando.
  */
 const { friosDe, diasSinTocar, comoSeLeeLaEspera, DIAS_PARA_ENFRIARSE } =
-  await import(process.argv[2] ?? "/tmp/fr.mjs");
+  await compilar("src/lib/frios.ts");
 
 let f = 0;
 const es = (t, r, e) => {

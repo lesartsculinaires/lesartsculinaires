@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * El buscador de emojis: ¿encuentra lo que una asesora escribiría?
  *
- *     npx esbuild src/lib/emojis.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/emojis.mjs
- *     node supabase/pruebas/emojis.test.mjs /tmp/emojis.mjs
+ *     node --test supabase/pruebas/emojis.test.mjs
  *
  * ------------------------------------------------------------------------
  * QUÉ SE PRUEBA ACÁ
@@ -18,7 +18,7 @@
  * ven como un error— y sin claves de React duplicadas, que es lo mismo visto
  * desde el otro lado.
  */
-const { GRUPOS, TODOS, buscar } = await import(process.argv[2] ?? "/tmp/emojis.mjs");
+const { GRUPOS, TODOS, buscar } = await compilar("src/lib/emojis.ts");
 
 let f = 0;
 const es = (t, r, e) => {

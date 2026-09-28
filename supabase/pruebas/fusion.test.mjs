@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Unificar, ¿completa la ficha o sólo evita el duplicado?
  *
- *     npx esbuild src/lib/fusion.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/fus.mjs
- *     node supabase/pruebas/fusion.test.mjs /tmp/fus.mjs
+ *     node --test supabase/pruebas/fusion.test.mjs
  *
  * ------------------------------------------------------------------------
  * EL EJEMPLO QUE DIO LA ESCUELA
@@ -29,7 +29,7 @@
  * de abajo, sino la última: que la lista tenga TODAS las columnas.
  */
 const { planificarFusion, CAMPOS_DE_CLIENTE, COLUMNAS_DE_FUSION, ETIQUETA_CAMPO, listarCampos } =
-  await import(process.argv[2] ?? "/tmp/fus.mjs");
+  await compilar("src/lib/fusion.ts");
 
 let f = 0;
 const es = (t, r, e) => {

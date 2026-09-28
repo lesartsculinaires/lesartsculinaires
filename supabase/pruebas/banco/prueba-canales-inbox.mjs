@@ -270,17 +270,29 @@ console.log("\n── el de Instagram cambia lo que hace falta ──");
   );
 
   /*
-   * Lo que de verdad prueba que la bandeja dejó de estar escrita para
-   * WhatsApp: con tres días, Instagram TODAVÍA deja contestar —de sus siete
-   * días quedan cuatro— y la pantalla no muestra ningún aviso de ventana
-   * cerrada.
+   * A LOS TRES DÍAS YA NO SE PUEDE, Y ESTO DECÍA LO CONTRARIO.
+   *
+   * Esta comprobación esperaba que Instagram siguiera dejando contestar
+   * —«de sus siete días quedan cuatro»—. Esos siete días existen sólo con el
+   * permiso «Human Agent», que Meta da por App Review y la escuela no tiene.
+   *
+   * Prometerlos no era un texto de más: el envío mandaba siempre la etiqueta
+   * que pide ese permiso y Meta rechazaba TODOS los mensajes, también los de
+   * dentro de las 24 horas. La escuela se quedó sin poder contestar por
+   * Messenger. Ahora la ventana dice 24 horas, que es la verdad.
+   *
+   * El día que Meta apruebe el permiso, esto vuelve a esperar `false`.
    */
   es(
-    "A LOS TRES DÍAS TODAVÍA SE PUEDE CONTESTAR",
+    "A LOS TRES DÍAS YA NO SE PUEDE: la ventana es de 24 horas",
     /Se pasó la ventana para contestarle por Instagram/.test(t),
-    false,
+    true,
   );
-  es("y el cuadro de texto está", await p.locator("main textarea").count(), 1);
+  es(
+    "y se explica que los siete días necesitan un permiso de Meta",
+    /Human Agent/i.test(t),
+    true,
+  );
 }
 
 console.log("\n── con dos redes, cada hilo lleva su marca ──");
