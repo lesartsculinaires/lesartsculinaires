@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * El mes que mira el tablero.
  *
- *     npx esbuild src/lib/periodoDelTablero.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/per.mjs
- *     node supabase/pruebas/periodoDelTablero.test.mjs /tmp/per.mjs
+ *     node --test supabase/pruebas/periodoDelTablero.test.mjs
  *
  * ============================================================================
  * QUÉ PIDIÓ LA ESCUELA
@@ -25,7 +25,7 @@ const {
   periodoInicial,
   comoSeExplicaElVacio,
   TODO,
-} = await import(process.argv[2] ?? "/tmp/per.mjs");
+} = await compilar("src/lib/periodoDelTablero.ts");
 
 let f = 0;
 const es = (t, r, e) => {

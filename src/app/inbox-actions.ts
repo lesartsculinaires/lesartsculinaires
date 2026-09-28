@@ -170,6 +170,34 @@ function faltaElCanal(canal: string): string | null {
   return hayWhatsapp() ? null : "WhatsApp no está configurado en el servidor.";
 }
 
+/**
+ * Cuándo escribió esta persona por última vez.
+ *
+ * Lo necesitan Instagram y Messenger para decidir si el mensaje sale como
+ * respuesta normal o con la etiqueta que estira la ventana a siete días —la
+ * que Meta todavía no le aprobó a la escuela—. El porqué está en
+ * `@/lib/meta/ventana`.
+ *
+ * Devuelve null si no se puede averiguar, y eso NO es un problema: la regla
+ * trata «no sé» como ventana abierta, que es lo que falla mejor.
+ */
+async function ultimoEntranteDe(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  conversacionId: number,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("mensajes")
+    .select("creado_en")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "entrante")
+    .order("creado_en", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const cuando = (data as { creado_en?: unknown } | null)?.creado_en;
+  return cuando ? String(cuando) : null;
+}
+
 /** Lo que devuelve cualquiera de los tres envíos, con la misma forma. */
 interface Salida {
   ok: boolean;
@@ -194,13 +222,19 @@ interface Salida {
  * mensajes van a salir por WhatsApp a un identificador que no es un teléfono, y
  * Meta los va a rechazar con un error que no dice nada de esto.
  */
-async function mandarTextoPor(canal: string, aQuien: string, cuerpo: string): Promise<Salida> {
+async function mandarTextoPor(
+  canal: string,
+  aQuien: string,
+  cuerpo: string,
+  /** Sólo lo usan los dos de Meta; WhatsApp resuelve su ventana con plantillas. */
+  ultimoEntranteEn: string | null,
+): Promise<Salida> {
   if (canal === "instagram") {
-    const r = await enviarTextoIg(aQuien, cuerpo);
+    const r = await enviarTextoIg(aQuien, cuerpo, ultimoEntranteEn);
     return { ok: r.ok, waId: r.mid, error: r.error };
   }
   if (canal === "messenger") {
-    const r = await enviarTextoMsn(aQuien, cuerpo);
+    const r = await enviarTextoMsn(aQuien, cuerpo, ultimoEntranteEn);
     return { ok: r.ok, waId: r.mid, error: r.error };
   }
   return enviarTexto(aQuien, cuerpo);
@@ -258,7 +292,14 @@ export async function responderConversacion(
   const falta = faltaElCanal(canal);
   if (falta) return { ok: false, error: falta };
 
-  const envio = await mandarTextoPor(canal, aQuien, cuerpo);
+  // Sólo para los de Meta: una consulta más por mensaje no se paga donde no
+  // hace falta, y WhatsApp resuelve su ventana con plantillas.
+  const ultimoEntranteEn =
+    canal === "instagram" || canal === "messenger"
+      ? await ultimoEntranteDe(supabase, conversacionId)
+      : null;
+
+  const envio = await mandarTextoPor(canal, aQuien, cuerpo, ultimoEntranteEn);
 
   if (!envio.ok) return { ok: false, error: envio.error };
 
@@ -1351,11 +1392,17 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
    * Se manda aparte, en un segundo mensaje, para que no se pierda lo que quien
    * atiende escribió junto a la cotización.
    */
+  // Igual que en el texto: sólo los de Meta la necesitan.
+  const ultimoEntranteEn = esDeMeta
+    ? await ultimoEntranteDe(supabase, datos.conversacionId)
+    : null;
+
   const envio = esDeMeta
     ? await (canal === "messenger" ? enviarAdjuntoMsn : enviarAdjuntoIg)(
         aQuien,
         firmado.signedUrl,
         claseDeAdjunto(datos.mime),
+        ultimoEntranteEn,
       ).then((r) => ({
         ok: r.ok,
         waId: r.mid,
@@ -1376,7 +1423,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
 
   // El pie de un adjunto de Meta, como mensaje aparte. Ver arriba.
   if (esDeMeta && envio.ok && !esAudio && datos.pie.trim()) {
-    await mandarTextoPor(canal, aQuien, datos.pie.trim());
+    await mandarTextoPor(canal, aQuien, datos.pie.trim(), ultimoEntranteEn);
   }
 
   if (!envio.ok) {

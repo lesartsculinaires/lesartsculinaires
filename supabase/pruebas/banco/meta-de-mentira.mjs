@@ -59,6 +59,15 @@ const recibidos = [];
 let permitePerfiles = false;
 
 /**
+ * Si Meta acepta la etiqueta `HUMAN_AGENT`, que estira la ventana a 7 días.
+ *
+ * Arranca en `false` porque es el estado real de la escuela: el permiso se
+ * pide por App Review y no está aprobado. Se prende con
+ * `POST /__humanagent {"permite": true}` para probar el día que lo aprueben.
+ */
+let permiteHumanAgent = false;
+
+/**
  * Y si deja leerlos por la CONVERSACIÓN, que es la otra puerta.
  *
  * Son dos interruptores porque en la realidad son dos puertas distintas y no se
@@ -115,6 +124,22 @@ const servidor = http.createServer((req, res) => {
   }
 
   // El interruptor. Tampoco es parte de la API de Meta.
+  // El interruptor de la etiqueta de siete días.
+  if (req.method === "POST" && req.url.startsWith("/__humanagent")) {
+    let crudo = "";
+    req.on("data", (t) => (crudo += t));
+    req.on("end", () => {
+      try {
+        permiteHumanAgent = Boolean(JSON.parse(crudo || "{}").permite);
+      } catch {
+        permiteHumanAgent = false;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ permite: permiteHumanAgent }));
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url.startsWith("/__perfiles")) {
     let crudo = "";
     req.on("data", (t) => (crudo += t));
@@ -275,6 +300,38 @@ const servidor = http.createServer((req, res) => {
       // Da igual: se guarda el crudo.
     }
     recibidos.push({ url: req.url, cuerpo: leido ?? cuerpo });
+
+    /*
+     * LA ETIQUETA `HUMAN_AGENT`, RECHAZADA COMO LA RECHAZA META.
+     *
+     * Es un permiso que se pide por App Review y la aplicación de la escuela
+     * no lo tiene. Con esto puesto, el banco reproduce el error que dejó a la
+     * escuela sin poder contestar por Messenger:
+     *
+     *     (#100) No se puede agregar la etiqueta "HUMAN_AGENT" a los mensajes
+     *     sin aprobación previa.
+     *
+     * Un Meta de mentira que aceptara cualquier etiqueta no habría encontrado
+     * nunca ese fallo —de hecho no lo encontró: el CRM la mandaba siempre y
+     * todas las pruebas pasaban en verde—.
+     *
+     * `permiteHumanAgent` deja simular la otra mitad: el día que Meta apruebe
+     * el permiso, la etiqueta pasa a funcionar y los siete días son reales.
+     */
+    if (leido?.tag === "HUMAN_AGENT" && !permiteHumanAgent) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message:
+              'Cannot add "HUMAN_AGENT" tag to messages without prior approval',
+            type: "OAuthException",
+            code: 100,
+          },
+        }),
+      );
+      return;
+    }
 
     /*
      * El 131008, como lo devuelve Meta cuando falta una pieza.

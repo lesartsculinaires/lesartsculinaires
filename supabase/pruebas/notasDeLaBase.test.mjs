@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Las columnas que no tienen dónde caer, ¿llegan a la bitácora del lead?
  *
- *     npx esbuild src/lib/importar.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/imp.mjs
- *     node supabase/pruebas/notasDeLaBase.test.mjs /tmp/imp.mjs
+ *     node --test supabase/pruebas/notasDeLaBase.test.mjs
  *
  * ------------------------------------------------------------------------
  * QUÉ PEDÍA LA ESCUELA
@@ -27,9 +27,7 @@
  * lo que hay que comprobar es que varias se junten bien y que las vacías no
  * dejen renglones huecos.
  */
-const { construirFilas, detectarMapeo, A_NOTA } = await import(
-  process.argv[2] ?? "/tmp/imp.mjs"
-);
+const { construirFilas, detectarMapeo, A_NOTA } = await compilar("src/lib/importar.ts");
 
 let f = 0;
 const es = (t, r, e) => {

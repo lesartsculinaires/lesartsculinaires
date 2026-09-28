@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  esFaltaDePermisoHumanAgent,
+  sobreDeEnvio,
+  FALTA_HUMAN_AGENT,
+} from "@/lib/meta/ventana";
 
 import {
   limpio,
@@ -179,8 +184,13 @@ export const hayInstagram = (): boolean =>
  * quedó guardado en `conversaciones.identificador`. No es un número de teléfono
  * y no sirve en ninguna otra cuenta.
  */
-export async function enviarTextoIg(igsid: string, texto: string): Promise<ResultadoIg> {
-  return mandar(igsid, { text: texto });
+export async function enviarTextoIg(
+  igsid: string,
+  texto: string,
+  /** Cuándo escribió la persona por última vez. Ver `@/lib/meta/ventana`. */
+  ultimoEntranteEn?: string | null,
+): Promise<ResultadoIg> {
+  return mandar(igsid, { text: texto }, ultimoEntranteEn);
 }
 
 /**
@@ -199,6 +209,7 @@ export async function enviarAdjuntoIg(
   igsid: string,
   enlace: string,
   clase: "image" | "video" | "audio" | "file",
+  ultimoEntranteEn?: string | null,
 ): Promise<ResultadoIg> {
   return mandar(igsid, {
     attachment: {
@@ -241,7 +252,11 @@ export function claseDeAdjunto(mime: string | null): "image" | "video" | "audio"
  * clave `message` cambiada. Lo que no cambia es lo importante: el destinatario,
  * la etiqueta de agente humano, y el manejo del error.
  */
-async function mandar(igsid: string, mensaje: unknown): Promise<ResultadoIg> {
+async function mandar(
+  igsid: string,
+  mensaje: unknown,
+  ultimoEntranteEn?: string | null,
+): Promise<ResultadoIg> {
   const token = process.env.INSTAGRAM_TOKEN;
   const cuenta = process.env.INSTAGRAM_ACCOUNT_ID;
 
@@ -264,15 +279,15 @@ async function mandar(igsid: string, mensaje: unknown): Promise<ResultadoIg> {
         recipient: { id: igsid },
         message: mensaje,
         /*
-         * La etiqueta que abre los siete días.
+         * El sobre, según cuánto hace que la persona escribió.
          *
-         * Ver el encabezado: sin esto, la ventana son 24 horas y un mensaje
-         * del día tres se rechaza aunque Meta todavía lo permitiera. En esta
-         * bandeja siempre contesta una persona del equipo, así que la etiqueta
-         * dice la verdad —que es la condición que pone Meta para aceptarla—.
+         * Antes iba SIEMPRE la etiqueta `HUMAN_AGENT`, que es un permiso que
+         * Meta da por App Review. Sin él, el envío rebota con «(#100) No se
+         * puede agregar la etiqueta HUMAN_AGENT» incluso dentro de las 24
+         * horas, donde no hace ninguna falta. La regla está en
+         * `@/lib/meta/ventana`, compartida con Messenger.
          */
-        messaging_type: "MESSAGE_TAG",
-        tag: "HUMAN_AGENT",
+        ...sobreDeEnvio(ultimoEntranteEn),
       }),
     });
 
@@ -304,6 +319,10 @@ function explicar(
   error: { message?: string; code?: number; error_subcode?: number } | undefined,
   estado: number,
 ): string {
+  // Antes que los demás: el 100 es genérico y lo que lo identifica es que el
+  // texto nombre la etiqueta.
+  if (esFaltaDePermisoHumanAgent(error)) return FALTA_HUMAN_AGENT;
+
   if (error?.error_subcode === 2534022 || error?.code === 10) {
     return (
       "Pasaron más de siete días desde el último mensaje de esta persona. " +

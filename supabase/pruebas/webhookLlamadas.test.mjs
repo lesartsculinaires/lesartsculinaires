@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Leer los avisos de llamada que manda Meta.
  *
- *     npx esbuild src/lib/whatsapp/llamadas.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/wll.mjs
- *     node supabase/pruebas/webhookLlamadas.test.mjs /tmp/wll.mjs
+ *     node --test supabase/pruebas/webhookLlamadas.test.mjs
  *
  * ============================================================================
  * POR QUÉ SE PRUEBA ESTO Y NO OTRA COSA
@@ -17,7 +17,7 @@
  *
  * Las cargas de abajo son las de la documentación de Meta.
  */
-const { leerLlamadas, comoTermino } = await import(process.argv[2] ?? "/tmp/wll.mjs");
+const { leerLlamadas, comoTermino } = await compilar("src/lib/whatsapp/llamadas.ts");
 
 let f = 0;
 const es = (t, r, e) => {

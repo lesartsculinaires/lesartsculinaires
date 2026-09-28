@@ -1,11 +1,11 @@
+
+import { compilar } from "./compilar.mjs";
+
 /**
  * Acomodar nombres y proponer tildes: ¿ayuda, o se mete donde no lo llaman?
  *
- *     npx esbuild src/lib/texto.ts --bundle --format=esm --platform=node \
- *       --alias:@=./src --outfile=/tmp/txt.mjs
- *     npx esbuild src/lib/tildes.ts --bundle --format=esm --platform=node \
- *       --alias:@=./src --outfile=/tmp/til.mjs
- *     node supabase/pruebas/nombres.test.mjs /tmp/txt.mjs /tmp/til.mjs
+ *     node --test supabase/pruebas/nombres.test.mjs
+ *     node --test supabase/pruebas/nombres.test.mjs
  *
  * ------------------------------------------------------------------------
  * QUÉ SE ESTÁ PROBANDO, Y POR QUÉ LA MITAD SON CASOS NEGATIVOS
@@ -24,8 +24,8 @@
  * son la mayoría de este archivo.
  */
 const { acomodarNombre, seAcomoda, revisarNombre, tituloEspanol, sobranEspacios } =
-  await import(process.argv[2] ?? "/tmp/txt.mjs");
-const { conTildes } = await import(process.argv[3] ?? "/tmp/til.mjs");
+  await compilar("src/lib/texto.ts");
+const { conTildes } = await compilar("src/lib/tildes.ts");
 
 let f = 0;
 const es = (t, r, e) => {

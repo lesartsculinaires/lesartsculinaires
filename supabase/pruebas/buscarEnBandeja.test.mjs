@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Buscar un hilo en la bandeja.
  *
- *     npx esbuild src/lib/buscarEnBandeja.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/busq.mjs
- *     node supabase/pruebas/buscarEnBandeja.test.mjs /tmp/busq.mjs
+ *     node --test supabase/pruebas/buscarEnBandeja.test.mjs
  *
  * ============================================================================
  * QUÉ PIDIÓ LA ESCUELA
@@ -30,7 +30,7 @@
  *   BANDEJA                       casi cualquier teléfono.
  */
 const { coincideHilo, filtrarHilos, hayBusqueda } =
-  await import(process.argv[2] ?? "/tmp/busq.mjs");
+  await compilar("src/lib/buscarEnBandeja.ts");
 
 let f = 0;
 const es = (t, r, e) => {

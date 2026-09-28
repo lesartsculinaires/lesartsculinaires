@@ -258,19 +258,27 @@ export const CANALES: readonly Canal[] = [
       llamadas: "no",
     },
     /*
-     * Siete días, no 24 horas.
+     * 24 HORAS, Y NO SIETE DÍAS. ESTO DECÍA SIETE Y ERA MENTIRA.
      *
-     * Meta abre 24 horas para respuestas automáticas, pero deja hasta siete
-     * días cuando contesta una persona de verdad —lo llaman «human agent»—, y
-     * en esta bandeja siempre contesta una persona. Es más margen que en
-     * WhatsApp, y conviene que la pantalla lo diga: si dijera 24 horas, se
-     * dejarían de contestar conversaciones que todavía se pueden contestar.
+     * Meta abre 24 horas para contestar. Los siete días existen, pero sólo con
+     * el permiso «Human Agent», que se pide por App Review y la aplicación de
+     * la escuela NO tiene aprobado.
+     *
+     * Acá decía `24 * 7` y la pantalla prometía una semana. Peor: el envío
+     * mandaba siempre la etiqueta que pide ese permiso, así que Meta rechazaba
+     * TODOS los mensajes —«(#100) No se puede agregar la etiqueta
+     * HUMAN_AGENT»—, incluso un minuto después de que el cliente escribiera.
+     *
+     * El día que Meta apruebe el permiso, esto vuelve a `24 * 7` y el texto de
+     * abajo a hablar de siete días. Es lo único que hay que tocar: el envío ya
+     * usa la etiqueta sola cuando pasaron las 24 horas.
      */
-    ventanaHoras: 24 * 7,
+    ventanaHoras: 24,
     laVentana:
-      "Hay siete días para contestar desde el último mensaje de la persona, porque " +
-      "contesta alguien del equipo y no un robot. Pasados, hay que esperar a que " +
-      "vuelva a escribir: Instagram no tiene plantillas.",
+      "Hay 24 horas para contestar desde el último mensaje de la persona. Para " +
+      "llegar a siete días Meta pide el permiso «Human Agent», que la aplicación " +
+      "todavía no tiene aprobado. Pasada la ventana hay que esperar a que vuelva " +
+      "a escribir: Instagram no tiene plantillas.",
     porDondeLlega: "a la cuenta de Instagram de la escuela",
   },
   {
@@ -319,10 +327,17 @@ export const CANALES: readonly Canal[] = [
        */
       llamadas: "pendiente",
     },
-    ventanaHoras: 24 * 7,
+    /*
+     * 24 horas, por lo mismo que Instagram. Ver el comentario de allá.
+     *
+     * Es el canal donde se notó: la escuela no podía contestarle a nadie por
+     * Messenger, ni un minuto después de que el cliente escribiera.
+     */
+    ventanaHoras: 24,
     laVentana:
-      "Siete días para contestar desde el último mensaje, por contestar una persona " +
-      "y no un robot. Messenger tampoco tiene plantillas aprobadas.",
+      "Hay 24 horas para contestar desde el último mensaje. Los siete días necesitan " +
+      "el permiso «Human Agent» de Meta, que la aplicación todavía no tiene " +
+      "aprobado. Messenger tampoco tiene plantillas para reabrir la conversación.",
     porDondeLlega: "a la página de Facebook de la escuela",
   },
   {

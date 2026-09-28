@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * El reloj desfasado: ¿el CRM reintenta, o muestra «JWT issued at future»?
  *
- *     npx esbuild src/lib/supabase/enCastellano.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/castellano.mjs
- *     node supabase/pruebas/reloj-desfasado.test.mjs
+ *     node --test supabase/pruebas/reloj-desfasado.test.mjs
  *
  * ============================================================================
  * QUÉ REPORTÓ LA ESCUELA
@@ -178,7 +178,7 @@ console.log("\n── 4. LO QUE SALE BIEN NO SE TOCA ──");
 console.log("\n── 5. Y SI LLEGA A LA PANTALLA, SE ENTIENDE ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
-  const { enCastellano } = await import("/tmp/castellano.mjs");
+  const { enCastellano } = await compilar("src/lib/supabase/enCastellano.ts");
 
   const reloj = enCastellano("JWT issued at future");
   es("NO DICE «JWT ISSUED AT FUTURE»", /JWT/i.test(reloj.texto), false);

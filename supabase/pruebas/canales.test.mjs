@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * El registro de canales: ¿dice la verdad sobre cada red?
  *
- *     npx esbuild src/lib/canales.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/canales.mjs
- *     node supabase/pruebas/canales.test.mjs /tmp/canales.mjs
+ *     node --test supabase/pruebas/canales.test.mjs
  *
  * ============================================================================
  * POR QUÉ ESTO SE PRUEBA
@@ -21,14 +21,14 @@
  *                                    equivalente. Fuera de la ventana hay que
  *                                    esperar.
  *
- *   LA VENTANA NO DURA LO MISMO      24 horas en WhatsApp, siete días en las
- *                                    de Meta cuando contesta una persona. Un
- *                                    aviso que dijera 24 horas en Instagram
- *                                    haría dejar de contestar conversaciones
- *                                    que todavía se pueden contestar.
+ *   LA VENTANA                       24 horas en las tres. En las de Meta hay
+ *                                    siete días SI Meta aprueba el permiso
+ *                                    «Human Agent», que la escuela todavía no
+ *                                    tiene; prometer la semana antes de eso
+ *                                    dejó a la escuela sin poder contestar.
  */
 const { CANALES, CAPACIDADES, canalDe, conectados, porConectar, COMO_SE_DICE } =
-  await import(process.argv[2] ?? "/tmp/canales.mjs");
+  await compilar("src/lib/canales.ts");
 
 let f = 0;
 const es = (t, r, e) => {
@@ -48,8 +48,20 @@ console.log("── están las cuatro redes ──");
     CANALES.map((c) => c.clave),
     ["whatsapp", "instagram", "messenger", "tiktok"],
   );
-  es("hoy anda una sola", conectados().map((c) => c.clave), ["whatsapp"]);
-  es("y las otras tres esperan", porConectar().length, 3);
+  /*
+   * Tres conectadas, no una.
+   *
+   * Esto decía `["whatsapp"]` de cuando era la única. Instagram y Messenger se
+   * conectaron hace semanas y la comprobación nunca se puso en rojo, porque
+   * esta prueba pedía un `esbuild` a mano y nadie la corría. Es el mismo
+   * motivo por el que ahora se compila sola.
+   */
+  es(
+    "las tres de Meta andan; TikTok no",
+    conectados().map((c) => c.clave),
+    ["whatsapp", "instagram", "messenger"],
+  );
+  es("y sólo TikTok espera", porConectar().length, 1);
 }
 
 console.log("\n── cada una que no anda dice qué le falta ──");
@@ -75,10 +87,31 @@ console.log("\n── LAS PLANTILLAS SON DE WHATSAPP ──");
 console.log("\n── LA VENTANA NO DURA LO MISMO ──");
 {
   es("WhatsApp: 24 horas", de("whatsapp").ventanaHoras, 24);
-  // Siete días, porque contesta una persona y no un robot. Es más margen, y
-  // la pantalla tiene que decirlo o se dejarían de contestar hilos vivos.
-  es("Instagram: siete días", de("instagram").ventanaHoras, 24 * 7);
-  es("Messenger: siete días", de("messenger").ventanaHoras, 24 * 7);
+
+  /*
+   * LOS DE META TAMBIÉN 24, Y ESTO DECÍA SIETE DÍAS.
+   *
+   * Los siete días existen, pero sólo con el permiso «Human Agent», que se
+   * pide por App Review y la aplicación de la escuela NO tiene aprobado.
+   *
+   * Mientras decía siete, la pantalla prometía una semana que no había. Y era
+   * peor que un texto equivocado: el envío mandaba siempre la etiqueta que
+   * pide ese permiso, así que Meta rechazaba TODOS los mensajes —«(#100) No se
+   * puede agregar la etiqueta HUMAN_AGENT»— incluso un minuto después de que
+   * el cliente escribiera. La escuela se quedó sin poder contestar por
+   * Messenger.
+   *
+   * El día que Meta apruebe el permiso, esto vuelve a `24 * 7`.
+   */
+  es("Instagram: 24 horas mientras falte el permiso", de("instagram").ventanaHoras, 24);
+  es("Messenger: 24 horas mientras falte el permiso", de("messenger").ventanaHoras, 24);
+  for (const clave of ["instagram", "messenger"]) {
+    es(
+      `${clave} dice que los siete días dependen de un permiso`,
+      /Human Agent/i.test(de(clave).laVentana),
+      true,
+    );
+  }
 
   for (const c of CANALES) {
     es(`${c.nombre} explica su ventana`, c.laVentana.length > 30, true);

@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Los huecos de una plantilla: `{{1}}` y `{{order_id}}`.
  *
- *     npx esbuild src/lib/whatsapp/huecos.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/huecos.mjs
- *     node supabase/pruebas/huecos.test.mjs /tmp/huecos.mjs
+ *     node --test supabase/pruebas/huecos.test.mjs
  *
  * ------------------------------------------------------------------------
  * EL CASO REAL QUE ROMPIÓ ESTO
@@ -30,9 +30,7 @@
  * poner `parameter_name` en una posicional también hace fallar el envío. Por
  * eso la mitad de este archivo prueba que las viejas sigan saliendo igual.
  */
-const { huecosDe, cuantosHuecos, conNombres, conValores, componentesDe } = await import(
-  process.argv[2] ?? "/tmp/huecos.mjs"
-);
+const { huecosDe, cuantosHuecos, conNombres, conValores, componentesDe } = await compilar("src/lib/whatsapp/huecos.ts");
 
 let f = 0;
 const es = (t, r, e) => {

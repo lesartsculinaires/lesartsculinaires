@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * ¿Qué módulos llevan número rojo, y con qué número?
  *
- *     npx esbuild src/lib/avisos.ts --bundle --format=esm --platform=node \
- *       --alias:@=./src --outfile=/tmp/avisos.mjs
- *     node supabase/pruebas/avisos.test.mjs /tmp/avisos.mjs
+ *     node --test supabase/pruebas/avisos.test.mjs
  *
  * ------------------------------------------------------------------------
  * LO QUE IMPORTA ACÁ ES LO QUE NO SE CUENTA
@@ -15,7 +15,7 @@
  * la semana que viene no encienda nada, que un módulo sin pendientes no
  * aparezca en el mapa— y esas son las que se rompen sin que nadie lo note.
  */
-const { avisosDeLaBarra } = await import(process.argv[2] ?? "/tmp/avisos.mjs");
+const { avisosDeLaBarra } = await compilar("src/lib/avisos.ts");
 
 let f = 0;
 const es = (t, r, e) => {

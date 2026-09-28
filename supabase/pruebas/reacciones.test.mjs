@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * Las reacciones que llegan por el webhook de Meta.
  *
- *     npx esbuild src/lib/whatsapp/mensajes.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/mensajes.mjs
- *     node supabase/pruebas/reacciones.test.mjs /tmp/mensajes.mjs
+ *     node --test supabase/pruebas/reacciones.test.mjs
  *
  * ------------------------------------------------------------------------
  * POR QUÉ ESTO SE PRUEBA APARTE
@@ -21,7 +21,7 @@
  * Las cargas de abajo tienen la forma exacta que manda Meta, con el envoltorio
  * completo de entry → changes → value.
  */
-const { leerWebhook } = await import(process.argv[2] ?? "/tmp/mensajes.mjs");
+const { leerWebhook } = await compilar("src/lib/whatsapp/mensajes.ts");
 
 let f = 0;
 const es = (t, r, e) => {

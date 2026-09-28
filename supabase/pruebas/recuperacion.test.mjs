@@ -1,9 +1,9 @@
+
+import { compilar } from "./compilar.mjs";
 /**
  * «RECUPERACIÓN» en una nota, ¿deja el recordatorio para dentro de una semana?
  *
- *     npx esbuild src/lib/seguimientos.ts --bundle --format=esm \
- *       --platform=node --alias:@=./src --outfile=/tmp/seg.mjs
- *     node supabase/pruebas/recuperacion.test.mjs /tmp/seg.mjs
+ *     node --test supabase/pruebas/recuperacion.test.mjs
  *
  * ------------------------------------------------------------------------
  * DÓNDE SE ROMPE ESTO
@@ -20,7 +20,7 @@
  * nadie pidió, y los avisos dejarían de mirarse.
  */
 const { detectarSeguimiento, DIAS_PARA_RECUPERAR, sumarDias, tituloDe, rotuloDe } =
-  await import(process.argv[2] ?? "/tmp/seg.mjs");
+  await compilar("src/lib/seguimientos.ts");
 
 let f = 0;
 const es = (t, r, e) => {
