@@ -3,6 +3,22 @@ begin;
 -- Las fichas de pauta que entraron ANTES de que el CRM supiera leerlas.
 --
 -- ============================================================================
+-- ESTE ARCHIVO SE PEGA EN EL EDITOR SQL DEL PANEL, Y ESO MANDA
+-- ============================================================================
+--
+-- Ese editor parte el texto en sentencias con un analizador propio, más simple
+-- que el de Postgres, y hay tres cosas que lo desincronizan. Ninguna es un
+-- problema para Postgres —la primera versión corría bien con psql— pero acá se
+-- evitan las tres, porque el camino de verdad pasa por ese editor:
+--
+--   BLOQUES CON ETIQUETA    Cada cuerpo abre y cierra con su propio nombre
+--                           —$leer$, $campo$— y no con el genérico.
+--   NINGÚN ACENTO GRAVE     Ni dentro de un literal ni en los comentarios: lo
+--                           toma por comilla y pierde la cuenta.
+--   NINGÚN «$» SUELTO       Sin SQL armado a mano, así que sin parámetros
+--                           numerados adentro de cadenas.
+--
+-- ============================================================================
 -- QUÉ ARREGLA
 -- ============================================================================
 --
@@ -16,14 +32,14 @@ begin;
 -- POR QUÉ ESTO ESTÁ ESCRITO DOS VECES, Y QUÉ SE HIZO AL RESPECTO
 -- ============================================================================
 --
--- El lector de verdad vive en la aplicación —`src/lib/crm/formularioDeAnuncio.ts`—
+-- El lector de verdad vive en la aplicación —src/lib/crm/formularioDeAnuncio.ts—
 -- porque corre cuando entra cada mensaje. Esto es una segunda implementación de
 -- las mismas reglas, y dos implementaciones de una regla es exactamente la
 -- clase de cosa que se desincroniza.
 --
 -- Se acepta porque esto CORRE UNA VEZ: no hay futuro en el que puedan
 -- discrepar, sólo este momento. Y para este momento se comprobó que coinciden:
--- `supabase/pruebas/banco/prueba-formulario-viejo.mjs` mete el formulario real
+-- supabase/pruebas/banco/prueba-formulario-viejo.mjs mete el formulario real
 -- de la escuela por los dos caminos —el de la aplicación y éste— y exige que
 -- dejen la ficha igual.
 --
@@ -54,11 +70,11 @@ begin;
 
 -- Sin tildes, sin mayúsculas y sin espacios de más: para comparar etiquetas.
 create or replace function pg_temp.plano(p text) returns text
-language sql immutable as $$
+language sql immutable as $plano$
   select btrim(regexp_replace(
     translate(lower(coalesce(p, '')), 'áàäâéèëêíìïîóòöôúùüûñç', 'aaaaeeeeiiiioooouuuunc'),
     '\s+', ' ', 'g'));
-$$;
+$plano$;
 
 /*
  * A qué campo corresponde una etiqueta.
@@ -68,7 +84,7 @@ $$;
  * las más específicas van arriba —igual que en la aplicación—.
  */
 create or replace function pg_temp.que_campo(p_etiqueta text) returns text
-language plpgsql immutable as $$
+language plpgsql immutable as $campo$
 declare
   e     text := pg_temp.plano(p_etiqueta);
   fila  record;
@@ -111,7 +127,7 @@ begin
   end loop;
 
   return null;
-end $$;
+end $campo$;
 
 /*
  * Lee el mensaje y devuelve los campos, o nada si no parece un formulario.
@@ -122,7 +138,7 @@ end $$;
 create or replace function pg_temp.leer_formulario(p_texto text)
 returns table(nombre text, correo text, telefono text, programa text,
               departamento text, ciudad text, empresa text, cargo text)
-language plpgsql immutable as $$
+language plpgsql immutable as $leer$
 declare
   renglon     text;
   corte       int;
@@ -143,7 +159,18 @@ begin
     continue when corte = 0;
 
     -- Las pautas a veces mandan la etiqueta en negrita, con asteriscos.
-    etiqueta := btrim(translate(substr(renglon, 1, corte - 1), '*_~`', ''));
+    /*
+     * El juego de caracteres se arma con chr(), no se escribe entero.
+     *
+     * Llevaba un acento grave adentro de un literal —'*_~' más ese carácter— y
+     * el editor SQL del panel de Supabase lo trata como si abriera una comilla:
+     * a partir de ahí pierde la cuenta y corta la sentencia por la mitad, con
+     * un error que habla de un bloque sin cerrar veinte renglones más arriba.
+     *
+     * Postgres nunca tuvo problema; el archivo corría bien con psql. Pero
+     * esto se pega en ese editor, así que tiene que pasar por ahí.
+     */
+    etiqueta := btrim(translate(substr(renglon, 1, corte - 1), '*_~' || chr(96), ''));
     valor    := btrim(substr(renglon, corte + 1));
     continue when valor = '';
 
@@ -163,7 +190,7 @@ begin
   end loop;
 
   if reconocidos >= 2 then return next; end if;
-end $$;
+end $leer$;
 
 /*
  * El único del catálogo que corresponde, o nada.
@@ -172,40 +199,87 @@ end $$;
  * pone en la ficha un programa que la persona no pidió, y a un campo que se
  * llenó solo nadie lo revisa. Un hueco, en cambio, se completa mirando el hilo.
  */
-create or replace function pg_temp.cual_del_catalogo(p_busca text, p_tabla text)
-returns bigint
-language plpgsql as $$
+/*
+ * El único del catálogo que corresponde, o nada.
+ *
+ * Deliberadamente cobarde: con dos candidatos no elige ninguno. Adivinar mal
+ * pone en la ficha un programa que la persona no pidió, y a un campo que se
+ * llenó solo nadie lo revisa. Un hueco, en cambio, se completa mirando el hilo.
+ *
+ * ----------------------------------------------------------------------------
+ * RECIBE LA LISTA, NO EL NOMBRE DE LA TABLA
+ * ----------------------------------------------------------------------------
+ *
+ * Antes armaba la consulta con format() y execute(), y para eso llevaba un
+ * parámetro numerado adentro de un literal. El editor SQL del panel toma ese
+ * signo por el principio de un bloque y pierde la cuenta de dónde termina.
+ *
+ * Pasándole las filas ya leídas no hay consulta que armar, y de paso se lee
+ * mejor: la función hace una cosa sola —elegir— y no además buscar.
+ */
+create or replace function pg_temp.cual_del_catalogo(
+  p_busca text,
+  p_ids   bigint[],
+  p_nombres text[]
+) returns bigint
+language plpgsql immutable as $cat$
 declare
-  q      text := pg_temp.plano(p_busca);
-  ids    bigint[];
+  q     text := pg_temp.plano(p_busca);
+  i     int;
+  n     text;
+  hallo bigint;
+  veces int := 0;
 begin
-  if q = '' then return null; end if;
+  if q = '' or p_ids is null then return null; end if;
 
-  execute format(
-    'select array_agg(id) from %I where pg_temp.plano(nombre) = $1', p_tabla)
-    into ids using q;
-  if array_length(ids, 1) = 1 then return ids[1]; end if;
-  if array_length(ids, 1) > 1 then return null; end if;
+  -- Primero, el nombre igual.
+  for i in 1 .. coalesce(array_length(p_ids, 1), 0) loop
+    if pg_temp.plano(p_nombres[i]) = q then
+      veces := veces + 1;
+      hallo := p_ids[i];
+    end if;
+  end loop;
+
+  -- Con uno, ése. Con dos, ninguno: elegir el primero pondría la mitad de los
+  -- leads en la copia equivocada, y sin ninguna señal.
+  if veces = 1 then return hallo; end if;
+  if veces > 1 then return null; end if;
 
   -- Menos de cuatro letras sólo encuentra por nombre exacto: «Noe» aparece
   -- dentro de demasiadas cosas.
   if length(q) < 4 then return null; end if;
 
-  execute format(
-    'select array_agg(id) from %I
-      where length(pg_temp.plano(nombre)) >= 4
-        and (position($1 in pg_temp.plano(nombre)) > 0
-          or position(pg_temp.plano(nombre) in $1) > 0)', p_tabla)
-    into ids using q;
+  veces := 0;
+  for i in 1 .. coalesce(array_length(p_ids, 1), 0) loop
+    n := pg_temp.plano(p_nombres[i]);
+    if length(n) >= 4 and (position(q in n) > 0 or position(n in q) > 0) then
+      veces := veces + 1;
+      hallo := p_ids[i];
+    end if;
+  end loop;
 
-  return case when array_length(ids, 1) = 1 then ids[1] else null end;
-end $$;
+  return case when veces = 1 then hallo else null end;
+end $cat$;
+
+/*
+ * Los catálogos, leídos una sola vez.
+ *
+ * Se guardan en tablas temporales en vez de consultarse por cada lead: son
+ * pocas filas y esto recorre todo el historial.
+ */
+create temporary table pg_temp.cat_productos on commit drop as
+  select array_agg(id order by id) as ids, array_agg(nombre order by id) as nombres
+    from public.productos;
+
+create temporary table pg_temp.cat_territorios on commit drop as
+  select array_agg(id order by id) as ids, array_agg(nombre order by id) as nombres
+    from public.territorios;
 
 -- ---------------------------------------------------------------------------
 -- 2. Antes: cuántos hay
 -- ---------------------------------------------------------------------------
 
-do $$
+do $aviso$
 declare
   cuantos int;
 begin
@@ -215,13 +289,13 @@ begin
      and exists (select 1 from pg_temp.leer_formulario(m.texto));
 
   raise notice '--- formularios de pauta encontrados en el historial: % ---', cuantos;
-end $$;
+end $aviso$;
 
 -- ---------------------------------------------------------------------------
 -- 3. El arreglo
 -- ---------------------------------------------------------------------------
 --
--- `distinct on (c.cliente_id)` ordenado por el mensaje más VIEJO: si alguien
+-- distinct on (cliente_id) ordenado por el mensaje más VIEJO: si alguien
 -- completó la pauta dos veces, vale el primero, que es el que la ficha habría
 -- tomado cuando entró.
 
@@ -277,15 +351,17 @@ select distinct on (o.cliente_id) o.id, o.cliente_id, o.producto_id, o.territori
 update public.oportunidades o
    set producto_id = coalesce(
          o.producto_id,
-         pg_temp.cual_del_catalogo(d.programa, 'productos')),
+         pg_temp.cual_del_catalogo(d.programa, cp.ids, cp.nombres)),
        territorio_id = coalesce(
          o.territorio_id,
          -- La ciudad primero: algunas pautas mandan bien la ciudad y mal el
          -- departamento. Gana el que el catálogo reconozca.
-         pg_temp.cual_del_catalogo(d.ciudad, 'territorios'),
-         pg_temp.cual_del_catalogo(d.departamento, 'territorios'))
+         pg_temp.cual_del_catalogo(d.ciudad, ct.ids, ct.nombres),
+         pg_temp.cual_del_catalogo(d.departamento, ct.ids, ct.nombres))
   from pg_temp.de_pauta d
   join pg_temp.la_ultima u on u.cliente_id = d.cliente_id
+  cross join pg_temp.cat_productos cp
+  cross join pg_temp.cat_territorios ct
  where o.id = u.id;
 
 -- Y el programa queda también entre «por los que preguntó».
