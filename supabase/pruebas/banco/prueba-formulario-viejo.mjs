@@ -1,64 +1,46 @@
 /**
- * El SQL que completa las fichas viejas deja lo mismo que la aplicación.
+ * El botón que completa las fichas de pauta que ya habían entrado.
  *
  *     node supabase/pruebas/banco/prueba-formulario-viejo.mjs
  *
  * ============================================================================
- * POR QUÉ ESTA PRUEBA EXISTE
+ * POR QUÉ ESTO ES UN BOTÓN Y NO UN SQL
  * ============================================================================
  *
- * El lector de formularios vive en la aplicación, porque corre cuando entra
- * cada mensaje. La migración `20261108120000_fichas_de_pauta_ya_recibidas.sql`
- * es una SEGUNDA implementación de las mismas reglas, para los leads que
- * entraron antes de que el CRM supiera leerlas.
+ * Se intentó tres veces con un archivo para pegar en el editor SQL del panel y
+ * lo rechazó las tres, cortando el texto en lugares distintos —con funciones,
+ * con bloques etiquetados, con tablas temporales—. Ninguna versión tenía un
+ * problema de Postgres: las tres corrían bien con psql.
  *
- * Dos implementaciones de una regla se desincronizan. Se aceptó porque el SQL
- * corre una vez —no hay futuro en el que puedan discrepar, sólo este momento—
- * pero para ESTE momento hay que comprobarlo, y eso es lo que hace esto:
+ * Pero el motivo de fondo para hacerlo en la aplicación es mejor que ése, y
+ * era cierto desde el principio: ASÍ ES EL MISMO CÓDIGO. El botón llama a la
+ * misma función que corre cuando entra un mensaje nuevo, así que no hay una
+ * segunda implementación de las reglas que se pueda desincronizar.
  *
- *   EL MISMO FORMULARIO, POR LOS DOS CAMINOS, Y LA MISMA FICHA AL FINAL.
+ * Y eso cambia lo que esta prueba tiene que comprobar. Antes comparaba dos
+ * implementaciones entre sí; ahora eso no hace falta —es la misma— y lo que
+ * queda por asegurar es lo que de verdad puede fallar:
  *
- * Uno entra por el webhook, que completa la ficha al vuelo. El otro se siembra
- * a mano —como quedaron los que llegaron antes— y se arregla con el SQL.
- * Después se comparan campo por campo.
+ *   QUE LAS ENCUENTRE      Una ficha vieja, con el formulario en el hilo y los
+ *                          campos vacíos, tiene que quedar completa.
+ *   QUE NO PISE            Una con el correo escrito a mano no se toca.
+ *   QUE NO SE CONFUNDA     Un mensaje común no es un formulario.
+ *   QUE SEA IDEMPOTENTE    Apretarlo dos veces no cambia nada la segunda.
  *
- * ============================================================================
- * Y LAS TRES REGLAS, TAMBIÉN EN EL SQL
- * ============================================================================
- *
- *   NO PISA        Una ficha vieja con el correo ya escrito a mano no se toca.
- *   NO ADIVINA     Un programa ambiguo deja el campo vacío.
- *   NO SE CONFUNDE Un mensaje común no se toma por formulario.
- *
- * Necesita el banco armado (`armar.sh`) y la aplicación en 3142.
+ * Necesita el banco armado (`armar.sh`).
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { chromium } from "playwright";
 
 const RAIZ = "/home/user/lesartsculinaires";
-const SECRETO = "secreto-de-prueba";
-const URL = "http://127.0.0.1:3142/api/whatsapp/webhook";
-const MIGRACION = `${RAIZ}/supabase/migrations/20261108120000_fichas_de_pauta_ya_recibidas.sql`;
 
 const sql = (q) =>
   execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -c \\"${q}\\""`, {
     encoding: "utf8",
   }).trim();
-
-/** Corre un archivo entero, que es como se corre la migración de verdad. */
-const correrArchivo = (ruta) => {
-  const salida = execSync(`su postgres -c "psql -h /tmp -p 5511 -d crm -A -t -q -f ${ruta}" 2>&1`, {
-    encoding: "utf8",
-  });
-  if (/^psql:.*ERROR:/m.test(salida)) {
-    console.error(`\nLa migración falló:\n${salida}\n`);
-    process.exit(1);
-  }
-  return salida;
-};
 
 let f = 0;
 const es = (t, r, e) => {
@@ -69,12 +51,10 @@ const es = (t, r, e) => {
   } else console.log(`✓ ${t}`);
 };
 
-/** Por la aplicación, sembrado a mano, el que no se toca, y el común. */
-const POR_LA_APP = "50361110001";
 const VIEJO = "50361110002";
 const CON_DATOS = "50361110003";
 const COMUN = "50361110004";
-const TODOS = [POR_LA_APP, VIEJO, CON_DATOS, COMUN];
+const TODOS = [VIEJO, CON_DATOS, COMUN];
 const enComillas = TODOS.map((t) => `'${t}'`).join(",");
 
 const limpiar = () => {
@@ -86,6 +66,13 @@ const limpiar = () => {
 };
 limpiar();
 
+/*
+ * Un programa con el que se pueda acertar sin adivinar.
+ *
+ * El del catálogo se llama «Curso corto Pastelería Saludable» y el formulario
+ * dice «Pastelería Saludable»: es el caso que una comparación exacta no
+ * juntaría, y el que de verdad hay que resolver.
+ */
 sql(`insert into productos (nombre) select 'Curso corto Pastelería Saludable' where not exists (select 1 from productos where nombre='Curso corto Pastelería Saludable')`);
 sql(`insert into territorios (nombre) select 'Chalatenango' where not exists (select 1 from territorios where nombre='Chalatenango')`);
 
@@ -100,61 +87,9 @@ const EL_FORMULARIO = [
   "City: Chalatenango",
 ].join("\n");
 
-// ══════════════════════════════════════════════════════════════════════════
-console.log("── 1. UNO ENTRA POR LA APLICACIÓN ──");
-// ══════════════════════════════════════════════════════════════════════════
-{
-  const carga = {
-    object: "whatsapp_business_account",
-    entry: [
-      {
-        id: "222",
-        changes: [
-          {
-            field: "messages",
-            value: {
-              messaging_product: "whatsapp",
-              metadata: { display_phone_number: "50322334455", phone_number_id: "111" },
-              contacts: [{ profile: { name: null }, wa_id: POR_LA_APP }],
-              messages: [
-                {
-                  from: POR_LA_APP,
-                  id: "wamid.VIEJO" + Date.now(),
-                  timestamp: String(Math.floor(Date.now() / 1000)),
-                  type: "text",
-                  text: { body: EL_FORMULARIO },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    ],
-  };
-
-  const crudo = JSON.stringify(carga);
-  const firma = crypto.createHmac("sha256", SECRETO).update(crudo).digest("hex");
-  const r = await fetch(URL, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-hub-signature-256": "sha256=" + firma },
-    body: crudo,
-  });
-
-  es("el webhook lo acepta", r.status, 200);
-  execSync("sleep 2.5");
-  es(
-    "y la ficha quedó completa",
-    sql(`select correo from clientes where telefono='${POR_LA_APP}'`),
-    "magdalenamartinez24@hotmail.com",
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 2. Y TRES SE SIEMBRAN COMO QUEDARON LOS VIEJOS ──");
-// ══════════════════════════════════════════════════════════════════════════
 /*
- * O sea: el mensaje en el hilo y la ficha vacía, que es exactamente el estado
- * en el que quedaron los leads que entraron antes de este arreglo.
+ * Se siembran como quedaron los viejos: el mensaje en el hilo y la ficha
+ * vacía. Es exactamente el estado de los leads que entraron antes del arreglo.
  */
 const sembrarViejo = (tel, nombre, texto, correo = null) => {
   const esc = (s) => s.replace(/'/g, "''");
@@ -187,55 +122,173 @@ const sembrarViejo = (tel, nombre, texto, correo = null) => {
 
 // El de siempre: ficha llamada como el teléfono, sin correo.
 sembrarViejo(VIEJO, VIEJO, EL_FORMULARIO);
-// Uno al que alguien ya le escribió el correo a mano: NO se puede pisar.
+// Uno al que alguien ya le escribió los datos a mano: NO se pueden pisar.
 sembrarViejo(CON_DATOS, "Nombre Escrito A Mano", EL_FORMULARIO, "loescribio@unapersona.com");
 // Y un mensaje común, que no es un formulario.
 sembrarViejo(COMUN, "Ana Común", "Hola: quisiera información del curso de pastelería");
 
-es("los tres viejos están sin correo o con el suyo", sql(
-  `select count(*) from clientes where telefono in ('${VIEJO}','${COMUN}') and correo is null`,
-), "2");
+// ── la aplicación, con la compilación de ahora ─────────────────────────────
+//
+// `next start` sirve la compilación que tenía al arrancar, así que sin
+// rearrancar esto mediría el código de antes y pasaría haga lo que haga el de
+// ahora. Se comprobó: con el lector anulado, la prueba pasaba igual.
+
+const parar = (puerto) => {
+  try {
+    execSync(`fuser -k ${puerto}/tcp 2>/dev/null || true`, { shell: "/bin/bash" });
+  } catch {
+    // No estaba levantado.
+  }
+  for (let i = 0; i < 20; i++) {
+    const ocupado = execSync(`fuser ${puerto}/tcp 2>/dev/null || true`, {
+      encoding: "utf8",
+      shell: "/bin/bash",
+    }).trim();
+    if (!ocupado) return;
+    execSync("sleep 1");
+  }
+};
+
+parar(3142);
+execSync(
+  `cd ${RAIZ} && (setsid npx next start -p 3142 > /tmp/next-pauta.log 2>&1 < /dev/null &)`,
+  { shell: "/bin/bash" },
+);
+{
+  let vivo = false;
+  for (let i = 0; i < 40; i++) {
+    const code = execSync(
+      "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3142/login || true",
+      { encoding: "utf8", shell: "/bin/bash" },
+    ).trim();
+    if (code === "200") {
+      vivo = true;
+      break;
+    }
+    execSync("sleep 1");
+  }
+  if (!vivo) throw new Error("La aplicación no levantó en el 3142.");
+}
+
+const subDe = (archivo) => {
+  const cuerpo = fs
+    .readFileSync(`${RAIZ}/supabase/pruebas/banco/${archivo}`, "utf8")
+    .trim()
+    .split(".")[1];
+  return JSON.parse(Buffer.from(cuerpo, "base64url").toString()).sub;
+};
+
+const galletaDe = (archivo, correo) => {
+  const jwt = fs.readFileSync(`${RAIZ}/supabase/pruebas/banco/${archivo}`, "utf8").trim();
+  return (
+    "base64-" +
+    Buffer.from(
+      JSON.stringify({
+        access_token: jwt,
+        token_type: "bearer",
+        expires_in: 86400,
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
+        refresh_token: "x",
+        user: { id: subDe(archivo), email: correo },
+      }),
+    ).toString("base64")
+  );
+};
+
+const nav = await chromium.launch({
+  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+});
+
+/** Abre el módulo de Clientes con la sesión que se le diga. */
+const abrirClientes = async (galleta) => {
+  const ctx = await nav.newContext({ viewport: { width: 1500, height: 1050 } });
+  await ctx.addCookies([
+    { name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" },
+  ]);
+  await ctx.addInitScript((h) => {
+    try {
+      localStorage.setItem("lac.reservas.visto", h);
+    } catch {}
+  }, new Date().toISOString().slice(0, 10));
+
+  const p = await ctx.newPage();
+  await p.goto("http://127.0.0.1:3142/?mod=x", { waitUntil: "networkidle" });
+  await p.waitForTimeout(2600);
+  await p.locator('aside button[data-mod="Clientes"]').click();
+  await p.waitForTimeout(2200);
+  return { ctx, p };
+};
+
+const foto = (p, n) =>
+  p.screenshot({ path: (process.env.SP ?? os.tmpdir()) + `/pauta-vieja-${n}.png` });
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 3. SE CORRE LA MIGRACIÓN ──");
-// ══════════════════════════════════════════════════════════════════════════
-correrArchivo(MIGRACION);
-
-// ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 4. LOS DOS CAMINOS DEJAN LA MISMA FICHA ──");
+console.log("── 1. EL BOTÓN ES SÓLO DE DIRECCIÓN ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
-  const fichaDe = (tel) =>
-    sql(
-      `select coalesce(cl.nombre,'-') || ' | ' || coalesce(cl.correo,'-') || ' | ' || ` +
-        `coalesce(p.nombre,'-') || ' | ' || coalesce(t.nombre,'-') ` +
-        `from clientes cl ` +
-        `left join lateral (select * from oportunidades o where o.cliente_id=cl.id order by o.id desc limit 1) o on true ` +
-        `left join productos p on p.id=o.producto_id ` +
-        `left join territorios t on t.id=o.territorio_id ` +
-        `where cl.telefono='${tel}'`,
-    );
-
-  const porLaApp = fichaDe(POR_LA_APP);
-  const porElSql = fichaDe(VIEJO);
-
-  console.log(`   por la aplicación: ${porLaApp}`);
-  console.log(`   por el SQL:        ${porElSql}`);
-
   /*
-   * La comprobación que justifica tener el SQL escrito aparte. Si las dos
-   * implementaciones discrepan, acá se ve, antes de correrlo en producción.
+   * Toca fichas de todo el equipo de una vez. No es destructivo —sólo rellena
+   * huecos— pero sigue siendo una acción sobre datos de otros.
    */
-  es("SON IDÉNTICAS", porElSql, porLaApp);
+  const { ctx, p } = await abrirClientes(galletaDe("jwt-ale.txt", "ale@lac.test"));
   es(
-    "y traen lo que tenía que traer",
-    porLaApp,
+    "una asesora no lo ve",
+    await p.locator("[data-completar-pauta]").count(),
+    0,
+  );
+  await ctx.close();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 2. Y DIRECCIÓN LO APRIETA ──");
+// ══════════════════════════════════════════════════════════════════════════
+const { ctx, p } = await abrirClientes(galletaDe("jwt-jefa.txt", "jefa@lac.test"));
+{
+  const boton = p.locator("[data-completar-pauta]");
+  es("está el botón", await boton.count(), 1);
+  await foto(p, "1-antes");
+
+  await boton.click();
+  await p.waitForTimeout(6000);
+  await foto(p, "2-despues");
+
+  const dicho = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+  es("y dice qué hizo", /Se completaron \d+ de \d+/.test(dicho), true);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 3. LA FICHA VIEJA QUEDÓ COMPLETA ──");
+// ══════════════════════════════════════════════════════════════════════════
+{
+  const ficha = sql(
+    `select coalesce(cl.nombre,'-') || ' | ' || coalesce(cl.correo,'-') || ' | ' || ` +
+      `coalesce(p.nombre,'-') || ' | ' || coalesce(t.nombre,'-') ` +
+      `from clientes cl ` +
+      `left join lateral (select * from oportunidades o where o.cliente_id=cl.id order by o.id desc limit 1) o on true ` +
+      `left join productos p on p.id=o.producto_id ` +
+      `left join territorios t on t.id=o.territorio_id ` +
+      `where cl.telefono='${VIEJO}'`,
+  );
+
+  console.log(`   ${ficha}`);
+  es(
+    "NOMBRE, CORREO, PROGRAMA Y TERRITORIO",
+    ficha,
     "Magdalena Martinez | magdalenamartinez24@hotmail.com | Curso corto Pastelería Saludable | Chalatenango",
+  );
+  es(
+    "y quedó entre los programas por los que preguntó",
+    sql(
+      `select count(*) from oportunidad_programas op ` +
+        `join oportunidades o on o.id=op.oportunidad_id ` +
+        `where o.cliente_id=(select id from clientes where telefono='${VIEJO}')`,
+    ),
+    "1",
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 5. NO PISA NI SE CONFUNDE ──");
+console.log("\n── 4. NO PISA NI SE CONFUNDE ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   es(
@@ -256,20 +309,37 @@ console.log("\n── 5. NO PISA NI SE CONFUNDE ──");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 6. CORRERLA DOS VECES NO CAMBIA NADA ──");
+console.log("\n── 5. APRETARLO DOS VECES NO CAMBIA NADA ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   const antes = sql(
-    `select count(*) from clientes where telefono in (${enComillas}) and correo is not null`,
+    `select string_agg(coalesce(nombre,'-') || coalesce(correo,'-'), '|' order by telefono) ` +
+      `from clientes where telefono in (${enComillas})`,
   );
-  correrArchivo(MIGRACION);
+
+  await p.locator("[data-completar-pauta]").click();
+  await p.waitForTimeout(6000);
+
   es(
-    "la segunda corrida deja todo igual",
-    sql(`select count(*) from clientes where telefono in (${enComillas}) and correo is not null`),
+    "las fichas quedaron igual",
+    sql(
+      `select string_agg(coalesce(nombre,'-') || coalesce(correo,'-'), '|' order by telefono) ` +
+        `from clientes where telefono in (${enComillas})`,
+    ),
     antes,
   );
+
+  const dicho = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+  es(
+    "y lo dice, en vez de parecer que falló",
+    /ya estaban completas|No hay formularios/.test(dicho),
+    true,
+  );
+  await foto(p, "3-segunda-vez");
 }
 
+await ctx.close();
+await nav.close();
 limpiar();
 es("no quedó basura de la prueba", sql(`select count(*) from clientes where telefono='${VIEJO}'`), "0");
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 
+import { completarFichasDePauta } from "@/app/formularios-viejos-actions";
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { NuevoClienteForm } from "@/components/modules/NuevoClienteForm";
 import { Buscador } from "@/components/ui/Buscador";
@@ -615,6 +616,19 @@ export function Clientes({
             Duplicados sugeridos
           </button>
 
+          {/*
+            Completar las fichas de pauta que entraron antes del arreglo.
+            ------------------------------------------------------------------
+            Va acá por el mismo motivo que «Duplicados sugeridos»: es una tarea
+            de Clientes, la hace quien administra los contactos, sobre los
+            contactos, y termina volviendo a esta misma lista.
+
+            Sólo dirección, porque toca fichas de todo el equipo de una vez. No
+            es destructivo —sólo rellena huecos— pero sigue siendo una acción
+            sobre datos de otros.
+          */}
+          {esAdmin && <CompletarDePauta />}
+
           <button
             type="button"
             onClick={() => {
@@ -1065,5 +1079,100 @@ function Encabezado({
         </span>
       </button>
     </th>
+  );
+}
+
+/**
+ * «Las fichas de los leads que entraron por pauta, ¿se pueden llenar?»
+ *
+ * ============================================================================
+ * QUÉ HACE Y POR QUÉ NO SE HACE SOLO
+ * ============================================================================
+ *
+ * Desde el arreglo, un lead que completa el formulario de un anuncio llena su
+ * ficha al entrar. Los que llegaron antes quedaron con el mensaje en el hilo y
+ * la ficha vacía, y nadie va a volver a mandar ese formulario.
+ *
+ * Esto los recorre. Llama a la MISMA función que corre cuando entra un mensaje
+ * nuevo, así que no hay una segunda versión de las reglas que se pueda
+ * desincronizar: sólo rellena huecos, nunca pisa un dato escrito a mano, y un
+ * programa ambiguo lo deja para la asesora.
+ *
+ * ============================================================================
+ * POR QUÉ SE APRIETA VARIAS VECES
+ * ============================================================================
+ *
+ * Cada ficha son tres o cuatro consultas y esto corre dentro de una petición
+ * web con diez segundos para contestar. Con toda la historia de una vez no
+ * terminaría ninguna. Se hace una tanda, dice cuántas quedan, y se vuelve a
+ * apretar. Es el mismo trato que el botón de los nombres de Meta.
+ */
+function CompletarDePauta() {
+  const [andando, setAndando] = useState(false);
+  const [dicho, setDicho] = useState<string | null>(null);
+
+  const pedir = async () => {
+    setAndando(true);
+    setDicho(null);
+    try {
+      const r = await completarFichasDePauta();
+
+      if (!r.ok) {
+        setDicho(r.error ?? "No se pudo.");
+      } else if (r.revisadas === 0) {
+        setDicho("No hay formularios de pauta sin procesar.");
+      } else if (r.completadas === 0) {
+        /*
+         * Revisadas pero sin cambios: ya estaban al día. Hay que decirlo así y
+         * no como un fallo —«0 completadas» a secas se lee como que no
+         * funcionó— y sobre todo hay que decir que apretar de nuevo no las va
+         * a cambiar.
+         */
+        setDicho(
+          `Se revisaron ${r.revisadas} y ya estaban completas.` +
+            (r.quedan > 0 ? ` Quedan ${r.quedan}: apretá de nuevo.` : ""),
+        );
+      } else {
+        setDicho(
+          `Se completaron ${r.completadas} de ${r.revisadas}.` +
+            (r.quedan > 0 ? ` Quedan ${r.quedan}: apretá de nuevo.` : " No queda ninguna."),
+        );
+      }
+    } catch (e) {
+      setDicho(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAndando(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <button
+        type="button"
+        data-completar-pauta
+        onClick={() => void pedir()}
+        disabled={andando}
+        title="Los leads que entraron por un anuncio traen su nombre, correo y curso en el primer mensaje. Esto los copia a la ficha."
+        style={{
+          height: 32,
+          padding: "0 14px",
+          fontSize: 12.5,
+          borderRadius: 6,
+          border: `1px solid ${T.border}`,
+          background: T.surface,
+          color: andando ? T.faint : T.ink,
+          whiteSpace: "nowrap",
+          cursor: andando ? "default" : "pointer",
+        }}
+      >
+        {andando ? "Completando…" : "Completar fichas de pauta"}
+      </button>
+
+      {dicho && (
+        <span style={{ fontSize: 10.5, lineHeight: 1.4, color: T.faint, maxWidth: 260 }}>
+          {dicho}
+        </span>
+      )}
+    </div>
   );
 }
