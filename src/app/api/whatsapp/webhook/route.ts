@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
         .update({ estado: s.estado, error: s.error })
         .eq("wa_id", s.waId);
 
-      await acusarEnvio(supabase, s.waId, s.estado);
+      await acusarEnvio(supabase, s.waId, s.estado, s.error);
     } catch (e) {
       console.error("[whatsapp] no se pudo actualizar el estado", s.waId, e);
     }
@@ -711,8 +711,35 @@ async function contestoUnEnvio(supabase: Cliente, telefono: string) {
  *
  * «Respondió» no se toca nunca desde acá: es lo más avanzado que puede estar
  * un destinatario y lo pone el mensaje entrante, no un acuse.
+ *
+ * ============================================================================
+ * Y EL MOTIVO, QUE ES POR LO QUE SE PERDÍA
+ * ============================================================================
+ *
+ * Acá se guardaba el estado y NADA MÁS, y por eso una campaña terminaba
+ * mostrando «24 no llegaron — Meta no dijo por qué» cuando Meta sí había dicho.
+ *
+ * Son dos familias de fallo y sólo una pasaba por el envío:
+ *
+ *   AL MANDAR        Meta rechaza en el momento. `mandarTanda` recibe el error
+ *                    y lo guarda en `motivo`. Ése nunca se perdió.
+ *
+ *   DESPUÉS          Meta ACEPTA el mensaje y minutos u horas más tarde avisa
+ *                    que no se pudo entregar —el número no tiene WhatsApp, no
+ *                    pudo bajar la imagen, se pasó la ventana—. Eso llega por
+ *                    acá, con el motivo en `errors[0].title`, y se tiraba.
+ *
+ * Es justo la familia que más pesa en una campaña grande: mandarle a una base
+ * vieja significa mandarle a números que ya no existen, y Meta eso no lo sabe
+ * hasta que lo intenta.
  */
-async function acusarEnvio(supabase: Cliente, waId: string, estado: string) {
+async function acusarEnvio(
+  supabase: Cliente,
+  waId: string,
+  estado: string,
+  /** Lo que dijo Meta, cuando lo dijo. Sólo viene con los fallidos. */
+  error: string | null,
+) {
   const COMO_SE_DICE: Record<string, string> = {
     sent: "enviado",
     delivered: "entregado",
@@ -730,9 +757,19 @@ async function acusarEnvio(supabase: Cliente, waId: string, estado: string) {
     fallido: ["pendiente", "enviado"],
   };
 
+  /*
+   * El motivo sólo se escribe con los fallidos, y sólo si vino.
+   *
+   * Con los demás estados no hay motivo que guardar, y escribir `null` borraría
+   * el que hubiera: un acuse desordenado —Meta los manda así— podría llegar
+   * después del fallo y dejar la fila sin explicación otra vez.
+   */
+  const cambio: Record<string, unknown> = { estado: nuevo };
+  if (nuevo === "fallido" && error) cambio.motivo = error;
+
   await supabase
     .from("envio_destinatarios")
-    .update({ estado: nuevo })
+    .update(cambio)
     .eq("wa_id", waId)
     .in("estado", desde[nuevo]);
 }

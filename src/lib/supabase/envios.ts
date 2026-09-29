@@ -3,6 +3,7 @@ import "server-only";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Valor } from "@/lib/envios";
 import { NADA_MAS, quePide, type QuePide } from "@/lib/whatsapp/piezas";
+import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
 
 /** El `select` se arma como texto, así que las filas llegan sin tipar. */
 type Fila = Record<string, unknown>;
@@ -140,11 +141,58 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
 
   const { data: dest, error: errDest } = await supabase
     .from("envio_destinatarios")
-    .select("envio_id, estado, motivo, nombre, telefono")
+    .select("envio_id, estado, motivo, nombre, telefono, wa_id")
     .in("envio_id", ids)
     .limit(50000);
 
   if (errDest) return { ...VACIO, error: errDest.message };
+
+  /*
+   * Los motivos que se perdieron, rescatados del hilo.
+   *
+   * ==========================================================================
+   * POR QUÉ SE PUEDEN RECUPERAR
+   * ==========================================================================
+   *
+   * Hasta el arreglo de `acusarEnvio`, un mensaje que Meta aceptaba y después
+   * no entregaba dejaba al destinatario en «fallido» SIN motivo, y la campaña
+   * mostraba «24 no llegaron — Meta no dijo por qué». Meta sí lo había dicho.
+   *
+   * Y no se perdió del todo: el mismo acuse escribe `mensajes.error`, y la
+   * copia que el envío deja en el hilo de cada persona lleva el MISMO `wa_id`.
+   * Así que el motivo está en la base, a un cruce de distancia.
+   *
+   * Se hace acá, al leer, y no con un arreglo de datos: no hace falta correr
+   * nada en Supabase, funciona igual para lo que ya pasó y para lo que pase
+   * mientras algún acuse viejo siga llegando, y si algún día sobra —porque
+   * `motivo` ya viene siempre— esto simplemente no encuentra nada que rescatar.
+   *
+   * Sólo se piden los que hacen falta: fallidos, sin motivo y con `wa_id`.
+   */
+  const rescatados = new Map<string, string>();
+  {
+    const huerfanos = [
+      ...new Set(
+        ((dest ?? []) as unknown as Fila[])
+          .filter((d) => String(d.estado) === "fallido" && !d.motivo && d.wa_id != null)
+          .map((d) => String(d.wa_id)),
+      ),
+    ];
+
+    if (huerfanos.length > 0) {
+      const { data } = await supabase
+        .from("mensajes")
+        .select("wa_id, error")
+        .in("wa_id", huerfanos.slice(0, 5000))
+        .not("error", "is", null);
+
+      for (const m of (data ?? []) as unknown as Fila[]) {
+        if (m.wa_id != null && m.error != null) {
+          rescatados.set(String(m.wa_id), String(m.error));
+        }
+      }
+    }
+  }
 
   const cuenta = new Map<number, Record<string, number>>();
   const porque = new Map<number, Map<string, number>>();
@@ -158,16 +206,29 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
     cuenta.set(id, suyos);
 
     if (estado === "fallido") {
-      const motivo = d.motivo == null ? "" : String(d.motivo).trim();
+      const guardado = d.motivo == null ? "" : String(d.motivo).trim();
+      // Lo que se haya podido rescatar del hilo: ver arriba.
+      const motivo =
+        guardado || (d.wa_id == null ? "" : (rescatados.get(String(d.wa_id)) ?? ""));
       const m = porque.get(id) ?? new Map<string, number>();
       /*
-       * Sin motivo guardado se dice eso y no se inventa uno.
+       * Sin motivo por ningún lado se dice eso y no se inventa uno.
        *
-       * Pasa con los envíos anteriores a que esto se guardara. «Meta no dijo
-       * por qué» es información —quiere decir «este dato no lo tenemos»— y una
-       * causa inventada haría perder el tiempo buscando donde no hay nada.
+       * Queda cuando el envío no llegó a dejar copia en el hilo —esa copia es
+       * lo mejor que se puede hacer, no una garantía— o cuando Meta avisó del
+       * fallo sin decir por qué. «No lo tenemos» es información; una causa
+       * inventada haría perder el tiempo buscando donde no hay nada.
        */
-      const clave = motivo || "Meta no dijo por qué. Es un envío anterior a que el CRM lo guardara.";
+      /*
+       * Y dicho en castellano.
+       *
+       * Lo que se rescata del hilo son las palabras crudas de Meta —«Message
+       * undeliverable»— y son las mismas que la bandeja ya traduce debajo de
+       * cada burbuja. Se traduce ANTES de agrupar: dos textos de Meta que
+       * quieren decir lo mismo tienen que contarse juntos, no en dos renglones.
+       */
+      const clave =
+        porQueNoLlego(motivo) || "No quedó anotado por qué, y Meta ya no lo dice para un envío viejo.";
       m.set(clave, (m.get(clave) ?? 0) + 1);
       porque.set(id, m);
     }

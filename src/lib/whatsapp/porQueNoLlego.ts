@@ -54,6 +54,27 @@ export function porQueNoLlego(loQueDijoMeta: string | null | undefined): string 
     );
   }
 
+  /*
+   * «Message undeliverable» — el más común en una campaña grande.
+   *
+   * Meta acepta el mensaje, intenta entregarlo y no hay a quién: ese número no
+   * tiene cuenta de WhatsApp, o ya no la tiene. Es el resultado normal de
+   * escribirle a una base vieja, y Meta no lo sabe hasta que lo intenta —por
+   * eso el mensaje sale bien y el fallo llega después—.
+   *
+   * Importa decir que NO es un problema de la cuenta ni de la plantilla: con
+   * este error, el resto de la campaña salió perfecto. Lo que hay que revisar
+   * son esos teléfonos, uno por uno, y ahí sí se arregla escribiendo bien el
+   * número o marcando que esa persona no tiene WhatsApp.
+   */
+  if (/message undeliverable|undeliverable message/i.test(dice)) {
+    return (
+      "Ese número no tiene WhatsApp, o ya no lo tiene. Meta acepta el mensaje y recién al " +
+      "intentar entregarlo se da cuenta, por eso el fallo llega después. No es problema de la " +
+      "cuenta ni de la plantilla: al resto le llegó bien."
+    );
+  }
+
   if (/media download error/i.test(dice)) {
     return "Meta no pudo bajar el archivo de este mensaje. Probá mandarlo de nuevo subiéndolo desde el CRM.";
   }
