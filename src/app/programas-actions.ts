@@ -3,8 +3,36 @@
 import { revalidatePath } from "next/cache";
 
 import { normalizarTexto, programasParecidos } from "@/lib/duplicados";
+import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
 import { CATEGORIAS } from "@/lib/programas";
+import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient } from "@/lib/supabase/server";
+
+/**
+ * Quién escribe en el catálogo, y por qué no es quien pregunta.
+ *
+ * ============================================================================
+ * LA POLÍTICA DE LA BASE SIGUE PIDIENDO `es_admin()`
+ * ============================================================================
+ *
+ * `productos_administrar` exige ser administrador para escribir, y eso no
+ * cambió. Lo que cambió es QUIÉN puede pedirlo: ahora también un rol con la
+ * casilla «crear» o «editar» marcada en Programas, que es lo que la escuela
+ * esperaba desde el principio de esas casillas.
+ *
+ * Como la política no mira `rol_permisos`, la escritura se hace con la llave de
+ * servicio DESPUÉS de comprobar el permiso acá. Es el mismo trato que ya usan
+ * el webhook y el botón de los nombres de Meta.
+ *
+ * ESO MUEVE EL GUARDIÁN DE LA BASE AL SERVIDOR, y hay que decirlo claro: si
+ * esta comprobación se saltara, no hay una segunda red abajo. Por eso
+ * `puedeEnModulo` contesta que NO ante cualquier duda, y por eso cada acción la
+ * llama antes de tocar nada.
+ *
+ * ELIMINAR NO PASA POR ACÁ. Dar de baja un programa afecta a los leads que lo
+ * tienen asignado, así que sigue siendo de dirección y lo sigue exigiendo la
+ * base.
+ */
 
 /**
  * Alta de programas del catálogo.
@@ -38,17 +66,21 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
 
-  // Sólo dirección, comprobado acá además de en la base.
-  //
-  // No es redundante por dos motivos. Mientras la migración del catálogo no se
-  // corra, la política vieja deja escribir a cualquiera con sesión y lo único
-  // que separa es el botón escondido, que no separa nada: una acción de
-  // servidor se puede invocar sin pasar por la pantalla. Y una vez corrida,
-  // esto sigue dando un mensaje que se entiende en vez del error crudo de una
-  // política.
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) {
-    return { ok: false, error: "Sólo dirección puede crear programas." };
+  /*
+   * El permiso se comprueba ACÁ, y es el único que hay.
+   *
+   * Esconder el botón no separa nada: una acción de servidor se puede invocar
+   * sin pasar por la pantalla. Y como la escritura va con la llave de servicio
+   * —la política de la base sólo conoce `es_admin()`— abajo no queda ninguna
+   * otra red.
+   */
+  if (!(await puedeEnModulo(supabase, "programas", "crear"))) {
+    return { ok: false, error: "No tenés permiso para crear programas." };
+  }
+
+  const admin = getAdminClient();
+  if (!admin) {
+    return { ok: false, error: "Falta SUPABASE_SERVICE_ROLE_KEY en el servidor." };
   }
 
   const nombre = p.nombre.trim();
@@ -90,7 +122,7 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
     if (parecidos.length > 0) return { ok: false, error: null, parecidos };
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from("productos")
     .insert({ nombre, categoria, precio: p.precio });
 
@@ -118,17 +150,24 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
  * Cambiar un programa que ya existe.
  *
  * ------------------------------------------------------------------------
- * POR QUÉ ES DE DIRECCIÓN, Y NO UNA CASILLA DE PERMISOS
+ * QUIÉN PUEDE, Y POR QUÉ DAR DE BAJA PIDE MÁS
  * ------------------------------------------------------------------------
  *
- * Porque la política de la base —`productos_administrar`, de
- * `20260827120000_catalogo_programas.sql`— exige `es_admin()` y no mira
- * `rol_permisos`. Mientras eso sea así, marcarle «editar programas» a Ventas
- * no habilita nada: el botón aparecería y la base lo rechazaría igual.
+ * Cambiar un programa pide la casilla «editar» de Programas. Esto antes era de
+ * dirección y nada más, porque la política de la base sólo conoce `es_admin()`
+ * y marcarle la casilla a otro rol no habilitaba nada —el botón aparecía y la
+ * base lo rechazaba igual—. Ahora la casilla vale: el permiso se comprueba acá
+ * y la escritura va con la llave de servicio.
  *
- * Es una decisión, no un descuido. El catálogo lo comparten todas las
- * pantallas: renombrar un programa le cambia el nombre a los leads de todo el
- * equipo, a los cortes del Dashboard y a las opciones del formulario de feria.
+ * DAR DE BAJA ES OTRA COSA Y PIDE «eliminar». Renombrar cambia cómo se lee un
+ * programa; darlo de baja lo saca de todos los desplegables donde se elige, así
+ * que la gente deja de poder asignarlo. Viajan en el mismo formulario y en el
+ * mismo `update`, pero no cuestan lo mismo, y meter las dos bajo un permiso
+ * sería regalar la más cara con la más barata.
+ *
+ * Y el catálogo lo comparten todas las pantallas: renombrar un programa le
+ * cambia el nombre a los leads de todo el equipo, a los cortes del Dashboard y
+ * a las opciones del formulario de feria.
  *
  * ------------------------------------------------------------------------
  * LO QUE CAMBIA Y LO QUE NO
@@ -161,11 +200,14 @@ export async function editarPrograma(p: CambioDePrograma): Promise<ResultadoProg
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
 
-  // Igual que en el alta: acá además de en la base, para que el que no
-  // corresponde lea un motivo y no el error crudo de una política.
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) {
-    return { ok: false, error: "Sólo dirección puede cambiar un programa." };
+  // Igual que en el alta: acá y en ningún otro lado.
+  if (!(await puedeEnModulo(supabase, "programas", "editar"))) {
+    return { ok: false, error: "No tenés permiso para cambiar programas." };
+  }
+
+  const admin = getAdminClient();
+  if (!admin) {
+    return { ok: false, error: "Falta SUPABASE_SERVICE_ROLE_KEY en el servidor." };
   }
 
   if (!Number.isInteger(p.id) || p.id <= 0) {
@@ -194,10 +236,15 @@ export async function editarPrograma(p: CambioDePrograma): Promise<ResultadoProg
 
   const { data: existentes, error: errLeer } = await supabase
     .from("productos")
-    .select("id, nombre")
+    .select("id, nombre, activo")
     .limit(500);
 
   if (errLeer) return { ok: false, error: errLeer.message };
+
+  // Cómo está hoy el que se edita: hace falta para saber si esto es una baja.
+  const yaEsta = (existentes ?? []).find((x) => Number(x.id) === p.id) as
+    | { activo?: boolean }
+    | undefined;
 
   // El programa que se está editando queda afuera de la comparación: si no,
   // cambiarle sólo el precio se rechazaría por parecerse a sí mismo.
@@ -216,10 +263,29 @@ export async function editarPrograma(p: CambioDePrograma): Promise<ResultadoProg
     if (parecidos.length > 0) return { ok: false, error: null, parecidos };
   }
 
+  /*
+   * Dar de baja pide «eliminar», no «editar».
+   *
+   * Se comprueba con lo que hay guardado y no con lo que llegó: lo que cuesta
+   * es el CAMBIO de activo a inactivo. Quien sólo puede editar guarda un
+   * programa que ya estaba de baja sin problema —no está dando de baja nada—,
+   * y lo que no puede es bajarlo él.
+   */
+  if (yaEsta?.activo !== false && p.activo === false) {
+    if (!(await puedeEnModulo(supabase, "programas", "eliminar"))) {
+      return {
+        ok: false,
+        error:
+          "No tenés permiso para dar de baja un programa. Dar de baja lo saca de " +
+          "todos los desplegables donde se elige, así que es un permiso aparte.",
+      };
+    }
+  }
+
   const campos = { nombre, categoria, precio: p.precio, activo: p.activo };
 
   const guardar = (con: Record<string, unknown>) =>
-    supabase.from("productos").update(con).eq("id", p.id);
+    admin.from("productos").update(con).eq("id", p.id);
 
   // Todo en un solo `update`, que es lo que hace que no pueda quedar el nombre
   // cambiado y el horario no. Salvo que `horario` no exista: esa columna llega
@@ -294,9 +360,14 @@ export async function guardarHorarioDePrograma(
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (esAdmin !== true) {
-    return { ok: false, error: "Sólo dirección puede cambiar el horario de un programa." };
+  // El horario es parte de editar el programa, así que pide lo mismo.
+  if (!(await puedeEnModulo(supabase, "programas", "editar"))) {
+    return { ok: false, error: "No tenés permiso para cambiar el horario de un programa." };
+  }
+
+  const admin = getAdminClient();
+  if (!admin) {
+    return { ok: false, error: "Falta SUPABASE_SERVICE_ROLE_KEY en el servidor." };
   }
 
   const limpio = (horario ?? "").trim();
@@ -307,7 +378,7 @@ export async function guardarHorarioDePrograma(
     };
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from("productos")
     .update({ horario: limpio || null })
     .eq("id", productoId);

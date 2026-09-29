@@ -42,6 +42,14 @@ interface Props {
   /** Si quien está mirando puede borrar leads. Sólo dirección. */
   esAdmin: boolean;
   /**
+   * Casilla «editar» del rol en Clientes.
+   *
+   * Decide si se ofrece completar en lote las fichas de pauta. Es la misma
+   * casilla que permite corregir una ficha a mano, y esto hace lo mismo con
+   * muchas de una vez.
+   */
+  puedeCompletarPauta: boolean;
+  /**
    * Sube el botón de subir base. Casilla «crear» del rol en Bases.
    *
    * El mismo botón está en el módulo de Bases y los dos respetan esta
@@ -86,6 +94,7 @@ interface Props {
 export function Clientes({
   oportunidades,
   esAdmin,
+  puedeCompletarPauta,
   puedeSubirBases,
   importaciones,
   etiquetas,
@@ -623,11 +632,16 @@ export function Clientes({
             de Clientes, la hace quien administra los contactos, sobre los
             contactos, y termina volviendo a esta misma lista.
 
-            Sólo dirección, porque toca fichas de todo el equipo de una vez. No
-            es destructivo —sólo rellena huecos— pero sigue siendo una acción
-            sobre datos de otros.
+            Lo ve quien puede EDITAR clientes, no sólo dirección. Es la misma
+            casilla que ya decide si alguien puede corregir una ficha a mano, y
+            esto hace lo mismo con muchas de una vez: atarlo al rol en vez de al
+            permiso volvería a dejar «Jefe de Ventas» con las casillas marcadas
+            y sin botón, que es el problema que se está arreglando.
+
+            No es destructivo: sólo rellena huecos y nunca pisa un dato escrito
+            a mano.
           */}
-          {esAdmin && <CompletarDePauta />}
+          {puedeCompletarPauta && <CompletarDePauta />}
 
           <button
             type="button"

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { completarConFormulario } from "@/lib/crm/completarConFormulario";
 import { leerFormulario } from "@/lib/crm/formularioDeAnuncio";
+import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 
@@ -32,12 +33,16 @@ import { getServerClient, getUser } from "@/lib/supabase/server";
  *   CREDENCIAL               pegar un archivo largo en ningún lado.
  *
  * ============================================================================
- * SÓLO DIRECCIÓN
+ * QUIÉN PUEDE: LA CASILLA «EDITAR» DE CLIENTES
  * ============================================================================
  *
- * Toca fichas de todo el equipo de una sola vez. No es destructivo —sólo
- * rellena huecos— pero sigue siendo una acción sobre datos de otros, y esas
- * son de dirección, igual que editar programas.
+ * Es la misma casilla que ya decide si alguien puede corregir una ficha a
+ * mano; esto hace lo mismo con muchas de una vez, y sólo rellenando huecos.
+ *
+ * Atarlo al rol —«sólo dirección»— era lo primero que se hizo, y repetía el
+ * problema que la escuela reportó: «Jefe de Ventas» tenía las casillas marcadas
+ * y no le aparecía ningún botón. El permiso tiene que salir de la casilla, no
+ * de quién es.
  */
 
 export interface ResultadoViejos {
@@ -85,9 +90,8 @@ export async function completarFichasDePauta(): Promise<ResultadoViejos> {
     return { ok: false, ...NADA, error: "Sesión no válida." };
   }
 
-  const { data: esAdmin } = await supabase.rpc("es_admin");
-  if (!esAdmin) {
-    return { ok: false, ...NADA, error: "Sólo dirección puede completar fichas en lote." };
+  if (!(await puedeEnModulo(supabase, "clientes", "editar"))) {
+    return { ok: false, ...NADA, error: "No tenés permiso para editar clientes." };
   }
 
   /*

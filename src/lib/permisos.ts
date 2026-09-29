@@ -57,6 +57,8 @@ export function puede(
 /** Las claves de los módulos en el catálogo de la base. */
 export const MOD_BASES = "bases";
 export const MOD_FORMULARIOS = "formularios";
+export const MOD_PROGRAMAS = "programas";
+export const MOD_CLIENTES = "clientes";
 
 /**
  * Las cuatro casillas de un módulo, resueltas de una vez.

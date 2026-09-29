@@ -57,39 +57,52 @@ const sinDecidir = (): Record<Accion, boolean> => ({
 });
 
 /**
- * Los módulos donde escribir es de dirección, y no hay casilla que lo cambie.
+ * Las acciones que son de dirección, y no hay casilla que lo cambie.
  *
  * ------------------------------------------------------------------------
- * POR QUÉ SE QUITAN LAS CASILLAS EN VEZ DE DEJARLAS
+ * ESTO ERA TODO EL MÓDULO DE PROGRAMAS, Y AHORA ES UNA SOLA ACCIÓN
  * ------------------------------------------------------------------------
  *
- * Porque mienten. El catálogo de programas lo protege la política
- * `productos_administrar` —de `20260827120000_catalogo_programas.sql`—, que
- * pide `es_admin()` y no mira `rol_permisos` para nada. O sea que se le podía
- * marcar «crear» y «editar» a Jefe de Ventas, guardar, y el rol seguía sin
- * poder: el botón no aparecía y, si alguien llegaba igual, la base lo
- * rechazaba.
+ * Crear y editar programas era de dirección porque la política de la base
+ * —`productos_administrar`— pide `es_admin()` y no mira `rol_permisos`: se le
+ * podía marcar la casilla a Jefe de Ventas, guardar, y el rol seguía sin
+ * poder. Un control que no hace nada es peor que no tenerlo, así que se quitó
+ * la casilla.
  *
- * Eso es exactamente lo que reportó la escuela, y es un control que no hace
- * nada: quien lo usa se queda creyendo que configuró algo. Ya pasó una vez con
- * la casilla «ver», y la conclusión fue la misma —está escrita en
- * `20260927120000_modulos_por_rol.sql`—: o el control manda, o no está.
+ * Ahora la casilla manda de verdad: el permiso se comprueba en el servidor,
+ * antes de escribir con la llave de servicio. Así que vuelve.
  *
- * Acá no puede mandar. Es una decisión de la escuela, no una limitación:
- * renombrar un programa le cambia el nombre a los leads de todo el equipo, a
- * los cortes del Dashboard y al historial de cursos. Así que se va la casilla.
+ * DAR DE BAJA NO VUELVE. Renombrar cambia cómo se lee un programa; darlo de
+ * baja lo saca de todos los desplegables donde se elige, y desde ahí nadie más
+ * puede asignarlo. Es una decisión de la escuela, tomada al habilitar las
+ * otras dos.
  *
- * «Ver» sí queda, y sigue valiendo: se le puede esconder Programas a un rol.
- * Lo que no se puede es dejarlo escribir.
+ * ------------------------------------------------------------------------
+ * LA REGLA QUE NO CAMBIA
+ * ------------------------------------------------------------------------
+ *
+ * O el control manda, o no está. Está escrita en
+ * `20260927120000_modulos_por_rol.sql` y es la que hace que acá se quiten
+ * casillas en vez de dejarlas apagadas: una casilla que se puede marcar y no
+ * hace nada deja a quien la usa creyendo que configuró algo.
  */
-const SOLO_DIRECCION_ESCRIBE: Record<string, string> = {
-  programas:
-    "Crear y cambiar programas es de dirección: el catálogo lo comparten todas " +
-    "las pantallas y la base lo exige aparte. «Ver» sí se puede destildar.",
+const SOLO_DIRECCION: Record<string, { acciones: Accion[]; porque: string }> = {
+  programas: {
+    acciones: ["eliminar"],
+    porque:
+      "Dar de baja un programa lo saca de todos los desplegables donde se elige, " +
+      "así que nadie más puede asignarlo. Eso es de dirección. Crear y editar sí " +
+      "se pueden marcar.",
+  },
 };
 
-/** Un módulo donde sólo «ver» es una casilla de verdad. */
-const soloVer = (clave: string) => clave in SOLO_DIRECCION_ESCRIBE;
+/** ¿Esta acción de este módulo es de dirección y no tiene casilla? */
+const soloDireccion = (clave: string, accion: Accion): boolean =>
+  (SOLO_DIRECCION[clave]?.acciones ?? []).includes(accion);
+
+/** Las acciones sin casilla de un módulo, para limpiarlas al guardar. */
+const apagadas = (clave: string): Partial<Record<Accion, false>> =>
+  Object.fromEntries((SOLO_DIRECCION[clave]?.acciones ?? []).map((a) => [a, false]));
 
 function aBorrador(permisos: readonly Permiso[], rolId: number, claves: string[]): Borrador {
   const out: Borrador = {};
@@ -103,9 +116,7 @@ function aBorrador(permisos: readonly Permiso[], rolId: number, claves: string[]
     // nada, pero si se mostraran se seguiría leyendo que el rol puede. Se
     // muestran en «no», que es lo que pasa de verdad, y el primer guardado los
     // deja así en la base.
-    out[clave] = soloVer(clave)
-      ? { ...guardado, crear: false, editar: false, eliminar: false }
-      : guardado;
+    out[clave] = { ...guardado, ...apagadas(clave) };
   }
   return out;
 }
@@ -152,7 +163,7 @@ export function UsuariosRoles({
 
   const toggle = (modulo: string, accion: Accion) => {
     if (rol?.esAdmin) return; // el administrador siempre puede todo
-    if (accion !== "ver" && soloVer(modulo)) return; // ahí no hay nada que marcar
+    if (soloDireccion(modulo, accion)) return; // ahí no hay nada que marcar
     const base = borrador ?? (rol ? aBorrador(accesos.permisos, rol.id, claves) : {});
     setBorrador({
       ...base,
@@ -171,9 +182,7 @@ export function UsuariosRoles({
         const fila = borrador[clave] ?? vacio();
         // Donde no hay casilla no se escribe un «sí» viejo: se guarda lo que
         // la pantalla muestra, que es lo que pasa de verdad.
-        return soloVer(clave)
-          ? { modulo: clave, ver: fila.ver, crear: false, editar: false, eliminar: false }
-          : { modulo: clave, ...fila };
+        return { modulo: clave, ...fila, ...apagadas(clave) };
       }),
     );
     setBusy(false);
@@ -1168,17 +1177,18 @@ export function UsuariosRoles({
                         // Sin casillas, y dicho una vez sobre las tres: un
                         // hueco sin explicación se lee como que falta algo, no
                         // como que es así a propósito.
-                        if (a !== "ver" && soloVer(m.clave)) {
-                          if (a !== "crear") return null;
+                        // Sin casilla, y dicho en su celda: un hueco sin
+                        // explicación se lee como que falta algo, no como que
+                        // es así a propósito.
+                        if (soloDireccion(m.clave, a)) {
                           return (
                             <td
                               key={a}
-                              colSpan={3}
                               style={{ padding: "8px", textAlign: "center" }}
-                              title={SOLO_DIRECCION_ESCRIBE[m.clave]}
+                              title={SOLO_DIRECCION[m.clave]?.porque}
                             >
-                              <span style={{ fontSize: 11.5, color: T.faint }}>
-                                Crear, editar y eliminar: sólo dirección
+                              <span style={{ fontSize: 11, color: T.faint }}>
+                                sólo dirección
                               </span>
                             </td>
                           );

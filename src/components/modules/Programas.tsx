@@ -5,6 +5,7 @@ import { useState } from "react";
 import { EditarPrograma } from "@/components/modules/EditarPrograma";
 import { NuevoPrograma } from "@/components/modules/NuevoPrograma";
 import { useCatalogo } from "@/lib/catalog";
+import type { PermisosDeModulo } from "@/lib/permisos";
 import { money } from "@/lib/format";
 import { estaAbierta, esGanada, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
@@ -18,13 +19,17 @@ interface Props {
   onCategoria: (c: string) => void;
   onVerLeads: (productoId: number) => void;
   /**
-   * Crear y cambiar programas es cosa de dirección: el catálogo lo comparten
-   * todas las pantallas, y un nombre de más parte los reportes de todo el
-   * equipo. La base lo hace cumplir aparte —la política `productos_administrar`
-   * exige `es_admin()`, no mira `rol_permisos`—; esto sólo evita ofrecer un
-   * botón que iba a fallar.
+   * Las casillas del rol para Programas.
+   *
+   * Antes esto era `esAdmin` a secas, y por eso el rol «Jefe de Ventas» tenía
+   * «crear» y «editar» marcados en Usuarios y Roles y no le aparecía ningún
+   * botón. Ahora vale la casilla.
+   *
+   * Esconder el botón ordena la vista y no protege nada: quien decide es la
+   * comprobación del servidor, en `programas-actions.ts`, que corre aunque
+   * nadie mire la pantalla.
    */
-  esAdmin: boolean;
+  permisos: PermisosDeModulo;
   /** Para volver a pedir el catálogo cuando se crea uno. */
   onRefrescar: () => void;
 }
@@ -37,7 +42,7 @@ export function Programas({
   categoria,
   onCategoria,
   onVerLeads,
-  esAdmin,
+  permisos,
   onRefrescar,
 }: Props) {
   const { productos } = useCatalogo();
@@ -69,7 +74,7 @@ export function Programas({
 
   return (
     <div>
-      {esAdmin && (
+      {permisos.crear && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
           <button
             type="button"
@@ -98,7 +103,7 @@ export function Programas({
         />
       )}
 
-      {esAdmin && enEdicion && (
+      {permisos.editar && enEdicion && (
         <EditarPrograma
           producto={enEdicion}
           accent={accent}
@@ -263,7 +268,7 @@ export function Programas({
                 >
                   {p.nombre}
                 </h3>
-                {esAdmin && (
+                {permisos.editar && (
                   <button
                     type="button"
                     onClick={() => setEditando(p.id)}

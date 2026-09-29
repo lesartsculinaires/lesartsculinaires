@@ -1,13 +1,16 @@
 /**
  * Bases: quién puede subir una y quién puede abrirla.
  *
- *     npx esbuild src/lib/permisos.ts --bundle --format=esm --platform=node \
- *       --alias:@=./src --outfile=supabase/pruebas/permisos.mjs
  *     node supabase/pruebas/banco/prueba-permisos-bases.mjs
  *
- * El primer paso arma la copia de `puede()` que corre en el navegador, para
- * poder compararla contra la de la base. Es un archivo generado y no se
- * guarda en el repositorio.
+ * Compila sola la copia de `puede()` que corre en el navegador, para poder
+ * compararla contra la de la base.
+ *
+ * ANTES PEDÍA UN `npx esbuild` A MANO, en el encabezado, y el archivo que
+ * generaba no está en el repositorio. O sea que la prueba reventaba con
+ * «ERR_MODULE_NOT_FOUND» para cualquiera que la corriera sin leer el
+ * comentario —y una prueba que hay que preparar a mano es una prueba que nadie
+ * corre—. Es el mismo arreglo que ya se hizo con las de unidad.
  *
  * ------------------------------------------------------------------------
  * QUÉ SE ESTÁ PROBANDO
@@ -43,7 +46,9 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
-import { puede } from "/home/user/lesartsculinaires/supabase/pruebas/permisos.mjs";
+import { compilar } from "../compilar.mjs";
+
+const { puede } = await compilar("src/lib/permisos.ts");
 
 const sql = (q) => {
   const ruta = path.join(os.tmpdir(), `prueba-bases-${process.pid}-${Math.random()}.sql`);

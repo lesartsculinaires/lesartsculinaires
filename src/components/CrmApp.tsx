@@ -50,7 +50,13 @@ import {
 } from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
 import { MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
-import { MOD_BASES, MOD_FORMULARIOS, permisosDeModulo } from "@/lib/permisos";
+import {
+  MOD_BASES,
+  MOD_CLIENTES,
+  MOD_FORMULARIOS,
+  MOD_PROGRAMAS,
+  permisosDeModulo,
+} from "@/lib/permisos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
@@ -387,7 +393,20 @@ export default function CrmApp({
     const rolId = accesos.yo?.rolId ?? null;
     const de = (modulo: string) =>
       permisosDeModulo(accesos.permisos, rolId, accesos.esAdmin, modulo);
-    return { bases: de(MOD_BASES), formularios: de(MOD_FORMULARIOS) };
+    return {
+      bases: de(MOD_BASES),
+      formularios: de(MOD_FORMULARIOS),
+      /*
+       * Programas y Clientes se resuelven acá por el mismo motivo que los
+       * otros dos: el permiso lo decide el rol, no el hecho de ser dirección.
+       *
+       * Hasta ahora estas dos pantallas preguntaban `esAdmin` a secas, y por
+       * eso el rol «Jefe de Ventas» tenía las casillas marcadas y no le
+       * aparecía ningún botón.
+       */
+      programas: de(MOD_PROGRAMAS),
+      clientes: de(MOD_CLIENTES),
+    };
   }, [accesos]);
 
   /*
@@ -671,6 +690,7 @@ export default function CrmApp({
               importaciones={importaciones}
               etiquetas={etiquetas}
               esAdmin={accesos.esAdmin}
+              puedeCompletarPauta={casillas.clientes.editar}
               puedeSubirBases={casillas.bases.crear}
               accent={accent}
               query={state.q}
@@ -904,7 +924,7 @@ export default function CrmApp({
               categoria={state.categoria}
               onCategoria={actions.setCategoria}
               onVerLeads={(productoId) => actions.verEnClientes({ producto: productoId })}
-              esAdmin={accesos.esAdmin}
+              permisos={casillas.programas}
               onRefrescar={() => router.refresh()}
             />
           )}

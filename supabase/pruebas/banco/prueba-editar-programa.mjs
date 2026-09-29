@@ -195,12 +195,31 @@ const irAProgramas = async (p) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("── 1. EL JEFE DE VENTAS, CON LAS CASILLAS MARCADAS ──");
+console.log("── 1. UN ROL SIN LA CASILLA NO VE LOS BOTONES ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   const { ctx, p } = await abrir("jwt-ale.txt", ALE, "ale@lac.test");
   await irAProgramas(p);
   await foto(p, "1-jefe");
+
+  /*
+   * Esto antes decía que el jefe de ventas NO podía, con las casillas marcadas
+   * y todo. Era la conducta vieja: la política de la base pedía `es_admin()` y
+   * marcar la casilla no habilitaba nada.
+   *
+   * Ahora la casilla vale, así que lo que hay que asegurar es lo de siempre al
+   * revés: SIN la casilla, nada. Que CON la casilla sí se puede está en
+   * `prueba-permisos-programas.mjs`, junto con el caso delicado —dar de baja
+   * sigue siendo de dirección—.
+   */
+  sql(
+    `insert into rol_permisos (rol_id, modulo, ver, crear, editar, eliminar) ` +
+      `select rol_id, 'programas', true, false, false, false from usuarios where id = '${ALE}' ` +
+      `on conflict (rol_id, modulo) do update set crear=false, editar=false, eliminar=false`,
+  );
+  await p.reload({ waitUntil: "networkidle" });
+  await p.waitForTimeout(2200);
+  await irAProgramas(p);
 
   const texto = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
   es("ve el módulo —«ver» sí está marcado", texto.includes(VIEJO), true);
@@ -215,7 +234,7 @@ console.log("── 1. EL JEFE DE VENTAS, CON LAS CASILLAS MARCADAS ──");
   // tampoco. Es lo que hace que esconderlo no sea la única defensa.
   const salida = como(ALE, `update public.productos set nombre = 'COLADO' where id = ${idDelPrograma};`);
   es(
-    "Y LA BASE TAMPOCO LO DEJA, CON CASILLA O SIN ELLA",
+    "Y LA BASE TAMPOCO LO DEJA DIRECTO",
     sql(`select nombre from public.productos where id = ${idDelPrograma};`),
     VIEJO,
   );
@@ -225,7 +244,7 @@ console.log("── 1. EL JEFE DE VENTAS, CON LAS CASILLAS MARCADAS ──");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 2. LA PANTALLA DE PERMISOS YA NO OFRECE ESAS CASILLAS ──");
+console.log("\n── 2. LA PANTALLA DE PERMISOS OFRECE CREAR Y EDITAR, NO DAR DE BAJA ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   const { ctx, p } = await abrir("jwt-jefa.txt", JEFA, "jefa@lac.test");
@@ -236,21 +255,28 @@ console.log("\n── 2. LA PANTALLA DE PERMISOS YA NO OFRECE ESAS CASILLAS ─�
   await foto(p, "2-permisos");
 
   const texto = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+  /*
+   * Esto también cambió, y en la dirección contraria: las casillas de crear y
+   * editar VUELVEN, porque ahora mandan de verdad. La que no vuelve es
+   * eliminar —dar de baja saca el programa de todos los desplegables— y por eso
+   * su celda dice «sólo dirección» en vez de tener interruptor.
+   */
   es(
-    "lo dice en la fila de Programas",
-    /Crear, editar y eliminar: sólo dirección/.test(texto),
-    true,
-  );
-  es(
-    "y explica por qué, en vez de dejar un hueco",
-    /Programas no tiene casillas de crear, editar ni eliminar/.test(texto),
-    true,
-  );
-  es(
-    "ya no hay interruptor de «crear» para Programas",
+    "hay interruptor de «crear» para Programas",
     await p.getByRole("switch", { name: "Programas crear" }).count(),
+    1,
+  );
+  es(
+    "y de «editar»",
+    await p.getByRole("switch", { name: "Programas editar" }).count(),
+    1,
+  );
+  es(
+    "PERO NO DE «ELIMINAR»",
+    await p.getByRole("switch", { name: "Programas eliminar" }).count(),
     0,
   );
+  es("y esa celda dice por qué", /sólo dirección/.test(texto), true);
   es(
     "PERO «VER» SIGUE VALIENDO: con eso se le esconde la pantalla a un rol",
     await p.getByRole("switch", { name: "Programas ver" }).count(),
@@ -451,7 +477,7 @@ es(
 
 console.log(
   f === 0
-    ? "\nTodo bien: el catálogo lo cambia dirección, y la casilla que no mandaba ya no está."
+    ? "\nTodo bien: la casilla de Programas manda, y dar de baja sigue siendo de dirección."
     : `\n${f} comprobaciones fallaron.`,
 );
 process.exit(f ? 1 : 0);

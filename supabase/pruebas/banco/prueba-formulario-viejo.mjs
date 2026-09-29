@@ -223,20 +223,42 @@ const foto = (p, n) =>
   p.screenshot({ path: (process.env.SP ?? os.tmpdir()) + `/pauta-vieja-${n}.png` });
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("── 1. EL BOTÓN ES SÓLO DE DIRECCIÓN ──");
+console.log("── 1. EL BOTÓN SIGUE LA CASILLA «EDITAR» DE CLIENTES ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   /*
-   * Toca fichas de todo el equipo de una vez. No es destructivo —sólo rellena
-   * huecos— pero sigue siendo una acción sobre datos de otros.
+   * Esto decía «sólo dirección», que fue la primera versión. Atarlo al rol
+   * repetía el problema que la escuela reportó: «Jefe de Ventas» tenía las
+   * casillas marcadas y no le aparecía ningún botón. Ahora lo decide la misma
+   * casilla que permite corregir una ficha a mano.
+   *
+   * Se prueba quitándosela a Ale: sin «editar clientes», no hay botón.
    */
-  const { ctx, p } = await abrirClientes(galletaDe("jwt-ale.txt", "ale@lac.test"));
-  es(
-    "una asesora no lo ve",
-    await p.locator("[data-completar-pauta]").count(),
-    0,
+  const rol = sql(`select rol_id from usuarios where correo='ale@lac.test'`);
+  const antes = sql(
+    `select coalesce(editar::text,'-') from rol_permisos where rol_id=${rol} and modulo='clientes'`,
   );
-  await ctx.close();
+  sql(
+    `insert into rol_permisos (rol_id, modulo, ver, crear, editar, eliminar) ` +
+      `values (${rol}, 'clientes', true, false, false, false) ` +
+      `on conflict (rol_id, modulo) do update set editar=false`,
+  );
+
+  const sinCasilla = await abrirClientes(galletaDe("jwt-ale.txt", "ale@lac.test"));
+  es("sin «editar clientes», no aparece", await sinCasilla.p.locator("[data-completar-pauta]").count(), 0);
+  await sinCasilla.ctx.close();
+
+  // Y con la casilla puesta, sí. Es la mitad que de verdad se pidió.
+  sql(`update rol_permisos set editar=true where rol_id=${rol} and modulo='clientes'`);
+  const conCasilla = await abrirClientes(galletaDe("jwt-ale.txt", "ale@lac.test"));
+  es("CON LA CASILLA, SÍ", await conCasilla.p.locator("[data-completar-pauta]").count(), 1);
+  await conCasilla.ctx.close();
+
+  if (antes === "-") {
+    sql(`delete from rol_permisos where rol_id=${rol} and modulo='clientes'`);
+  } else {
+    sql(`update rol_permisos set editar=${antes} where rol_id=${rol} and modulo='clientes'`);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
