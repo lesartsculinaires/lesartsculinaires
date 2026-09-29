@@ -1,5 +1,6 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 
+import { completarConFormulario } from "@/lib/crm/completarConFormulario";
 import {
   abrirLeadSiEsNuevo as abrirLead,
   anotarElCanal as anotarCanal,
@@ -636,6 +637,18 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   await anotarQueEscribioPorWhatsapp(supabase, conversacion, m);
   await contestoUnEnvio(supabase, m.telefono);
   await abrirLead(supabase, conversacion, "whatsapp");
+
+  /*
+   * Y si el mensaje es el formulario de una pauta, se copia a la ficha.
+   *
+   * VA DESPUÉS DE `abrirLead`, Y NO ANTES. Ahí es donde nacen la ficha y la
+   * oportunidad; corriendo primero no habría nada que completar y el dato se
+   * perdería justo en el lead que más lo tiene.
+   *
+   * Un mensaje común no entra acá: `leerFormulario` devuelve null y esto
+   * termina sin tocar la base.
+   */
+  await completarConFormulario(supabase, conversacion, m.texto);
 }
 
 /**

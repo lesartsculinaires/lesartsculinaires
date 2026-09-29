@@ -1,5 +1,6 @@
 import "server-only";
 
+import { completarConFormulario } from "@/lib/crm/completarConFormulario";
 import { abrirLeadSiEsNuevo, anotarElCanal, faltaLaFuncion } from "@/lib/crm/leadDeCanal";
 import { bajarAdjuntoIg, rutaMediaIg } from "@/lib/instagram/media";
 import type { MensajeIg, ReaccionIg } from "@/lib/instagram/mensajes";
@@ -175,6 +176,16 @@ export async function guardarEntranteMeta(
 
   await anotarElCanal(supabase, conversacion, canal.clave, m.igsid, m.enviadoEn);
   await abrirLeadSiEsNuevo(supabase, conversacion, canal.clave);
+
+  /*
+   * Y el formulario de una pauta también entra por acá.
+   *
+   * Los anuncios de Meta pueden abrir el chat en Messenger o en Instagram, no
+   * sólo en WhatsApp, y el mensaje que mandan tiene la misma forma. Dejarlo
+   * sólo en WhatsApp haría que el mismo lead se complete o no según por dónde
+   * entró, que es la clase de diferencia que nadie entiende desde la pantalla.
+   */
+  await completarConFormulario(supabase, conversacion, m.texto);
 }
 
 /**
