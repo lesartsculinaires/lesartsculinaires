@@ -21,6 +21,7 @@ import {
   TOPE_DOCUMENTO_BYTES,
 } from "@/lib/whatsapp/adjuntos";
 import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
+import { cuantosPendientes, estaPendiente } from "@/lib/pendientes";
 import type { ContactoCompartido } from "@/lib/whatsapp/contactos";
 import { ContactoDelMensaje } from "@/components/modules/ContactoDelMensaje";
 import { getBrowserClient } from "@/lib/supabase/browser";
@@ -213,6 +214,14 @@ export function Inbox({
   const [verArchivadas, setVerArchivadas] = useState(false);
   const [verTodas, setVerTodas] = useState(false);
   const [soloSinAsignar, setSoloSinAsignar] = useState(false);
+  /**
+   * Sólo los hilos que esperan algo: sin leer, o marcados a mano.
+   *
+   * Sin esto había que recorrer red por red buscando el punto azul, y la
+   * marcada a mano no se distinguía de las demás salvo por la negrita. Es el
+   * filtro que más se usa en una jornada y no existía.
+   */
+  const [soloPendientes, setSoloPendientes] = useState(false);
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   /** Null = todas las redes juntas, que es como se trabaja hoy. */
@@ -340,6 +349,7 @@ export function Inbox({
     setAbiertos(new Set());
     setPorVendedor(null);
     setSoloSinAsignar(false);
+    setSoloPendientes(false);
     setVerArchivadas(false);
     setVerTodas(true);
   }, [abrirHilo]);
@@ -406,6 +416,7 @@ export function Inbox({
               // distinto de las activas y de las archivadas por separado.
               ((verTodas || c.archivada === verArchivadas) &&
                 (!soloSinAsignar || c.vendedorId == null) &&
+                (!soloPendientes || estaPendiente(c)) &&
                 (porVendedor == null || c.vendedorId === porVendedor) &&
                 (abiertos.size === 0 || abiertos.has(c.canal)) &&
                 (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
@@ -424,7 +435,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -448,7 +459,7 @@ export function Inbox({
     const m: Record<string, number> = {};
     for (const c of conversaciones) {
       if (c.archivada) continue;
-      if (c.sinLeer > 0 || c.noLeida) m[c.canal] = (m[c.canal] ?? 0) + 1;
+      if (estaPendiente(c)) m[c.canal] = (m[c.canal] ?? 0) + 1;
     }
     return m;
   }, [conversaciones]);
@@ -460,6 +471,9 @@ export function Inbox({
     () => conversaciones.filter((c) => !c.archivada && c.vendedorId == null).length,
     [conversaciones],
   );
+
+  /** Cuántos hilos activos esperan algo. Es el número de la pestaña. */
+  const pendientes = useMemo(() => cuantosPendientes(conversaciones), [conversaciones]);
 
   const actual = useMemo(
     () => conversaciones.find((c) => c.id === abierta) ?? null,
@@ -1050,14 +1064,55 @@ export function Inbox({
         <div style={{ ...th, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); }}
-            style={pestana(!verTodas && !verArchivadas && !soloSinAsignar, accent)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); }}
+            style={pestana(!verTodas && !verArchivadas && !soloSinAsignar && !soloPendientes, accent)}
           >
             Activas
           </button>
+          {/*
+            PENDIENTES, y va segunda.
+            ------------------------------------------------------------------
+            Junto a «Activas» porque es la pregunta con que se empieza el día
+            —«¿qué me falta contestar?»— y antes se respondía recorriendo red
+            por red buscando el punto azul.
+
+            Junta las dos cosas que dejan un hilo debiendo: los mensajes que
+            nadie abrió y los que alguien leyó y volvió a marcar a mano. La
+            segunda era la que se perdía: el hilo se ve igual que los demás y
+            el contador dice cero.
+          */}
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); }}
+            onClick={() => {
+              setSoloPendientes(true);
+              setVerArchivadas(false);
+              setSoloSinAsignar(false);
+              setVerTodas(false);
+            }}
+            style={pestana(soloPendientes, accent)}
+          >
+            Pendientes
+            {pendientes > 0 && (
+              <span
+                style={{
+                  minWidth: 17,
+                  padding: "0 5px",
+                  borderRadius: 9,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  lineHeight: "16px",
+                  textAlign: "center",
+                  background: soloPendientes ? "rgba(255,255,255,0.25)" : T.paper,
+                  color: soloPendientes ? "#fff" : T.muted,
+                }}
+              >
+                {pendientes}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); }}
             style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
             Sin asignar
@@ -1084,14 +1139,14 @@ export function Inbox({
           </button>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); }}
+            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); }}
             style={pestana(!verTodas && verArchivadas, accent)}
           >
             Archivadas
           </button>
           <button
             type="button"
-            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); }}
+            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); }}
             style={pestana(verTodas, accent)}
           >
             Todas
@@ -1133,6 +1188,7 @@ export function Inbox({
               setVerArchivadas(false);
               setVerTodas(true);
               setSoloSinAsignar(false);
+              setSoloPendientes(false);
               setPorEtiqueta(null);
               setPorVendedor(null);
               setAbierta(id);
@@ -1406,7 +1462,15 @@ export function Inbox({
                 días —la bandeja mezcla los canales— y nombrar uno solo ahí
                 volvería a mentir, esta vez al revés.
               */}
-              {verArchivadas
+              {soloPendientes
+                ? /*
+                     Con «Pendientes» puesto, la lista vacía es una BUENA
+                     noticia y tiene que leerse así. El texto de abajo —«todavía
+                     no ha escrito nadie»— sería falso y alarmante: hay
+                     conversaciones, lo que no hay es nada por contestar.
+                   */
+                  "No queda nada pendiente: todos los hilos están leídos y contestados."
+                : verArchivadas
                 ? "No hay conversaciones archivadas."
                 : abiertos.size === 0
                   ? "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá."
@@ -1469,7 +1533,7 @@ export function Inbox({
                       // mismo —algo que todavía debe atenderse— y distinguirlos
                       // con dos pesos de letra distintos no ayudaría a nadie.
                       fontSize: 13,
-                      fontWeight: c.sinLeer || c.noLeida ? 600 : 400,
+                      fontWeight: estaPendiente(c) ? 600 : 400,
                       color: T.ink,
                     }}
                   >
