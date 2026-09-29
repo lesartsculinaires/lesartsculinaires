@@ -13,6 +13,8 @@ import {
   repartirValores,
 } from "@/lib/whatsapp/piezas";
 import {
+  TOPE_DIARIO,
+  cuantosQuedan,
   paraMeta,
   repartir,
   valoresPara,
@@ -248,19 +250,64 @@ export interface Tanda extends ActionResult {
   fallidos: number;
   /** Cuántos quedan pendientes después de ésta. */
   faltan: number;
+  /**
+   * La tanda se cortó por tiempo, no porque se hayan acabado los pendientes.
+   *
+   * No es un error: es el funcionamiento normal cuando la base o Meta están
+   * lentos. Sirve para poder probar que el corte existe —una prueba que sólo
+   * mire los números no distingue «entraron todos» de «se cortó justo»— y para
+   * que la pantalla sepa que tiene que volver a llamar.
+   */
+  porTiempo: boolean;
 }
 
-const SIN_TANDA: Tanda = { ok: true, error: null, enviados: 0, fallidos: 0, faltan: 0 };
+const SIN_TANDA: Tanda = {
+  ok: true,
+  error: null,
+  enviados: 0,
+  fallidos: 0,
+  faltan: 0,
+  porTiempo: false,
+};
 
 /**
- * Cuántos van por llamada.
+ * Cuántos se traen por llamada, como techo.
  *
- * La función tiene diez segundos para contestar y cada mensaje tarda unos
- * cientos de milisegundos, así que veinte entran con margen de sobra. Más
- * grande no gana nada: la pantalla llama otra vez enseguida, y una tanda que
- * se pasa del tiempo pierde el trabajo de todos los mensajes que ya salieron.
+ * Es un techo y ya no la medida: quien corta de verdad es `TOPE_MS`. Se sigue
+ * limitando la consulta porque traer los trescientos pendientes para usar doce
+ * es trabajo de la base que no le sirve a nadie.
  */
 const POR_TANDA = 20;
+
+/**
+ * Cuánto puede durar una tanda antes de devolver lo que llevaba.
+ *
+ * ============================================================================
+ * ESTO ES LO QUE DEJÓ COLGADA LA CAMPAÑA DE LA ESCUELA
+ * ============================================================================
+ *
+ * 168 destinatarios, 11 enviados, 2 rechazados, 155 «por salir» y la barra
+ * girando para siempre. Ni Meta ni los teléfonos: son TRECE de los veinte de la
+ * primera tanda, o sea que la llamada se murió a la mitad.
+ *
+ * Se murió por el reloj. `POR_TANDA` contaba destinatarios dando por hecho que
+ * cada uno son «unos cientos de milisegundos», y hace rato que no lo son: hoy
+ * cada destinatario es una llamada a Meta MÁS ocho idas y vueltas a la base
+ * —marcarlo, buscar su asesora, su nombre, su hilo, crearlo si no está, el
+ * mensaje, y subir el hilo en la bandeja—. Medio segundo largo cada uno. Veinte
+ * no entran en los diez segundos que da Netlify, y a los trece se acabó el
+ * tiempo: la función se cortó en seco, sin contestar.
+ *
+ * Contar destinatarios era medir con la unidad equivocada. El límite es de
+ * TIEMPO, así que el corte es de tiempo: se mira el reloj antes de cada
+ * destinatario y, pasado el presupuesto, se devuelve lo que salió. Los que
+ * faltan siguen en «pendiente» y la pantalla pide la siguiente tanda.
+ *
+ * Siete segundos sobre diez dejan margen para el destinatario que ya arrancó
+ * —el corte es ANTES de mandar, nunca a mitad de uno— más el recuento final y
+ * la respuesta.
+ */
+const TOPE_MS = 7_000;
 
 /**
  * Manda la siguiente tanda de un envío.
@@ -287,6 +334,15 @@ export async function mandarTanda(
   plantillaId: string,
   valores: Valor[],
 ): Promise<Tanda> {
+  /*
+   * El reloj arranca acá y no en el bucle: lo de arriba también gasta tiempo.
+   *
+   * Leer la plantilla, comprobar lo que pide y —cuando lleva imagen— bajarla y
+   * subirla a Meta pueden ser dos segundos antes del primer mensaje. Medir sólo
+   * el bucle daría un presupuesto que en la práctica no existe.
+   */
+  const arranque = Date.now();
+
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return { ...SIN_TANDA, ...SIN_SESION };
@@ -388,6 +444,7 @@ export async function mandarTanda(
 
   let enviados = 0;
   let fallidos = 0;
+  let porTiempo = false;
 
   /*
    * La imagen del encabezado, SUBIDA A META una vez para toda la tanda.
@@ -413,6 +470,20 @@ export async function mandarTanda(
   if (!subida.ok) return { ...SIN_TANDA, ok: false, error: subida.error };
 
   for (const d of (pendientes ?? []) as unknown as Record<string, unknown>[]) {
+    /*
+     * Se corta ANTES de mandar, nunca a mitad de un destinatario.
+     *
+     * Y siempre sale al menos uno, aunque el presupuesto ya esté gastado —lo
+     * que pasa cuando la imagen del encabezado tardó—. Sin esa garantía, una
+     * tanda que devuelve cero hace que la pantalla corte el bucle y el envío se
+     * queda clavado sin que nadie avance: exactamente el problema que esto
+     * viene a arreglar, con otra cara.
+     */
+    if (enviados + fallidos > 0 && Date.now() - arranque > TOPE_MS) {
+      porTiempo = true;
+      break;
+    }
+
     const nombre = d.nombre == null ? null : String(d.nombre);
     const suyos = valoresPara(valores, nombre);
     const datos = repartirValores(pide, suyos);
@@ -482,6 +553,7 @@ export async function mandarTanda(
           enviados,
           fallidos,
           faltan: await cuantosFaltan(supabase, envioId),
+          porTiempo: false,
         };
       }
 
@@ -503,7 +575,99 @@ export async function mandarTanda(
   }
 
   revalidatePath("/");
-  return { ok: true, error: null, enviados, fallidos, faltan: restantes };
+  return { ok: true, error: null, enviados, fallidos, faltan: restantes, porTiempo };
+}
+
+/**
+ * La siguiente tanda de un envío que quedó a medias, sin pasar por la ventana.
+ *
+ * ============================================================================
+ * POR QUÉ HACÍA FALTA
+ * ============================================================================
+ *
+ * Porque el bucle vive en el navegador, y todo lo que le pasa al navegador deja
+ * la campaña detenida: cerrar la pestaña, dormir la computadora, perder el wifi
+ * o —lo que le pasó a la escuela— una tanda que se pasó de los diez segundos.
+ * Los que faltan quedan en «pendiente», que era el diseño, pero no había ningún
+ * botón para seguir: desde la lista de envíos sólo se podía FRENAR.
+ *
+ * Así que la campaña de 168 se quedó en 13 y la única salida visible era
+ * cancelarla y armar otra, o sea volver a elegir a mano a los 155 que faltaban
+ * y arriesgarse a escribirle dos veces a los 13.
+ *
+ * ============================================================================
+ * NO ELIGE A NADIE NI PIDE NADA
+ * ============================================================================
+ *
+ * La plantilla y los valores salen del propio envío —se guardaron al empezar,
+ * justamente para esto— y los destinatarios son los que quedaron en
+ * «pendiente». Reanudar no puede terminar mandándole a alguien distinto de a
+ * quien se aprobó en su momento.
+ */
+export interface Reanudacion extends Tanda {
+  /** Cuántas conversaciones más deja Meta hoy, para que el bucle corte. */
+  quedanHoy: number;
+}
+
+const SIN_REANUDAR: Reanudacion = { ...SIN_TANDA, quedanHoy: 0 };
+
+export async function reanudarTanda(envioId: number): Promise<Reanudacion> {
+  const supabase = await getServerClient();
+  const user = await getUser();
+  if (!supabase || !user) return { ...SIN_REANUDAR, ...SIN_SESION };
+
+  const { data: envio, error } = await supabase
+    .from("envios")
+    .select("id, plantilla_id, valores, estado")
+    .eq("id", envioId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ...SIN_REANUDAR,
+      ok: false,
+      error: faltaLaTabla(error) ? FALTA_MIGRACION : error.message,
+    };
+  }
+  if (!envio) return { ...SIN_REANUDAR, ok: false, error: "No se encontró ese envío." };
+
+  if (String(envio.estado) === "cancelado") {
+    return {
+      ...SIN_REANUDAR,
+      ok: false,
+      error: "Ese envío está frenado. Frenarlo fue una decisión de alguien, así que no se reanuda solo.",
+    };
+  }
+  if (envio.plantilla_id == null) {
+    return {
+      ...SIN_REANUDAR,
+      ok: false,
+      error: "Ese envío nunca llegó a mandar nada, así que no hay con qué seguir.",
+    };
+  }
+
+  /*
+   * El tope del día se comprueba ACÁ y no sólo en la pantalla.
+   *
+   * Reanudar es la puerta por la que más fácil se pasa: son los que quedaron de
+   * ayer, y quien aprieta no vio el número del día. Pasarse no da un error
+   * claro —Meta empieza a rechazar y la calificación del número baja—, así que
+   * el corte tiene que estar donde no se pueda saltar.
+   */
+  const { data: hoy } = await supabase.rpc("enviados_hoy");
+  const quedanHoy = cuantosQuedan(TOPE_DIARIO, Number(hoy ?? 0));
+  if (quedanHoy <= 0) {
+    return {
+      ...SIN_REANUDAR,
+      ok: false,
+      error:
+        "Ya se llegó al tope de conversaciones que Meta deja abrir por día. " +
+        "Reanudalo mañana: los que faltan siguen pendientes y nadie va a recibir dos veces.",
+    };
+  }
+
+  const r = await mandarTanda(envioId, String(envio.plantilla_id), (envio.valores ?? []) as Valor[]);
+  return { ...r, quedanHoy };
 }
 
 type Cliente = NonNullable<Awaited<ReturnType<typeof getServerClient>>>;

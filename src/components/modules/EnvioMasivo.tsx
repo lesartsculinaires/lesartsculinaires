@@ -178,6 +178,8 @@ export function EnvioMasivo({
      */
     const topeDeHoy = quedanHoy;
     let cortadoPorElTope = false;
+    /** Se cortó la comunicación con el servidor, no el envío. */
+    let seCorto = false;
 
     try {
       // Un tope de vueltas por si algo devolviera siempre lo mismo: sin esto,
@@ -204,6 +206,30 @@ export function EnvioMasivo({
           break;
         }
       }
+    } catch (e) {
+      /*
+       * Una tanda que no contesta NO puede dejar la barra girando para siempre.
+       *
+       * ======================================================================
+       * ESTO ES LO QUE VIO LA ESCUELA
+       * ======================================================================
+       *
+       * Acá había un `try/finally` sin `catch`, así que una llamada que se
+       * moría —la función pasada de tiempo, la pestaña suspendida, el wifi—
+       * salía volando de esta función: sin mensaje, sin resumen y con el paso
+       * en «mandando», que es el único en el que la ventana no se deja cerrar.
+       * La campaña de 168 quedó con la barra en 13 y sin nada que apretar.
+       *
+       * El envío en sí estaba bien: cada destinatario se marca al salir, así
+       * que lo que faltaba seguía en «pendiente». Lo único que faltaba era
+       * DECIRLO, y decir dónde se sigue.
+       */
+      seCorto = true;
+      setError(
+        "Se cortó la comunicación con el servidor a la mitad del envío" +
+          (e instanceof Error && e.message ? ` (${e.message})` : "") +
+          ". Lo que salió, salió: nadie va a recibir dos veces.",
+      );
     } finally {
       corriendo.current = false;
     }
@@ -215,6 +241,10 @@ export function EnvioMasivo({
         (cortadoPorElTope
           ? " Se llegó al tope que Meta deja por día, así que el resto quedó" +
             " pendiente: volvé mañana y reanudá este mismo envío."
+          : "") +
+        (seCorto
+          ? " El resto quedó pendiente: en Envíos, abrí esta campaña y apretá" +
+            " «Seguir mandando»."
           : ""),
     );
   };

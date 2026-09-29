@@ -111,12 +111,61 @@ const PERFILES = {
 /** Cuántas imágenes se subieron, para darle a cada una un id distinto. */
 let subidas = 0;
 
+/**
+ * Cuánto tarda Meta en contestar, a propósito.
+ *
+ * ============================================================================
+ * PARA QUÉ QUERRÍA NADIE UN META LENTO
+ * ============================================================================
+ *
+ * Porque el banco es demasiado bueno. Acá Meta contesta en un milisegundo y la
+ * base está en la misma máquina, así que una tanda de veinte tarda nada y TODO
+ * pasa. En producción cada destinatario es una llamada a Meta por internet más
+ * ocho idas y vueltas a Supabase: medio segundo largo cada uno.
+ *
+ * Esa diferencia escondió un problema real durante meses. `POR_TANDA = 20`
+ * contaba destinatarios, la función de Netlify tiene DIEZ SEGUNDOS, y veinte
+ * destinatarios reales no entran: la campaña de 168 de la escuela se murió a
+ * los trece y la barra quedó girando para siempre. En el banco no se veía.
+ *
+ * Con esto una prueba puede ponerle a Meta la lentitud de la vida real y
+ * comprobar que la tanda se corta por tiempo antes de llegar al tope de la
+ * función, en vez de enterarse en producción.
+ *
+ *     POST /__lento {"mensaje": 500, "media": 1500}
+ *     POST /__lento {}                                 ← vuelve a ser instantáneo
+ */
+let demoraMensaje = 0;
+let demoraMedia = 0;
+
+/** Contesta dentro de un rato, o ya mismo si no hay demora puesta. */
+const enUnRato = (ms, hacer) => (ms > 0 ? setTimeout(hacer, ms) : hacer());
+
 const servidor = http.createServer((req, res) => {
   // Un GET a `/__recibidos` devuelve lo que llegó hasta ahora. No es parte de
   // la API de Meta: es la ventana que la prueba usa para mirar adentro.
   if (req.method === "GET" && req.url.startsWith("/__recibidos")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(recibidos));
+    return;
+  }
+
+  // El otro interruptor: cuánto tarda en contestar. Ver `demoraMensaje`.
+  if (req.method === "POST" && req.url.startsWith("/__lento")) {
+    let crudo = "";
+    req.on("data", (t) => (crudo += t));
+    req.on("end", () => {
+      try {
+        const pedido = JSON.parse(crudo || "{}");
+        demoraMensaje = Number(pedido.mensaje ?? 0) || 0;
+        demoraMedia = Number(pedido.media ?? 0) || 0;
+      } catch {
+        demoraMensaje = 0;
+        demoraMedia = 0;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ mensaje: demoraMensaje, media: demoraMedia }));
+    });
     return;
   }
 
@@ -151,13 +200,16 @@ const servidor = http.createServer((req, res) => {
         const pedido = JSON.parse(crudo || "{}");
         permitePerfiles = Boolean(pedido.permite);
         // Sin `hilos`, la otra puerta sigue a ésta. Ver arriba.
-        permiteHilos = pedido.hilos === undefined ? permitePerfiles : Boolean(pedido.hilos);
+        permiteHilos =
+          pedido.hilos === undefined ? permitePerfiles : Boolean(pedido.hilos);
       } catch {
         permitePerfiles = false;
         permiteHilos = false;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ permite: permitePerfiles, hilos: permiteHilos }));
+      res.end(
+        JSON.stringify({ permite: permitePerfiles, hilos: permiteHilos }),
+      );
     });
     return;
   }
@@ -191,7 +243,8 @@ const servidor = http.createServer((req, res) => {
       res.end(
         JSON.stringify({
           error: {
-            message: "(#10) Application does not have permission for this action",
+            message:
+              "(#10) Application does not have permission for this action",
             type: "OAuthException",
             code: 10,
           },
@@ -216,7 +269,11 @@ const servidor = http.createServer((req, res) => {
     const suyo =
       q.get("platform") === "messenger"
         ? { id: quien, name: datos.name }
-        : { id: quien, username: datos.username, ...(datos.name ? { name: datos.name } : {}) };
+        : {
+            id: quien,
+            username: datos.username,
+            ...(datos.name ? { name: datos.name } : {}),
+          };
 
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
@@ -224,7 +281,9 @@ const servidor = http.createServer((req, res) => {
         data: [
           {
             id: `t_${quien}`,
-            participants: { data: [suyo, { id: porHilo[1], name: "Les Arts Culinaires" }] },
+            participants: {
+              data: [suyo, { id: porHilo[1], name: "Les Arts Culinaires" }],
+            },
           },
         ],
       }),
@@ -238,7 +297,8 @@ const servidor = http.createServer((req, res) => {
    * Se distingue del envío porque el envío es POST y termina en `/messages`.
    * Acá sólo llegan los GET a un identificador pelado con `fields`.
    */
-  const perfil = req.method === "GET" && /^\/v[\d.]+\/(\d+)\?fields=/.exec(req.url);
+  const perfil =
+    req.method === "GET" && /^\/v[\d.]+\/(\d+)\?fields=/.exec(req.url);
   if (perfil) {
     const quien = perfil[1];
 
@@ -260,7 +320,8 @@ const servidor = http.createServer((req, res) => {
       res.end(
         JSON.stringify({
           error: {
-            message: "(#10) Application does not have permission for this action",
+            message:
+              "(#10) Application does not have permission for this action",
             type: "OAuthException",
             code: 10,
           },
@@ -274,7 +335,11 @@ const servidor = http.createServer((req, res) => {
       res.writeHead(400, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
-          error: { message: "Unsupported get request.", type: "GraphMethodException", code: 100 },
+          error: {
+            message: "Unsupported get request.",
+            type: "GraphMethodException",
+            code: 100,
+          },
         }),
       );
       return;
@@ -282,10 +347,12 @@ const servidor = http.createServer((req, res) => {
 
     // Se devuelve sólo lo pedido, como Meta: Messenger no trae `username` y el
     // CRM tiene que arreglárselas con el nombre solo.
-    const pedidos = new URL(req.url, "http://x").searchParams.get("fields") ?? "";
+    const pedidos =
+      new URL(req.url, "http://x").searchParams.get("fields") ?? "";
     const salida = {};
     for (const campo of pedidos.split(",")) {
-      if (datos[campo.trim()] != null) salida[campo.trim()] = datos[campo.trim()];
+      if (datos[campo.trim()] != null)
+        salida[campo.trim()] = datos[campo.trim()];
     }
 
     res.writeHead(200, { "content-type": "application/json" });
@@ -310,7 +377,10 @@ const servidor = http.createServer((req, res) => {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       "base64",
     );
-    res.writeHead(200, { "content-type": "image/png", "content-length": png.length });
+    res.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": png.length,
+    });
     res.end(png);
     return;
   }
@@ -333,8 +403,10 @@ const servidor = http.createServer((req, res) => {
     req.on("end", () => {
       subidas += 1;
       recibidos.push({ url: req.url, subida: { bytes } });
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: `media.FALSO.${subidas}` }));
+      enUnRato(demoraMedia, () => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id: `media.FALSO.${subidas}` }));
+      });
     });
     return;
   }
@@ -420,7 +492,11 @@ const servidor = http.createServer((req, res) => {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(
             JSON.stringify({
-              error: { message: "Media upload error", code: 131053, type: "OAuthException" },
+              error: {
+                message: "Media upload error",
+                code: 131053,
+                type: "OAuthException",
+              },
             }),
           );
           return;
@@ -461,26 +537,28 @@ const servidor = http.createServer((req, res) => {
     }
 
     n += 1;
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify({
-        messaging_product: "whatsapp",
-        contacts: [{ input: "x", wa_id: "x" }],
-        // Distinto cada vez: ver el encabezado.
-        messages: [{ id: `wamid.FALSO${Date.now()}.${n}` }],
-        /*
-         * Y la forma que usa Instagram para lo mismo.
-         *
-         * Instagram no contesta `messages[]` sino `message_id` pelado, así que
-         * sin esta clave una respuesta de Instagram se daba por buena pero se
-         * guardaba sin identificador, y después no había con qué seguirle el
-         * estado. Va agregada y no en lugar de la otra: las pruebas de WhatsApp
-         * leen `messages[0].id` y tienen que seguir leyéndolo igual.
-         */
-        recipient_id: "IGSID_FALSO",
-        message_id: `mid.FALSO${Date.now()}.${n}`,
-      }),
-    );
+    enUnRato(demoraMensaje, () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          messaging_product: "whatsapp",
+          contacts: [{ input: "x", wa_id: "x" }],
+          // Distinto cada vez: ver el encabezado.
+          messages: [{ id: `wamid.FALSO${Date.now()}.${n}` }],
+          /*
+           * Y la forma que usa Instagram para lo mismo.
+           *
+           * Instagram no contesta `messages[]` sino `message_id` pelado, así que
+           * sin esta clave una respuesta de Instagram se daba por buena pero se
+           * guardaba sin identificador, y después no había con qué seguirle el
+           * estado. Va agregada y no en lugar de la otra: las pruebas de WhatsApp
+           * leen `messages[0].id` y tienen que seguir leyéndolo igual.
+           */
+          recipient_id: "IGSID_FALSO",
+          message_id: `mid.FALSO${Date.now()}.${n}`,
+        }),
+      );
+    });
   });
 });
 

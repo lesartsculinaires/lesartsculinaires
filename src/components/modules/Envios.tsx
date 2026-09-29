@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { cancelarEnvio } from "@/app/envios-actions";
+import { cancelarEnvio, reanudarTanda } from "@/app/envios-actions";
 import { T } from "@/lib/theme";
 import { comoSeLlama } from "@/lib/envios";
 import { conValores } from "@/lib/whatsapp/huecos";
@@ -114,6 +114,9 @@ function Tarjeta({
   onRefrescar: () => void;
 }) {
   const [cancelando, setCancelando] = useState(false);
+  const [siguiendo, setSiguiendo] = useState<{ hechos: number; fallidos: number } | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
+  const corriendo = useRef(false);
 
   /** De los que recibieron, cuántos contestaron. */
   const tasa = useMemo(() => {
@@ -122,6 +125,88 @@ function Tarjeta({
   }, [e.entregados, e.respondieron]);
 
   const enCurso = e.estado === "enviando" && e.pendientes > 0;
+
+  /**
+   * Seguir mandando los que quedaron pendientes.
+   *
+   * ==========================================================================
+   * POR QUÉ ESTE BOTÓN NO EXISTÍA, Y POR QUÉ TENÍA QUE EXISTIR
+   * ==========================================================================
+   *
+   * Porque el bucle vive en el navegador de quien lanzó la campaña, así que
+   * cualquier cosa que le pase a esa pestaña la deja detenida: cerrarla, que se
+   * duerma la computadora, el wifi, o una tanda que se pasó de los diez
+   * segundos que da Netlify. El diseño ya contemplaba eso —cada destinatario se
+   * marca al salir y el resto queda en «pendiente»—, pero desde acá lo único
+   * que se podía hacer era FRENAR.
+   *
+   * A la escuela le pasó: una campaña de 168 quedó en 13, con 155 «por salir» y
+   * ningún botón para continuar. La única salida visible era cancelarla y armar
+   * otra, o sea volver a elegir a mano a los 155 y arriesgarse a escribirle dos
+   * veces a los 13.
+   *
+   * ==========================================================================
+   * NO VUELVE A PREGUNTAR NADA
+   * ==========================================================================
+   *
+   * La plantilla, los valores y los destinatarios salen del envío guardado. No
+   * hay forma de que «seguir» termine mandándole a alguien distinto, ni con
+   * otro texto, del que se aprobó cuando se armó la campaña.
+   */
+  const seguir = async () => {
+    if (corriendo.current) return;
+    corriendo.current = true;
+    setResultado(null);
+    setSiguiendo({ hechos: 0, fallidos: 0 });
+
+    let hechos = 0;
+    let fallidos = 0;
+    let dicho: string | null = null;
+
+    try {
+      // El mismo tope de vueltas que la ventana de envío: si algo devolviera
+      // siempre lo mismo, esto giraría para siempre.
+      for (let vuelta = 0; vuelta < 500; vuelta++) {
+        const r = await reanudarTanda(e.id);
+
+        hechos += r.enviados;
+        fallidos += r.fallidos;
+        setSiguiendo({ hechos, fallidos });
+
+        /*
+         * El tope del día lo pone el servidor, no esta cuenta.
+         *
+         * Cuando se llega, `reanudarTanda` contesta que no con el motivo, y por
+         * acá se muestra. Repetir la resta en la pantalla sería un segundo
+         * lugar donde equivocarse, y el que manda de verdad es el otro.
+         */
+        if (!r.ok) {
+          dicho = r.error;
+          break;
+        }
+        if (r.faltan === 0) break;
+        if (r.enviados === 0 && r.fallidos === 0) break;
+      }
+    } catch (err) {
+      // Igual que en la ventana de envío: una llamada que se muere no puede
+      // dejar esto girando sin decir nada.
+      dicho =
+        "Se cortó la comunicación con el servidor" +
+        (err instanceof Error && err.message ? ` (${err.message})` : "") +
+        ". Lo que salió, salió: apretá de nuevo y sigue desde donde quedó.";
+    } finally {
+      corriendo.current = false;
+      setSiguiendo(null);
+    }
+
+    setResultado(
+      `${hechos} ${hechos === 1 ? "mensaje enviado" : "mensajes enviados"}` +
+        (fallidos > 0 ? `, ${fallidos} no llegaron` : "") +
+        "." +
+        (dicho ? ` ${dicho}` : ""),
+    );
+    onRefrescar();
+  };
 
   return (
     <div
@@ -239,30 +324,68 @@ function Tarjeta({
           <Barra envio={e} accent={accent} />
 
           {enCurso && (
-            <button
-              type="button"
-              onClick={() => {
-                setCancelando(true);
-                void cancelarEnvio(e.id).then(() => {
-                  setCancelando(false);
-                  onRefrescar();
-                });
-              }}
-              disabled={cancelando}
-              style={{
-                marginTop: 12,
-                height: 30,
-                padding: "0 12px",
-                fontSize: 12.5,
-                borderRadius: 6,
-                border: `1px solid ${T.border}`,
-                background: T.surface,
-                color: "#9E2F29",
-                cursor: cancelando ? "wait" : "pointer",
-              }}
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              {/*
+                «Seguir» primero y con el color de la marca: es lo que casi
+                siempre se quiere. Una campaña detenida a la mitad lo está
+                porque se cortó algo, no porque alguien haya decidido pararla; y
+                de las dos, la que no se puede deshacer es frenar.
+              */}
+              <button
+                type="button"
+                data-seguir-envio={e.id}
+                onClick={() => void seguir()}
+                disabled={siguiendo != null || cancelando}
+                style={{
+                  height: 30,
+                  padding: "0 12px",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: `1px solid ${accent}`,
+                  background: siguiendo != null ? T.surface : accent,
+                  color: siguiendo != null ? T.muted : "#fff",
+                  cursor: siguiendo != null ? "wait" : "pointer",
+                }}
+              >
+                {siguiendo != null
+                  ? `Mandando… ${siguiendo.hechos} de ${e.pendientes}`
+                  : `Seguir mandando: faltan ${e.pendientes}`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCancelando(true);
+                  void cancelarEnvio(e.id).then(() => {
+                    setCancelando(false);
+                    onRefrescar();
+                  });
+                }}
+                disabled={cancelando || siguiendo != null}
+                style={{
+                  height: 30,
+                  padding: "0 12px",
+                  fontSize: 12.5,
+                  borderRadius: 6,
+                  border: `1px solid ${T.border}`,
+                  background: T.surface,
+                  color: "#9E2F29",
+                  cursor: cancelando ? "wait" : "pointer",
+                }}
+              >
+                {cancelando ? "Frenando…" : "Frenar"}
+              </button>
+            </div>
+          )}
+
+          {resultado && (
+            <p
+              data-aviso-envio
+              style={{ margin: "10px 0 0", fontSize: 12.5, lineHeight: 1.55, color: T.muted }}
             >
-              {cancelando ? "Frenando…" : `Frenar: quedan ${e.pendientes} por salir`}
-            </button>
+              {resultado}
+            </p>
           )}
         </div>
       )}
