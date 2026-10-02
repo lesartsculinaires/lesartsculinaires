@@ -22,6 +22,7 @@ import {
   enviarTextoIg,
   hayInstagram,
 } from "@/lib/instagram/enviar";
+import { cuentaDeLaConversacion } from "@/lib/meta/credenciales";
 import {
   enviarAdjuntoMsn,
   enviarTextoMsn,
@@ -229,13 +230,21 @@ async function mandarTextoPor(
   cuerpo: string,
   /** Sólo lo usan los dos de Meta; WhatsApp resuelve su ventana con plantillas. */
   ultimoEntranteEn: string | null,
+  /**
+   * Con qué cuenta nuestra se contesta, para los dos canales de Meta.
+   *
+   * Sale de por dónde entró el hilo. Sin esto, un hilo de una cuenta conectada
+   * desde la pantalla se contestaría con el token de la escuela, que no la
+   * administra. WhatsApp no lo usa: tiene un número y uno solo.
+   */
+  cuentaId: string | null,
 ): Promise<Salida> {
   if (canal === "instagram") {
-    const r = await enviarTextoIg(aQuien, cuerpo, ultimoEntranteEn);
+    const r = await enviarTextoIg(aQuien, cuerpo, ultimoEntranteEn, cuentaId);
     return { ok: r.ok, waId: r.mid, error: r.error };
   }
   if (canal === "messenger") {
-    const r = await enviarTextoMsn(aQuien, cuerpo, ultimoEntranteEn);
+    const r = await enviarTextoMsn(aQuien, cuerpo, ultimoEntranteEn, cuentaId);
     return { ok: r.ok, waId: r.mid, error: r.error };
   }
   return enviarTexto(aQuien, cuerpo);
@@ -295,12 +304,20 @@ export async function responderConversacion(
 
   // Sólo para los de Meta: una consulta más por mensaje no se paga donde no
   // hace falta, y WhatsApp resuelve su ventana con plantillas.
-  const ultimoEntranteEn =
-    canal === "instagram" || canal === "messenger"
-      ? await ultimoEntranteDe(supabase, conversacionId)
-      : null;
+  const esDeMetaEsto = canal === "instagram" || canal === "messenger";
+  const ultimoEntranteEn = esDeMetaEsto
+    ? await ultimoEntranteDe(supabase, conversacionId)
+    : null;
+  /*
+   * Y por cuál de NUESTRAS cuentas entró este hilo.
+   *
+   * Lo mismo: sólo para los de Meta, que son los únicos que pueden tener más de
+   * una cuenta conectada a la vez —la de la escuela y, mientras dure la
+   * revisión, la del revisor de Meta—.
+   */
+  const cuentaId = esDeMetaEsto ? await cuentaDeLaConversacion(conversacionId) : null;
 
-  const envio = await mandarTextoPor(canal, aQuien, cuerpo, ultimoEntranteEn);
+  const envio = await mandarTextoPor(canal, aQuien, cuerpo, ultimoEntranteEn, cuentaId);
 
   if (!envio.ok) return { ok: false, error: envio.error };
 
@@ -1435,10 +1452,11 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
    * Se manda aparte, en un segundo mensaje, para que no se pierda lo que quien
    * atiende escribió junto a la cotización.
    */
-  // Igual que en el texto: sólo los de Meta la necesitan.
+  // Igual que en el texto: sólo los de Meta las necesitan.
   const ultimoEntranteEn = esDeMeta
     ? await ultimoEntranteDe(supabase, datos.conversacionId)
     : null;
+  const cuentaId = esDeMeta ? await cuentaDeLaConversacion(datos.conversacionId) : null;
 
   const envio = esDeMeta
     ? await (canal === "messenger" ? enviarAdjuntoMsn : enviarAdjuntoIg)(
@@ -1446,6 +1464,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
         firmado.signedUrl,
         claseDeAdjunto(datos.mime),
         ultimoEntranteEn,
+        cuentaId,
       ).then((r) => ({
         ok: r.ok,
         waId: r.mid,
@@ -1466,7 +1485,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
 
   // El pie de un adjunto de Meta, como mensaje aparte. Ver arriba.
   if (esDeMeta && envio.ok && !esAudio && datos.pie.trim()) {
-    await mandarTextoPor(canal, aQuien, datos.pie.trim(), ultimoEntranteEn);
+    await mandarTextoPor(canal, aQuien, datos.pie.trim(), ultimoEntranteEn, cuentaId);
   }
 
   if (!envio.ok) {

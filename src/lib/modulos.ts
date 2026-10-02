@@ -32,6 +32,15 @@ export const MODULOS = [
 /** La pantalla de administración, que no está en la lista de todos. */
 export const MOD_USUARIOS = "Usuarios y Roles";
 
+/**
+ * Las conexiones de WhatsApp, Instagram y Messenger.
+ *
+ * Va con `MOD_USUARIOS` y no en la lista de todos por lo mismo: son las llaves
+ * con las que el CRM le escribe a los clientes. Quien entra acá puede conectar
+ * y desconectar una cuenta, o sea cortar la mensajería de la escuela.
+ */
+export const MOD_CANALES = "Canales";
+
 /** La forma mínima que hace falta de un permiso guardado. */
 export interface PermisoDeModulo {
   rolId: number;

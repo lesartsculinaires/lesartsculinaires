@@ -11,6 +11,7 @@ import { Clientes } from "@/components/modules/Clientes";
 import { Dashboard } from "@/components/modules/Dashboard";
 import { Equipos } from "@/components/modules/Equipos";
 import { Formularios } from "@/components/modules/Formularios";
+import { Canales } from "@/components/modules/Canales";
 import { Envios } from "@/components/modules/Envios";
 import { Inbox } from "@/components/modules/Inbox";
 import { Pipeline } from "@/components/modules/Pipeline";
@@ -49,7 +50,7 @@ import {
   type Seguimiento,
 } from "@/lib/seguimientos";
 import { CatalogoProvider } from "@/lib/catalog";
-import { MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
+import { MOD_CANALES, MOD_USUARIOS, MODULOS, modulosPermitidos } from "@/lib/modulos";
 import {
   MOD_BASES,
   MOD_CLIENTES,
@@ -369,7 +370,11 @@ export default function CrmApp({
   const permitidos = useMemo(
     () =>
       modulosPermitidos(
-        [...MODULOS, ...(accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : [])],
+        [
+          ...MODULOS,
+          ...(accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : []),
+          ...(accesos.esAdmin ? [MOD_CANALES] : []),
+        ],
         accesos.modulos,
         accesos.permisos,
         accesos.yo?.rolId ?? null,
@@ -830,6 +835,15 @@ export default function CrmApp({
               onVerSinAsignar={() => actions.verEnClientes({ vendedor: SIN_DUENO })}
             />
           )}
+
+          {mod === MOD_CANALES &&
+            (accesos.esAdmin ? (
+              <Canales accent={accent} />
+            ) : (
+              <p style={{ fontSize: 13, color: T.muted }}>
+                Esta sección es solo para administradores.
+              </p>
+            ))}
 
           {mod === MOD_USUARIOS &&
             (accesos.esAdmin || faltaMigracionAccesos ? (

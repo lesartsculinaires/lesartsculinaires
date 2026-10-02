@@ -1,4 +1,6 @@
 import "server-only";
+
+import { credencialDe } from "@/lib/meta/credenciales";
 import {
   esFaltaDePermisoHumanAgent,
   sobreDeEnvio,
@@ -190,8 +192,10 @@ export async function enviarTextoIg(
   texto: string,
   /** Cuándo escribió la persona por última vez. Ver `@/lib/meta/ventana`. */
   ultimoEntranteEn?: string | null,
+  /** Con qué cuenta nuestra se contesta. Ver `mandar`. */
+  cuentaId?: string | null,
 ): Promise<ResultadoIg> {
-  return mandar(igsid, { text: texto }, ultimoEntranteEn);
+  return mandar(igsid, { text: texto }, ultimoEntranteEn, cuentaId);
 }
 
 /**
@@ -211,6 +215,8 @@ export async function enviarAdjuntoIg(
   enlace: string,
   clase: "image" | "video" | "audio" | "file",
   ultimoEntranteEn?: string | null,
+  /** Con qué cuenta nuestra se contesta. Ver `mandar`. */
+  cuentaId?: string | null,
 ): Promise<ResultadoIg> {
   return mandar(igsid, {
     attachment: {
@@ -228,7 +234,7 @@ export async function enviarAdjuntoIg(
         is_reusable: false,
       },
     },
-  });
+  }, ultimoEntranteEn, cuentaId);
 }
 
 /**
@@ -257,17 +263,26 @@ async function mandar(
   igsid: string,
   mensaje: unknown,
   ultimoEntranteEn?: string | null,
+  /**
+   * Qué cuenta NUESTRA recibió este hilo, para contestar con su token.
+   *
+   * Sin esto, una cuenta conectada desde la pantalla —la del revisor de Meta,
+   * por ejemplo— recibiría mensajes y el CRM le contestaría con el token de la
+   * escuela. Meta lo rechaza, y con razón: esa Página no es suya.
+   */
+  cuentaId?: string | null,
 ): Promise<ResultadoIg> {
-  const token = process.env.INSTAGRAM_TOKEN;
-  const cuenta = process.env.INSTAGRAM_ACCOUNT_ID;
+  const credencial = await credencialDe("instagram", cuentaId);
 
-  if (!token || !cuenta) {
+  if (!credencial) {
     return {
       ok: false,
       mid: null,
       error: "Instagram no está configurado en el servidor.",
     };
   }
+
+  const { token, pageId: cuenta } = credencial;
 
   try {
     const r = await fetch(`${base()}/${cuenta}/messages`, {

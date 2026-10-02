@@ -108,6 +108,14 @@ const PERFILES = {
   "0004": { name: "Lucía Paz", username: "luciapaz" },
 };
 
+/** La Página y la cuenta de Instagram que devuelve el diálogo de conexión. */
+const PAGINA_FALSA = "900000000000001";
+const IG_FALSO = "17841400000000999";
+const TOKEN_DE_PAGINA_FALSO = "TOKEN-DE-PAGINA-FALSO";
+
+/** Cada paso del camino de conexión que llegó, para poder mirarlo. */
+const conexiones = [];
+
 /** Cuántas imágenes se subieron, para darle a cada una un id distinto. */
 let subidas = 0;
 
@@ -372,6 +380,81 @@ const servidor = http.createServer((req, res) => {
    * dice nada sobre si el CDN de verdad la sirve: lo que se está probando es
    * que, cuando se puede bajar, termine subida y no mandada como dirección.
    */
+  /*
+   * CONECTAR UNA CUENTA: las tres puertas del diálogo de Facebook.
+   *
+   * ==========================================================================
+   * PARA QUÉ
+   * ==========================================================================
+   *
+   * Para aprobar los mensajes de Instagram, Meta manda a una persona a probar
+   * el producto, y esa persona conecta SU PROPIA cuenta desde el CRM. Ese
+   * camino —canjear el código, pedir las Páginas, suscribirlas al webhook— es
+   * el que decide si la revisión se aprueba, y sin esto era imposible de probar
+   * sin una cuenta real de Facebook.
+   *
+   * Las tres contestan lo mismo que Meta, con la forma que el CRM lee.
+   */
+  if (req.method === "GET" && /^\/v[\d.]+\/oauth\/access_token/.test(req.url)) {
+    conexiones.push({ paso: "canje", url: req.url });
+    const q = new URL(req.url, "http://x").searchParams;
+    // Sin secreto no hay canje, igual que en Meta. Es lo que hace que la prueba
+    // del secreto faltante signifique algo.
+    if (!q.get("client_secret")) {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Missing client_secret", code: 1 } }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ access_token: "TOKEN-DE-USUARIO-FALSO", token_type: "bearer" }));
+    return;
+  }
+
+  if (req.method === "GET" && /^\/v[\d.]+\/me\/accounts/.test(req.url)) {
+    conexiones.push({ paso: "paginas", url: req.url });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        data: [
+          {
+            id: PAGINA_FALSA,
+            name: "Página del Revisor",
+            // El token DE LA PÁGINA, que es el que el CRM tiene que guardar.
+            // Distinto del de usuario a propósito: si el CRM guardara el
+            // equivocado, la prueba lo ve.
+            access_token: TOKEN_DE_PAGINA_FALSO,
+            instagram_business_account: { id: IG_FALSO, username: "cuenta_del_revisor" },
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  if (req.method === "POST" && /^\/v[\d.]+\/\d+\/subscribed_apps/.test(req.url)) {
+    let crudo = "";
+    req.on("data", (t) => (crudo += t));
+    req.on("end", () => {
+      let leido = null;
+      try {
+        leido = JSON.parse(crudo || "{}");
+      } catch {
+        leido = { crudo };
+      }
+      conexiones.push({ paso: "suscribir", url: req.url, cuerpo: leido });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ success: true }));
+    });
+    return;
+  }
+
+  // Lo que pasó al conectar, para que una prueba pueda mirarlo.
+  if (req.method === "GET" && req.url.startsWith("/__conexiones")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(conexiones));
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/cdn/")) {
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -420,7 +503,19 @@ const servidor = http.createServer((req, res) => {
     } catch {
       // Da igual: se guarda el crudo.
     }
-    recibidos.push({ url: req.url, cuerpo: leido ?? cuerpo });
+    /*
+     * Se anota también CON QUÉ TOKEN vino.
+     *
+     * Hasta ahora sólo se guardaba la dirección y el cuerpo, y con eso no se
+     * puede ver lo que importa cuando hay más de una cuenta conectada: si la
+     * respuesta a un hilo salió con el token de esa cuenta o con el de otra.
+     * Desde afuera las dos peticiones se ven idénticas.
+     */
+    recibidos.push({
+      url: req.url,
+      cuerpo: leido ?? cuerpo,
+      autorizacion: req.headers.authorization ?? null,
+    });
 
     /*
      * LA ETIQUETA `HUMAN_AGENT`, RECHAZADA COMO LA RECHAZA META.

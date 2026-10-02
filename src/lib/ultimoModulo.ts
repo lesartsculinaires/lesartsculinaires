@@ -74,8 +74,29 @@ export function moduloInicial(opciones: {
   permitidos: readonly string[];
   /** A dónde ir cuando pide el panel de administración. */
   panelAdmin: string;
+  /**
+   * Una pantalla pedida por la dirección: `?mod=Canales`.
+   *
+   * ==========================================================================
+   * POR QUÉ GANA SOBRE LA COOKIE
+   * ==========================================================================
+   *
+   * Porque es una intención de ahora y la cookie es un recuerdo. Si la cookie
+   * ganara, un enlace a una pantalla concreta llevaría a otra, que es lo que
+   * pasaba: al volver de conectar una cuenta de Meta, el CRM abría donde
+   * hubieras estado la última vez y el aviso de «cuenta conectada» no se veía
+   * nunca. Para quien revisa la aplicación desde Meta, eso se lee como que no
+   * pasó nada.
+   *
+   * Pedir no es poder: se comprueba contra `permitidos`, que ya trae sólo las
+   * pantallas de ese rol. Una dirección no concede lo que el rol no concede.
+   */
+  pedido?: string | null;
 }): string | undefined {
-  const { guardado, pidePanelAdmin, permitidos, panelAdmin } = opciones;
+  const { guardado, pidePanelAdmin, permitidos, panelAdmin, pedido } = opciones;
+
+  const pide = decodificar(pedido);
+  if (pide && permitidos.includes(pide)) return pide;
 
   const limpio = decodificar(guardado);
   if (limpio && permitidos.includes(limpio)) return limpio;

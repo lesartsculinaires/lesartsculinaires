@@ -1,4 +1,6 @@
 import "server-only";
+
+import { credencialDe } from "@/lib/meta/credenciales";
 import {
   esFaltaDePermisoHumanAgent,
   sobreDeEnvio,
@@ -133,8 +135,10 @@ export async function enviarTextoMsn(
    * Sin este dato se supone la ventana abierta, que es lo que falla mejor.
    */
   ultimoEntranteEn?: string | null,
+  /** Con qué cuenta nuestra se contesta. Ver `mandar`. */
+  cuentaId?: string | null,
 ): Promise<ResultadoMsn> {
-  return mandar(psid, { text: texto }, ultimoEntranteEn);
+  return mandar(psid, { text: texto }, ultimoEntranteEn, cuentaId);
 }
 
 /**
@@ -149,6 +153,8 @@ export async function enviarAdjuntoMsn(
   enlace: string,
   clase: "image" | "video" | "audio" | "file",
   ultimoEntranteEn?: string | null,
+  /** Con qué cuenta nuestra se contesta. Ver `mandar`. */
+  cuentaId?: string | null,
 ): Promise<ResultadoMsn> {
   return mandar(psid, {
     attachment: {
@@ -160,7 +166,7 @@ export async function enviarAdjuntoMsn(
         is_reusable: false,
       },
     },
-  }, ultimoEntranteEn);
+  }, ultimoEntranteEn, cuentaId);
 }
 
 /** Qué clase de adjunto es, según su tipo de archivo. */
@@ -177,13 +183,22 @@ async function mandar(
   psid: string,
   mensaje: unknown,
   ultimoEntranteEn?: string | null,
+  /**
+   * Qué Página NUESTRA recibió este hilo, para contestar con su token.
+   *
+   * Sin esto, una Página conectada desde la pantalla —la del revisor de Meta,
+   * por ejemplo— recibiría mensajes y el CRM le contestaría con el token de la
+   * escuela. Meta lo rechaza, y con razón: esa Página no es suya.
+   */
+  cuentaId?: string | null,
 ): Promise<ResultadoMsn> {
-  const token = elToken();
-  const pagina = laPagina();
+  const credencial = await credencialDe("messenger", cuentaId);
 
-  if (!token || !pagina) {
+  if (!credencial) {
     return { ok: false, mid: null, error: "Messenger no está configurado en el servidor." };
   }
+
+  const { token, pageId: pagina } = credencial;
 
   try {
     const r = await fetch(`${base()}/${pagina}/messages`, {

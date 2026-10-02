@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import CrmApp from "@/components/CrmApp";
-import { MODULOS, MOD_USUARIOS } from "@/lib/modulos";
+import { MODULOS, MOD_CANALES, MOD_USUARIOS } from "@/lib/modulos";
 import { COOKIE_MODULO, moduloInicial } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
@@ -79,12 +79,16 @@ export default async function Page({
    * de la URL pueden conceder lo que el rol no concede.
    */
   const puedeAdministrar = accesos.data.esAdmin || accesos.faltaMigracion;
-  const permitidos = puedeAdministrar ? [...MODULOS, MOD_USUARIOS] : MODULOS;
+  const permitidos = puedeAdministrar
+    ? [...MODULOS, MOD_USUARIOS, MOD_CANALES]
+    : MODULOS;
   const modulo = moduloInicial({
     guardado: (await cookies()).get(COOKIE_MODULO)?.value,
     pidePanelAdmin: mod === "admin",
     permitidos,
     panelAdmin: MOD_USUARIOS,
+    // `?mod=Canales` es por donde vuelve el diálogo de Meta. Ver `moduloInicial`.
+    pedido: mod,
   });
 
   return (
