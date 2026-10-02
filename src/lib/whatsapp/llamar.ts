@@ -1,4 +1,5 @@
 import "server-only";
+import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
 
 /**
  * Llamadas por la API de Meta.
@@ -107,9 +108,7 @@ async function ordenar(
       callId: null,
       error: porTiempo
         ? `WhatsApp no respondió a tiempo al ${queEs}.`
-        : e instanceof Error
-          ? e.message
-          : "No se pudo contactar a WhatsApp.",
+        : noLlegamosAMeta(e, "WhatsApp"),
     };
   }
 }
@@ -237,7 +236,7 @@ export async function pedirPermisoParaLlamar(telefono: string): Promise<Resultad
     return {
       ok: false,
       callId: null,
-      error: e instanceof Error ? e.message : "No se pudo contactar a WhatsApp.",
+      error: noLlegamosAMeta(e, "WhatsApp"),
     };
   }
 }

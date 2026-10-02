@@ -174,25 +174,48 @@ console.log("\n── se elige la plantilla y se aprieta Mandar ──");
   await p.waitForTimeout(2500);
 
   /*
-   * Lo que importa: que haya pasado ALGO.
+   * Lo que importa: que haya pasado ALGO, y que se vea.
    *
-   * En el banco no hay token de WhatsApp, así que la respuesta correcta es
-   * decir que no está configurado. Un botón muerto no diría nada.
-   */
-  /*
-   * Las dos respuestas correctas, según cómo esté el banco.
+   * ==========================================================================
+   * SON TRES FINALES, SEGÚN CÓMO ESTÉ EL BANCO, Y LOS TRES SON CORRECTOS
+   * ==========================================================================
    *
-   * Sin token en `.env.local`, el CRM dice que WhatsApp no está configurado.
-   * Con un token de mentira, llega hasta Meta y vuelve con que es inválido.
-   * Las dos son «pasó algo y se dijo», que es lo que se está probando; lo que
-   * no puede pasar es que el botón se apriete y no diga nada.
+   *   SIN TOKEN           El CRM dice que WhatsApp no está configurado.
+   *   CON UNO DE MENTIRA  Llega hasta Meta y vuelve con que es inválido.
+   *   CON EL META DE      Sale de verdad, y entonces NO hay ningún error que
+   *   MENTIRA EN EL 3144  mostrar: lo que tiene que haber es el mensaje en el
+   *                       hilo.
+   *
+   * El tercero faltaba, y por eso esta prueba se ponía roja cuando el banco
+   * estaba MÁS completo que de costumbre —con el Meta de mentira levantado—,
+   * que es exactamente al revés de lo que una prueba tiene que hacer.
+   *
+   * Lo que no puede pasar, en ninguno de los tres, es que el botón se apriete y
+   * no pase nada: ni mensaje ni explicación.
    */
   const despues = await texto();
-  es(
-    "APRETARLO HACE ALGO: contesta por qué no salió",
-    /no está configurado en el servidor|token de WhatsApp venció o es inválido/i.test(despues),
-    true,
-  );
+  /*
+   * «Se dijo por qué» tiene que ser algo que se pueda LEER.
+   *
+   * Acá esta prueba encontró que, con Meta inalcanzable, debajo del botón
+   * aparecía «fetch failed»: lo que escribe Node cuando no puede abrir la
+   * conexión. No dice quién falló, ni si el mensaje salió —que es lo único que
+   * importa, porque si no se sabe, se manda de nuevo y el cliente lo recibe dos
+   * veces—. Por eso se exige la frase que lo contesta.
+   */
+  const seDijoPorQueNo =
+    /no está configurado en el servidor|token de WhatsApp venció o es inválido|el mensaje NO salió/i.test(
+      despues,
+    );
+  const salio =
+    sql(`
+      select count(*) from public.mensajes m
+      join public.conversaciones c on c.id = m.conversacion_id
+      where c.telefono = '${TEL}' and m.direccion = 'saliente';
+    `) !== "0";
+
+  es("APRETARLO HACE ALGO: o sale el mensaje, o se dice por qué no", seDijoPorQueNo || salio, true);
+  if (salio) console.log("   (salió de verdad: hay Meta de mentira en el 3144)");
   await foto("2-despues-de-mandar");
 }
 

@@ -5,6 +5,7 @@ import {
   esDocumentoAceptado,
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
+import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
 
 /**
  * Envío por la API de Meta.
@@ -119,7 +120,7 @@ export async function enviarTexto(
     return {
       ok: false,
       waId: null,
-      error: e instanceof Error ? e.message : "No se pudo contactar a WhatsApp.",
+      error: noLlegamosAMeta(e, "WhatsApp"),
     };
   }
 }
@@ -262,7 +263,7 @@ async function mandar(
     return {
       ok: false,
       waId: null,
-      error: e instanceof Error ? e.message : "No se pudo contactar a WhatsApp.",
+      error: noLlegamosAMeta(e, "WhatsApp"),
     };
   }
 }
@@ -421,7 +422,7 @@ export async function enviarPlantilla(
     return {
       ok: false,
       waId: null,
-      error: e instanceof Error ? e.message : "No se pudo contactar a WhatsApp.",
+      error: noLlegamosAMeta(e, "WhatsApp"),
     };
   }
 }

@@ -12,6 +12,7 @@ import {
   sinPerfil,
   type PerfilMeta,
 } from "@/lib/meta/perfil";
+import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
 
 /**
  * Envío por la API de mensajes de Instagram.
@@ -302,7 +303,7 @@ async function mandar(
     return {
       ok: false,
       mid: null,
-      error: e instanceof Error ? e.message : "No se pudo contactar a Instagram.",
+      error: noLlegamosAMeta(e, "Instagram"),
     };
   }
 }
