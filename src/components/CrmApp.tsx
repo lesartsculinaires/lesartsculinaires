@@ -57,6 +57,7 @@ import {
   MOD_FORMULARIOS,
   MOD_PROGRAMAS,
   permisosDeModulo,
+  puedeVerCanales,
 } from "@/lib/permisos";
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
@@ -367,13 +368,25 @@ export default function CrmApp({
    * enteran de esta lista. Sirve para que una asesora no tenga a la vista seis
    * pantallas que no usa.
    */
+  /*
+   * Canales entra sólo con la casilla marcada, no por ser dirección.
+   *
+   * Es lo que permite el rol «Revisor»: alguien que entra a conectar su cuenta
+   * de Instagram para que Meta pueda aprobar la aplicación, y que no tiene por
+   * qué ver el resto del CRM.
+   */
+  const verCanales = useMemo(
+    () => puedeVerCanales(accesos.permisos, accesos.yo?.rolId ?? null, accesos.esAdmin),
+    [accesos],
+  );
+
   const permitidos = useMemo(
     () =>
       modulosPermitidos(
         [
           ...MODULOS,
           ...(accesos.esAdmin || faltaMigracionAccesos ? [MOD_USUARIOS] : []),
-          ...(accesos.esAdmin ? [MOD_CANALES] : []),
+          ...(verCanales ? [MOD_CANALES] : []),
         ],
         accesos.modulos,
         accesos.permisos,
@@ -837,11 +850,11 @@ export default function CrmApp({
           )}
 
           {mod === MOD_CANALES &&
-            (accesos.esAdmin ? (
+            (verCanales ? (
               <Canales accent={accent} />
             ) : (
               <p style={{ fontSize: 13, color: T.muted }}>
-                Esta sección es solo para administradores.
+                Esta sección necesita el permiso de Canales.
               </p>
             ))}
 

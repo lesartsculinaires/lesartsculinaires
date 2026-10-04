@@ -68,6 +68,10 @@ const COMO_FUE: Record<string, { bien: boolean; dice: string }> = {
   canje_fallo: { bien: false, dice: "Facebook no aceptó el código." },
   no_se_guardo: { bien: false, dice: "No se pudo guardar la conexión." },
   error: { bien: false, dice: "No se pudo completar la conexión." },
+  sin_permiso: {
+    bien: false,
+    dice: "Esta cuenta no tiene permiso para conectar canales. Lo da dirección, en Usuarios y Roles.",
+  },
 };
 
 export function Canales({ accent }: { accent: string }) {

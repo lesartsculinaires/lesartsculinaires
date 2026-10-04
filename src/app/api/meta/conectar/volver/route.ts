@@ -12,7 +12,8 @@ import {
   suscribirPagina,
 } from "@/lib/meta/conectar";
 import { guardarCredencial } from "@/lib/meta/credenciales";
-import { getUser } from "@/lib/supabase/server";
+import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
+import { getServerClient, getUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,13 @@ const volverDiciendo = (req: NextRequest, que: string, detalle?: string) => {
 export async function GET(req: NextRequest) {
   const usuario = await getUser();
   if (!usuario) return NextResponse.redirect(new URL("/login?redirect=/", direccionPublica(req)));
+
+  // La misma comprobación que al salir: nadie conecta nada sin el permiso,
+  // llegue por donde llegue.
+  const supabase = await getServerClient();
+  if (!supabase || !(await puedeEnModulo(supabase, "canales", "crear"))) {
+    return volverDiciendo(req, "sin_permiso");
+  }
 
   const url = new URL(req.url);
 

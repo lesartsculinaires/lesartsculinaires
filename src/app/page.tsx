@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import CrmApp from "@/components/CrmApp";
 import { MODULOS, MOD_CANALES, MOD_USUARIOS } from "@/lib/modulos";
+import { puedeVerCanales } from "@/lib/permisos";
 import { COOKIE_MODULO, moduloInicial } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
@@ -79,9 +80,22 @@ export default async function Page({
    * de la URL pueden conceder lo que el rol no concede.
    */
   const puedeAdministrar = accesos.data.esAdmin || accesos.faltaMigracion;
-  const permitidos = puedeAdministrar
-    ? [...MODULOS, MOD_USUARIOS, MOD_CANALES]
-    : MODULOS;
+  /*
+   * Canales no va con «es dirección» sino con su casilla, igual que en la
+   * pantalla: es lo que deja existir un rol que SÓLO entra a conectar una
+   * cuenta de Meta. Las dos mitades tienen que decir lo mismo, o `?mod=Canales`
+   * llevaría a una pantalla que después no se dibuja.
+   */
+  const verCanales = puedeVerCanales(
+    accesos.data.permisos,
+    accesos.data.yo?.rolId ?? null,
+    accesos.data.esAdmin,
+  );
+  const permitidos = [
+    ...MODULOS,
+    ...(puedeAdministrar ? [MOD_USUARIOS] : []),
+    ...(verCanales ? [MOD_CANALES] : []),
+  ];
   const modulo = moduloInicial({
     guardado: (await cookies()).get(COOKIE_MODULO)?.value,
     pidePanelAdmin: mod === "admin",

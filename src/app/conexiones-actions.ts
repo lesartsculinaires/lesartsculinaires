@@ -12,6 +12,7 @@ import {
 import { hayInstagram } from "@/lib/instagram/enviar";
 import { hayMessenger } from "@/lib/messenger/enviar";
 import { hayWhatsapp } from "@/lib/whatsapp/enviar";
+import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 
 /**
@@ -58,23 +59,30 @@ const VACIO: EstadoCanales = {
   queFalta: null,
 };
 
-/** Sólo dirección: son las llaves con las que se le escribe a los clientes. */
-async function esDireccion(): Promise<boolean> {
+/**
+ * Quién puede, y por qué no es «es dirección».
+ *
+ * `puedeEnModulo` contesta que sí a dirección y, al resto, sólo con la casilla
+ * marcada: sin fila, NO. Esa orientación es la que corresponde acá —son las
+ * llaves con las que se le escribe a los clientes— y es la que permite que
+ * exista un rol «Revisor» que entra sólo a conectar su cuenta de Instagram para
+ * que Meta pueda aprobar la aplicación.
+ *
+ * `ver` para mirar el estado, `eliminar` para desconectar. Son distintas a
+ * propósito: desconectar la cuenta de la escuela corta la mensajería, y eso no
+ * tiene por qué venir de regalo con mirar.
+ */
+async function puede(accion: "ver" | "crear" | "eliminar"): Promise<boolean> {
   const supabase = await getServerClient();
   if (!supabase) return false;
-  try {
-    const { data } = await supabase.rpc("es_admin");
-    return Boolean(data);
-  } catch {
-    return false;
-  }
+  return puedeEnModulo(supabase, "canales", accion);
 }
 
 export async function estadoDeCanales(): Promise<EstadoCanales> {
   const usuario = await getUser();
   if (!usuario) return { ...VACIO, error: "Sesión no válida." };
-  if (!(await esDireccion())) {
-    return { ...VACIO, error: "Sólo dirección puede ver las conexiones de los canales." };
+  if (!(await puede("ver"))) {
+    return { ...VACIO, error: "No tenés permiso para ver las conexiones de los canales." };
   }
 
   const conectadas = await credencialesConectadas();
@@ -103,8 +111,8 @@ export async function desconectarCuenta(
 ): Promise<{ ok: boolean; error: string | null }> {
   const usuario = await getUser();
   if (!usuario) return { ok: false, error: "Sesión no válida." };
-  if (!(await esDireccion())) {
-    return { ok: false, error: "Sólo dirección puede desconectar un canal." };
+  if (!(await puede("eliminar"))) {
+    return { ok: false, error: "No tenés permiso para desconectar un canal." };
   }
 
   const r = await desconectar(id);

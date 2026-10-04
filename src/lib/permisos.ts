@@ -59,6 +59,36 @@ export const MOD_BASES = "bases";
 export const MOD_FORMULARIOS = "formularios";
 export const MOD_PROGRAMAS = "programas";
 export const MOD_CLIENTES = "clientes";
+export const MOD_CANALES = "canales";
+
+/**
+ * ¿Este rol puede ver la pantalla de Canales?
+ *
+ * ============================================================================
+ * POR QUÉ NO SIRVE `puede(...)` ACÁ
+ * ============================================================================
+ *
+ * Porque `puede` deja VER por omisión: un rol sin fila para un módulo lo ve
+ * igual. Es la decisión correcta para el resto del CRM —un módulo nuevo no
+ * tiene por qué desaparecerle a nadie hasta que alguien lo marque— y es la
+ * decisión equivocada para esta pantalla.
+ *
+ * Acá se conectan y desconectan las cuentas con las que el CRM le escribe a los
+ * clientes. Un rol creado mañana, sin que nadie piense en esto, no puede
+ * aparecer con la llave de la mensajería en la mano.
+ *
+ * Así que es al revés: sólo entra quien tiene la casilla marcada a propósito. Y
+ * dirección, que puede todo por definición.
+ */
+export function puedeVerCanales(
+  permisos: readonly Permiso[],
+  rolId: number | null,
+  esAdmin: boolean,
+): boolean {
+  if (esAdmin) return true;
+  if (rolId == null) return false;
+  return permisos.some((p) => p.rolId === rolId && p.modulo === MOD_CANALES && p.ver);
+}
 
 /**
  * Las cuatro casillas de un módulo, resueltas de una vez.

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getUser } from "@/lib/supabase/server";
+import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
+import { getServerClient, getUser } from "@/lib/supabase/server";
 import {
   APP_ID,
   CONFIG_ID,
@@ -52,6 +53,20 @@ export async function GET(req: NextRequest) {
   const usuario = await getUser();
   if (!usuario) {
     return NextResponse.redirect(new URL("/login?redirect=/", direccionPublica(req)));
+  }
+
+  /*
+   * Conectar es ESCRIBIR: deja una cuenta nueva con la que el CRM le habla a
+   * los clientes. Hasta acá sólo se pedía sesión, y eso alcanzaba mientras la
+   * pantalla fuera de dirección. Ahora que hay un rol que entra sólo a esto, la
+   * puerta tiene que estar en la acción y no en quién ve el botón: un botón
+   * escondido no protege nada, la dirección se puede escribir a mano.
+   */
+  const supabase = await getServerClient();
+  if (!supabase || !(await puedeEnModulo(supabase, "canales", "crear"))) {
+    return NextResponse.redirect(
+      new URL("/?mod=Canales&conectar=sin_permiso", direccionPublica(req)),
+    );
   }
 
   if (!APP_ID || !CONFIG_ID) {
