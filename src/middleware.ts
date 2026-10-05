@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { SE_PASO, conTope } from "@/lib/conTope";
+
 const URL_ENV = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const KEY_ENV = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
@@ -31,6 +33,33 @@ const ESPERA_MS = 3000;
 /** El mismo `fetch`, pero que se rinde en vez de colgarse. */
 const conPlazo: typeof fetch = (entrada, init) =>
   fetch(entrada, { ...init, signal: AbortSignal.timeout(ESPERA_MS) });
+
+/**
+ * Y un tope para TODA la pregunta, que es distinto del de cada intento.
+ *
+ * ============================================================================
+ * POR QUÉ NO ALCANZABA CON EL PLAZO DE ARRIBA
+ * ============================================================================
+ *
+ * Porque acota cada fetch y no la operación. Cuando el token toca renovarse,
+ * `getUser()` llama por dentro a `_refreshAccessToken`, que REINTENTA con espera
+ * creciente —200 ms, 400, 800…— mientras quepa dentro de su propio presupuesto
+ * de TREINTA SEGUNDOS (`AUTO_REFRESH_TICK_DURATION_MS`). Y un fetch abortado le
+ * parece un error de red, o sea de los que vale la pena reintentar.
+ *
+ * Así que con Supabase frío la cuenta era: 3 s de corte, espera, 3 s, espera…
+ * hasta los treinta. Medido en el banco con Supabase a 12 s: 36,2 segundos para
+ * contestar una redirección. Netlify corta mucho antes y muestra su pantalla:
+ *
+ *     This edge function has crashed — the edge function timed out
+ *
+ * El plazo de cada intento sigue haciendo falta —libera la conexión— pero quien
+ * decide cuándo basta es éste.
+ *
+ * Tres segundos y medio: un intento completo y algo de margen. Reintentar más
+ * no sirve para una petición que alguien está esperando del otro lado.
+ */
+const TOPE_MS = 3500;
 
 /**
  * ¿Esta petición trae una sesión de Supabase?
@@ -98,25 +127,35 @@ export async function middleware(request: NextRequest) {
    * O sea: el que no verifica se queda sin datos igual, y el que sí tenía
    * sesión no pierde su trabajo por un tropiezo de treinta segundos.
    */
-  let user = null;
-  let huboRespuesta = true;
+  /*
+   * `preguntar` NUNCA rechaza, a propósito: lo que pierde la carrera contra el
+   * reloj sigue corriendo, y una promesa rechazada sin nadie que la escuche
+   * tumba la función entera —que es justo lo que se está tratando de evitar—.
+   */
+  const preguntar = async () => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      /*
+       * Sólo cuenta como caída cuando NO hubo respuesta.
+       *
+       * Un token vencido SÍ es una respuesta —Supabase contesta con un código— y
+       * tiene que mandar al login como siempre. Confundir las dos cosas sería
+       * peor que el problema original: una sesión vencida no volvería a pedir
+       * contraseña nunca. Por eso se mira si vino código de respuesta y no el
+       * texto del error, que cambia con cada versión de la librería.
+       */
+      return { user: data.user, huboRespuesta: !(error && !error.status) };
+    } catch {
+      return { user: null, huboRespuesta: false };
+    }
+  };
 
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    user = data.user;
-    /*
-     * Sólo cuenta como caída cuando NO hubo respuesta.
-     *
-     * Un token vencido SÍ es una respuesta —Supabase contesta con un código— y
-     * tiene que mandar al login como siempre. Confundir las dos cosas sería
-     * peor que el problema original: una sesión vencida no volvería a pedir
-     * contraseña nunca. Por eso se mira si vino código de respuesta y no el
-     * texto del error, que cambia con cada versión de la librería.
-     */
-    if (error && !error.status) huboRespuesta = false;
-  } catch {
-    huboRespuesta = false;
-  }
+  const contestó = await conTope(preguntar(), TOPE_MS);
+
+  // Que se acabe el tiempo es exactamente lo mismo que no haber podido
+  // preguntar, y se trata igual: lo decide el bloque de abajo.
+  const { user, huboRespuesta } =
+    contestó === SE_PASO ? { user: null, huboRespuesta: false } : contestó;
 
   const { pathname } = request.nextUrl;
   const isLogin = pathname.startsWith("/login");

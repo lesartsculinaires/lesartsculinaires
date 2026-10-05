@@ -49,9 +49,56 @@ function leerJwt(auth) {
   }
 }
 
+/**
+ * Un Supabase FRÍO, que es el estado que rompe el CRM en producción.
+ *
+ * ============================================================================
+ * POR QUÉ HACE FALTA PODER SIMULARLO
+ * ============================================================================
+ *
+ * El proyecto de Supabase se enfría cuando pasa un rato sin uso, y la primera
+ * petición después de eso tarda entre diez y quince segundos —medido contra el
+ * proyecto de la escuela: 11,3 s en `/auth/v1/settings` y 15,9 s en `/rest`,
+ * con dos intentos previos que ni conectaron—. En caliente son 230 ms.
+ *
+ * Eso no es un detalle de rendimiento: es lo que tiraba el CRM entero con dos
+ * pantallas distintas de Netlify, una del middleware y otra de la página. Y no
+ * se podía reproducir, porque el banco siempre contesta al instante.
+ *
+ *     curl -X POST 'http://127.0.0.1:3141/__lento?ms=12000'   # enfriar
+ *     curl -X POST 'http://127.0.0.1:3141/__lento?ms=0'       # calentar
+ *
+ * Demora TODO menos el propio `/__lento`, igual que un proyecto dormido: lo que
+ * está frío es el proyecto, no una ruta.
+ */
+let demoraMs = 0;
+
 const servidor = http.createServer((req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
 
+  if (url.pathname === "/__lento") {
+    demoraMs = Number(url.searchParams.get("ms") ?? 0) || 0;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ demoraMs }));
+    return;
+  }
+
+  if (demoraMs > 0) {
+    /*
+     * La demora va ANTES de mirar qué pedían, a propósito.
+     *
+     * Un proyecto dormido no contesta rápido lo fácil y lento lo difícil: no
+     * contesta nada hasta que despierta. Demorar sólo algunas rutas haría que
+     * el banco pruebe una lentitud que no existe.
+     */
+    setTimeout(() => atender(url, req, res), demoraMs);
+    return;
+  }
+
+  atender(url, req, res);
+});
+
+function atender(url, req, res) {
   if (url.pathname === "/auth/v1/user") {
     const claims = leerJwt(req.headers.authorization);
     if (!claims?.sub) {
@@ -132,7 +179,7 @@ const servidor = http.createServer((req, res) => {
     res.end(JSON.stringify({ message: String(e) }));
   });
   req.pipe(p);
-});
+}
 
 /** Las partes del almacenamiento de mentira. */
 function responder(url, req, res, permisos) {

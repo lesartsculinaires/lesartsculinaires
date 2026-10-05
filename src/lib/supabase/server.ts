@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { SE_PASO, conTope } from "@/lib/conTope";
 import {
   SUPABASE_ANON_KEY,
   SUPABASE_URL,
@@ -50,6 +51,34 @@ const RELOJ_DESFASADO = /issued at future|JWTIssuedAtFuture|not yet valid|nbf/i;
 const ESPERAS = [400, 800, 1600];
 
 /**
+ * Cuánto puede tardar UNA consulta, reintentos incluidos.
+ *
+ * ============================================================================
+ * SIN ESTO, UN SUPABASE FRÍO COLGABA LA PÁGINA PARA SIEMPRE
+ * ============================================================================
+ *
+ * Acá no había ningún plazo. Mientras Supabase contesta en 150–400 ms eso no se
+ * nota; cuando el proyecto se enfría y tarda doce segundos, la página se queda
+ * esperando, Netlify la corta a mitad de camino y el navegador muestra:
+ *
+ *     Inactivity Timeout — Too much time has passed without sending any data
+ *
+ * Medido en el banco con Supabase a 12 s: la portada no contestó NUNCA —se
+ * cortó la medición a los 70 segundos—.
+ *
+ * El plazo es para toda la consulta y no para cada intento, que es el error que
+ * ya se cometió una vez en el middleware: acotando sólo cada intento, los
+ * reintentos de más arriba se suman y el total vuelve a ser imprevisible.
+ *
+ * Ocho segundos: muchísimo para una consulta que normalmente tarda menos de
+ * medio segundo, y por debajo del tope con que Netlify mata la función. Pasado
+ * eso ya no hay página que salvar; lo que importa es fallar a tiempo y que la
+ * pantalla lo pueda decir, en vez de morir en una pantalla de Netlify que no
+ * explica nada.
+ */
+const PLAZO_MS = 8000;
+
+/**
  * `fetch` que reintenta cuando el rechazo es por un reloj desfasado.
  *
  * Sólo mira los rechazos de autorización: cualquier otro error pasa derecho, y
@@ -57,8 +86,22 @@ const ESPERAS = [400, 800, 1600];
  * envuelto de nuevo, porque leerlo lo consume.
  */
 const conReintentoDeReloj: typeof fetch = async (entrada, opciones) => {
+  const seAcaba = Date.now() + PLAZO_MS;
+
   for (let intento = 0; ; intento += 1) {
-    const respuesta = await fetch(entrada, opciones);
+    const queda = seAcaba - Date.now();
+    if (queda <= 0) throw new Error("Supabase no contestó a tiempo");
+
+    /*
+     * Si quien llama ya traía su propia señal, valen las dos: la primera que se
+     * dispare corta. Pisarla con la nuestra desactivaría un `abortSignal()`
+     * puesto a mano desde el código que llama.
+     */
+    const nuestra = AbortSignal.timeout(queda);
+    const respuesta = await fetch(entrada, {
+      ...opciones,
+      signal: opciones?.signal ? AbortSignal.any([opciones.signal, nuestra]) : nuestra,
+    });
 
     // Lo normal: salió bien, o falló por algo que reintentar no arregla.
     if (respuesta.ok || respuesta.status < 400 || respuesta.status > 403) {
@@ -81,6 +124,71 @@ const conReintentoDeReloj: typeof fetch = async (entrada, opciones) => {
 };
 
 /**
+ * Cuánto puede tardar «¿quién sos?», reintentos de la librería incluidos.
+ *
+ * ============================================================================
+ * POR QUÉ ESTO VA APARTE DEL PLAZO DE LAS CONSULTAS
+ * ============================================================================
+ *
+ * Porque `auth.getUser()` no es una consulta: cuando el token toca renovarse
+ * llama por dentro a `_refreshAccessToken`, que reintenta solo hasta treinta
+ * segundos y toma un `fetch` abortado como razón para reintentar. El plazo de
+ * cada intento no lo frena —lo alimenta—.
+ *
+ * Medido en el banco con Supabase a 12 s: la portada tardaba 37 segundos en
+ * contestar una redirección, con el plazo por consulta ya puesto. Netlify corta
+ * mucho antes.
+ *
+ * Tres segundos: más que de sobra para una pregunta que en caliente tarda
+ * menos de 300 ms.
+ */
+const TOPE_AUTH_MS = 3000;
+
+/**
+ * El mismo cliente, pero con `auth.getUser` acotado.
+ *
+ * ============================================================================
+ * POR QUÉ ACÁ Y NO EN CADA LLAMADA
+ * ============================================================================
+ *
+ * Porque hay diecisiete lugares que preguntan `auth.getUser()` —cada acción del
+ * servidor comprueba quién es antes de tocar nada— y un tope que hay que
+ * acordarse de poner en cada uno es un tope que falta en el próximo que se
+ * escriba. Envolverlo donde se arma el cliente lo deja puesto para todos, y
+ * para los que todavía no existen.
+ *
+ * Al vencerse contesta lo mismo que contestaría Supabase si no hubiera sesión:
+ * sin usuario. No es un invento cómodo —es la verdad disponible—: no se pudo
+ * confirmar quién es, así que no se puede actuar como si se supiera. Las
+ * acciones del servidor niegan, y la pantalla manda al login, que es lo que ya
+ * hacen cuando la sesión no vale.
+ */
+function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
+  const original = cliente.auth.getUser.bind(cliente.auth);
+
+  type Respuesta = Awaited<ReturnType<typeof original>>;
+
+  cliente.auth.getUser = (async (jwt?: string) => {
+    /*
+     * Nunca rechaza: lo que pierde la carrera contra el reloj sigue corriendo,
+     * y una promesa rechazada que ya nadie escucha tumba el render entero.
+     */
+    const pregunta: Promise<Respuesta | null> = original(jwt).catch(() => null);
+
+    const contestó = await conTope(pregunta, TOPE_AUTH_MS);
+
+    if (contestó !== SE_PASO && contestó !== null) return contestó;
+
+    console.warn(
+      `[supabase] getUser no contestó en  ms: se sigue sin sesión`,
+    );
+    return { data: { user: null }, error: null } as unknown as Respuesta;
+  }) as typeof cliente.auth.getUser;
+
+  return cliente;
+}
+
+/**
  * Server-side Supabase client bound to the request's auth cookies.
  *
  * Every query runs as the signed-in user, so the `authenticated` RLS policies
@@ -92,7 +200,7 @@ export async function getServerClient(): Promise<SupabaseClient | null> {
 
   const cookieStore = await cookies();
 
-  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return conTopeDeAuth(createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { fetch: conReintentoDeReloj },
     cookies: {
       getAll: () => cookieStore.getAll(),
@@ -107,7 +215,7 @@ export async function getServerClient(): Promise<SupabaseClient | null> {
         }
       },
     },
-  });
+  }));
 }
 
 /** The signed-in user, or null. */
