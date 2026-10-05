@@ -169,10 +169,16 @@ export const config = {
     // conectar una cuenta— tiene que seguir pidiendo sesión, así que la
     // excepción nombra la ruta entera y no `api/meta`.
     //
+    // `api/meta/data-deletion` y `eliminacion` son la otra mitad de lo mismo: el
+    // aviso de «borrá mis datos» lo manda Meta sin sesión —lo protege la firma
+    // del cuerpo— y la página de estado la abre la persona que pidió el borrado,
+    // que no tiene cuenta en el CRM ni tiene por qué tenerla. Mandarla al login
+    // sería pedirle una contraseña para ver su propio pedido.
+    //
     // ES EL PRIMER LUGAR DONDE HAY QUE ACORDARSE DE UN CANAL NUEVO. Al conectar
     // Messenger, todo lo demás estaba hecho y los mensajes seguían sin entrar:
     // llegaban acá y se iban al login. El síntoma es idéntico al de un webhook
     // mal configurado en Meta, así que se busca del lado equivocado.
-    "/((?!api/v1|api/whatsapp|api/instagram|api/messenger|api/meta/deauthorize|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/v1|api/whatsapp|api/instagram|api/messenger|api/meta/deauthorize|api/meta/data-deletion|eliminacion|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
