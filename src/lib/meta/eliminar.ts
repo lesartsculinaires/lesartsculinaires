@@ -46,6 +46,58 @@ import { BALDE_WHATSAPP } from "@/lib/whatsapp/adjuntos";
  *                esto. Hay algo que decidir.
  */
 
+/**
+ * ¿Esta ficha tiene rastro de que hubo plata de por medio?
+ *
+ * Tres señales, y con cualquiera alcanza. Ante la duda —una consulta que falla—
+ * contesta que SÍ: equivocarse hacia «no se borra» deja trabajo para una
+ * persona, y equivocarse hacia «se borra» destruye un registro contable sin
+ * vuelta atrás. No son errores comparables.
+ */
+async function tieneRastroComercial(
+  admin: SupabaseClient,
+  clienteId: number,
+): Promise<boolean> {
+  try {
+    const { data: ops } = await admin
+      .from("oportunidades")
+      .select("id, venta_cerrada")
+      .eq("cliente_id", clienteId);
+
+    const oportunidades = (ops ?? []) as Record<string, unknown>[];
+    /*
+     * `venta_cerrada` es un MONTO, no un sí/no.
+     *
+     * Parece un booleano por el nombre y no lo es: guarda cuánto se cerró
+     * —130.00, 490.00—. Comprobarlo con `=== true` no se cumple nunca, así que
+     * una ficha con una venta hecha se habría borrado igual. Lo encontró la
+     * prueba, con la base rechazando un `true` sobre una columna numérica.
+     */
+    if (oportunidades.some((o) => Number(o.venta_cerrada ?? 0) > 0)) return true;
+
+    const { data: cursos } = await admin
+      .from("cursos_realizados")
+      .select("cliente_id")
+      .eq("cliente_id", clienteId)
+      .limit(1);
+    if ((cursos ?? []).length > 0) return true;
+
+    const ids = oportunidades.map((o) => Number(o.id)).filter((n) => Number.isFinite(n));
+    if (ids.length > 0) {
+      const { data: pagos } = await admin
+        .from("enlaces_pago")
+        .select("oportunidad_id")
+        .in("oportunidad_id", ids)
+        .limit(1);
+      if ((pagos ?? []).length > 0) return true;
+    }
+
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 /** El canal de Instagram en el catálogo. */
 const CANAL_INSTAGRAM = 1;
 
@@ -187,14 +239,40 @@ export async function eliminarDatosDeInstagram(
   }
 
   /*
-   * ¿Quedó alguna ficha que existía SÓLO por esto?
+   * ¿Quedó alguna ficha que existía SÓLO por esto? Entonces se borra.
    *
-   * Se pregunta DESPUÉS de borrar: si al cliente no le queda ninguna otra
-   * conversación ni ninguna otra anotación de canal, entonces lo único que lo
-   * trajo al CRM fue este Instagram. Eso no se borra solo —puede tener un
-   * teléfono, un programa, notas, un pago— pero tampoco se calla.
+   * ==========================================================================
+   * SE PREGUNTA DESPUÉS DE BORRAR, Y NO ES UN DETALLE
+   * ==========================================================================
+   *
+   * Si al cliente no le queda ninguna otra conversación ni ninguna otra
+   * anotación de canal, lo único que lo trajo al CRM fue este Instagram. O sea
+   * que su ficha es, entera, un dato derivado de Meta, y quien pidió el borrado
+   * tiene razón en esperar que se vaya.
+   *
+   * ==========================================================================
+   * LA ÚNICA EXCEPCIÓN: EL RASTRO COMERCIAL
+   * ==========================================================================
+   *
+   * Borrar una ficha arrastra veinte tablas, y tres de ellas no son datos de
+   * Meta sino registro de lo que pasó entre esa persona y la escuela:
+   *
+   *   enlaces_pago        le cobraron
+   *   cursos_realizados   cursó
+   *   venta_cerrada       la venta se concretó
+   *
+   * Eso la escuela lo tiene que conservar por contabilidad, y un webhook no
+   * puede decidir destruirlo. Cuando aparece cualquiera de los tres, la ficha se
+   * conserva, el pedido queda `parcial` y se dice por qué, para que una persona
+   * lo resuelva como corresponda —anonimizar, archivar, lo que su contador
+   * diga—.
+   *
+   * Sin ninguno de los tres, la ficha es un lead que chateó y nada más: se
+   * borra, que es lo que pidió la escuela.
    */
   const porDecidir: number[] = [];
+  const fichasBorradas: number[] = [];
+
   for (const clienteId of clientes) {
     try {
       const [otros, canales] = await Promise.all([
@@ -203,9 +281,21 @@ export async function eliminarDatosDeInstagram(
       ]);
       const quedaOtraConversacion = (otros.data ?? []).length > 0;
       const quedaOtroCanal = (canales.data ?? []).length > 0;
-      if (!quedaOtraConversacion && !quedaOtroCanal) porDecidir.push(clienteId);
+      if (quedaOtraConversacion || quedaOtroCanal) continue;
+
+      if (await tieneRastroComercial(admin, clienteId)) {
+        porDecidir.push(clienteId);
+        continue;
+      }
+
+      const { error } = await admin.from("clientes").delete().eq("id", clienteId);
+      if (error) {
+        problemas.push(`borrar ficha ${clienteId}: ${error.message}`);
+        porDecidir.push(clienteId);
+      } else fichasBorradas.push(clienteId);
     } catch (e) {
       problemas.push(`revisar ficha ${clienteId}: ${e instanceof Error ? e.message : String(e)}`);
+      porDecidir.push(clienteId);
     }
   }
 
@@ -214,6 +304,7 @@ export async function eliminarDatosDeInstagram(
     mensajes: cuantosMensajes,
     archivos: rutas.length,
     clientes: clientes.length,
+    ...(fichasBorradas.length > 0 ? { fichas_borradas: fichasBorradas } : {}),
     ...(porDecidir.length > 0 ? { fichas_por_decidir: porDecidir } : {}),
     ...(problemas.length > 0 ? { problemas } : {}),
   };
@@ -227,14 +318,20 @@ export async function eliminarDatosDeInstagram(
     };
   }
 
+  const base =
+    `Se borró la conversación de Instagram, sus ${cuantosMensajes} mensaje(s) y sus archivos` +
+    (fichasBorradas.length > 0
+      ? `, y ${fichasBorradas.length} ficha(s) de cliente que existían sólo por este contacto`
+      : "") +
+    ".";
+
   if (porDecidir.length > 0) {
     return {
       estado: "parcial",
       notas:
-        `Se borró la conversación de Instagram, sus ${cuantosMensajes} mensaje(s) y sus archivos. ` +
-        `Queda ${porDecidir.length} ficha(s) de cliente que existían sólo por este contacto ` +
-        `(${porDecidir.join(", ")}): puede tener datos cargados por el equipo, así que la decisión ` +
-        "de borrarla es de una persona.",
+        `${base} Queda ${porDecidir.length} ficha(s) (${porDecidir.join(", ")}) que NO se borró ` +
+        "porque tiene rastro comercial —un cobro, un curso cursado o una venta cerrada— y eso la " +
+        "escuela lo conserva por contabilidad. Hay que resolverla a mano.",
       detalle,
     };
   }
@@ -242,8 +339,8 @@ export async function eliminarDatosDeInstagram(
   return {
     estado: "completada",
     notas:
-      `Se borró la conversación de Instagram, sus ${cuantosMensajes} mensaje(s) y sus archivos. ` +
-      "La ficha del cliente, si la hay, llegó también por otro canal.",
+      `${base}` +
+      (fichasBorradas.length === 0 ? " La ficha del cliente, si la hay, llegó también por otro canal." : ""),
     detalle,
   };
 }

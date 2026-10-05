@@ -54,6 +54,7 @@ const N = String(Date.now()).slice(-7);
 const SOLO_IG = "88800000000" + String(Date.now()).slice(-5);
 const CON_OTRO_CANAL = "88811111111" + String(Date.now()).slice(-4);
 const AJENO = "88822222222" + String(Date.now()).slice(-4);
+const PAGO = "88833333333" + String(Date.now()).slice(-4);
 const DESCONOCIDO = "88899999999999";
 
 const sql = (q) => {
@@ -86,10 +87,11 @@ const es = (t, r, e) => {
 const limpiar = () => {
   sql(`
     delete from public.solicitudes_eliminacion where identificador in
-      ('${SOLO_IG}','${CON_OTRO_CANAL}','${AJENO}','${DESCONOCIDO}');
+      ('${SOLO_IG}','${CON_OTRO_CANAL}','${AJENO}','${PAGO}','${DESCONOCIDO}');
     delete from public.mensajes where wa_id like 'mid.ELIM.%';
-    delete from public.conversaciones where identificador in ('${SOLO_IG}','${CON_OTRO_CANAL}','${AJENO}');
+    delete from public.conversaciones where identificador in ('${SOLO_IG}','${CON_OTRO_CANAL}','${AJENO}','${PAGO}');
     delete from public.conversaciones where telefono like '503%${N}';
+    delete from public.oportunidades where codigo like 'ELIM-PAGO-%';
     delete from public.clientes where nombre like 'ELIM %';
   `);
 };
@@ -108,7 +110,8 @@ sql(`
   insert into public.clientes (nombre, telefono) values
     ('ELIM Solo Instagram', null),
     ('ELIM Con Dos Canales', '5037${N}'),
-    ('ELIM Ajeno', '5038${N}');
+    ('ELIM Ajeno', '5038${N}'),
+    ('ELIM Pago', null);
 
   -- quien llegó sólo por Instagram
   insert into public.conversaciones (canal, identificador, nombre_perfil, cliente_id, ultimo_mensaje_en)
@@ -143,6 +146,23 @@ sql(`
   insert into public.mensajes (conversacion_id, wa_id, direccion, tipo, texto, estado)
   select v.id, 'mid.ELIM.WA${N}', 'entrante', 'text', 'esto es de WhatsApp', 'recibido'
   from public.conversaciones v where v.canal='whatsapp' and v.identificador='5037${N}';
+
+  /*
+   * Y quien llegó sólo por Instagram PERO PAGÓ.
+   *
+   * Su ficha es, igual que la de «Solo Instagram», un dato derivado de Meta. La
+   * diferencia es que arrastra un registro contable, y eso la escuela lo
+   * conserva. Es la única excepción al borrado automático.
+   */
+  insert into public.conversaciones (canal, identificador, nombre_perfil, cliente_id, ultimo_mensaje_en)
+  select 'instagram', '${PAGO}', 'Pago IG', c.id, now()
+  from public.clientes c where c.nombre='ELIM Pago';
+
+  insert into public.contactos_canal (cliente_id, canal_id, identificador, primera_vez, ultima_vez)
+  select c.id, 1, '${PAGO}', now(), now() from public.clientes c where c.nombre='ELIM Pago';
+
+  insert into public.oportunidades (codigo, cliente_id, venta_cerrada)
+  select 'ELIM-PAGO-${N}', c.id, 490.00 from public.clientes c where c.nombre='ELIM Pago';
 
   -- el testigo
   insert into public.conversaciones (canal, identificador, nombre_perfil, cliente_id, ultimo_mensaje_en)
@@ -300,18 +320,18 @@ console.log("\n── 3. SE BORRÓ LO DE INSTAGRAM, Y LA FICHA QUEDÓ SEÑALADA 
     "1",
   );
   es(
-    "PERO LA FICHA NO SE BORRÓ SOLA",
+    "Y LA FICHA TAMBIÉN, porque existía sólo por este contacto",
     sql(`select count(*) from public.clientes where nombre='ELIM Solo Instagram'`),
-    "1",
+    "0",
   );
   es(
-    "y el pedido quedó como PARCIAL, que es lo que pide una decisión",
+    "el pedido quedó COMPLETADA: no queda nada que decidir",
     sql(`select estado from public.solicitudes_eliminacion where codigo_confirmacion='${codigoSoloIg}'`),
-    "parcial",
+    "completada",
   );
   es(
-    "con la ficha anotada en el detalle, para poder encontrarla",
-    sql(`select detalle ? 'fichas_por_decidir' from public.solicitudes_eliminacion
+    "con la ficha borrada anotada en el detalle",
+    sql(`select detalle ? 'fichas_borradas' from public.solicitudes_eliminacion
          where codigo_confirmacion='${codigoSoloIg}'`),
     "t",
   );
@@ -327,7 +347,7 @@ console.log("\n── 4. LA PÁGINA DE ESTADO CONTESTA, Y NO CUENTA DE MÁS ─�
  */
 {
   const pagina = paginaDe(codigoSoloIg);
-  es("dice que se eliminó lo de Instagram", /Eliminamos tus datos de Instagram/i.test(pagina), true);
+  es("dice que se eliminaron sus datos", /tus datos fueron eliminados/i.test(pagina), true);
   es("muestra el código", pagina.includes(codigoSoloIg), true);
   es(
     "Y NO PUBLICA EL NÚMERO DE FICHA INTERNO",
@@ -375,6 +395,47 @@ console.log("\n── 5. CON OTRO CANAL: SE BORRA LO DE META Y NADA MÁS ──"
     "y el pedido quedó COMPLETADA: la ficha tiene vida propia",
     sql(`select estado from public.solicitudes_eliminacion where identificador='${CON_OTRO_CANAL}'`),
     "completada",
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 5b. PERO SI PAGÓ, LA FICHA NO SE BORRA SOLA ──");
+// ══════════════════════════════════════════════════════════════════════════
+/*
+ * Es la única excepción, y existe porque borrar una ficha arrastra veinte
+ * tablas —entre ellas los cobros, los cursos cursados y las autorizaciones—.
+ * Eso no es dato de Meta: es lo que la escuela tiene que conservar por
+ * contabilidad, y un webhook no puede decidir destruirlo.
+ */
+{
+  const r = pedirBorrado(PAGO);
+  es("contesta bien", r.code, "200");
+
+  es(
+    "lo de Instagram se borró igual",
+    sql(`select count(*) from public.conversaciones where canal='instagram' and identificador='${PAGO}'`),
+    "0",
+  );
+  es(
+    "PERO LA FICHA SE CONSERVA",
+    sql(`select count(*) from public.clientes where nombre='ELIM Pago'`),
+    "1",
+  );
+  es(
+    "y su venta cerrada también",
+    sql(`select count(*) from public.oportunidades where codigo='ELIM-PAGO-${N}'`),
+    "1",
+  );
+  es(
+    "el pedido queda PARCIAL, que es lo que pide una decisión",
+    sql(`select estado from public.solicitudes_eliminacion where identificador='${PAGO}'`),
+    "parcial",
+  );
+  es(
+    "Y SE DICE POR QUÉ, no queda como un fallo",
+    sql(`select notas from public.solicitudes_eliminacion where identificador='${PAGO}'`)
+      .includes("rastro comercial"),
+    true,
   );
 }
 
