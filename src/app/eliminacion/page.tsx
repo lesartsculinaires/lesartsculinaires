@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { buscarSolicitud } from "@/lib/meta/estadoDeEliminacion";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 /** El estado cambia: nunca de caché. */
@@ -39,29 +40,25 @@ export const metadata: Metadata = {
  */
 
 const COMO_SE_DICE: Record<string, { titulo: string; dice: string }> = {
-  pendiente: {
+  pending: {
     titulo: "Recibimos tu solicitud",
     dice:
       "La estamos procesando. Si volvés a entrar en unos minutos con este mismo código, vas a " +
       "ver el resultado.",
   },
-  completada: {
+  completed: {
     titulo: "Listo: tus datos fueron eliminados",
     dice:
       "Borramos la conversación que tuviste con nosotros por Instagram, sus mensajes y los " +
       "archivos que se enviaron en ella.",
   },
-  parcial: {
+  partial: {
     titulo: "Eliminamos tus datos de Instagram",
     dice:
       "Borramos la conversación que tuviste con nosotros por Instagram, sus mensajes y los " +
       "archivos que se enviaron en ella. Puede quedar algún dato que no llegó por Instagram " +
       "—por ejemplo, si además nos escribiste por otro medio—. Nuestro equipo lo está " +
       "revisando; si querés que también se elimine, escribinos.",
-  },
-  sin_datos: {
-    titulo: "No teníamos datos tuyos",
-    dice: "Buscamos con tu identificador de Instagram y no encontramos ninguna conversación.",
   },
 };
 
@@ -77,34 +74,20 @@ export default async function PaginaEliminacion({
   const { codigo } = await searchParams;
   const buscado = limpio(codigo);
 
-  let estado: string | null = null;
-  let cuando: string | null = null;
-  let sePudoConsultar = true;
+  /*
+   * La consulta vive en `buscarSolicitud`, no acá.
+   *
+   * Es la pieza donde están las tres reglas que hacen que esta página pública
+   * sea segura —sólo por código exacto, el identificador no se selecciona, el
+   * formato se comprueba antes de ir a la base— y por eso se prueba sola, sin
+   * levantar un servidor.
+   */
+  const admin = getAdminClient();
+  const solicitud = buscado === "" || !admin ? null : await buscarSolicitud(admin, buscado);
+  const sePudoConsultar = buscado === "" || Boolean(admin);
 
-  if (buscado !== "") {
-    const admin = getAdminClient();
-    if (!admin) sePudoConsultar = false;
-    else {
-      try {
-        const { data, error } = await admin
-          .from("solicitudes_eliminacion")
-          .select("estado, solicitado_en")
-          .eq("codigo_confirmacion", buscado)
-          .maybeSingle();
-
-        if (error) sePudoConsultar = false;
-        else if (data) {
-          estado = String((data as Record<string, unknown>).estado ?? "pendiente");
-          const fecha = (data as Record<string, unknown>).solicitado_en;
-          cuando = fecha == null ? null : String(fecha).slice(0, 10);
-        }
-      } catch {
-        sePudoConsultar = false;
-      }
-    }
-  }
-
-  const dicho = estado ? COMO_SE_DICE[estado] ?? COMO_SE_DICE.pendiente : null;
+  const dicho = solicitud ? COMO_SE_DICE[solicitud.status] ?? COMO_SE_DICE.pending : null;
+  const cuando = solicitud?.requested_at ? solicitud.requested_at.slice(0, 10) : null;
 
   return (
     <main

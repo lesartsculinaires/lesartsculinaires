@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { direccionPublica } from "@/lib/meta/conectar";
 import { eliminarDatosDeInstagram } from "@/lib/meta/eliminar";
+import { BYTES_DEL_CODIGO } from "@/lib/meta/estadoDeEliminacion";
 import { leerFirmado } from "@/lib/meta/firmado";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -39,11 +40,16 @@ export const dynamic = "force-dynamic";
 /**
  * El código que se le devuelve a Meta y que la persona usa para consultar.
  *
- * Doce caracteres hexadecimales en mayúscula: alcanza de sobra para que no se
- * repitan y se puede leer en voz alta o copiar a mano sin equivocarse, que es
- * lo que alguien va a hacer con él.
+ * Dieciséis hexadecimales en mayúscula. La longitud la fija `BYTES_DEL_CODIGO`
+ * y no un número suelto acá, porque la página comprueba el formato ANTES de
+ * consultar la base: si las dos mitades no dijeran lo mismo, el callback
+ * entregaría códigos que su propia página de estado rechaza por mal formados.
+ *
+ * Dieciséis dan 2^64 posibilidades, que es lo que hace que no se adivinen
+ * probando contra una página sin sesión.
  */
-const nuevoCodigo = (): string => crypto.randomBytes(6).toString("hex").toUpperCase();
+const nuevoCodigo = (): string =>
+  crypto.randomBytes(BYTES_DEL_CODIGO).toString("hex").toUpperCase();
 
 export async function POST(req: NextRequest) {
   let crudo: string | null = null;

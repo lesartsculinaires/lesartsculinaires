@@ -355,8 +355,26 @@ console.log("\n── 4. LA PÁGINA DE ESTADO CONTESTA, Y NO CUENTA DE MÁS ─�
     false,
   );
 
-  const inventado = paginaDe("AAAAAAAAAAAA");
-  es("un código que no existe se dice así", /No encontramos ninguna solicitud/i.test(inventado), true);
+  /*
+   * Y las dos formas de equivocarse contestan lo mismo.
+   *
+   * Uno bien formado que no existe y uno que no tiene ni la forma de un código
+   * —ese ni llega a la base— dan la misma pantalla. Es lo que importa de una
+   * puerta sin sesión: si contestara distinto, serviría para tantear qué
+   * códigos existen.
+   */
+  const inexistente = paginaDe("0123456789ABCDEF");
+  const malEscrito = paginaDe("no-es-un-codigo");
+  es(
+    "un código que no existe se dice así",
+    /No encontramos ninguna solicitud/i.test(inexistente),
+    true,
+  );
+  es(
+    "Y UNO MAL FORMADO CONTESTA IGUAL, sin distinguirse",
+    /No encontramos ninguna solicitud/i.test(malEscrito),
+    true,
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -472,10 +490,21 @@ console.log("\n── 7. UNO QUE NO CONOCEMOS: «sin_datos», que no es un error
     sql(`select estado from public.solicitudes_eliminacion where identificador='${DESCONOCIDO}'`),
     "sin_datos",
   );
+  /*
+   * Pero la página NO lo dice distinto.
+   *
+   * `sin_datos` se muestra igual que una eliminación hecha, a propósito:
+   * decirle «no teníamos nada tuyo» confirmaría que esa persona nunca habló con
+   * la escuela —y lo contrario, a quien sí habló—. Es un dato suyo que no hace
+   * falta para contestar lo que vino a preguntar, y la respuesta verdadera es la
+   * misma en los dos casos: no conservamos nada.
+   */
+  const pagina = paginaDe(r.cuerpo?.confirmation_code);
+  es("la página dice que no queda nada suyo", /tus datos fueron eliminados/i.test(pagina), true);
   es(
-    "la página lo dice sin asustar",
-    /No teníamos datos tuyos/i.test(paginaDe(r.cuerpo?.confirmation_code)),
-    true,
+    "Y NO DEJA VER QUE NUNCA EXISTIÓ",
+    /no te(níamos|nemos)|no encontramos|sin datos/i.test(pagina),
+    false,
   );
 }
 
