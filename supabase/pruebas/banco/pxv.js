@@ -16,6 +16,27 @@ const PGRST = "http://127.0.0.1:3140";
 const PUERTO = 3141;
 const REALTIME_PUERTO = 3143;
 
+/**
+ * Qué archivos «hay» en el almacenamiento de mentira, y cuáles se borraron.
+ *
+ * ============================================================================
+ * POR QUÉ HACE FALTA LLEVAR LA CUENTA
+ * ============================================================================
+ *
+ * Antes el almacenamiento contestaba 200 a todo y no se acordaba de nada. Para
+ * subir y mostrar alcanzaba, pero cuando apareció el callback de eliminación de
+ * datos —que tiene que borrar los archivos de la conversación— dejó de alcanzar:
+ * `remove()` salía en verde SIEMPRE, también si la aplicación hubiera pedido
+ * borrar una ruta equivocada, o ninguna. O sea que el banco no podía distinguir
+ * «se borró el archivo» de «no se pidió borrar nada», y esa es justo la
+ * diferencia que había que comprobar.
+ *
+ * Son dos listas en memoria y se van con el proceso, que es lo que corresponde:
+ * el banco se arma de cero en cada corrida.
+ */
+const archivos = new Set();
+const borrados = [];
+
 /** El contenido de un JWT, sin verificar la firma: es un banco de pruebas. */
 function leerJwt(auth) {
   if (!auth?.startsWith("Bearer ")) return null;
@@ -113,8 +134,57 @@ const servidor = http.createServer((req, res) => {
   req.pipe(p);
 });
 
-/** Las tres partes del almacenamiento de mentira. */
+/** Las partes del almacenamiento de mentira. */
 function responder(url, req, res, permisos) {
+  /*
+   * Para mirar desde una prueba qué archivos quedan y qué se pidió borrar.
+   *
+   * No existe en Supabase: es una ventana al estado del banco, como `/__lento`
+   * en el Meta de mentira. Sin esto, comprobar un borrado obligaría a leer el
+   * registro del proxy a mano.
+   */
+  if (url.pathname === "/storage/v1/__archivos") {
+    res.writeHead(200, { ...permisos, "content-type": "application/json" });
+    res.end(JSON.stringify({ archivos: [...archivos], borrados }));
+    return;
+  }
+
+  /*
+   * Borrar. Es lo que manda `supabase-js` en `remove(rutas)`:
+   *
+   *     DELETE /storage/v1/object/<balde>   con  { "prefixes": [...] }
+   *
+   * Se contesta la lista de lo que se borró de verdad —que es lo que contesta
+   * Supabase— y se anota aparte TODO lo que se pidió borrar, incluso lo que no
+   * estaba. Las dos cosas hacen falta: la primera para que la aplicación vea un
+   * borrado normal, la segunda para que una prueba pueda comprobar que se pidió
+   * borrar la ruta correcta y no otra.
+   */
+  if (req.method === "DELETE" && url.pathname.startsWith("/storage/v1/object/")) {
+    const balde = url.pathname.slice("/storage/v1/object/".length).split("/")[0];
+    let cuerpo = "";
+    req.on("data", (t) => (cuerpo += t));
+    req.on("end", () => {
+      let rutas = [];
+      try {
+        rutas = JSON.parse(cuerpo).prefixes ?? [];
+      } catch {
+        // Un cuerpo ilegible se contesta como «ninguna ruta».
+      }
+
+      const sacados = [];
+      for (const ruta of rutas) {
+        const clave = `${balde}/${ruta}`;
+        borrados.push(clave);
+        if (archivos.delete(clave)) sacados.push({ name: ruta });
+      }
+
+      res.writeHead(200, { ...permisos, "content-type": "application/json" });
+      res.end(JSON.stringify(sacados));
+    });
+    return;
+  }
+
   /*
    * Firmar una dirección, en las DOS formas que tiene Supabase.
    *
@@ -206,6 +276,9 @@ function responder(url, req, res, permisos) {
     const ruta = decodeURIComponent(url.pathname.replace("/storage/v1/object/", ""));
     req.resume();
     req.on("end", () => {
+      // Los bytes se tiran, pero la ruta se anota: es lo que después permite
+      // comprobar que un borrado se llevó este archivo y no otro.
+      archivos.add(ruta);
       res.writeHead(200, { ...permisos, "content-type": "application/json" });
       res.end(JSON.stringify({ Id: "de-mentira", Key: ruta }));
     });

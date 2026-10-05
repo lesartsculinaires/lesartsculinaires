@@ -84,6 +84,41 @@ const es = (t, r, e) => {
   } else console.log(`✓ ${t}`);
 };
 
+/**
+ * La foto del hilo, que es lo único que NO vive en la base.
+ *
+ * ============================================================================
+ * POR QUÉ ESTO NECESITA SU PROPIA COMPROBACIÓN
+ * ============================================================================
+ *
+ * Las filas se van en cascada y eso se ve mirando la base. El archivo no: vive
+ * en el almacenamiento, y si el código no pidiera borrarlo quedaría ahí para
+ * siempre —una foto que alguien mandó por privado y pidió que se borre— sin que
+ * ninguna consulta a la base lo delate.
+ *
+ * El almacenamiento del banco contestaba 200 a cualquier borrado sin acordarse
+ * de nada, así que esto no se podía comprobar. Ahora lleva la cuenta y expone
+ * `/storage/v1/__archivos`, que es lo que se mira acá.
+ */
+const BALDE = "whatsapp";
+const RUTA_FOTO = `pruebas/${N}/foto.png`;
+
+const almacenamiento = () =>
+  JSON.parse(
+    execSync(`curl -s --noproxy '*' 'http://127.0.0.1:3141/storage/v1/__archivos'`, {
+      encoding: "utf8",
+      shell: "/bin/bash",
+    }),
+  );
+
+const subirFoto = () =>
+  execSync(
+    `curl -s -o /dev/null --noproxy '*' -X POST ` +
+      `'http://127.0.0.1:3141/storage/v1/object/${BALDE}/${RUTA_FOTO}' ` +
+      `-H 'content-type: image/png' --data-binary 'pixel'`,
+    { encoding: "utf8", shell: "/bin/bash" },
+  );
+
 const limpiar = () => {
   sql(`
     delete from public.solicitudes_eliminacion where identificador in
@@ -127,6 +162,13 @@ sql(`
 
   insert into public.mensajes (conversacion_id, wa_id, direccion, tipo, texto, estado)
   select v.id, 'mid.ELIM.2${N}', 'saliente', 'text', 'te paso precios', 'enviado'
+  from public.conversaciones v where v.identificador='${SOLO_IG}';
+
+  -- y una foto, que es lo único que no vive en la base
+  insert into public.mensajes
+    (conversacion_id, wa_id, direccion, tipo, estado, media_ruta, media_mime, media_nombre)
+  select v.id, 'mid.ELIM.FOTO${N}', 'entrante', 'image', 'recibido',
+         '${RUTA_FOTO}', 'image/png', 'foto.png'
   from public.conversaciones v where v.identificador='${SOLO_IG}';
 
   -- quien llegó por los dos lados
@@ -190,6 +232,10 @@ sql(`
   select v.id, 'mid.ELIM.AJENO${N}', 'entrante', 'text', 'no pedí nada', 'recibido'
   from public.conversaciones v where v.identificador='${AJENO}';
 `);
+
+// La foto, en el almacenamiento, antes de que nadie pida nada.
+subirFoto();
+es("la foto está guardada antes de empezar", almacenamiento().archivos.includes(`${BALDE}/${RUTA_FOTO}`), true);
 
 // ── la aplicación ──────────────────────────────────────────────────────────
 
@@ -301,9 +347,23 @@ console.log("\n── 3. SE BORRÓ LO DE INSTAGRAM, Y LA FICHA QUEDÓ SEÑALADA 
   );
   es(
     "Y SUS MENSAJES TAMBIÉN, por la cascada",
-    sql(`select count(*) from public.mensajes where wa_id in ('mid.ELIM.1${N}','mid.ELIM.2${N}')`),
+    sql(
+      `select count(*) from public.mensajes where wa_id in
+       ('mid.ELIM.1${N}','mid.ELIM.2${N}','mid.ELIM.FOTO${N}')`,
+    ),
     "0",
   );
+  /*
+   * Y LA FOTO, que es lo único que la cascada no se lleva.
+   *
+   * Las dos mitades hacen falta: que ya no esté, y que se haya pedido borrar
+   * ESA ruta. Sin la segunda, un borrado de la ruta equivocada —o de ninguna—
+   * daría igual de verde, porque el archivo tampoco estaría si nunca se hubiera
+   * subido.
+   */
+  const guardado = almacenamiento();
+  es("Y LA FOTO DEL ALMACENAMIENTO, que la base no borra", guardado.archivos.includes(`${BALDE}/${RUTA_FOTO}`), false);
+  es("y se pidió borrar esa ruta, no otra", guardado.borrados.includes(`${BALDE}/${RUTA_FOTO}`), true);
   es(
     "y la anotación de que llegó por Instagram",
     sql(`select count(*) from public.contactos_canal where identificador='${SOLO_IG}'`),
