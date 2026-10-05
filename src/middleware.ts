@@ -163,10 +163,16 @@ export const config = {
     // después lo desactivaría. Lo que los protege no es la sesión sino la firma
     // del cuerpo, que cada ruta comprueba antes de mirar nada.
     //
+    // `api/meta/deauthorize` queda afuera por lo mismo, y SÓLO ÉSE: lo llama
+    // Meta cuando alguien quita la aplicación, sin sesión y sin nadie detrás,
+    // y lo que lo protege es la firma del cuerpo. El resto de `api/meta` —
+    // conectar una cuenta— tiene que seguir pidiendo sesión, así que la
+    // excepción nombra la ruta entera y no `api/meta`.
+    //
     // ES EL PRIMER LUGAR DONDE HAY QUE ACORDARSE DE UN CANAL NUEVO. Al conectar
     // Messenger, todo lo demás estaba hecho y los mensajes seguían sin entrar:
     // llegaban acá y se iban al login. El síntoma es idéntico al de un webhook
     // mal configurado en Meta, así que se busca del lado equivocado.
-    "/((?!api/v1|api/whatsapp|api/instagram|api/messenger|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/v1|api/whatsapp|api/instagram|api/messenger|api/meta/deauthorize|registro/|pago/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
