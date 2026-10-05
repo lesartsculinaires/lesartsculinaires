@@ -20,6 +20,7 @@ import {
   CARPETA_SALIENTE,
   TOPE_DOCUMENTO_BYTES,
 } from "@/lib/whatsapp/adjuntos";
+import { porQueFalloElServidor } from "@/lib/crm/fallaDelServidor";
 import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
 import { cuantosPendientes, estaPendiente } from "@/lib/pendientes";
 import type { ContactoCompartido } from "@/lib/whatsapp/contactos";
@@ -981,13 +982,48 @@ export function Inbox({
     if (!actual || !texto.trim()) return;
     setEnviando(true);
     setAviso(null);
-    const r = await responderConversacion(actual.id, texto, nota);
-    setEnviando(false);
-    if (r.ok) {
-      setTexto("");
+    try {
+      const r = await responderConversacion(actual.id, texto, nota);
+      if (r.ok) {
+        setTexto("");
+        onRefrescar();
+      } else {
+        setAviso(r.error);
+      }
+    } catch (e) {
+      /*
+       * Una llamada que no contesta NO puede dejar el botón en «Enviando…».
+       *
+       * ======================================================================
+       * LO QUE LE PASÓ A VENTAS
+       * ======================================================================
+       *
+       * Acá se hacía `await` y después `setEnviando(false)`, sin `try`. Cuando
+       * la llamada LANZA —el CRM se desplegó con la pestaña abierta, la sesión
+       * venció, se cortó el wifi— la excepción se lleva puesta esa línea y el
+       * botón se queda diciendo «Enviando…» para siempre.
+       *
+       * Y lo peor no es el botón: EL MENSAJE PUEDE HABER SALIDO IGUAL. Lo que
+       * se rompe es la respuesta, no el envío. Así que quien atiende ve
+       * «Enviando…» eternamente, lo manda de nuevo, y el cliente lo recibe dos
+       * veces. Pasó: el mensaje estaba entregado y leído mientras la pantalla
+       * seguía girando.
+       *
+       * Por eso lo primero del `catch` es RECARGAR EL HILO. No hay forma de
+       * saber desde acá si salió, y el hilo sí lo sabe: que lo diga él en vez
+       * de que alguien adivine.
+       *
+       * Es la misma lección que ya estaba aprendida un poco más arriba, en
+       * `mandarFoto` —«sin atraparlo el visor quedaba trabado sin forma de
+       * salir»— y que a este camino no se le había aplicado.
+       */
       onRefrescar();
-    } else {
-      setAviso(r.error);
+      const falla = porQueFalloElServidor(e);
+      setAviso(
+        `${falla.dice} Fijate en el hilo antes de mandarlo de nuevo: si el mensaje ya aparece, salió.`,
+      );
+    } finally {
+      setEnviando(false);
     }
   };
 

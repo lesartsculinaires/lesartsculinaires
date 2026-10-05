@@ -26,11 +26,43 @@ const BOX = {
 /** Silent when everything is healthy, so it never becomes wallpaper. */
 export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
   if (syncError) {
+    /*
+     * El botón de recargar aparece sólo cuando recargar sirve.
+     *
+     * Es el caso más común y el más confuso: la pestaña quedó abierta desde
+     * antes del último despliegue, el servidor ya no entiende lo que le pide, y
+     * el aviso decía «todavía no está guardado» sin ofrecer ninguna salida.
+     * Quien lo leía se quedaba mirando, o recargaba por intuición.
+     *
+     * Para los demás errores no se ofrece: recargar no arregla que el servidor
+     * haya dicho que no, y un botón que no sirve enseña a ignorarlo.
+     */
+    const conviene = /Recargá y seguí/.test(syncError);
     return (
       <div style={{ ...BOX, background: "#F7EBE9", color: "#8C3B2F" }}>
         <span>
-          No se pudo guardar el último cambio: {syncError}. Lo que ves sigue
-          actualizado, pero todavía no está guardado.
+          No se pudo guardar el último cambio. {syncError}
+          {!conviene && " Lo que ves sigue actualizado, pero todavía no está guardado."}
+          {conviene && (
+            <button
+              type="button"
+              data-recargar-crm
+              onClick={() => window.location.reload()}
+              style={{
+                marginLeft: 10,
+                padding: "2px 10px",
+                borderRadius: 6,
+                border: "1px solid #D8B4AC",
+                background: "#fff",
+                color: "#8C3B2F",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Recargar
+            </button>
+          )}
         </span>
         <button
           type="button"

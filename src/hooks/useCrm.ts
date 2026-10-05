@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { porQueFalloElServidor } from "@/lib/crm/fallaDelServidor";
 
 import {
   updateCliente,
@@ -93,9 +94,17 @@ export function useCrm(initial: readonly Oportunidad[], modInicial?: string) {
     setPendientes((n) => n + 1);
     run
       .then((r) => setSyncError(r.ok ? null : r.error))
-      .catch((e: unknown) =>
-        setSyncError(e instanceof Error ? e.message : String(e)),
-      )
+      /*
+       * Lo que LANZA se traduce; lo que el servidor contesta, no.
+       *
+       * Un `r.error` ya viene escrito para quien lo va a leer. Una excepción,
+       * en cambio, trae la frase cruda de Next —«An unexpected response was
+       * received from the server.»—, en inglés y sin decir qué hacer, que es lo
+       * que el equipo de ventas tuvo en pantalla sin saber si había perdido el
+       * trabajo. No lo había perdido: casi siempre es una pestaña abierta desde
+       * antes del último despliegue.
+       */
+      .catch((e: unknown) => setSyncError(porQueFalloElServidor(e).dice))
       .finally(() => setPendientes((n) => n - 1));
   }, []);
 
