@@ -47,6 +47,12 @@
  * `20261024120000_instagram.sql`.
  */
 
+/*
+ * `cita` no rompe la regla de arriba: tampoco depende del servidor, así que
+ * esto se sigue pudiendo probar con cargas reales sin levantar nada.
+ */
+import { comoSeLee, leerCita, type Cita } from "@/lib/meta/cita";
+
 /** Un mensaje que entró por Instagram. */
 export interface MensajeIg {
   /** El `mid` de Meta. Es lo que evita guardar dos veces un reintento. */
@@ -67,6 +73,13 @@ export interface MensajeIg {
   enviadoEn: Date;
   /** El adjunto, con su URL ya firmada por Meta. Nulo en los de texto. */
   media: MediaIg | null;
+  /**
+   * La cita, cuando la persona agendó una desde Messenger o Instagram.
+   *
+   * Viene como adjunto, pero no es un archivo: no tiene URL ni hay nada que
+   * bajar. Ver `@/lib/meta/cita`.
+   */
+  cita: Cita | null;
   /** El objeto tal cual vino, para no perder lo que hoy no se usa. */
   crudo: unknown;
 }
@@ -214,14 +227,28 @@ export function leerWebhookIg(carga: unknown): {
 
       const media = leerAdjunto(mensaje);
 
+      /*
+       * La cita se lee antes de decidir el tipo, y gana.
+       *
+       * `leerAdjunto` ya se fue con `null` —una cita no trae URL—, así que sin
+       * esto el mensaje quedaría como «text» con el texto vacío: una burbuja en
+       * blanco. Es exactamente lo que venía pasando.
+       */
+      const cita = leerCita(mensaje.attachments);
+
       mensajes.push({
         mid,
         igsid,
         esEco,
-        tipo: media?.clase ?? "text",
-        texto: texto(mensaje.text),
+        tipo: cita ? "cita" : (media?.clase ?? "text"),
+        /*
+         * La cita se guarda ya escrita en castellano. Ver `comoSeLee`: es lo
+         * que ve la lista de conversaciones y lo que encuentra el buscador.
+         */
+        texto: cita ? comoSeLee(cita) : texto(mensaje.text),
         enviadoEn: cuando,
         media,
+        cita,
         crudo: s,
       });
     }

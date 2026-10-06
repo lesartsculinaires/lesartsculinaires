@@ -5,6 +5,7 @@ import { abrirLeadSiEsNuevo, anotarElCanal, faltaLaFuncion } from "@/lib/crm/lea
 import { bajarAdjuntoIg, rutaMediaIg } from "@/lib/instagram/media";
 import type { MensajeIg, ReaccionIg } from "@/lib/instagram/mensajes";
 import type { PerfilMeta } from "@/lib/meta/perfil";
+import { repararArchivo } from "@/lib/meta/repararArchivo";
 import type { getAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -146,7 +147,18 @@ export async function guardarEntranteMeta(
   // 23505 es la restricción de unicidad sobre `wa_id`: este mensaje ya estaba
   // guardado y esto es un reintento de Meta. No es un error.
   if (error && error.code !== "23505") throw error;
-  if (error) return;
+  if (error) {
+    /*
+     * Pero antes de irse: si la primera vez el archivo no se pudo guardar y
+     * esta sí, hay que decírselo a la fila. Ver `repararArchivo`.
+     *
+     * Acá importa todavía más que en WhatsApp: el enlace que manda Meta para
+     * los adjuntos de Instagram y Messenger vence en minutos, así que el
+     * reintento es la única oportunidad que va a haber.
+     */
+    await repararArchivo(supabase, m.mid, archivo, canal.clave);
+    return;
+  }
 
   if (m.esEco) {
     /*

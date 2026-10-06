@@ -50,6 +50,7 @@ import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacio
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { NuevoChat } from "@/components/modules/NuevoChat";
 import { DeDondeVino } from "@/components/modules/DeDondeVino";
+import { CitaMensaje } from "@/components/modules/CitaMensaje";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { AcuseDeMensaje } from "@/components/ui/AcuseDeMensaje";
@@ -2057,11 +2058,20 @@ export function Inbox({
                         encabeza con ese mismo nombre. Repetido se lee como si
                         fueran dos cosas distintas.
                       */}
-                      {!contactos[m.id] && (
-                        <TextoConFormato
-                          texto={contenido(m)}
-                          conMarcas={canal.puede.formato === "si"}
-                        />
+                      {/*
+                        Una cita va como tarjeta y no como texto: es la única
+                        línea del hilo que obliga a estar en un lugar a una
+                        hora, y en el gris de todo lo demás se pierde.
+                      */}
+                      {m.tipo === "cita" ? (
+                        <CitaMensaje texto={m.texto} mio={mio} />
+                      ) : (
+                        !contactos[m.id] && (
+                          <TextoConFormato
+                            texto={contenido(m)}
+                            conMarcas={canal.puede.formato === "si"}
+                          />
+                        )
                       )}
                       {m.tipo !== "template" && (
                         <MediaMensaje

@@ -9,6 +9,7 @@ import {
   faltaLaTabla,
 } from "@/lib/crm/leadDeCanal";
 import { comoSeLee, type EstadoLlamada } from "@/lib/llamadas";
+import { repararArchivo } from "@/lib/meta/repararArchivo";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { firmaValida } from "@/lib/whatsapp/firma";
 import {
@@ -606,7 +607,14 @@ async function guardarEntrante(supabase: Cliente, m: MensajeEntrante) {
   // 23505 es la restricción de unicidad sobre `wa_id`: este mensaje ya estaba
   // guardado y esto es un reintento de Meta. No es un error.
   if (error && error.code !== "23505") throw error;
-  if (error) return;
+  if (error) {
+    /*
+     * Pero antes de irse: si la primera vez el archivo no se pudo guardar y
+     * esta sí, hay que decírselo a la fila. Ver `repararArchivo`.
+     */
+    await repararArchivo(supabase, m.waId, archivo, "whatsapp");
+    return;
+  }
 
   /*
    * Y el hilo se queda con el PRIMER origen, no con el último.
