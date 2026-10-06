@@ -4,6 +4,7 @@ import { completarConFormulario } from "@/lib/crm/completarConFormulario";
 import { abrirLeadSiEsNuevo, anotarElCanal, faltaLaFuncion } from "@/lib/crm/leadDeCanal";
 import { bajarAdjuntoIg, rutaMediaIg } from "@/lib/instagram/media";
 import type { MensajeIg, ReaccionIg } from "@/lib/instagram/mensajes";
+import { duracionEnMinutos, sigueEnPie, type Cita } from "@/lib/meta/cita";
 import type { PerfilMeta } from "@/lib/meta/perfil";
 import { repararArchivo } from "@/lib/meta/repararArchivo";
 import type { getAdminClient } from "@/lib/supabase/admin";
@@ -175,29 +176,177 @@ export async function guardarEntranteMeta(
         ultimo_texto: canal.resumen(m.tipo, m.texto).slice(0, 200),
       })
       .eq("id", conversacion);
-    return;
+  } else {
+    // El contador sube en la base, no en memoria: dos mensajes que llegan a la
+    // vez se cuentan los dos.
+    await supabase.rpc("marcar_mensaje_entrante", {
+      p_conversacion: conversacion,
+      p_texto: canal.resumen(m.tipo, m.texto).slice(0, 200),
+      p_cuando: m.enviadoEn.toISOString(),
+    });
+
+    await anotarElCanal(supabase, conversacion, canal.clave, m.igsid, m.enviadoEn);
+    await abrirLeadSiEsNuevo(supabase, conversacion, canal.clave);
+
+    /*
+     * Y el formulario de una pauta también entra por acá.
+     *
+     * Los anuncios de Meta pueden abrir el chat en Messenger o en Instagram, no
+     * sólo en WhatsApp, y el mensaje que mandan tiene la misma forma. Dejarlo
+     * sólo en WhatsApp haría que el mismo lead se complete o no según por dónde
+     * entró, que es la clase de diferencia que nadie entiende desde la pantalla.
+     */
+    await completarConFormulario(supabase, conversacion, m.texto);
   }
 
-  // El contador sube en la base, no en memoria: dos mensajes que llegan a la
-  // vez se cuentan los dos.
-  await supabase.rpc("marcar_mensaje_entrante", {
-    p_conversacion: conversacion,
-    p_texto: canal.resumen(m.tipo, m.texto).slice(0, 200),
-    p_cuando: m.enviadoEn.toISOString(),
-  });
-
-  await anotarElCanal(supabase, conversacion, canal.clave, m.igsid, m.enviadoEn);
-  await abrirLeadSiEsNuevo(supabase, conversacion, canal.clave);
-
   /*
-   * Y el formulario de una pauta también entra por acá.
+   * Y la cita va a la agenda venga de donde venga.
    *
-   * Los anuncios de Meta pueden abrir el chat en Messenger o en Instagram, no
-   * sólo en WhatsApp, y el mensaje que mandan tiene la misma forma. Dejarlo
-   * sólo en WhatsApp haría que el mismo lead se complete o no según por dónde
-   * entró, que es la clase de diferencia que nadie entiende desde la pantalla.
+   * Está acá abajo, fuera del `if`, por las dos puntas:
+   *
+   *   DEL CLIENTE   Tiene que ir DESPUÉS de `abrirLeadSiEsNuevo`, porque un
+   *                 evento necesita una oportunidad y el primer mensaje de
+   *                 alguien puede ser justamente su cita. Antes, no habría a
+   *                 qué colgarla.
+   *
+   *   NUESTRA       Y el eco también cuenta: si alguien confirma o cancela la
+   *                 cita desde Meta en vez de desde el CRM, eso vuelve como eco.
+   *                 Dejándolo afuera, una cita cancelada seguiría en el
+   *                 calendario como pendiente, que es la peor de las dos
+   *                 mentiras posibles —alguien reserva el rato para una cita
+   *                 que no existe—.
    */
-  await completarConFormulario(supabase, conversacion, m.texto);
+  if (m.cita) await anotarLaCita(supabase, canal, conversacion, m.cita);
+}
+
+/**
+ * El tipo de evento de una cita pedida desde Messenger o Instagram.
+ *
+ * Va fijo porque `tipos_evento` es un catálogo de ids fijos, puestos a mano en
+ * sus migraciones. Lo pone `20261112120000_citas_de_meta_en_la_agenda.sql`.
+ */
+const TIPO_CITA_DEL_CLIENTE = 7;
+
+/**
+ * La cita, anotada en la agenda del CRM.
+ *
+ * ============================================================================
+ * UNA RESERVA, UN EVENTO — AUNQUE MANDE TRES MENSAJES
+ * ============================================================================
+ *
+ * Pedir, confirmar y cancelar son tres mensajes distintos, con `mid` distinto,
+ * de LA MISMA reserva. Si cada uno insertara un evento, el calendario tendría
+ * tres citas el mismo día a la misma hora y la última —la cancelación— sería la
+ * que menos se nota.
+ *
+ * Por eso se busca primero por `meta_booking_id`, que es lo único que los hila,
+ * y se actualiza. Se hace en dos pasos y no con un `upsert` porque el índice
+ * único es PARCIAL —sólo sobre los que tienen id de reserva— y un `upsert` no
+ * puede nombrar esa condición: Postgres no sabría qué índice usar y fallaría.
+ *
+ * ============================================================================
+ * SIN VENDEDOR, Y A PROPÓSITO
+ * ============================================================================
+ *
+ * Esta cita no la agendó nadie del equipo: la pidió el cliente desde su
+ * teléfono. Ponerle el dueño del lead diría que esa persona ya sabe que tiene
+ * esa cita, y no lo sabe. Entra Pendiente y sin dueño, que es lo que es, y
+ * quien la tome la toma.
+ *
+ * Nunca lanza: quien llama es el webhook, que tiene que contestarle 200 a Meta
+ * pase lo que pase. Una cita que no se pudo anotar se registra y el mensaje
+ * —con su tarjeta en el hilo— se guardó igual.
+ */
+async function anotarLaCita(
+  supabase: Cliente,
+  canal: CanalMeta,
+  conversacionId: number,
+  cita: Cita,
+): Promise<void> {
+  try {
+    const { data: conv } = await supabase
+      .from("conversaciones")
+      .select("cliente_id")
+      .eq("id", conversacionId)
+      .maybeSingle();
+
+    const clienteId = conv?.cliente_id == null ? null : Number(conv.cliente_id);
+    if (clienteId == null) return;
+
+    /*
+     * La oportunidad más nueva de esa persona.
+     *
+     * Es la misma elección que hace el resto del CRM cuando tiene que colgar
+     * algo de un contacto con varias: la última es la que está viva. Y si no
+     * tiene ninguna no se inventa una —`abrirLeadSiEsNuevo` ya corrió y decidió
+     * que no correspondía—; sin oportunidad no hay dónde anotar la cita.
+     */
+    const { data: op } = await supabase
+      .from("oportunidades")
+      .select("id")
+      .eq("cliente_id", clienteId)
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!op) return;
+
+    const fila = {
+      oportunidad_id: Number(op.id),
+      tipo_id: TIPO_CITA_DEL_CLIENTE,
+      vendedor_id: null,
+      inicia_en: cita.inicia.toISOString(),
+      duracion_min: duracionEnMinutos(cita),
+      canal: canal.clave === "instagram" ? "Instagram" : "Messenger",
+      estado: sigueEnPie(cita) ? "Pendiente" : "Cancelado",
+      meta_booking_id: cita.bookingId || null,
+    };
+
+    if (fila.meta_booking_id) {
+      const { data: yaEsta } = await supabase
+        .from("eventos")
+        .select("id")
+        .eq("meta_booking_id", fila.meta_booking_id)
+        .maybeSingle();
+
+      if (yaEsta) {
+        /*
+         * Se actualiza la hora y el estado, pero NO el vendedor: si alguien ya
+         * tomó esta cita, una confirmación que llega después no se la puede
+         * sacar de encima.
+         */
+        const { error } = await supabase
+          .from("eventos")
+          .update({
+            inicia_en: fila.inicia_en,
+            duracion_min: fila.duracion_min,
+            estado: fila.estado,
+          })
+          .eq("id", Number(yaEsta.id));
+
+        if (error) console.error(`[${canal.clave}] no se pudo mover la cita`, error.message);
+        return;
+      }
+    }
+
+    const { error } = await supabase.from("eventos").insert(fila);
+
+    // 23505: otro aviso de la misma reserva entró a la vez. Se queda el que ganó.
+    if (error && error.code !== "23505") {
+      /*
+       * Si falta la migración, el webhook NO se cae: el mensaje ya se guardó y
+       * la cita se ve en el hilo. Lo único que falta es el calendario, y eso se
+       * arregla corriendo el SQL —y lo dice el registro, con el nombre del
+       * archivo, para que no haya que adivinarlo—.
+       */
+      console.error(
+        `[${canal.clave}] no se pudo anotar la cita en la agenda (${error.code}): ${error.message}` +
+          " — ¿falta correr 20261112120000_citas_de_meta_en_la_agenda.sql?",
+      );
+    }
+  } catch (e) {
+    console.error(`[${canal.clave}] no se pudo anotar la cita`, e);
+  }
 }
 
 /**
