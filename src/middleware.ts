@@ -134,17 +134,53 @@ export async function middleware(request: NextRequest) {
    */
   const preguntar = async () => {
     try {
-      const { data, error } = await supabase.auth.getUser();
+      /*
+       * ======================================================================
+       * SE VERIFICA LA FIRMA ACÁ, EN VEZ DE PREGUNTARLE AL SERVIDOR
+       * ======================================================================
+       *
+       * Acá decía `getUser()`, que SIEMPRE sale a la red: una llamada a
+       * `/auth/v1/user` delante de cada petición que pasa por el middleware
+       * —cada pantalla, cada refresco automático, cada acción del servidor—.
+       * Eso es un viaje de ida y vuelta a Supabase antes de que empiece a
+       * dibujarse nada, en el camino crítico de todo.
+       *
+       * `getClaims()` hace la misma comprobación sin salir: este proyecto firma
+       * los tokens con llave asimétrica —ES256, comprobado contra
+       * `/auth/v1/.well-known/jwks.json`— así que la librería se baja la llave
+       * PÚBLICA una vez, la guarda, y después verifica la firma con WebCrypto
+       * acá mismo.
+       *
+       * NO ES CONFIAR EN LA GALLETA. Eso sería `getSession()`, que lee lo que
+       * venga sin comprobar nada y aceptaría un token inventado. Acá se
+       * verifica la firma de verdad: un token que no venga de Supabase no pasa,
+       * y uno vencido tampoco.
+       *
+       * Lo que se pierde: si a alguien se le borra o se le bloquea la cuenta,
+       * su token sigue siendo válido hasta que venza en vez de caerse en la
+       * siguiente pantalla. Es aceptable por dos razones. Una, que el token de
+       * acceso de Supabase vale hasta su vencimiento de todos modos, así que
+       * `getUser()` tampoco lo rechazaría. Y dos, la de arriba: este archivo no
+       * es lo que protege los datos. Quien llegue sin permiso ve el armazón del
+       * CRM y ni una fila, porque eso lo deciden las políticas de la base.
+       *
+       * Y de regalo, el problema del Supabase frío se achica solo: si no hay
+       * que preguntarle a nadie, no hay a quién esperar.
+       */
+      const { data, error } = await supabase.auth.getClaims();
       /*
        * Sólo cuenta como caída cuando NO hubo respuesta.
        *
-       * Un token vencido SÍ es una respuesta —Supabase contesta con un código— y
-       * tiene que mandar al login como siempre. Confundir las dos cosas sería
-       * peor que el problema original: una sesión vencida no volvería a pedir
-       * contraseña nunca. Por eso se mira si vino código de respuesta y no el
-       * texto del error, que cambia con cada versión de la librería.
+       * Un token vencido SÍ es una respuesta y tiene que mandar al login como
+       * siempre. Confundir las dos cosas sería peor que el problema original:
+       * una sesión vencida no volvería a pedir contraseña nunca. Por eso se
+       * mira si vino código de respuesta y no el texto del error, que cambia
+       * con cada versión de la librería.
        */
-      return { user: data.user, huboRespuesta: !(error && !error.status) };
+      return {
+        user: data?.claims?.sub ? String(data.claims.sub) : null,
+        huboRespuesta: !(error && !error.status),
+      };
     } catch {
       return { user: null, huboRespuesta: false };
     }
