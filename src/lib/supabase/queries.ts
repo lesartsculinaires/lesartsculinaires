@@ -338,7 +338,30 @@ const catalogoGuardado = unstable_cache(
   async (): Promise<LoadResult<Catalogo>> => {
     const admin = getAdminClient();
     if (!admin) return { data: EMPTY_CATALOGO, error: null };
-    return leerCatalogo(admin);
+
+    const leido = await leerCatalogo(admin);
+
+    /*
+     * UNA LECTURA FALLIDA NO SE GUARDA. Esto es lo que lanza la excepción.
+     *
+     * `unstable_cache` guarda lo que la función devuelva, sea lo que sea. Si
+     * devolviera el error, un solo tropiezo —la base fría, un corte de un
+     * segundo, una migración a medio correr— dejaría al CRM entero con el
+     * catálogo vacío durante CINCO MINUTOS, para todo el mundo a la vez: sin
+     * programas en el alta, sin vendedores en los desplegables, sin etapas en
+     * el pipeline. Y sin nada que lo arregle salvo esperar.
+     *
+     * No es hipotético: pasó en el banco mientras se arreglaba
+     * `prueba-sin-migracion-instagram`. El catálogo se leyó en un momento en
+     * que faltaban columnas, quedó guardado el fallo, y a partir de ahí la
+     * pantalla ni siquiera dibujaba el menú. Dos corridas se fueron en
+     * entenderlo.
+     *
+     * Lanzando, no se guarda nada y quien llama se vuelve a la lectura directa.
+     * Un CRM un poco más lento es muchísimo mejor que un CRM vacío.
+     */
+    if (leido.error) throw new Error(leido.error);
+    return leido;
   },
   ["catalogo"],
   {
@@ -358,7 +381,20 @@ const catalogoGuardado = unstable_cache(
 
 /** Load the six catalogue tables plus the activity types in one round trip. */
 export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
-  if (getAdminClient()) return catalogoGuardado();
+  const admin = getAdminClient();
+  if (admin) {
+    try {
+      return await catalogoGuardado();
+    } catch (e) {
+      /*
+       * La lectura falló y por eso no quedó guardada. Se reintenta acá mismo,
+       * sin caché: así el próximo pedido vuelve a intentarlo de verdad en vez
+       * de recibir el fallo de hace cuatro minutos.
+       */
+      console.warn("[queries] el catálogo no se pudo guardar:", e);
+      return leerCatalogo(admin);
+    }
+  }
 
   const supabase = await getServerClient();
   if (!supabase) return { data: EMPTY_CATALOGO, error: null };
