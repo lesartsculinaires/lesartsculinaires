@@ -43,6 +43,8 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+import { tirarCatalogo } from "./tirarCatalogo.mjs";
+
 const BANCO = "/home/user/lesartsculinaires/supabase/pruebas/banco";
 
 const correr = (q, tolerante = false) => {
@@ -147,6 +149,14 @@ sql(`
   on conflict (rol_id, modulo) do update
     set ver = true, crear = true, editar = true, eliminar = true;
 `);
+
+/*
+ * Los dos programas de arriba se sembraron por SQL, que no pasa por ninguna
+ * acción de la aplicación y por lo tanto no tira el catálogo guardado. Sin
+ * esto, la pantalla sigue mostrando el catálogo de antes y el «Diplomado de
+ * Alfarería» no aparece: rojo sin que nadie haya roto nada.
+ */
+await tirarCatalogo();
 
 // --------------------------------------------------------------- navegador
 

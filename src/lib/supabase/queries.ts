@@ -1,5 +1,9 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { getAdminClient } from "@/lib/supabase/admin";
 import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import { SIN_ASIGNAR, SIN_DATO } from "@/lib/types";
@@ -278,11 +282,90 @@ const EMPTY_CATALOGO: Catalogo = {
   tiposEvento: [],
 };
 
+/**
+ * La etiqueta con la que se tira el catálogo guardado.
+ *
+ * La usan las tres acciones que pueden cambiarlo —crear o editar un programa, y
+ * dar de alta o cambiar un vendedor—. Las otras cinco tablas del catálogo
+ * (territorios, canales, etapas, estados, motivos, tipos de evento) no se tocan
+ * desde la aplicación: cambian por migración, y ahí el despliegue tira todo.
+ *
+ * HOY ES REDUNDANTE, Y SE DEJA A PROPÓSITO. Comprobado en el banco quitándola:
+ * la prueba siguió en verde, porque `revalidatePath("/")` —que ya estaba en
+ * todas esas acciones— alcanza para tirarla. Alcanza porque `unstable_cache` le
+ * cuelga a lo guardado las etiquetas implícitas de la petición en que se leyó,
+ * y la de la portada es una de ellas. Eso no está documentado y el `unstable_`
+ * del nombre avisa de qué tan en firme está: el día que cambie, el síntoma
+ * sería un catálogo viejo que nadie nota —alguien crea un programa, no lo ve,
+ * lo crea otra vez—. Nombrar la etiqueta cuesta una línea por acción y deja de
+ * depender de eso. Lo que NO se puede decir es que la prueba la vigile: para
+ * verla en rojo hubo que quitar las dos.
+ */
+export const ETIQUETA_CATALOGO = "catalogo";
+
+/**
+ * El catálogo, leído una vez y compartido.
+ *
+ * ============================================================================
+ * POR QUÉ SE GUARDA, Y QUÉ COSTABA NO GUARDARLO
+ * ============================================================================
+ *
+ * La portada entera se vuelve a armar en cada refresco —cada minuto, y además
+ * cada vez que Realtime avisa de un cambio—, y el catálogo son OCHO consultas
+ * de las que ninguna cambia casi nunca. Medido el 6 de octubre de 2026, con el
+ * equipo trabajando: 429 peticiones por minuto contra PostgREST, unas 618.000
+ * al día para tres o cuatro personas.
+ *
+ * ============================================================================
+ * POR QUÉ SE PUEDE COMPARTIR ENTRE PERSONAS, QUE ES LA PREGUNTA SERIA
+ * ============================================================================
+ *
+ * Porque las ocho tablas tienen la MISMA política de lectura para todo el que
+ * entró: `true`. Comprobado contra la base, una por una. O sea que el catálogo
+ * que ve una asesora es byte por byte el que ve la jefa, y guardarlo una vez no
+ * le muestra a nadie nada que no pudiera pedir por su cuenta.
+ *
+ * Se lee con el cliente de servicio y no con el de la sesión por una razón
+ * técnica, no de permisos: lo guardado no puede depender de las galletas —Next
+ * lo prohíbe, y con razón, porque si dependiera habría que guardar una copia
+ * por persona y no se estaría guardando nada—. La página ya exigió sesión antes
+ * de llegar acá.
+ *
+ * Si no hay llave de servicio, se lee como siempre y sin guardar: vale más un
+ * CRM lento que uno que no abre.
+ */
+const catalogoGuardado = unstable_cache(
+  async (): Promise<LoadResult<Catalogo>> => {
+    const admin = getAdminClient();
+    if (!admin) return { data: EMPTY_CATALOGO, error: null };
+    return leerCatalogo(admin);
+  },
+  ["catalogo"],
+  {
+    tags: [ETIQUETA_CATALOGO],
+    /*
+     * Un techo de cinco minutos, además de la etiqueta.
+     *
+     * La etiqueta es lo que hace que un programa recién creado se vea al
+     * instante. Esto es el cinturón: si algún día alguien cambia un catálogo
+     * por fuera de la aplicación —a mano en Supabase, o con una migración que
+     * no redespliega— el CRM se pone al día solo en cinco minutos en vez de
+     * quedarse con lo viejo hasta el próximo despliegue.
+     */
+    revalidate: 300,
+  },
+);
+
 /** Load the six catalogue tables plus the activity types in one round trip. */
 export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
+  if (getAdminClient()) return catalogoGuardado();
+
   const supabase = await getServerClient();
   if (!supabase) return { data: EMPTY_CATALOGO, error: null };
+  return leerCatalogo(supabase);
+}
 
+async function leerCatalogo(supabase: SupabaseClient): Promise<LoadResult<Catalogo>> {
   const [vend, prod, terr, can, eta, est, motivos, tipos] = await Promise.all([
     // Sin filtrar por `activo`: se traen todos y cada pantalla decide. Los
     // desplegables usan `activos()`; los que sólo tienen que poner un nombre a

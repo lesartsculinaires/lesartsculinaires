@@ -1,6 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+
+import { ETIQUETA_CATALOGO } from "@/lib/supabase/queries";
 
 import { normalizarTexto, programasParecidos } from "@/lib/duplicados";
 import { puedeEnModulo } from "@/lib/crm/permisoDeModulo";
@@ -143,6 +145,7 @@ export async function crearPrograma(p: NuevoPrograma): Promise<ResultadoPrograma
   // ficha, el alta, el historial de cursos y los cortes del Dashboard leen el
   // mismo catálogo que se carga del lado del servidor.
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
   return { ok: true, error: null };
 }
 
@@ -315,6 +318,7 @@ export async function editarPrograma(p: CambioDePrograma): Promise<ResultadoProg
   // Igual que en el alta: el catálogo nuevo tiene que llegar a la ficha, al
   // alta, al historial de cursos y a los cortes del Dashboard.
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
 
   if (faltaLaColumna) {
     return {
@@ -401,5 +405,6 @@ export async function guardarHorarioDePrograma(
   }
 
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
   return { ok: true, error: null };
 }

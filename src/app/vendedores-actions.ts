@@ -1,6 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+
+import { ETIQUETA_CATALOGO } from "@/lib/supabase/queries";
 
 import { normalizarTexto, programasParecidos } from "@/lib/duplicados";
 import { getServerClient } from "@/lib/supabase/server";
@@ -126,6 +128,7 @@ export async function crearVendedor(v: NuevoVendedor): Promise<ResultadoVendedor
   // Para que la lista nueva llegue a los desplegables, al calendario, a la
   // bandeja y a la API: todo eso lee el mismo catálogo del lado del servidor.
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
 
   return { ok: true, error: null, tieneCuenta: await tieneCuentaCrm(supabase, correo) };
 }
@@ -211,6 +214,7 @@ async function cambiarActivo(id: number, activo: boolean): Promise<ResultadoVend
   }
 
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
   return { ok: true, error: null };
 }
 
@@ -252,6 +256,7 @@ export async function eliminarVendedor(id: number): Promise<ResultadoVendedor> {
   }
 
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
   return { ok: true, error: null };
 }
 
@@ -373,6 +378,7 @@ export async function editarVendedor(
 
   // El nombre viaja a los desplegables, al calendario, a la bandeja y a la API.
   revalidatePath("/");
+  revalidateTag(ETIQUETA_CATALOGO);
 
   return { ok: true, error: null, tieneCuenta: await tieneCuentaCrm(supabase, correo) };
 }
