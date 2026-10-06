@@ -7,7 +7,7 @@
  * QUÉ SE VIGILA
  * ============================================================================
  *
- * Esto corre solo, cada cinco minutos, sin nadie mirando. Un ping roto no avisa
+ * Esto corre solo, cada dos minutos, sin nadie mirando. Un ping roto no avisa
  * —contesta 200 igual, a propósito— así que lo que tiene que estar bien es lo
  * que nadie va a ir a comprobar a mano:
  *

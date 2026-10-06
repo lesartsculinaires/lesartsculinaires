@@ -23,18 +23,26 @@
 # rest, contra 230 ms en caliente—. El código ya aprendió a no morirse
 # esperando, pero eso hace que el CRM falle bien, no que ande rápido.
 #
-# Cada cinco minutos, de afuera. De afuera porque `pg_cron` vive adentro de la
+# Cada dos minutos, de afuera. De afuera porque `pg_cron` vive adentro de la
 # base: si el cómputo está dormido, el cron también, y nada que viva adentro
 # puede despertar a quien lo aloja.
 #
 # El horario va acá y no en el código para no agregar `@netlify/functions` como
 # dependencia sólo por una línea.
 #
-# CINCO MINUTOS ES UNA APUESTA, NO UN DATO. Supabase no publica cada cuánto
-# duerme el cómputo. Si en los registros de la función empiezan a aparecer pings
-# de varios segundos, es que se enfrió entre uno y otro y hay que acortarlo.
+# EMPEZÓ EN CINCO Y SE BAJÓ A DOS. Supabase no publica cada cuánto duerme el
+# cómputo, así que el número no se puede deducir: se elige y se mira. Dos
+# minutos deja un margen cómodo contra cualquier plazo de inactividad razonable,
+# y lo que cuesta es despreciable —unos 21.600 llamados al mes, sobre los 125.000
+# que entran en el plan gratuito de Netlify, y cada uno de décimas de segundo
+# contra una base que ya está despierta—.
+#
+# Si aun así en los registros de la función aparecen pings de varios segundos,
+# es que se enfrió entre uno y otro y el plazo de Supabase es más corto de lo
+# que cualquiera esperaría: ahí conviene revisar el plan antes que seguir
+# bajando este número.
 [functions."mantener-despierto"]
-  schedule = "*/5 * * * *"
+  schedule = "*/2 * * * *"
 
 # ---------------------------------------------------------------- entornos
 #
