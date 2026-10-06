@@ -16,6 +16,26 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# ------------------------------------------------- mantener despierto Supabase
+#
+# El proyecto de Supabase se enfría sin uso y la primera petición después de un
+# rato tarda entre diez y quince segundos —medido: 11,3 s en auth y 15,9 s en
+# rest, contra 230 ms en caliente—. El código ya aprendió a no morirse
+# esperando, pero eso hace que el CRM falle bien, no que ande rápido.
+#
+# Cada cinco minutos, de afuera. De afuera porque `pg_cron` vive adentro de la
+# base: si el cómputo está dormido, el cron también, y nada que viva adentro
+# puede despertar a quien lo aloja.
+#
+# El horario va acá y no en el código para no agregar `@netlify/functions` como
+# dependencia sólo por una línea.
+#
+# CINCO MINUTOS ES UNA APUESTA, NO UN DATO. Supabase no publica cada cuánto
+# duerme el cómputo. Si en los registros de la función empiezan a aparecer pings
+# de varios segundos, es que se enfrió entre uno y otro y hay que acortarlo.
+[functions."mantener-despierto"]
+  schedule = "*/5 * * * *"
+
 # ---------------------------------------------------------------- entornos
 #
 # `main` es lo que ve el equipo de ventas. Cualquier otra rama se publica en
