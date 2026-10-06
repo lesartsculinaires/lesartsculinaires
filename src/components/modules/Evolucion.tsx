@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 
+import { DiaADia } from "@/components/modules/DiaADia";
 import { leadCount, money, moneyShort } from "@/lib/format";
 import {
   porAnio,
-  porDia,
   porMes,
   sumar,
   variacion,
@@ -67,11 +67,6 @@ export function Evolucion({ oportunidades, accent }: Props) {
   const idx = meses.findIndex((m) => m.clave === claveActual);
   const mes = idx >= 0 ? meses[idx] : null;
   const mesPrevio = idx > 0 ? meses[idx - 1] : null;
-
-  const dias = useMemo(
-    () => (claveActual ? porDia(oportunidades, claveActual) : []),
-    [oportunidades, claveActual],
-  );
 
   if (meses.length === 0) {
     return (
@@ -155,7 +150,7 @@ export function Evolucion({ oportunidades, accent }: Props) {
           mes={mes}
           previo={mesPrevio}
           meses={meses}
-          dias={dias}
+          oportunidades={oportunidades}
           accent={accent}
           onSelect={setMesSel}
         />
@@ -176,19 +171,17 @@ function VistaMes({
   mes,
   previo,
   meses,
-  dias,
+  oportunidades,
   accent,
   onSelect,
 }: {
   mes: ResumenPeriodo;
   previo: ResumenPeriodo | null;
   meses: ResumenPeriodo[];
-  dias: ReturnType<typeof porDia>;
+  oportunidades: Oportunidad[];
   accent: string;
   onSelect: (clave: string) => void;
 }) {
-  const maxDia = Math.max(...dias.map((d) => d.leads), 1);
-
   const kpis = [
     { label: "Leads registrados", valor: String(mes.leads), pct: previo ? variacion(mes.leads, previo.leads) : null },
     { label: "Ganados", valor: String(mes.ganados), pct: previo ? variacion(mes.ganados, previo.ganados) : null },
@@ -242,60 +235,26 @@ function VistaMes({
         ))}
       </div>
 
-      <p
-        className="mono"
-        style={{
-          margin: "0 0 10px",
-          fontSize: 10,
-          letterSpacing: "0.1em",
-          color: T.faint,
-          textTransform: "uppercase",
-        }}
-      >
-        Leads por día — {mes.etiquetaLarga}
-      </p>
-
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 130 }}>
-        {dias.map((d) => (
-          <div
-            key={d.dia}
-            title={`${d.dia} · ${leadCount(d.leads)}${d.cerrado ? ` · ${money(d.cerrado)} cerrado` : ""}`}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              height: `${Math.max(2, (d.leads / maxDia) * 100)}%`,
-              background: d.cerrado > 0 ? "#2F6B4F" : d.leads > 0 ? accent : T.border,
-              borderRadius: "2px 2px 0 0",
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ display: "flex", gap: 2, marginTop: 6 }}>
-        {dias.map((d) => (
-          <span
-            key={d.dia}
-            className="mono"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              textAlign: "center",
-              fontSize: 8.5,
-              color: T.faint,
-              overflow: "hidden",
-            }}
-          >
-            {d.dia % 5 === 0 || d.dia === 1 ? d.dia : ""}
-          </span>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-        <Leyenda color={accent} texto="Leads registrados" />
-        <Leyenda color="#2F6B4F" texto={`Día con ${ROTULO_VENTA_CERRADA.toLowerCase()}`} />
-        <span style={{ fontSize: 11, color: T.faint }}>
-          Pasá el cursor sobre una barra para ver el detalle del día.
-        </span>
-      </div>
+      {/*
+       * El día a día, partido por canal y por programa.
+       *
+       * Antes acá había una barra por día de un solo color. Decía cuántos
+       * entraron y nada más: dos días de ocho se veían idénticos aunque uno
+       * fuera entero de WhatsApp y el otro de una feria. Lo pidió la escuela
+       * así —«un gráfico de cada día, cuántos leads entraron por los canales y
+       * cuántos hay en cada diplomado»— y es lo que permite decidir dónde poner
+       * el esfuerzo del mes siguiente.
+       *
+       * Recibe la lista COMPLETA y no `dias`: el orden de los colores se calcula
+       * sobre todo el histórico para que un canal no cambie de tono al cambiar
+       * de mes.
+       */}
+      <DiaADia
+        oportunidades={oportunidades}
+        mesClave={mes.clave}
+        etiquetaLarga={mes.etiquetaLarga}
+        accent={accent}
+      />
     </div>
   );
 }
