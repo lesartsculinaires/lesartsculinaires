@@ -950,7 +950,9 @@ export default function CrmApp({
               accent={accent}
               categoria={state.categoria}
               onCategoria={actions.setCategoria}
-              onVerLeads={(productoId) => actions.verEnClientes({ producto: productoId })}
+              onVerLeads={(productoId, mes) =>
+                actions.verEnClientes({ producto: productoId, mes })
+              }
               permisos={casillas.programas}
               onRefrescar={() => router.refresh()}
             />

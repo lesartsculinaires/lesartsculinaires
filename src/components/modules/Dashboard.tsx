@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { SelectorDePeriodo } from "@/components/SelectorDePeriodo";
 import { Evolucion } from "@/components/modules/Evolucion";
 import { money } from "@/lib/format";
 import { variacion } from "@/lib/periodos";
@@ -116,9 +117,21 @@ export function Dashboard({ oportunidades, accent }: Props) {
       <SelectorDePeriodo
         periodos={periodos}
         elegido={periodo}
-        previo={previo}
         accent={accent}
         onElegir={setClave}
+        nota={
+          /*
+            Que esto esté escrito no es decoración: sin la aclaración, «Agosto:
+            $4.790» se lee como «en agosto facturamos $4.790», que no es lo que
+            dice el número. Dice cuánto dejaron los leads que ENTRARON en agosto.
+          */
+          <>
+            Todo lo de abajo es de{" "}
+            <strong style={{ color: T.muted }}>{periodo.etiqueta}</strong>, por mes de registro
+            del lead
+            {previo ? ` · comparado contra ${previo.etiqueta}` : ""}.
+          </>
+        }
       />
 
       <div
@@ -380,75 +393,6 @@ function Contra({
  * Se muestran seis meses. Para atrás de eso están los años, y el detalle mes a
  * mes de cualquier época está en «Evolución», acá abajo.
  */
-function SelectorDePeriodo({
-  periodos,
-  elegido,
-  previo,
-  accent,
-  onElegir,
-}: {
-  periodos: Periodo[];
-  elegido: Periodo;
-  previo: Periodo | null;
-  accent: string;
-  onElegir: (clave: string) => void;
-}) {
-  const meses = periodos.filter((p) => /^\d{4}-\d{2}$/.test(p.clave));
-  const resto = periodos.filter((p) => !/^\d{4}-\d{2}$/.test(p.clave));
-
-  // Los seis más nuevos, más el elegido si quedó fuera de esa ventana.
-  const aLaVista = meses.slice(0, 6);
-  if (!aLaVista.some((m) => m.clave === elegido.clave) && /^\d{4}-\d{2}$/.test(elegido.clave)) {
-    aLaVista.push(elegido);
-  }
-
-  const boton = (p: Periodo) => {
-    const puesto = p.clave === elegido.clave;
-    return (
-      <button
-        key={p.clave}
-        type="button"
-        data-periodo={p.clave}
-        data-puesto={puesto ? "si" : "no"}
-        onClick={() => onElegir(p.clave)}
-        style={{
-          padding: "6px 12px",
-          fontSize: 12.5,
-          borderRadius: 7,
-          border: `1px solid ${puesto ? accent : T.border}`,
-          background: puesto ? accent : T.surface,
-          color: puesto ? "#fff" : T.muted,
-          fontWeight: puesto ? 600 : 400,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {p.etiqueta}
-      </button>
-    );
-  };
-
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {aLaVista.map(boton)}
-        <span style={{ width: 1, height: 20, background: T.border, margin: "0 4px" }} />
-        {resto.map(boton)}
-      </div>
-      <p style={{ margin: "8px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.5 }}>
-        {/*
-          Que esto esté escrito no es decoración: sin la aclaración, «Agosto:
-          $4.790» se lee como «en agosto facturamos $4.790», que no es lo que
-          dice el número. Dice cuánto dejaron los leads que ENTRARON en agosto.
-        */}
-        Todo lo de abajo es de <strong style={{ color: T.muted }}>{elegido.etiqueta}</strong>, por
-        mes de registro del lead
-        {previo ? ` · comparado contra ${previo.etiqueta}` : ""}.
-      </p>
-    </div>
-  );
-}
-
 /**
  * Por qué se pierden los leads.
  *

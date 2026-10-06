@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { SelectorDePeriodo } from "@/components/SelectorDePeriodo";
 import { EditarPrograma } from "@/components/modules/EditarPrograma";
 import { NuevoPrograma } from "@/components/modules/NuevoPrograma";
 import { useCatalogo } from "@/lib/catalog";
 import type { PermisosDeModulo } from "@/lib/permisos";
 import { money } from "@/lib/format";
+import {
+  TODO,
+  comoSeExplicaElVacio,
+  mesComoNumero,
+  periodoInicial,
+  periodosDisponibles,
+  recortar,
+} from "@/lib/periodoDelTablero";
 import { estaAbierta, esGanada, totalCerrado, valorPipeline } from "@/lib/selectors";
 import { T, softer } from "@/lib/theme";
 import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
@@ -17,7 +26,15 @@ interface Props {
   accent: string;
   categoria: string;
   onCategoria: (c: string) => void;
-  onVerLeads: (productoId: number) => void;
+  /**
+   * Abrir en Clientes los leads de ese programa.
+   *
+   * `mes` viaja en el formato aaaamm de la barra de filtros, y null cuando se
+   * está mirando un año o todo el histórico —ahí no hay un mes que pasar—. Sin
+   * esto, la tarjeta decía «12 leads» de octubre y el clic abría los 412 de
+   * siempre: dos números distintos para lo que parece la misma pregunta.
+   */
+  onVerLeads: (productoId: number, mes: number | null) => void;
   /**
    * Las casillas del rol para Programas.
    *
@@ -50,26 +67,87 @@ export function Programas({
   const [creando, setCreando] = useState(false);
   const [editando, setEditando] = useState<number | null>(null);
 
+  /*
+   * El mes manda sobre toda la pantalla, igual que en el tablero.
+   *
+   * ==========================================================================
+   * POR QUÉ HACÍA FALTA
+   * ==========================================================================
+   *
+   * Lo pidió la escuela: «que los leads y datos que aparecen se vayan
+   * actualizando cada mes, y que arriba aparezca por mes cuántos leads hay».
+   *
+   * Antes cada tarjeta contaba TODO lo que hubiera cargado desde que existe el
+   * CRM. «Pastelería: 412 leads» decía lo mismo el 1 de octubre que el 31, y
+   * los que entraron en octubre no se veían por ningún lado. Un número que
+   * nunca baja no dice cómo va el mes: dice cuánto tiempo lleva abierto el CRM.
+   *
+   * Los botones de arriba llevan la cuenta de su propio mes, así que el pedido
+   * —ver por mes cuántos leads hay— se contesta sin tener que ir mes por mes.
+   */
+  const periodos = useMemo(() => periodosDisponibles(oportunidades), [oportunidades]);
+  const [clave, setClave] = useState<string>(() => periodoInicial());
+
+  const periodo =
+    periodos.find((p) => p.clave === clave) ??
+    periodos[0] ?? { clave: TODO, etiqueta: "Todo el histórico", cuando: "" };
+
+  const delPeriodo = useMemo(
+    () => recortar(oportunidades, periodo.clave),
+    [oportunidades, periodo.clave],
+  );
+
+  /*
+   * La cuenta de cada botón.
+   *
+   * Se calcula una vez para todos los períodos y no por botón: `recortar`
+   * recorre la lista entera, y llamarlo desde el render de cada botón la
+   * recorrería una vez por mes en cada pintada.
+   */
+  const cuentaPorPeriodo = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of periodos) m.set(p.clave, recortar(oportunidades, p.clave).length);
+    return m;
+  }, [oportunidades, periodos]);
+
   // Del catálogo y no del estado local: después de guardar, `onRefrescar`
   // vuelve a pedirlo, y el cuadro tiene que quedar mostrando lo que se guardó
   // y no la copia con la que se abrió.
   const enEdicion = productos.find((p) => p.id === editando) ?? null;
 
+  /*
+   * El mes para la barra de filtros de Clientes.
+   *
+   * Sólo cuando lo elegido ES un mes: un año o «todo el histórico» no se pueden
+   * expresar con ese filtro, y mandar cualquier cosa abriría una pantalla
+   * filtrada por un mes que nadie pidió.
+   */
+  const mesDelFiltro = /^\d{4}-\d{2}$/.test(periodo.clave)
+    ? mesComoNumero(periodo.clave)
+    : null;
+
   const visibles = productos.filter(
     (p) => categoria === "Todos" || p.categoria === categoria,
   );
 
+  /*
+   * «Leads» pasa a ser el primero, que es lo que se vino a ver.
+   *
+   * El tamaño del catálogo salió de acá y no se perdió: sigue en la pastilla
+   * «Todos» del filtro de categorías, que es donde se lo busca. Un número que no
+   * cambia nunca ocupando el lugar más visible de la pantalla es el lugar mal
+   * usado.
+   */
   const stats = [
-    { label: "Programas", value: String(productos.length) },
+    { label: `Leads · ${periodo.etiqueta}`, value: String(delPeriodo.length) },
     {
-      label: "Con demanda",
+      label: "Programas con demanda",
       value: String(
-        productos.filter((p) => oportunidades.some((o) => o.productoId === p.id))
-          .length,
+        productos.filter((p) => delPeriodo.some((o) => o.productoId === p.id)).length,
       ),
     },
-    { label: "Valor en pipeline", value: money(valorPipeline(oportunidades) || null) },
-    { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(oportunidades) || null) },
+    { label: "Valor en pipeline", value: money(valorPipeline(delPeriodo) || null) },
+    { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(delPeriodo) || null) },
   ];
 
   return (
@@ -111,6 +189,21 @@ export function Programas({
           onGuardado={onRefrescar}
         />
       )}
+
+      <SelectorDePeriodo
+        periodos={periodos}
+        elegido={periodo}
+        accent={accent}
+        cuenta={(c) => cuentaPorPeriodo.get(c) ?? 0}
+        onElegir={setClave}
+        nota={
+          <>
+            Los números de cada programa son de{" "}
+            <strong style={{ color: T.muted }}>{periodo.etiqueta}</strong>, por mes de registro
+            del lead. El catálogo se ve entero siempre.
+          </>
+        }
+      />
 
       <div
         style={{
@@ -171,6 +264,29 @@ export function Programas({
         })}
       </div>
 
+      {/*
+        Un mes sin leads se explica, no se deja en blanco.
+        El catálogo se sigue viendo entero debajo —con sus números en cero—
+        porque esta pantalla también sirve para administrar programas, y un mes
+        flojo no es razón para esconderlos.
+      */}
+      {delPeriodo.length === 0 && (
+        <p
+          data-sin-leads
+          style={{
+            margin: "0 0 14px",
+            padding: "11px 14px",
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            color: T.muted,
+            background: T.paper,
+            borderRadius: 8,
+          }}
+        >
+          {comoSeExplicaElVacio(periodo)}
+        </p>
+      )}
+
       <div
         style={{
           display: "grid",
@@ -180,7 +296,14 @@ export function Programas({
         }}
       >
         {visibles.map((p) => {
-          const leads = oportunidades.filter((o) => o.productoId === p.id);
+          /*
+           * Del período, no de todo.
+           *
+           * El catálogo sigue entero —un programa sin leads este mes no
+           * desaparece, que para eso está la baja— pero sus números son los del
+           * mes que se está mirando.
+           */
+          const leads = delPeriodo.filter((o) => o.productoId === p.id);
           const abiertas = leads.filter(estaAbierta);
           const inscritos = leads.filter(esGanada).length;
           const cerrado = totalCerrado(leads);
@@ -346,7 +469,7 @@ export function Programas({
                 </span>
                 <button
                   type="button"
-                  onClick={() => onVerLeads(p.id)}
+                  onClick={() => onVerLeads(p.id, mesDelFiltro)}
                   style={{ fontSize: 12, color: accent, whiteSpace: "nowrap" }}
                 >
                   {leads.length
