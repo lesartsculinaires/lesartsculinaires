@@ -16,6 +16,11 @@ import {
   type Diagnostico,
 } from "@/app/actions";
 import { useCatalogo } from "@/lib/catalog";
+import {
+  comoSeExplica,
+  convieneFichaAlCrear,
+  motivoDeFicha,
+} from "@/lib/crm/fichaDeVendedor";
 import { T, soft, softer } from "@/lib/theme";
 import { ACCIONES, activos, type Accesos, type Accion, type Permiso } from "@/lib/types";
 
@@ -133,6 +138,8 @@ export function UsuariosRoles({
   const [nNombre, setNNombre] = useState("");
   const cat = useCatalogo();
   const [nRol, setNRol] = useState<string>("");
+  /** Crearle la ficha de vendedor junto con la cuenta. Ver la casilla del alta. */
+  const [nFicha, setNFicha] = useState(false);
   const [passDe, setPassDe] = useState<string | null>(null);
   const [passNueva, setPassNueva] = useState("");
   const [diag, setDiag] = useState<Diagnostico | null>(null);
@@ -233,14 +240,17 @@ export function UsuariosRoles({
   /**
    * ¿A esta persona le falta el enlace y lo necesita?
    *
-   * Sólo a quien no ve todo: dirección y coordinación entran al CRM sin
-   * atender a nadie, y para ellos no tener ficha de vendedor es lo normal.
+   * La regla vive en `@/lib/crm/fichaDeVendedor`, con el porqué escrito y su
+   * prueba. Acá decía «a todo el que no ve todo», y eso dejaba el aviso APAGADO
+   * justo para quienes reciben leads —«Ventas» y «Jefe de ventas» ven todo Y
+   * reciben—, que son los que más lo necesitan: sin ficha el reparto los saltea
+   * sin decir nada.
    */
-  const faltaFicha = (u: (typeof accesos.usuarios)[number]): boolean => {
-    if (u.vendedorId != null || !u.activo) return false;
-    const rol = accesos.roles.find((r) => r.id === u.rolId);
-    return !(rol?.esAdmin || rol?.veTodo);
-  };
+  const motivoFicha = (u: (typeof accesos.usuarios)[number]) =>
+    motivoDeFicha(accesos.roles.find((r) => r.id === u.rolId), u.vendedorId != null, u.activo);
+
+  const faltaFicha = (u: (typeof accesos.usuarios)[number]): boolean =>
+    comoSeExplica(motivoFicha(u)) !== null;
 
   const cambiarVeTodo = async (id: number, veTodo: boolean) => {
     setBusy(true);
@@ -281,13 +291,27 @@ export function UsuariosRoles({
       nPass,
       nRol ? Number(nRol) : null,
       nNombre,
+      nFicha,
     );
     setBusy(false);
     if (!r.ok) {
       setError(r.error);
       return;
     }
-    setAviso(`Cuenta creada para ${nCorreo.trim().toLowerCase()}.`);
+    const quien = nCorreo.trim().toLowerCase();
+    /*
+     * Si la ficha no se pudo crear se dice, y se dice como un problema: una
+     * cuenta sin ficha entra al CRM igual, así que el único momento en que se
+     * puede notar es éste.
+     */
+    if (r.aviso) setError(r.aviso);
+    else {
+      setAviso(
+        nFicha
+          ? `Cuenta creada para ${quien}, con su ficha de vendedor: ya se le pueden asignar leads.`
+          : `Cuenta creada para ${quien}. Sin ficha de vendedor, así que todavía no se le puede asignar ningún lead.`,
+      );
+    }
     setNCorreo("");
     setNPass("");
     setNNombre("");
@@ -516,7 +540,21 @@ export function UsuariosRoles({
                       </span>
                       <select
                         value={nRol}
-                        onChange={(e) => setNRol(e.target.value)}
+                        onChange={(e) => {
+                          setNRol(e.target.value);
+                          /*
+                           * La casilla se acomoda sola al elegir el rol, y
+                           * después se puede tocar. Quien da de alta a una
+                           * asesora no tiene por qué saber que hacen falta dos
+                           * tablas; quien da de alta a dirección sí puede
+                           * desmarcarla.
+                           */
+                          setNFicha(
+                            convieneFichaAlCrear(
+                              accesos.roles.find((r) => String(r.id) === e.target.value),
+                            ),
+                          );
+                        }}
                         style={{ ...campo, width: "100%", background: T.surface }}
                       >
                         <option value="">Sin rol</option>
@@ -528,6 +566,42 @@ export function UsuariosRoles({
                       </select>
                     </label>
                   </div>
+
+                  {/*
+                    La ficha de vendedor, en el alta y no en otra pantalla.
+                    ----------------------------------------------------------
+                    Entrar al CRM y poder atender leads son dos cosas separadas
+                    —`usuarios` y `vendedores`— y antes había que acordarse de
+                    la segunda en otro lado. Cuando no se hacía, la persona
+                    entraba igual y no se le podía asignar nada: nada fallaba y
+                    nada avisaba.
+                  */}
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "flex-start",
+                      marginTop: 12,
+                      fontSize: 12.5,
+                      lineHeight: 1.45,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={nFicha}
+                      onChange={(e) => setNFicha(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      Crearle también su <strong>ficha de vendedor</strong>
+                      <span style={{ display: "block", color: T.muted, fontSize: 11.5 }}>
+                        {nFicha
+                          ? "Va a poder recibir leads y aparecer en «asignar a», con su tablero en cero."
+                          : "Sin ficha entra al CRM, pero no se le puede asignar ningún lead. Dejala sin marcar sólo para dirección o coordinación."}
+                      </span>
+                    </span>
+                  </label>
 
                   <div
                     style={{
@@ -681,7 +755,13 @@ export function UsuariosRoles({
                           maxWidth: 200,
                         }}
                       >
-                        Sin esto no va a ver ninguna oportunidad.
+                        {/*
+                          Antes decía siempre lo mismo —«sin esto no va a ver
+                          ninguna oportunidad»— y para quien recibe leads eso ni
+                          siquiera es lo que pasa: los ve, lo que no le llega es
+                          ninguno. Decirlo mal es casi tan malo como no decirlo.
+                        */}
+                        {comoSeExplica(motivoFicha(u))}
                       </span>
                     )}
                   </td>

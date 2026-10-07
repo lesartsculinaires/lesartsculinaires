@@ -55,11 +55,27 @@ export async function fetchAccesos(userId: string): Promise<{
    * comportaba el CRM hasta ahora.
    */
   const soloPropios = new Set<number>();
+  const recibenLeads = new Set<number>();
   {
     const { data, error } = await supabase.from("roles").select("id, pipeline_solo_propios");
     if (!error) {
       for (const r of (data ?? []) as Row[]) {
         if (r.pipeline_solo_propios === true) soloPropios.add(Number(r.id));
+      }
+    }
+  }
+  /*
+   * Y quién entra en el reparto, también aparte y por lo mismo de arriba.
+   *
+   * Va en su propia consulta y no junto a `pipeline_solo_propios` porque son de
+   * migraciones distintas: pedirlas juntas haría que, faltando una, se perdiera
+   * también la otra.
+   */
+  {
+    const { data, error } = await supabase.from("roles").select("id, recibe_leads");
+    if (!error) {
+      for (const r of (data ?? []) as Row[]) {
+        if (r.recibe_leads === true) recibenLeads.add(Number(r.id));
       }
     }
   }
@@ -98,6 +114,7 @@ export async function fetchAccesos(userId: string): Promise<{
     // nadie tiene el permiso, que es el estado de antes.
     veTodo: r.ve_todo === true,
     pipelineSoloPropios: soloPropios.has(Number(r.id)),
+    recibeLeads: recibenLeads.has(Number(r.id)),
   }));
 
   const usuarios: Usuario[] = rows(usrs).map((r) => ({

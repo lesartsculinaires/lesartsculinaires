@@ -559,7 +559,29 @@ export async function crearUsuario(
   password: string,
   rolId: number | null,
   nombre: string,
-): Promise<ActionResult> {
+  /**
+   * Crearle además su ficha de vendedor, y dejarla enlazada con la cuenta.
+   *
+   * ==========================================================================
+   * POR QUÉ ESTO ESTÁ ACÁ Y NO SE DEJA PARA DESPUÉS
+   * ==========================================================================
+   *
+   * Entrar al CRM y poder atender leads son dos cosas distintas: la cuenta vive
+   * en `usuarios` y la ficha en `vendedores`, y las une `vendedores.usuario_id`.
+   * Esta función creaba la cuenta y se detenía ahí, así que la persona entraba
+   * al CRM sin problema y no se le podía asignar ni un lead. Nada fallaba y
+   * nada avisaba.
+   *
+   * El 7 de octubre de 2026, al revisarlo: de doce cuentas, OCHO estaban así, y
+   * el reparto automático terminaba siempre en la misma persona —la única con
+   * rol que recibe leads y ficha—. Mil cuarenta leads contra tres, uno y
+   * dieciséis.
+   *
+   * Lo decide quien administra —viene marcada o no según el rol, y se puede
+   * cambiar— pero ya no hay que acordarse de un segundo paso en otra pantalla.
+   */
+  conFicha: boolean,
+): Promise<ActionResult & { aviso?: string }> {
   const email = correo.trim().toLowerCase();
   if (!email) return { ok: false, error: "El correo es obligatorio." };
   if (password.length < 8) {
@@ -601,8 +623,36 @@ export async function crearUsuario(
     return { ok: false, error: errPerfil.message };
   }
 
+  let aviso: string | undefined;
+
+  if (conFicha) {
+    const { error: errFicha } = await admin
+      .from("vendedores")
+      .insert({ nombre: nombre.trim() || email, correo: email, activo: true, usuario_id: id });
+
+    /*
+     * Si la ficha falla, la cuenta NO se deshace.
+     *
+     * Deshacerla sería lo peor de los dos mundos: la persona ya podría estar
+     * esperando su contraseña, y lo que falta —poder asignarle leads— se arregla
+     * en treinta segundos desde «Usuarios y Roles», donde el enlace ya existe.
+     * Lo que no se puede es que falle en silencio, que es justo lo que venía
+     * pasando: por eso se devuelve el aviso y la pantalla lo muestra.
+     */
+    if (errFicha) {
+      aviso =
+        `La cuenta quedó creada, pero NO se pudo crear su ficha de vendedor` +
+        ` (${errFicha.message}). Hasta que tenga una, no se le puede asignar ningún lead:` +
+        ` creala en Vendedores y enlazala acá mismo, en «Ficha de vendedor».`;
+    } else {
+      // El catálogo guardado tiene que enterarse del vendedor nuevo, o la
+      // persona no aparecería en «asignar a» hasta dentro de cinco minutos.
+      revalidateTag(ETIQUETA_CATALOGO);
+    }
+  }
+
   revalidatePath("/");
-  return { ok: true, error: null };
+  return { ok: true, error: null, aviso };
 }
 
 /** Change someone's password without knowing the old one. */

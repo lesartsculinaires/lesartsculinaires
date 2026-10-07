@@ -495,6 +495,15 @@ export interface Rol {
    * lo suyo y el tablero sale filtrado solo.
    */
   pipelineSoloPropios: boolean;
+  /**
+   * Entra en el reparto automático de leads nuevos.
+   *
+   * Hace falta de este lado para saber a quién le falta la ficha de vendedor:
+   * sin ficha, `vendedores_para_reparto()` no lo saltea con un error —no está
+   * en la lista y ya—, así que el reparto sigue andando entre menos gente y
+   * nadie se entera. Ver `@/lib/crm/fichaDeVendedor`.
+   */
+  recibeLeads: boolean;
 }
 
 /** One row of the permissions grid. */

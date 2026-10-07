@@ -11,6 +11,7 @@
 import http from "node:http";
 import net from "node:net";
 import { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
 
 const PGRST = "http://127.0.0.1:3140";
 const PUERTO = 3141;
@@ -98,7 +99,104 @@ const servidor = http.createServer((req, res) => {
   atender(url, req, res);
 });
 
+/*
+ * El alta y la baja de cuentas, que es lo que usa «Usuarios y Roles».
+ *
+ * ============================================================================
+ * POR QUÉ ESTO TIENE QUE ESTAR
+ * ============================================================================
+ *
+ * Sin esto, `admin.auth.admin.createUser()` caía en el reenvío a PostgREST, que
+ * contestaba cualquier cosa, y la pantalla mostraba un error vacío: `{}`. O sea
+ * que TODO el alta de personas era imposible de probar en el banco —y es
+ * justamente donde se descubrió que las cuentas se creaban a medias, sin ficha
+ * de vendedor—.
+ *
+ * Se escribe en la base de verdad y no en memoria porque `public.usuarios`
+ * tiene una clave foránea contra `auth.users`: devolver un id inventado haría
+ * fallar el segundo paso del alta, que es justo el que se quiere probar.
+ *
+ * El `auth.users` del banco es un remedo con cuatro columnas —lo arma
+ * `armar.sh`—, así que insertar es una línea.
+ */
+function altaDeCuenta(req, res) {
+  let cuerpo = "";
+  req.on("data", (t) => (cuerpo += t));
+  req.on("end", () => {
+    let correo = "";
+    try {
+      correo = String(JSON.parse(cuerpo).email ?? "").trim().toLowerCase();
+    } catch {
+      // Un cuerpo ilegible se trata como un correo vacío.
+    }
+
+    /*
+     * Se valida el correo antes de que toque una línea de SQL. Es un banco y
+     * nadie lo ataca, pero el valor viene de fuera y arma una sentencia: la
+     * costumbre de comprobarlo vale más que el minuto que cuesta.
+     */
+    if (!/^[\w.+-]+@[\w.-]+\.[a-z]{2,}$/i.test(correo)) {
+      res.writeHead(422, { "content-type": "application/json" });
+      res.end(JSON.stringify({ message: "correo inválido", code: 422 }));
+      return;
+    }
+
+    const existe = psql(`select count(*) from auth.users where email = '${correo}'`);
+    if (existe !== "0") {
+      // El mismo texto que da Supabase, que es el que la aplicación reconoce
+      // para decir «ya existe una cuenta con…» en vez de volcar un error crudo.
+      res.writeHead(422, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({ message: "A user with this email address has already been registered" }),
+      );
+      return;
+    }
+
+    const id = psql(`insert into auth.users (email) values ('${correo}') returning id`);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ id, email: correo, aud: "authenticated", role: "authenticated" }));
+  });
+}
+
+/** La baja: es el camino de deshacer del alta cuando falla el segundo paso. */
+function bajaDeCuenta(url, res) {
+  const id = url.pathname.split("/").pop() ?? "";
+  if (/^[0-9a-f-]{36}$/i.test(id)) psql(`delete from auth.users where id = '${id}'`);
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end("{}");
+}
+
+/**
+ * Una consulta a la base del banco, devolviendo una sola celda.
+ *
+ * Se queda con la PRIMERA LÍNEA. Un `insert … returning id` imprime el valor y
+ * además el estado —«INSERT 0 1»—, y devolver las dos pegadas daba un id como
+ * `de642138-…\nINSERT 0 1`, que la aplicación guardaba tal cual y después no
+ * encontraba a nadie. Falla silenciosa y difícil de ver: el alta contestaba 200.
+ */
+function psql(q) {
+  try {
+    const salida = execFileSync(
+      "su",
+      ["postgres", "-c", `psql -h /tmp -p 5511 -d crm -A -t -q -c "${q.replace(/"/g, '\\"')}"`],
+      { encoding: "utf8" },
+    );
+    return (salida.split("\n").find((l) => l.trim() !== "") ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
 function atender(url, req, res) {
+  if (url.pathname === "/auth/v1/admin/users" && req.method === "POST") {
+    altaDeCuenta(req, res);
+    return;
+  }
+  if (url.pathname.startsWith("/auth/v1/admin/users/") && req.method === "DELETE") {
+    bajaDeCuenta(url, res);
+    return;
+  }
+
   if (url.pathname === "/auth/v1/user") {
     const claims = leerJwt(req.headers.authorization);
     if (!claims?.sub) {
