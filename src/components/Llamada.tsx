@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { avisoDeNoAtendida } from "@/lib/llamadas/porQueNoSeAtendio";
+
 import {
   colgarLlamada,
   contestarLlamada,
@@ -238,11 +240,18 @@ export function Llamada({
       const r = await contestarLlamada(llamada.callId, sdp!);
 
       if (!r.conseguida) {
-        // La agarró otra persona primero. No es un error: es lo que tiene que
-        // pasar cuando dos aprietan a la vez, y lo importante es soltar el
-        // micrófono en vez de dejarlo abierto contra una llamada ajena.
+        /*
+         * No se pudo tomar. Lo importante sigue siendo soltar el micrófono en
+         * vez de dejarlo abierto contra una llamada que no es nuestra.
+         *
+         * Lo que cambió es QUÉ se dice. Acá decía siempre «Otra persona atendió
+         * esta llamada», y casi siempre era mentira: lo normal es que quien
+         * llama cuelgue antes de que alguien alcance a contestar. Decirlo mal
+         * manda a buscar a la compañera que atendió en vez de devolver la
+         * llamada, que es lo único que quedaba por hacer.
+         */
         soltarTodo();
-        setAviso("Otra persona atendió esta llamada.");
+        setAviso(avisoDeNoAtendida(r.porque ?? null, r.quien));
         onSoltar();
         return;
       }

@@ -12,6 +12,7 @@ import {
   rechazar,
 } from "@/lib/whatsapp/llamar";
 import type { ActionResult } from "@/app/actions";
+import type { PorqueNo } from "@/lib/llamadas/porQueNoSeAtendio";
 
 /**
  * Contestar, rechazar, colgar y marcar.
@@ -45,13 +46,50 @@ const SIN_SESION: ActionResult = {
 /** Si el servidor puede llamar hoy. Lo mira la bandeja para mostrar el botón. */
 export const llamadasDisponibles = async (): Promise<boolean> => hayLlamadas();
 
+
+/**
+ * El nombre de quien atendió, para poder decir «la atendió Katya».
+ *
+ * Si no se puede averiguar, se devuelve nulo y el aviso queda en «otra
+ * persona»: un nombre que falta no vale una llamada que se queda colgada.
+ */
+async function nombreDe(
+  supabase: Awaited<ReturnType<typeof getServerClient>>,
+  usuarioId: string | null,
+): Promise<string | null> {
+  if (!supabase || !usuarioId) return null;
+  try {
+    const { data } = await supabase
+      .from("vendedores")
+      .select("nombre")
+      .eq("usuario_id", usuarioId)
+      .maybeSingle();
+    return data?.nombre ? String(data.nombre) : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ResultadoContestar extends ActionResult {
   /**
-   * `false` cuando la agarró otra persona primero. No es un error: es lo que
-   * la pantalla necesita para decir «la atendió Katya» y soltar el micrófono
-   * en vez de dejarlo abierto contra una llamada ajena.
+   * `false` cuando no se pudo tomar la llamada. No es un error: es lo que la
+   * pantalla necesita para soltar el micrófono en vez de dejarlo abierto
+   * contra una llamada que no es suya.
    */
   conseguida: boolean;
+  /**
+   * POR QUÉ no se pudo, que no siempre es lo mismo.
+   *
+   * Antes esto no existía y la pantalla daba por hecho que la había tomado
+   * otra persona. Casi siempre era que quien llamaba había colgado. Ver
+   * `@/lib/llamadas/porQueNoSeAtendio`.
+   *
+   * Nulo mientras no se haya corrido la migración que lo agrega: la pantalla
+   * vuelve entonces a un texto neutro en vez de inventar un motivo.
+   */
+  porque?: PorqueNo;
+  /** Quién la atendió, cuando se sabe. */
+  quien?: string | null;
 }
 
 /**
@@ -88,7 +126,20 @@ export async function contestarLlamada(
     };
   }
 
-  const { data, error } = await supabase.rpc("atender_llamada", { p_call_id: callId });
+  /*
+   * Se pide la que dice POR QUÉ no se pudo, y si todavía no está, la vieja.
+   *
+   * Desplegar antes de correr el SQL es lo normal acá. Sin el respaldo, entre
+   * un despliegue y el otro NINGUNA llamada se podría atender —y perder una
+   * llamada es mucho peor que perder el motivo por el que no se pudo—.
+   */
+  let { data, error } = await supabase.rpc("atender_llamada_con_motivo", {
+    p_call_id: callId,
+  });
+
+  if (error && faltaLaFuncion(error)) {
+    ({ data, error } = await supabase.rpc("atender_llamada", { p_call_id: callId }));
+  }
 
   if (error) {
     if (faltaLaFuncion(error)) {
@@ -102,9 +153,20 @@ export async function contestarLlamada(
     return { ok: false, conseguida: false, error: error.message };
   }
 
-  const fila = (Array.isArray(data) ? data[0] : data) as { conseguida?: boolean } | null;
+  const fila = (Array.isArray(data) ? data[0] : data) as
+    | { conseguida?: boolean; porque?: string | null; quien?: string | null }
+    | null;
+
   if (!fila?.conseguida) {
-    return { ok: true, conseguida: false, error: null };
+    const porque = (fila?.porque ?? null) as PorqueNo;
+    return {
+      ok: true,
+      conseguida: false,
+      error: null,
+      porque,
+      // El nombre de quien atendió se busca sólo si hace falta decirlo.
+      quien: porque === "la_tomo_otro" ? await nombreDe(supabase, fila?.quien ?? null) : null,
+    };
   }
 
   /*
