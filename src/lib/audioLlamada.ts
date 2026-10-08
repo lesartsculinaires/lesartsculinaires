@@ -88,17 +88,69 @@ export function crearConexion(): RTCPeerConnection {
  *
  * A los dos segundos ya están los caminos locales y casi siempre el de afuera.
  * Se manda con lo que haya, que es mejor que no mandar.
+ *
+ * ----------------------------------------------------------------------------
+ * PERO NO HACE FALTA ESPERAR EL TOPE ENTERO
+ * ----------------------------------------------------------------------------
+ *
+ * Esto esperaba a `complete` o a los dos segundos, lo que llegara primero. Y
+ * `complete` tarda porque sigue preguntando por caminos DE MÁS mucho después de
+ * que llegó el que importa: el navegador junta el local en milisegundos, el de
+ * afuera en unas décimas, y después se queda esperando respuestas de servidores
+ * que a lo mejor no contestan nunca.
+ *
+ * O sea que casi siempre se pagaban los dos segundos completos con el SDP ya
+ * listo. Dos segundos de una llamada que suena veintiséis.
+ *
+ * Ahora se corta en cuanto llega un camino QUE SIRVA PARA SALIR, más un respiro
+ * corto para los que vengan pegados.
+ *
+ * ----------------------------------------------------------------------------
+ * Y POR QUÉ NO CUALQUIER CAMINO
+ * ----------------------------------------------------------------------------
+ *
+ * Porque los primeros que aparecen son los `host` —la IP de la máquina en la
+ * oficina— y con ésos solos la llamada se conecta y no se oye nada: no hay forma
+ * de llegar a ellos desde fuera de la red. Cortar ahí cambiaría dos segundos por
+ * llamadas mudas, que es muchísimo peor.
+ *
+ * Se espera a un `srflx` —la dirección vista desde afuera, que es la que resuelve
+ * el NAT— o a un `relay`. Ésos sí alcanzan.
  */
-export function esperarCandidatos(pc: RTCPeerConnection, topeMs = 2_000): Promise<void> {
+
+/** El respiro para los caminos que vienen pegados al primero que sirve. */
+export const RESPIRO_MS = 250;
+
+/**
+ * ¿Este camino sirve para que nos alcancen desde fuera de la red?
+ *
+ * Se mira `type` y, si no viene, se lee del texto del candidato: los dos
+ * existen en la práctica según el navegador, y quedarse con uno solo deja de
+ * cortar temprano justo en los que no lo traen.
+ */
+function sirveParaSalir(c: RTCIceCandidate): boolean {
+  const tipo = c.type ?? /\btyp\s+(\w+)/.exec(c.candidate ?? "")?.[1] ?? "";
+  return tipo === "srflx" || tipo === "relay";
+}
+
+export function esperarCandidatos(
+  pc: RTCPeerConnection,
+  topeMs = 2_000,
+  respiroMs = RESPIRO_MS,
+): Promise<void> {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
 
   return new Promise((listo) => {
     let terminado = false;
+    let respiro: ReturnType<typeof setTimeout> | null = null;
+
     const acabar = () => {
       if (terminado) return;
       terminado = true;
       pc.removeEventListener("icegatheringstatechange", mirar);
-      window.clearTimeout(reloj);
+      pc.removeEventListener("icecandidate", mirarCandidato);
+      clearTimeout(reloj);
+      if (respiro) clearTimeout(respiro);
       listo();
     };
 
@@ -106,8 +158,25 @@ export function esperarCandidatos(pc: RTCPeerConnection, topeMs = 2_000): Promis
       if (pc.iceGatheringState === "complete") acabar();
     };
 
+    const mirarCandidato = (e: Event) => {
+      const c = (e as RTCPeerConnectionIceEvent).candidate;
+
+      // Un candidato nulo es el aviso de que no viene ninguno más.
+      if (!c) {
+        acabar();
+        return;
+      }
+
+      // Ya estamos contando el respiro: lo que llegue se suma al SDP igual.
+      if (respiro) return;
+      if (!sirveParaSalir(c)) return;
+
+      respiro = setTimeout(acabar, respiroMs);
+    };
+
     pc.addEventListener("icegatheringstatechange", mirar);
-    const reloj = window.setTimeout(acabar, topeMs);
+    pc.addEventListener("icecandidate", mirarCandidato);
+    const reloj = setTimeout(acabar, topeMs);
   });
 }
 
