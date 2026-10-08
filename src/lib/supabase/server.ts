@@ -201,8 +201,19 @@ export const SIN_RESPUESTA = Object.assign(
   new Error("Supabase no contestó a tiempo al preguntar quién es"),
   { name: "SinRespuesta" },
 );
+/**
+ * El `getUser` sin tope de cada cliente, para poder reintentar con más aire.
+ *
+ * Se guarda acá —y no en una propiedad del cliente— para no ensuciar un objeto
+ * ajeno con campos inventados. El `WeakMap` no retiene nada: cuando el cliente
+ * de esa petición se va, esto se va con él.
+ */
+const sinTope = new WeakMap<SupabaseClient, ReturnType<typeof desnudo>>();
+const desnudo = (c: SupabaseClient) => c.auth.getUser.bind(c.auth);
+
 function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
-  const original = cliente.auth.getUser.bind(cliente.auth);
+  const original = desnudo(cliente);
+  sinTope.set(cliente, original);
 
   type Respuesta = Awaited<ReturnType<typeof original>>;
 
@@ -262,11 +273,74 @@ export async function getServerClient(): Promise<SupabaseClient | null> {
 }
 
 /** The signed-in user, or null. */
+/**
+ * Preguntar quién es, REINTENTANDO UNA VEZ si no contestó a tiempo.
+ *
+ * ============================================================================
+ * POR QUÉ EL REINTENTO VIVE ACÁ Y NO EN CADA LLAMADA
+ * ============================================================================
+ *
+ * Porque hay treinta y dos lugares que preguntan quién es, y un reintento que
+ * hay que acordarse de poner en cada uno es un reintento que falta en el
+ * próximo que se escriba. Es el mismo razonamiento por el que el tope vive
+ * donde se arma el cliente.
+ *
+ * Y hace falta porque el tope de tres segundos es poco cuando la base viene
+ * cargada. El 8 de octubre de 2026, una hora después de arreglar que la PANTALLA
+ * no echara a nadie, una asesora no podía mandar un mensaje: la acción del
+ * servidor se encontraba con el mismo `null` y contestaba «Sesión no válida.
+ * Volvé a iniciar sesión» con la sesión perfectamente viva. Se había arreglado
+ * una puerta y quedaba la otra.
+ *
+ * La segunda pregunta sale sobre una conexión que la primera ya despertó, así
+ * que casi siempre contesta. Y cuando tampoco contesta, se devuelve que NO SE
+ * PUDO —no «no hay sesión»—, que es lo que permite decirlo bien.
+ */
+async function preguntarQuienEs(supabase: SupabaseClient): Promise<{
+  user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"];
+  respondio: boolean;
+}> {
+  // Primer intento: el corto de siempre, que es el que sirve cuando todo va bien.
+  const primero = await supabase.auth.getUser();
+  // Cualquier respuesta que no sea el vencimiento es una respuesta: un token
+  // vencido o una sesión que no existe tienen que seguir contestando que no.
+  if (primero.error !== SIN_RESPUESTA) {
+    return { user: primero.data.user ?? null, respondio: true };
+  }
+
+  /*
+   * Segundo intento, CON MÁS AIRE.
+   *
+   * Reintentar con los mismos tres segundos sólo sirve si la lentitud fue un
+   * tropiezo. Si la base viene cargada —que es cuando esto pasa de verdad— el
+   * segundo intento se vencería igual y no habríamos ganado nada.
+   *
+   * Ocho segundos es lo mismo que ya se le da a cualquier consulta (`PLAZO_MS`).
+   * Una acción que tarda ocho segundos y funciona es muchísimo mejor que una
+   * que falla en tres diciendo algo que no es cierto.
+   */
+  const original = sinTope.get(supabase);
+  if (!original) return { user: null, respondio: false };
+
+  const segundo = await conTope(
+    original().catch(() => null),
+    PLAZO_MS,
+  );
+
+  if (segundo === SE_PASO || segundo === null) {
+    console.warn(
+      `[supabase] no se pudo confirmar la sesión en ${TOPE_AUTH_MS} + ${PLAZO_MS} ms`,
+    );
+    return { user: null, respondio: false };
+  }
+
+  return { user: segundo.data.user ?? null, respondio: true };
+}
+
 export async function getUser() {
   const supabase = await getServerClient();
   if (!supabase) return null;
-  const { data } = await supabase.auth.getUser();
-  return data.user ?? null;
+  return (await preguntarQuienEs(supabase)).user;
 }
 
 /**
@@ -300,6 +374,5 @@ export async function quienEs(): Promise<{
   // Sin configurar no es una caída pasajera: es un no definitivo.
   if (!supabase) return { user: null, respondio: true };
 
-  const { data, error } = await supabase.auth.getUser();
-  return { user: data.user ?? null, respondio: error !== SIN_RESPUESTA };
+  return preguntarQuienEs(supabase);
 }

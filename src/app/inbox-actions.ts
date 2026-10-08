@@ -47,9 +47,21 @@ import type { ActionResult } from "@/app/actions";
  * dónde mandar el mensaje.
  */
 
+/*
+ * El aviso NO manda a volver a entrar en el primer tropiezo.
+ *
+ * Decía «Sesión no válida. Volvé a iniciar sesión.» y eso era mentira la mayor
+ * parte de las veces: lo que pasaba era que la base no contestaba en tres
+ * segundos y `getUser()` devolvía `null`. La sesión estaba viva, pero el aviso
+ * mandaba a cerrarla y abrirla de nuevo —perdiendo el mensaje a medio escribir—.
+ *
+ * Ahora `getUser()` reintenta antes de rendirse, así que llegar acá es raro. Y
+ * cuando se llega, se dice lo que de verdad se sabe: no se pudo confirmar.
+ * Volver a entrar sigue estando como última opción, no como primera.
+ */
 const SIN_SESION: ActionResult = {
   ok: false,
-  error: "Sesión no válida. Volvé a iniciar sesión.",
+  error: "No pudimos confirmar tu sesión. Probá de nuevo; si sigue, volvé a iniciar sesión.",
 };
 
 /**

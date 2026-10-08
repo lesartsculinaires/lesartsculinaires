@@ -38,10 +38,63 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { execSync } from "node:child_process";
 
 const RAIZ = "/home/user/lesartsculinaires";
 const APP = "http://127.0.0.1:3142";
 const PROXY = "http://127.0.0.1:3141";
+
+const sql = (q) => {
+  const ruta = path.join(os.tmpdir(), `lento-${process.pid}-${Math.random()}.sql`);
+  fs.writeFileSync(ruta, q, "utf8");
+  fs.chmodSync(ruta, 0o644);
+  try {
+    const salida = execSync(
+      `su postgres -c "psql -h /tmp -p 5511 -d crm -v ON_ERROR_STOP=1 -A -t -q -f ${ruta}" 2>&1`,
+      { encoding: "utf8" },
+    ).trim();
+    if (/ERROR:/m.test(salida)) {
+      console.error(`\nLa base rechazó una sentencia de la prueba:\n${salida}\n`);
+      process.exit(1);
+    }
+    return salida;
+  } finally {
+    fs.rmSync(ruta, { force: true });
+  }
+};
+
+/*
+ * Un hilo de WhatsApp para poder probar el envío.
+ *
+ * Se siembra acá y no se da por hecho que el banco tenga alguno: sin hilo, el
+ * paso 3 se saltearía, y un paso que se saltea en silencio es un paso que no
+ * prueba nada —se descubrió así, en verde y sin haber comprobado lo que decía—.
+ */
+const TEL = "50370555123";
+const QUIEN = "Lento De Prueba";
+
+const limpiar = () =>
+  sql(`
+    delete from public.mensajes where conversacion_id in
+      (select id from public.conversaciones where telefono = '${TEL}');
+    delete from public.conversaciones where telefono = '${TEL}';
+    delete from public.clientes where nombre = '${QUIEN}';
+  `);
+
+const sembrar = () => {
+  limpiar();
+  sql(`
+    insert into public.clientes (nombre, telefono) values ('${QUIEN}', '${TEL}');
+    insert into public.conversaciones
+      (telefono, identificador, nombre_perfil, canal, cliente_id, ultimo_mensaje_en, ultimo_texto)
+    select '${TEL}', '${TEL}', '${QUIEN}', 'whatsapp', c.id, now(), 'Hola, quiero información'
+      from public.clientes c where c.nombre = '${QUIEN}';
+    insert into public.mensajes (conversacion_id, wa_id, direccion, tipo, texto, creado_en)
+    select v.id, 'wamid.LENTO${Date.now()}', 'entrante', 'text', 'Hola, quiero información', now()
+      from public.conversaciones v where v.telefono = '${TEL}';
+  `);
+};
 
 let f = 0;
 const es = (t, r, e) => {
@@ -71,6 +124,8 @@ const galleta =
     }),
   ).toString("base64");
 
+sembrar();
+
 const nav = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
 });
@@ -83,6 +138,11 @@ const dondeTermina = async (conSesion) => {
       { name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" },
     ]);
   }
+  await ctx.addInitScript((h) => {
+    try {
+      localStorage.setItem("lac.reservas.visto", h);
+    } catch {}
+  }, new Date().toISOString().slice(0, 10));
   const p = await ctx.newPage();
   try {
     /*
@@ -133,7 +193,70 @@ try {
     es("Y NUNCA PIDE LA CONTRASEÑA OTRA VEZ", /Contraseña/i.test(texto), false);
   }
 
-  console.log("\n── 3. PERO SIN SESIÓN SIGUE ECHANDO ──");
+  console.log("\n── 3. Y TAMPOCO SE CAE AL MANDAR UN MENSAJE ──");
+  {
+    /*
+     * La otra puerta, y la que se descubrió tarde. El 8 de octubre de 2026, una
+     * hora después de arreglar que la PANTALLA no echara a nadie, una asesora no
+     * podía contestar: la acción del servidor se encontraba con el mismo `null`
+     * de `getUser()` y devolvía «Sesión no válida. Volvé a iniciar sesión» con la
+     * sesión perfectamente viva.
+     *
+     * Arreglar una mitad y dejar la otra es lo que convierte un problema en dos
+     * problemas que parecen el mismo.
+     */
+    await lentitud(5000);
+
+    const ctx = await nav.newContext({ viewport: { width: 1500, height: 1050 } });
+    await ctx.addCookies([
+      { name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" },
+    ]);
+    await ctx.addInitScript((h) => {
+      try {
+        localStorage.setItem("lac.reservas.visto", h);
+      } catch {}
+    }, new Date().toISOString().slice(0, 10));
+    const p = await ctx.newPage();
+    try {
+      await p.goto(`${APP}/?mod=Inbox`, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await p.waitForTimeout(12000);
+
+      const hilo = p.locator("button.row").first();
+      if ((await hilo.count()) > 0) {
+        await hilo.click();
+        await p.waitForTimeout(6000);
+
+        const caja = p.locator("main textarea").first();
+        if ((await caja.count()) > 0) {
+          await caja.fill("Prueba con la base lenta");
+          await p.getByRole("button", { name: /^Enviar$/ }).first().click();
+          await p.waitForTimeout(14000);
+
+          const texto = (await p.locator("body").innerText()).replace(/\s+/g, " ");
+          es("NO DICE QUE LA SESIÓN NO VALE", /Sesión no válida/i.test(texto), false);
+          /*
+           * Y sobre todo: que no mande a volver a entrar. Ése es el texto que
+           * hacía que la gente cerrara sesión y perdiera lo que escribía.
+           */
+          es(
+            "Y NO MANDA A VOLVER A INICIAR SESIÓN COMO PRIMERA OPCIÓN",
+            /^.*Volvé a iniciar sesión/.test(texto) && !/Probá de nuevo/.test(texto),
+            false,
+          );
+        } else {
+          f++;
+          console.log("✗ no apareció la caja de escribir: el envío no se pudo probar");
+        }
+      } else {
+        f++;
+        console.log("✗ no apareció el hilo sembrado: el envío no se pudo probar");
+      }
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  console.log("\n── 4. PERO SIN SESIÓN SIGUE ECHANDO ──");
   {
     /*
      * La otra mitad. Si el arreglo se hubiera llevado esto puesto, el CRM
@@ -150,6 +273,7 @@ try {
   // Se deja el banco como estaba, pase lo que pase: una lentitud olvidada
   // haría fallar todas las demás pruebas sin decir por qué.
   await lentitud(0).catch(() => {});
+  limpiar();
   await nav.close().catch(() => {});
   void os;
 }

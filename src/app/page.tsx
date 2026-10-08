@@ -110,10 +110,11 @@ export default async function Page({
    *
    * El reintento no es un parche por si acaso: la primera pregunta es la que
    * despierta la conexión, y la segunda sale sobre algo ya caliente. Cuesta
-   * unos segundos en el caso malo y evita perder el trabajo.
+   * unos segundos en el caso malo y evita perder el trabajo. Vive dentro de
+   * `quienEs()`, para que lo tengan también los treinta y dos lugares que
+   * preguntan quién es desde una acción del servidor.
    */
-  let { user, respondio } = await quienEs();
-  if (!user && !respondio) ({ user, respondio } = await quienEs());
+  const { user, respondio } = await quienEs();
 
   if (!user && respondio) redirect("/login");
   if (!user) return <NoSePudoConfirmar />;

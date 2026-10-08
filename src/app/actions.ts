@@ -53,9 +53,13 @@ export interface ActionResult {
   error: string | null;
 }
 
+/*
+ * Ver el gemelo en `inbox-actions.ts`: no se manda a volver a entrar en el
+ * primer tropiezo, porque casi nunca es que la sesión no valga.
+ */
 const NO_SESSION: ActionResult = {
   ok: false,
-  error: "Sesión no válida. Volvé a iniciar sesión.",
+  error: "No pudimos confirmar tu sesión. Probá de nuevo; si sigue, volvé a iniciar sesión.",
 };
 
 /**
