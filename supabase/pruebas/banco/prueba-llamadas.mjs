@@ -79,7 +79,7 @@ const TEL = "50399887766";
 const CALL = "wacid.PRUEBA.1";
 
 const limpiar = () => {
-  sql(`delete from public.llamadas where call_id like 'wacid.PRUEBA%';
+  sql(`delete from public.llamadas where call_id like 'wacid.PRUEBA%' or call_id like 'wacid.SALIENTE%';
        delete from public.conversaciones where telefono = '${TEL}';`);
 };
 limpiar();

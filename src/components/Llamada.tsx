@@ -16,6 +16,7 @@ import {
   crearConexion,
   esperarCandidatos,
   hayWebRTC,
+  sePuedePreparar,
   PORQUE_NO_SIRVE_EL_SDP,
   porQueNoHayMicrofono,
   sdpUsable,
@@ -99,12 +100,69 @@ export function Llamada({
   /** Para no volver a pegarle la respuesta a una conexión que ya la tiene. */
   const respuestaPuesta = useRef<string | null>(null);
 
+  /**
+   * La negociación hecha POR ADELANTADO, mientras el teléfono suena.
+   *
+   * ==========================================================================
+   * QUÉ SE ADELANTA Y POR QUÉ SE PUEDE
+   * ==========================================================================
+   *
+   * Contestar tenía cuatro pasos antes de poder avisarle a Meta: pedir el
+   * micrófono, pegar la oferta del cliente, armar la respuesta y juntar los
+   * caminos de red. Ninguno de los cuatro le dice NADA a Meta —la llamada se
+   * acepta recién en `contestarLlamada`— y los datos que necesitan ya están
+   * desde el primer timbrazo: la oferta viene en el mismo aviso que hace sonar
+   * la tarjeta.
+   *
+   * O sea que se pueden hacer mientras suena, y dejar el clic con una sola
+   * cosa por delante: avisarle a Meta.
+   *
+   * ==========================================================================
+   * EL MICRÓFONO NO SE ADELANTA, A PROPÓSITO
+   * ==========================================================================
+   *
+   * Pedirlo mientras suena prendería la lucecita de grabación del navegador
+   * antes de que nadie haya aceptado nada. Eso asusta, y con razón.
+   *
+   * Se adelanta todo lo demás reservando el lugar del audio con un
+   * `addTransceiver`, y al contestar se le enchufa el micrófono con
+   * `replaceTrack`, que NO obliga a renegociar: el SDP ya mandado sigue
+   * valiendo. Es el mismo mecanismo con el que se silencia o se cambia de
+   * micrófono en medio de una llamada.
+   *
+   * ==========================================================================
+   * Y SI LA PREPARACIÓN FALLA, NO PASA NADA
+   * ==========================================================================
+   *
+   * Es la regla de la que cuelga todo lo demás: contestar NUNCA depende de que
+   * esto haya salido bien. Si no hay nada preparado —porque falló, porque el
+   * navegador no quiso, porque la llamada llegó distinta— el clic hace el
+   * camino de siempre, entero. Lo peor que puede pasar es tardar lo que se
+   * tardaba antes.
+   */
+  const preparada = useRef<{
+    callId: string;
+    conexion: RTCPeerConnection;
+    emisor: RTCRtpSender;
+    sdp: string;
+  } | null>(null);
+
+  /** Suelta lo preparado sin tocar la llamada en curso. */
+  const tirarLoPreparado = useCallback(() => {
+    const p = preparada.current;
+    preparada.current = null;
+    // Si ya se está usando para hablar, no se cierra: es la conexión viva.
+    if (!p || pc.current === p.conexion) return;
+    cerrarTodo(p.conexion, null, null);
+  }, []);
+
   const soltarTodo = useCallback(() => {
     cerrarTodo(pc.current, micro.current, parlante.current);
     pc.current = null;
     micro.current = null;
     respuestaPuesta.current = null;
-  }, []);
+    tirarLoPreparado();
+  }, [tirarLoPreparado]);
 
   const veredicto = comoSeMuestra(
     llamada ?? {
@@ -173,6 +231,90 @@ export function Llamada({
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo abrir el audio."));
   }, [llamada?.sdpRemoto, llamada?.sdpTipo]);
 
+  /*
+   * ==========================================================================
+   * SE PREPARA MIENTRAS SUENA
+   * ==========================================================================
+   *
+   * Sólo para una llamada ENTRANTE que está sonando y que esta pantalla puede
+   * atender. No toca Meta, no pide micrófono y no acepta nada: deja lista la
+   * respuesta para que el clic no tenga que armarla.
+   *
+   * Si algo sale mal se tira lo preparado y listo: `atender` hace el camino
+   * completo igual que siempre.
+   */
+  useEffect(() => {
+    if (!sePuedePreparar()) return;
+    if (!llamada || llamada.direccion !== "entrante") return;
+    if (llamada.estado !== "sonando" || !llamada.sdpRemoto) return;
+    // En una entrante lo que llega es la oferta del cliente.
+    if (llamada.sdpTipo && llamada.sdpTipo !== "offer") return;
+    // La tarjeta no se puede atender desde acá: no hay nada que preparar.
+    if (veredicto.presencia === "nada") return;
+    // Ya está preparada, o ya se está hablando.
+    if (preparada.current?.callId === llamada.callId || pc.current) return;
+    if (!hayWebRTC()) return;
+
+    let vigente = true;
+    const callId = llamada.callId;
+    const oferta = llamada.sdpRemoto;
+
+    void (async () => {
+      let conexion: RTCPeerConnection | null = null;
+      try {
+        conexion = crearConexion();
+
+        // El audio del cliente entra por acá, igual que en el camino de
+        // siempre: enganchado ANTES de negociar para no perder las primeras
+        // palabras.
+        conexion.ontrack = (e) => {
+          if (parlante.current) parlante.current.srcObject = e.streams[0] ?? null;
+        };
+
+        /*
+         * Se reserva el lugar del audio sin micrófono. Al contestar se le
+         * enchufa con `replaceTrack`, que no obliga a renegociar.
+         */
+        const emisor = conexion.addTransceiver("audio", { direction: "sendrecv" }).sender;
+
+        await conexion.setRemoteDescription({ type: "offer", sdp: oferta });
+        if (!vigente || !sigueViva(conexion)) throw new Error("ya no sirve");
+
+        await conexion.setLocalDescription(await conexion.createAnswer());
+        if (!vigente || !sigueViva(conexion)) throw new Error("ya no sirve");
+
+        await esperarCandidatos(conexion);
+        if (!vigente || !sigueViva(conexion)) throw new Error("ya no sirve");
+
+        const sdp = conexion.localDescription?.sdp;
+        if (!sdpUsable(sdp)) throw new Error("sin caminos");
+
+        preparada.current = { callId, conexion, emisor, sdp: sdp! };
+      } catch {
+        /*
+         * En silencio y a propósito: esto corre solo, sin que nadie lo haya
+         * pedido, y un aviso de algo que no se intentó hacer sólo asusta. Lo
+         * que importa es no dejar la conexión abierta.
+         */
+        if (conexion && preparada.current?.conexion !== conexion) {
+          cerrarTodo(conexion, null, null);
+        }
+      }
+    })();
+
+    return () => {
+      vigente = false;
+    };
+  }, [
+    llamada,
+    llamada?.callId,
+    llamada?.estado,
+    llamada?.sdpRemoto,
+    llamada?.sdpTipo,
+    llamada?.direccion,
+    veredicto.presencia,
+  ]);
+
   // ------------------------------------------------------------- contestar
 
   const atender = async () => {
@@ -185,7 +327,55 @@ export function Llamada({
     setTrabajando(true);
     setError(null);
 
+    const empezo = Date.now();
+
     try {
+      /*
+       * ======================================================================
+       * EL CAMINO CORTO: usar lo que ya se preparó mientras sonaba
+       * ======================================================================
+       *
+       * Lo único que falta es el micrófono, que a propósito no se adelanta.
+       * `replaceTrack` lo enchufa en el lugar que ya estaba reservado y no
+       * obliga a renegociar: el SDP preparado sigue valiendo tal cual.
+       *
+       * Si cualquier cosa no cuadra, se cae al camino de siempre, que está
+       * entero más abajo.
+       */
+      const lista = preparada.current;
+      if (lista && lista.callId === llamada.callId && sigueViva(lista.conexion)) {
+        preparada.current = null;
+        pc.current = lista.conexion;
+
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+        if (pc.current !== lista.conexion || !sigueViva(lista.conexion)) {
+          for (const pista of mic.getTracks()) pista.stop();
+          return;
+        }
+
+        micro.current = mic;
+        await lista.emisor.replaceTrack(mic.getAudioTracks()[0] ?? null);
+
+        const r = await contestarLlamada(llamada.callId, lista.sdp);
+
+        console.info(
+          `[llamada] contestada en ${Date.now() - empezo} ms (preparada mientras sonaba)`,
+        );
+
+        if (!r.conseguida) {
+          soltarTodo();
+          setAviso(avisoDeNoAtendida(r.porque ?? null, r.quien));
+          onSoltar();
+          return;
+        }
+        if (!r.ok) {
+          soltarTodo();
+          setError(r.error);
+        }
+        return;
+      }
+
       const conexion = crearConexion();
       pc.current = conexion;
 

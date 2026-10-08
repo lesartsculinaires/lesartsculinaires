@@ -105,7 +105,19 @@ const SDP_DE_META = "v=0\\r\\no=- 1 1 IN IP4 127.0.0.1\\r\\ns=-\\r\\nt=0 0\\r\\n
 
 const limpiar = () => {
   sql(`
-    delete from public.llamadas where call_id in ('${CALL}', '${CALL_HUERFANA}');
+    /*
+     * Se barren los restos de LAS DOS pruebas de llamadas, no sólo los de ésta.
+     *
+     * Una corrida que se cae no llega a limpiar, y una llamada que queda en
+     * 'sonando' para siempre ocupa la tarjeta de la pantalla: la prueba
+     * siguiente siembra la suya, no la ve, y falla sin que nadie haya roto
+     * nada. Pasó, y costó un rato largo entenderlo —parecía un cambio en el
+     * código de las llamadas—.
+     *
+     * Los dos prefijos son de pruebas y de nadie más.
+     */
+    delete from public.llamadas
+     where call_id like 'wacid.PRUEBA%' or call_id like 'wacid.SALIENTE%';
     delete from public.mensajes where conversacion_id in
       (select id from public.conversaciones where telefono = '${TEL}');
     delete from public.conversaciones where telefono = '${TEL}';

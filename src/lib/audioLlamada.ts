@@ -294,3 +294,35 @@ export function porQueNoHayMicrofono(e: unknown): string {
         : "No se pudo abrir el micrófono en este navegador.";
   }
 }
+
+/**
+ * ¿Se prepara la llamada mientras suena?
+ *
+ * ============================================================================
+ * LA PERILLA QUE SE PUEDE APAGAR SIN DESPLEGAR
+ * ============================================================================
+ *
+ * Adelantar la negociación mientras el teléfono suena es lo que hace que
+ * contestar sea casi instantáneo. Pero es lo único de las llamadas que no se
+ * puede probar en el banco —no hay WebRTC de verdad ni un Meta de verdad— así
+ * que la primera prueba real es con un cliente del otro lado.
+ *
+ * Por eso se puede apagar desde la consola del navegador, sin esperar un
+ * despliegue:
+ *
+ *     localStorage.setItem("lac.llamadas.sinPreparar", "1")   // apagar
+ *     localStorage.removeItem("lac.llamadas.sinPreparar")     // volver a prender
+ *
+ * Apagarlo deja el camino de siempre, entero. Es para la ventana de prueba: si
+ * una llamada sale mal, se apaga en el momento y se sigue trabajando mientras
+ * se averigua qué pasó, en vez de quedarse sin teléfono.
+ */
+export function sePuedePreparar(): boolean {
+  try {
+    return localStorage.getItem("lac.llamadas.sinPreparar") !== "1";
+  } catch {
+    // Sin `localStorage` —modo privado, permisos— se prepara igual: la perilla
+    // es una comodidad, no una condición.
+    return true;
+  }
+}
