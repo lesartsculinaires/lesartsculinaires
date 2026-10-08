@@ -275,17 +275,46 @@ export default function CrmApp({
       ? null
       : (conversaciones.find((c) => c.id === llamadas.llamada!.conversacionId) ?? null);
 
-  // Y por debajo sigue el refresco solo. No sobra: un websocket se cae en
-  // silencio —wifi de hotel, laptop suspendida, proxy de oficina— y sin esto
-  // la pantalla se quedaría quieta sin que nadie lo note.
-  //
-  // Un minuto es el peor caso que se acordó, no el ritmo esperado: con el
-  // websocket andando los cambios llegan en menos de un segundo y esto no
-  // llega a usarse nunca. Cada vuelta son veinte consultas a Supabase por
-  // pestaña abierta, así que el número no es gratis: bajarlo a diez segundos
-  // multiplicaría esa cuenta por seis sin adelantar nada mientras el
-  // websocket funcione.
-  useAutoRefresco(60_000);
+  /*
+   * Y por debajo sigue el refresco solo. No sobra: un websocket se cae en
+   * silencio —wifi de hotel, laptop suspendida, proxy de oficina— y sin esto
+   * la pantalla se quedaría quieta sin que nadie lo note.
+   *
+   * ==========================================================================
+   * PERO EL RITMO AHORA DEPENDE DE SI EL WEBSOCKET ESTÁ ANDANDO
+   * ==========================================================================
+   *
+   * Acá había un minuto fijo, con esta nota al lado: «con el websocket andando
+   * los cambios llegan en menos de un segundo y esto no llega a usarse nunca.
+   * Cada vuelta son veinte consultas a Supabase por pestaña abierta». Las dos
+   * frases eran ciertas, y juntas decían que estábamos pagando esas veinte
+   * consultas por minuto y por pestaña para no enterarnos de nada nuevo.
+   *
+   * Lo que costaba, medido en producción el 8 de octubre de 2026: la base
+   * atendió 14.000 peticiones en una hora con cuatro personas trabajando, y a
+   * esa altura de la tarde tardaba 4,4 segundos en el peor cinco por ciento
+   * —contra 0,5 a las nueve de la mañana, con el MISMO número de peticiones—.
+   * La máquina no daba abasto, y buena parte de lo que le pedíamos era esto.
+   *
+   * Así que el reloj se adapta a lo que hace falta de verdad:
+   *
+   *   EN VIVO ANDANDO   Tres minutos. El websocket ya avisa de las ocho tablas
+   *                     que la pantalla dibuja, en menos de un segundo. Este
+   *                     reloj es una red de seguridad, no el camino: que la red
+   *                     se revise cada tres minutos en vez de cada uno no
+   *                     atrasa a nadie, porque cuando se usa es porque el
+   *                     camino bueno ya falló.
+   *
+   *   EN VIVO CAÍDO     Un minuto, como siempre. Acá el reloj SÍ es el camino:
+   *   O SIN PUBLICAR    si no refresca él no refresca nadie, y la pantalla se
+   *                     queda con datos viejos sin avisar. No es momento de
+   *                     ahorrar.
+   *
+   * O sea: no se pierde frescura donde importa, y se deja de gastar donde no
+   * aportaba nada. «conectando» cuenta como caído a propósito —todavía no
+   * sabemos si va a andar, y suponer que sí es suponer lo que conviene—.
+   */
+  useAutoRefresco(enVivo === "conectado" ? 180_000 : 60_000);
 
   /**
    * Dejar anotado en qué pantalla está, para volver acá la próxima vez.

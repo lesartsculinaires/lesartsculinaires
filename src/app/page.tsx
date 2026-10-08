@@ -135,18 +135,36 @@ export default async function Page({
       fetchEnvios(),
     ]);
 
-  // Para el globito de la barra. Va suelto y no dentro del `Promise.all`
-  // de arriba porque ese arreglo se desestructura por posición, y meter
-  // uno en el medio corre todos los demás.
-  const autorizacionesPendientes = await contarAutorizacionesPendientes();
-  const actividadSinVer = await contarActividadSinVer();
-
-  const puedeResponder = await salidaDisponible();
-  const conectados = await canalesListos();
-  // Las llamadas usan el mismo token que los mensajes, pero se preguntan
-  // aparte: puede haber token y no estar habilitadas las llamadas para el
-  // número, y ahí el botón no tiene que aparecer.
-  const puedeLlamar = await llamadasDisponibles();
+  /*
+   * Los globitos de la barra y lo que está conectado.
+   *
+   * Van en su propio `Promise.all` y no en el de arriba porque aquel arreglo
+   * se desestructura por posición, y meter uno en el medio corre todos los
+   * demás. Pero JUNTOS, no uno detrás de otro como estaban.
+   *
+   * Eran cinco `await` en fila, y dos de ellos preguntan a la base. Esperar a
+   * que vuelva el primero para recién salir a buscar el segundo no lo pedía
+   * nadie: no dependen entre sí. En una tarde cargada —8 de octubre de 2026,
+   * 1.000 ms de promedio por consulta— eso era un segundo entero de más en
+   * cada pantalla y en cada acción del servidor, porque toda acción termina en
+   * `revalidatePath("/")` y vuelve a pasar por acá.
+   *
+   * Y ese segundo no era sólo lentitud: es el rato en que la asesora ve que no
+   * pasa nada después de apretar Enter, y vuelve a apretar. Así salieron dos
+   * mensajes al mismo cliente.
+   *
+   * Las llamadas se preguntan aparte de los mensajes aunque usen el mismo
+   * token: puede haber token y no estar habilitadas las llamadas para el
+   * número, y ahí el botón no tiene que aparecer.
+   */
+  const [autorizacionesPendientes, actividadSinVer, puedeResponder, conectados, puedeLlamar] =
+    await Promise.all([
+      contarAutorizacionesPendientes(),
+      contarActividadSinVer(),
+      salidaDisponible(),
+      canalesListos(),
+      llamadasDisponibles(),
+    ]);
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
 

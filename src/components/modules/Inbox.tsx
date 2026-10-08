@@ -320,6 +320,39 @@ export function Inbox({
   const [plantillaAMano, setPlantillaAMano] = useState(false);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  /**
+   * Que ya hay un envío en camino, SIN ESPERAR A QUE REACT REDIBUJE.
+   *
+   * ==========================================================================
+   * POR QUÉ NO ALCANZA CON `enviando`
+   * ==========================================================================
+   *
+   * `setEnviando(true)` deshabilita el botón, pero el botón no es por donde se
+   * manda: se manda con Enter, que es lo que dice el propio recuadro («Enter
+   * envía»). Y el `onKeyDown` del recuadro llamaba a `enviar()` sin mirar nada.
+   *
+   * Así que mientras el primer envío estaba en vuelo, cada Enter de más
+   * arrancaba un envío entero: otra llamada a Meta, otro `wamid`, otro mensaje
+   * de verdad en el teléfono del cliente. No era la pantalla mostrando dos
+   * veces lo mismo —eran dos mensajes—.
+   *
+   * Pasó dos veces el 8 de octubre de 2026, y las dos se ven en la base con
+   * `wamid` distintos, que es la prueba de que WhatsApp aceptó dos envíos:
+   *
+   *     Beatriz   18:58:13 y 18:58:15   el mismo texto de 168 caracteres
+   *     Laura     18:21:57 y 18:22:01   el mismo texto, y a las 18:22:05 el
+   *                                     mismo con una errata corregida
+   *
+   * Y se entiende por qué lo apretaron de nuevo: hasta que vuelve la respuesta
+   * no se mueve NADA en pantalla —el texto sigue en el recuadro, el hilo sigue
+   * igual— así que parece que no salió. Esas esperas de uno a cuatro segundos
+   * son las mismas que se están arreglando del lado del servidor.
+   *
+   * Un `useRef` y no un `useState` porque hace falta que valga en el mismo
+   * instante. El estado se ve recién en el siguiente dibujo, y dos Enter
+   * seguidos caben de sobra antes de eso.
+   */
+  const yendo = useRef(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement | null>(null);
   /** Para meter el emoji donde está el cursor y no siempre al final. */
@@ -981,6 +1014,9 @@ export function Inbox({
 
   const enviar = async () => {
     if (!actual || !texto.trim()) return;
+    // Un envío a la vez. Ver `yendo`: el segundo Enter le llegaba al cliente.
+    if (yendo.current) return;
+    yendo.current = true;
     setEnviando(true);
     setAviso(null);
     try {
@@ -1024,6 +1060,7 @@ export function Inbox({
         `${falla.dice} Fijate en el hilo antes de mandarlo de nuevo: si el mensaje ya aparece, salió.`,
       );
     } finally {
+      yendo.current = false;
       setEnviando(false);
     }
   };

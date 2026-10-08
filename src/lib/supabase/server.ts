@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SE_PASO, conTope } from "@/lib/conTope";
+import { leerLaFirma } from "@/lib/supabase/firmaDelToken";
 import {
   SUPABASE_ANON_KEY,
   SUPABASE_URL,
@@ -211,13 +212,60 @@ export const SIN_RESPUESTA = Object.assign(
 const sinTope = new WeakMap<SupabaseClient, ReturnType<typeof desnudo>>();
 const desnudo = (c: SupabaseClient) => c.auth.getUser.bind(c.auth);
 
+/**
+ * Los clientes que están verificando la firma AHORA MISMO.
+ *
+ * Es el seguro contra una recursión infinita, y no es hipotética. Cuando la
+ * llave es simétrica o no hay WebCrypto, `getClaims()` no puede verificar nada
+ * acá y resuelve llamando a `this.getUser(token)` —que es justo la función que
+ * estamos reemplazando—. Sin esta marca, `getUser` llamaría a `getClaims`, que
+ * llamaría a `getUser`, hasta que se acabe la pila y con ella el CRM entero.
+ *
+ * Hoy el proyecto firma con ES256 y ese camino no se toma nunca. Pero volver a
+ * una llave simétrica es un clic en el panel de Supabase, y el día que alguien
+ * lo dé no puede tumbar la aplicación.
+ */
+const verificandoAca = new WeakSet<SupabaseClient>();
+
 function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
   const original = desnudo(cliente);
   sinTope.set(cliente, original);
 
   type Respuesta = Awaited<ReturnType<typeof original>>;
 
+  /**
+   * Quién es, SACADO DEL PROPIO TOKEN, sin preguntarle a Supabase.
+   *
+   * El porqué, los números medidos y lo que se pierde a cambio están en
+   * `firmaDelToken.ts`, que es donde vive la regla y donde se la prueba. Acá
+   * queda sólo la parte que necesita el cliente de verdad.
+   *
+   * Devuelve `null` cuando no se pudo decidir acá: eso NO es «no hay sesión»,
+   * es «hay que preguntar», y lo resuelve el camino de siempre más abajo.
+   */
+  const deLaFirma = async (jwt?: string): Promise<Respuesta | null> => {
+    if (verificandoAca.has(cliente)) return null;
+    verificandoAca.add(cliente);
+    try {
+      const { data, error } = await cliente.auth.getClaims(jwt);
+      const veredicto = leerLaFirma(data, error);
+
+      if (veredicto.que === "preguntar") return null;
+      const user = veredicto.que === "usar" ? veredicto.usuario : null;
+      return { data: { user }, error: null } as unknown as Respuesta;
+    } catch {
+      return null;
+    } finally {
+      verificandoAca.delete(cliente);
+    }
+  };
+
   cliente.auth.getUser = (async (jwt?: string) => {
+    // El camino rápido primero. Cuando sirve —que es casi siempre— acá se
+    // termina sin tocar la red.
+    const firmado = await deLaFirma(jwt);
+    if (firmado) return firmado;
+
     /*
      * Nunca rechaza: lo que pierde la carrera contra el reloj sigue corriendo,
      * y una promesa rechazada que ya nadie escucha tumba el render entero.
