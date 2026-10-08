@@ -161,8 +161,7 @@ export function Llamada({
     pc.current = null;
     micro.current = null;
     respuestaPuesta.current = null;
-    tirarLoPreparado();
-  }, [tirarLoPreparado]);
+  }, []);
 
   const veredicto = comoSeMuestra(
     llamada ?? {
@@ -197,9 +196,25 @@ export function Llamada({
   useEffect(() => {
     if (veredicto.presencia !== "nada") return;
     soltarTodo();
+    tirarLoPreparado();
     setTrabajando(false);
     setSegundos(0);
-  }, [veredicto.presencia, soltarTodo]);
+  }, [veredicto.presencia, soltarTodo, tirarLoPreparado]);
+
+  /*
+   * Lo preparado se suelta POR SEPARADO de la llamada viva, y no dentro de
+   * `soltarTodo`.
+   *
+   * Parece un detalle y no lo es. `soltarTodo` se usa como limpieza de
+   * desmontaje —`useEffect(() => soltarTodo, [soltarTodo])`— así que cambiarle
+   * las dependencias cambia CUÁNDO corre esa limpieza, y correrla de más tumba
+   * la llamada en curso. Pasó: la tarjeta dejó de aparecer en la prueba del
+   * banco y costó un rato largo encontrarlo, porque el cambio parecía inocuo y
+   * la función que se agregaba no hacía nada cuando no había nada preparado.
+   *
+   * Son dos ciclos de vida distintos y conviene que se vean distintos.
+   */
+  useEffect(() => tirarLoPreparado, [tirarLoPreparado]);
 
   // Y al cerrar la pestaña o cambiar de pantalla, lo mismo.
   useEffect(() => soltarTodo, [soltarTodo]);

@@ -1,7 +1,9 @@
 # Plan de prueba — contestar llamadas más rápido
 
-**Esta rama no está en producción.** Se despliega como vista previa, se hacen dos o
-tres llamadas de verdad, y recién ahí pasa a `main`.
+**El cambio viaja APAGADO.** Aunque esté en producción, nadie lo nota: hay que
+prenderlo a mano, en el navegador de quien va a probar. Se hacen dos o tres
+llamadas de verdad y, si el audio abre bien, se prende para todos con un cambio
+de una línea.
 
 ---
 
@@ -34,6 +36,14 @@ siempre. Lo peor que puede pasar es tardar lo que se tardaba antes.
 1. Abrir el CRM en **Chrome o Edge** (no Safari).
 2. Entrar con una cuenta que atienda llamadas.
 3. Tener a mano un teléfono con WhatsApp **que no sea el de la escuela**.
+4. **Prenderlo en esta computadora:** `F12` → pestaña **Console** → pegar y Enter:
+
+```js
+localStorage.setItem("lac.llamadas.preparar", "1")
+```
+
+Recargar la página. Esto vale **sólo en esa computadora y ese navegador**: el
+resto del equipo sigue con el comportamiento de siempre mientras se prueba.
 
 ### El botón de apagado, por si algo sale mal
 
@@ -41,15 +51,11 @@ Si una llamada sale mal, **no hay que esperar a nadie**. En el navegador:
 `F12` → pestaña **Console** → pegar y Enter:
 
 ```js
-localStorage.setItem("lac.llamadas.sinPreparar", "1")
+localStorage.removeItem("lac.llamadas.preparar")
 ```
 
 Recargar. Desde ese momento el CRM vuelve al comportamiento de siempre, en esa
-computadora. Para volver a prenderlo:
-
-```js
-localStorage.removeItem("lac.llamadas.sinPreparar")
-```
+computadora.
 
 ---
 
@@ -120,8 +126,9 @@ está bien, pero conviene saberlo—.
 
 ## Después
 
-Con las tres llamadas hechas y el audio bien de los dos lados, esto pasa a
-`main`.
+Con las tres llamadas hechas y el audio bien de los dos lados, se cambia
+`PREPARAR_POR_OMISION` a `true` en `src/lib/audioLlamada.ts` y queda para todo el
+equipo. Una línea.
 
 Yo compruebo del lado de la base que las tres hayan quedado `terminada` con su
 duración en segundos, que es lo que confirma que el audio se abrió de verdad y

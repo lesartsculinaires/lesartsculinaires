@@ -299,30 +299,40 @@ export function porQueNoHayMicrofono(e: unknown): string {
  * ¿Se prepara la llamada mientras suena?
  *
  * ============================================================================
- * LA PERILLA QUE SE PUEDE APAGAR SIN DESPLEGAR
+ * VIENE APAGADO, Y ES A PROPÓSITO
  * ============================================================================
  *
  * Adelantar la negociación mientras el teléfono suena es lo que hace que
- * contestar sea casi instantáneo. Pero es lo único de las llamadas que no se
+ * contestar sea casi instantáneo. Pero es lo único de las llamadas que NO se
  * puede probar en el banco —no hay WebRTC de verdad ni un Meta de verdad— así
  * que la primera prueba real es con un cliente del otro lado.
  *
- * Por eso se puede apagar desde la consola del navegador, sin esperar un
- * despliegue:
+ * Por eso el valor por omisión es `false`: el código puede viajar a producción
+ * sin cambiarle el comportamiento a nadie. Quien va a probar lo prende en SU
+ * navegador, hace las llamadas del plan, y si algo sale mal lo apaga en el
+ * momento sin esperar un despliegue.
  *
- *     localStorage.setItem("lac.llamadas.sinPreparar", "1")   // apagar
- *     localStorage.removeItem("lac.llamadas.sinPreparar")     // volver a prender
+ *     localStorage.setItem("lac.llamadas.preparar", "1")     // prender acá
+ *     localStorage.removeItem("lac.llamadas.preparar")       // volver atrás
  *
- * Apagarlo deja el camino de siempre, entero. Es para la ventana de prueba: si
- * una llamada sale mal, se apaga en el momento y se sigue trabajando mientras
- * se averigua qué pasó, en vez de quedarse sin teléfono.
+ * Cuando las llamadas de prueba confirmen que el audio abre bien, esto pasa a
+ * `true` y queda para todos. Es un cambio de una línea, y hasta entonces nadie
+ * corre ningún riesgo.
+ *
+ * `lac.llamadas.sinPreparar` sigue existiendo y gana siempre: con el valor por
+ * omisión ya en `true`, es la forma de apagarlo en una máquina concreta sin
+ * tener que desplegar.
  */
+export const PREPARAR_POR_OMISION = false;
+
 export function sePuedePreparar(): boolean {
   try {
-    return localStorage.getItem("lac.llamadas.sinPreparar") !== "1";
+    if (localStorage.getItem("lac.llamadas.sinPreparar") === "1") return false;
+    if (localStorage.getItem("lac.llamadas.preparar") === "1") return true;
+    return PREPARAR_POR_OMISION;
   } catch {
-    // Sin `localStorage` —modo privado, permisos— se prepara igual: la perilla
-    // es una comodidad, no una condición.
-    return true;
+    // Sin `localStorage` —modo privado, permisos— vale lo que diga el valor por
+    // omisión: la perilla es una comodidad, no una condición.
+    return PREPARAR_POR_OMISION;
   }
 }
