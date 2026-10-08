@@ -29,6 +29,16 @@ export const MODULOS = [
   "Autorizaciones",
 ] as const;
 
+/**
+ * Con cuál se abre cuando no hay nada guardado ni pedido.
+ *
+ * Está acá y no dentro del estado del navegador porque el servidor también la
+ * necesita: para mandar de una los datos de la pantalla inicial tiene que
+ * saber cuál va a ser, y si cada lado tuviera su propia respuesta el primer
+ * dibujado traería los datos de una pantalla distinta de la que se abre.
+ */
+export const MOD_POR_OMISION = MODULOS[0];
+
 /** La pantalla de administración, que no está en la lista de todos. */
 export const MOD_USUARIOS = "Usuarios y Roles";
 

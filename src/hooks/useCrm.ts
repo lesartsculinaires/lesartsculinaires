@@ -10,6 +10,7 @@ import {
 } from "@/app/actions";
 import type { ClientePatch, Oportunidad, OportunidadPatch } from "@/lib/types";
 import { alternar, marcados, type Elegidos } from "@/lib/filtros";
+import { MOD_POR_OMISION } from "@/lib/modulos";
 
 export interface CrmState {
   mod: string;
@@ -60,8 +61,9 @@ export interface CrmState {
   categoria: string;
 }
 
+// Ver `MOD_POR_OMISION`: el servidor abre con la misma.
 const INITIAL: CrmState = {
-  mod: "Dashboard",
+  mod: MOD_POR_OMISION,
   menu: null,
   q: "",
   filtros: {},

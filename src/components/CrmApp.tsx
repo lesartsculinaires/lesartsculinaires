@@ -31,6 +31,9 @@ import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
+import { useDatosDelModulo } from "@/hooks/useDatosDelModulo";
+import { queSeNecesita, type Conjunto } from "@/lib/datosDelModulo";
+import type { DatosPerezosos } from "@/lib/datosPerezosos";
 import { useAvisoDiario } from "@/hooks/useAvisoDiario";
 import { useCampanita } from "@/hooks/useCampanita";
 import { useCrm } from "@/hooks/useCrm";
@@ -40,7 +43,6 @@ import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
-import type { Formulario as FormularioDeFeria } from "@/lib/formularios";
 import { friosDe } from "@/lib/frios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
 import {
@@ -62,30 +64,47 @@ import {
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
-import type { Envio } from "@/lib/supabase/envios";
 import { SIN_DUENO, activos } from "@/lib/types";
-import type {
-  Accesos,
-  Catalogo,
-  Conversacion,
-  Etiqueta,
-  Evento,
-  Importacion,
-  Mensaje,
-  Oportunidad,
-} from "@/lib/types";
+import type { Accesos, Catalogo, Evento, Oportunidad } from "@/lib/types";
+
+/**
+ * Plantillas mientras todavía no llegaron.
+ *
+ * Vale para el instante entre que se pide la pantalla y que contesta el
+ * servidor. `puedeSincronizar` y `panel` van apagados a propósito: sin saber
+ * qué hay del otro lado, ofrecer el botón de sincronizar sería ofrecer algo
+ * que puede no existir.
+ */
+const SIN_PLANTILLAS: EstadoPlantillas = {
+  plantillas: [],
+  intentadoEn: null,
+  logradoEn: null,
+  error: null,
+  puedeSincronizar: false,
+  panel: "",
+  faltaMigracion: false,
+};
 
 interface Props {
   oportunidades: Oportunidad[];
   catalogo: Catalogo;
   eventos: Evento[];
-  importaciones: Importacion[];
-  /** La tabla de importaciones todavía no existe. */
-  faltaMigracionBases: boolean;
-  conversaciones: Conversacion[];
-  mensajes: Mensaje[];
-  /** Las tablas de la bandeja todavía no existen. */
-  faltaMigracionInbox: boolean;
+  /**
+   * Los montones que no viajan en cada dibujado: la bandeja, las bases, las
+   * plantillas, las etiquetas, los formularios y los envíos.
+   *
+   * Viene sólo lo que la pantalla inicial necesita; el resto lo pide el
+   * navegador cuando se cambia de pantalla. Ver `datosDelModulo.ts`.
+   */
+  perezosos: DatosPerezosos;
+  /**
+   * Qué conjuntos trae `perezosos`, aunque alguno haya venido vacío.
+   *
+   * Hace falta aparte porque un conjunto vacío —la escuela todavía no tiene
+   * formularios— no se distingue de uno que no se pidió mirando los datos. Sin
+   * esto se volverían a pedir en cada dibujado, para siempre.
+   */
+  conjuntosServidos: Conjunto[];
   /** False cuando el servidor no tiene token de WhatsApp. */
   puedeResponderWhatsapp: boolean;
   /**
@@ -101,10 +120,6 @@ interface Props {
   puedeLlamarPorWhatsapp: boolean;
   userEmail: string;
   accesos: Accesos;
-  /** Catálogo de etiquetas de la bandeja. Vacío si falta su migración. */
-  etiquetas: Etiqueta[];
-  /** Plantillas de WhatsApp y cuándo se sincronizaron. */
-  plantillas: EstadoPlantillas;
   /** True when the roles tables do not exist yet. */
   faltaMigracionAccesos: boolean;
   /** False when the server has no service-role key to create logins with. */
@@ -121,14 +136,13 @@ interface Props {
   autorizacionesPendientes: number;
   /** Movimientos del equipo sin mirar, para el globito de Notificaciones. */
   actividadSinVer: number;
-  /** Los formularios de feria, con sus preguntas. */
-  formularios: FormularioDeFeria[];
-  /** Las tablas de formularios todavía no existen. */
-  faltaMigracionFormularios: boolean;
-  /** Los envíos masivos, con sus resultados ya contados. */
-  envios: Envio[];
-  /** Las tablas de envíos todavía no existen. */
-  faltaMigracionEnvios: boolean;
+  /**
+   * Mensajes sin leer, contados por el servidor.
+   *
+   * Se usa cuando la bandeja no está cargada, que es en catorce de las quince
+   * pantallas. Ver `sinLeer` más abajo.
+   */
+  mensajesSinLeer: number;
   /**
    * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
    * estuvo esta persona, o el modo elegido en el login la primera vez.
@@ -143,18 +157,13 @@ export default function CrmApp({
   oportunidades: initial,
   catalogo,
   eventos,
-  importaciones,
-  faltaMigracionBases,
-  conversaciones,
-  mensajes,
-  faltaMigracionInbox,
+  perezosos,
+  conjuntosServidos,
   puedeResponderWhatsapp,
   canalesConectados,
   puedeLlamarPorWhatsapp,
   userEmail,
   accesos,
-  etiquetas,
-  plantillas,
   faltaMigracionAccesos,
   puedeCrearCuentas,
   pospuestos,
@@ -163,15 +172,72 @@ export default function CrmApp({
   faltaMigracionSeguimientos,
   autorizacionesPendientes,
   actividadSinVer,
-  formularios,
-  faltaMigracionFormularios,
-  envios,
-  faltaMigracionEnvios,
+  mensajesSinLeer,
   modInicial,
   loadError,
 }: Props) {
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
+
+  /*
+   * ==========================================================================
+   * LOS DATOS DE LA PANTALLA ABIERTA, Y SÓLO LOS DE ÉSA
+   * ==========================================================================
+   *
+   * Acá llegaban la bandeja entera, los envíos, los formularios, las bases,
+   * las plantillas y las etiquetas en cada dibujado, los mirara o no la
+   * pantalla que se estaba viendo. Ahora el servidor manda los de la pantalla
+   * inicial y esto pide la diferencia cuando se cambia de pantalla.
+   *
+   * `initial` hace de sello: el servidor arma ese arreglo de nuevo en cada
+   * dibujado, así que cambiar de identidad es exactamente «llegaron datos
+   * nuevos». Es el mismo criterio con el que se calcula hace cuánto se
+   * refrescó, unas líneas más abajo.
+   *
+   * `state.sel` entra porque la ficha del cliente se abre ENCIMA de cualquier
+   * pantalla y necesita las etiquetas del lead. Ver `queSeNecesita`.
+   */
+  const soloLaPantalla = useMemo(() => queSeNecesita(state.mod), [state.mod]);
+  const necesarios = useMemo(
+    () => queSeNecesita(state.mod, state.sel != null),
+    [state.mod, state.sel],
+  );
+  const {
+    datos: perez,
+    cargando: enCamino,
+    error: errorPerezosos,
+  } = useDatosDelModulo(necesarios, perezosos, conjuntosServidos, initial);
+
+  /*
+   * Lo que falta PARA LA PANTALLA, que no es lo mismo que lo que falta.
+   *
+   * La ficha del cliente suma las etiquetas a la lista, y si esto no las
+   * separara, abrir un lead desde el Pipeline haría desaparecer el tablero
+   * entero detrás de un «Cargando…» por el rato que tardan diez filas. Lo que
+   * pasa en cambio es que la ficha se abre con sus etiquetas en blanco medio
+   * segundo, que es un parpadeo chico y en un solo recuadro.
+   */
+  const faltanDatos = enCamino.filter((c) => soloLaPantalla.includes(c));
+
+  /*
+   * Y con los nombres de siempre, para que las quince pantallas no se enteren.
+   *
+   * Lo que no llegó se dibuja vacío. No es un disimulo: mientras falta, lo que
+   * se muestra es el cartel de «Cargando…» de más abajo, no la pantalla con
+   * las listas en blanco. Los valores vacíos están para que nada reviente en
+   * ese instante, no para que nadie los lea.
+   */
+  const conversaciones = perez.bandeja?.conversaciones ?? [];
+  const mensajes = perez.bandeja?.mensajes ?? [];
+  const faltaMigracionInbox = perez.bandeja?.faltaMigracion ?? false;
+  const etiquetas = perez.etiquetas?.etiquetas ?? [];
+  const plantillas = perez.plantillas ?? SIN_PLANTILLAS;
+  const importaciones = perez.bases?.data ?? [];
+  const faltaMigracionBases = perez.bases?.faltaMigracion ?? false;
+  const formularios = perez.formularios?.data ?? [];
+  const faltaMigracionFormularios = perez.formularios?.faltaMigracion ?? false;
+  const envios = perez.envios?.envios ?? [];
+  const faltaMigracionEnvios = perez.envios?.faltaMigracion ?? false;
 
   /**
    * A donde lleva un aviso o una notificación: la ficha de la que habla.
@@ -497,27 +563,31 @@ export default function CrmApp({
    * media tarde de cada día los recordatorios de hoy se leerían como vencidos.
    */
   /**
-   * Los números rojos de la barra lateral.
+   * El número rojo de mensajes sin leer de la barra lateral.
    *
-   * Se cuentan los mensajes sin leer, no los hilos: dos hilos con cinco
-   * mensajes cada uno son diez cosas por leer, y un «2» ahí haría creer que
-   * son dos. Es el mismo criterio que ya usa cada fila de la bandeja.
+   * ==========================================================================
+   * POR QUÉ LO CUENTA EL SERVIDOR Y NO SE SUMA ACÁ
+   * ==========================================================================
    *
-   * Las archivadas no cuentan. Archivar es decir «esto ya no me ocupa», y un
-   * número que sigue contando lo archivado obliga a archivar y además entrar a
-   * marcar leído para que baje.
+   * Porque se ve en TODAS las pantallas, y sumarlo acá obligaba a tener la
+   * bandeja entera en la mano: cada hilo con sus marcas y cada mensaje con su
+   * texto, sus reacciones y sus archivos. Las dos consultas más caras del CRM
+   * —1.080 ms y 680 ms de promedio el 8 de octubre de 2026— pagadas por
+   * alguien que está mirando el Pipeline y nada más quiere ver un número.
+   *
+   * `contarSinLeer()` pide sólo los hilos que tienen algo sin leer, y de ellos
+   * una sola columna. Las reglas de qué cuenta —no las archivadas, no las
+   * silenciadas, y mensajes y no hilos— están ahí, escritas una sola vez.
+   *
+   * Cuando la bandeja SÍ está cargada se usa lo que ella dice, que es más
+   * fresco: al marcar un hilo como leído, el número baja en el acto en vez de
+   * esperar al próximo dibujado del servidor.
    */
-  /*
-   * Las silenciadas no cuentan.
-   *
-   * Silenciar es «esto sigue vivo pero no me apura»: el proveedor que manda
-   * cinco mensajes por semana, el grupo de una vez. Archivarlo lo escondería,
-   * y no es que sobre. Si igual sumara al número rojo, silenciar no serviría
-   * para nada, que es lo único que se le pide.
-   */
-  const sinLeer = conversaciones
-    .filter((c) => !c.archivada && !c.silenciada)
-    .reduce((s, c) => s + (c.sinLeer ?? 0), 0);
+  const sinLeer = perez.bandeja
+    ? conversaciones
+        .filter((c) => !c.archivada && !c.silenciada)
+        .reduce((s, c) => s + (c.sinLeer ?? 0), 0)
+    : mensajesSinLeer;
 
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
 
@@ -586,9 +656,27 @@ export default function CrmApp({
       <Llamada
         llamada={llamadas.llamada}
         yo={{ usuarioId: accesos.yo?.id ?? null, vendedorId: accesos.yo?.vendedorId ?? null }}
+        /*
+         * El nombre sale del hilo si está a mano, y SI NO, DE LA PROPIA
+         * LLAMADA.
+         *
+         * Antes salía sólo del hilo, y eso andaba porque la bandeja entera
+         * estaba siempre cargada. Ahora no: en catorce de las quince pantallas
+         * no está, y la tarjeta se habría quedado diciendo «Llamada entrante»
+         * a secas justo cuando hay que decidir en segundos si atender.
+         *
+         * La fila de la llamada ya trae el nombre y el teléfono —se piden en
+         * `useLlamadaEnVivo`—, así que no hace falta cargar nada: el hilo
+         * primero, porque puede tener un nombre más nuevo, y la llamada
+         * después.
+         */
         nombreDeQuienLlama={
           hiloDeLaLlamada?.nombrePerfil ??
-          (hiloDeLaLlamada?.telefono ? `+${hiloDeLaLlamada.telefono}` : null)
+          llamadas.llamada?.nombre ??
+          (() => {
+            const tel = hiloDeLaLlamada?.telefono ?? llamadas.llamada?.telefono;
+            return tel ? `+${tel}` : null;
+          })()
         }
         nombreDelDueno={
           // El catálogo de asesoras sí lo ve todo el equipo, así que el dueño
@@ -727,6 +815,49 @@ export default function CrmApp({
             onDismiss={actions.dismissSyncError}
           />
 
+          {/*
+            Lo que falló al pedir los datos de esta pantalla.
+
+            Va aparte de `SyncBanner`, que habla de las oportunidades y de lo
+            que se guarda. Acá el aviso es otro: la pantalla no se puede
+            dibujar porque lo suyo no llegó, y recargar es lo que lo arregla.
+          */}
+          {errorPerezosos && (
+            <p
+              style={{
+                margin: "0 0 14px",
+                padding: "11px 14px",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                borderRadius: 9,
+                background: "#F8E6E6",
+                color: "#8A2B2B",
+              }}
+            >
+              {errorPerezosos}
+            </p>
+          )}
+
+          {/*
+            ======================================================================
+            MIENTRAS LLEGA LO DE ESTA PANTALLA, NO SE DIBUJA LA PANTALLA
+            ======================================================================
+
+            La alternativa era dibujarla con las listas vacías y rellenar
+            cuando llegue. Suena más suave y es peor: una bandeja sin hilos no
+            se lee como «todavía no cargó» sino como «no hay conversaciones», y
+            un Formularios vacío invita a crear uno que ya existe. Medio
+            segundo de «Cargando…» es honesto; medio segundo diciendo que no
+            hay nada, no.
+
+            No pasa al entrar: el servidor manda los datos de la pantalla
+            inicial ya armados. Esto se ve nada más al cambiar de pantalla a
+            una que necesita algo que no estaba.
+          */}
+          {faltanDatos.length > 0 ? (
+            <p style={{ fontSize: 13, color: T.muted, padding: "28px 2px" }}>Cargando…</p>
+          ) : (
+          <>
           {mod === "Dashboard" && (
             <Dashboard oportunidades={delTablero} accent={accent} />
           )}
@@ -993,6 +1124,8 @@ export default function CrmApp({
               esAdmin={accesos.esAdmin}
               onAbrirFicha={abrirFicha}
             />
+          )}
+          </>
           )}
 
           {seleccionada && (

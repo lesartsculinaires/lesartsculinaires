@@ -107,6 +107,48 @@ export function moduloInicial(opciones: {
 }
 
 /**
+ * Con qué pantalla se va a abrir, SIN mirar permisos.
+ *
+ * ============================================================================
+ * PARA QUÉ HACE FALTA UNA SEGUNDA RESPUESTA A LA MISMA PREGUNTA
+ * ============================================================================
+ *
+ * `moduloInicial` necesita `permitidos`, y eso sale de los accesos, que salen
+ * de la base. O sea que para saber la pantalla hay que esperar una consulta.
+ *
+ * Y la pantalla decide qué datos pedir. Encadenadas, son dos viajes a la base
+ * uno detrás del otro: primero los accesos, y recién después los datos de la
+ * pantalla. Con la base rápida no se nota; con la base lenta se suma entero.
+ * Medido en el banco con cinco segundos por consulta, la bandeja pasaba de
+ * contestar a no contestar NUNCA —se cortó la medición al minuto—.
+ *
+ * Esto contesta lo mismo sin esperar a nadie, mirando sólo lo que ya está en
+ * la petición. Así los datos se piden JUNTO con los accesos y no después.
+ *
+ * ============================================================================
+ * QUÉ PASA CUANDO LE ERRA
+ * ============================================================================
+ *
+ * Le erra sólo si la galleta nombra una pantalla que el rol no puede ver, que
+ * es raro: la galleta la escribe el propio CRM al entrar a una pantalla que ya
+ * le dejó ver. Y cuando le erra no rompe nada:
+ *
+ *   PIDIÓ DE MÁS   Se cargaron datos que la pantalla buena no usa. Se tiran.
+ *                  No se filtró nada: cada consulta corre como esa persona y
+ *                  la base aplica sus políticas igual.
+ *
+ *   PIDIÓ DE MENOS El navegador ve que falta y lo pide. Se ve un «Cargando…»
+ *                  de medio segundo la primera vez.
+ */
+export function pantallaProbable(
+  pedido: string | null | undefined,
+  guardado: string | null | undefined,
+  porOmision: string,
+): string {
+  return decodificar(pedido) ?? decodificar(guardado) ?? porOmision;
+}
+
+/**
  * El valor codificado, de vuelta a texto.
  *
  * `decodeURIComponent` lanza con un `%` suelto, que es lo que queda si alguien

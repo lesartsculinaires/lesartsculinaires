@@ -392,3 +392,56 @@ export function comoLosLee(filas: unknown[]): Mensaje[] {
     origen: (m.origen as Mensaje["origen"]) ?? null,
   }));
 }
+
+/**
+ * Cuántos mensajes sin leer hay, sin traerse la bandeja entera.
+ *
+ * ============================================================================
+ * POR QUÉ ESTO EXISTE Y NO SE SUMA SOBRE `fetchInbox()`
+ * ============================================================================
+ *
+ * Porque el número rojo de la barra lateral se ve en TODAS las pantallas, y
+ * hasta ahora la única forma de calcularlo era cargar la bandeja completa:
+ * cada hilo con sus marcas y CADA MENSAJE con su texto, sus reacciones y sus
+ * archivos. Eso son las dos consultas más caras del CRM —medidas en
+ * producción el 8 de octubre de 2026, 1.080 ms y 680 ms de promedio— pagadas
+ * por alguien que está mirando el Pipeline.
+ *
+ * Acá se piden nada más los hilos que TIENEN algo sin leer, y de ellos una
+ * sola columna. En una escuela con novecientas conversaciones eso son unas
+ * pocas filas de un número, en vez de cuatro mil mensajes con su texto.
+ *
+ * Se cuenta por mensajes y no por hilos, igual que la barra: dos hilos con
+ * cinco mensajes cada uno son diez cosas por leer, y un «2» haría creer que
+ * son dos.
+ *
+ * `not(... is true)` y no `eq(false)` porque las dos columnas admiten nulo, y
+ * un nulo acá quiere decir «no está archivada»: con `eq(false)` los hilos sin
+ * la marca puesta quedarían fuera de la cuenta.
+ */
+export async function contarSinLeer(): Promise<number> {
+  const supabase = await getServerClient();
+  if (!supabase) return 0;
+
+  const pedir = (conSilenciadas: boolean) => {
+    let q = supabase
+      .from("conversaciones")
+      .select("sin_leer")
+      .gt("sin_leer", 0)
+      .not("archivada", "is", true);
+    // `silenciada` llega con `20261011120000_bandeja_marcas.sql`. Sin esa
+    // migración la columna no existe y pedirla devuelve 42703, que se lleva la
+    // consulta entera: mejor contar de más que dejar la barra sin número.
+    if (conSilenciadas) q = q.not("silenciada", "is", true);
+    return q;
+  };
+
+  let { data, error } = await pedir(true);
+  if (error) ({ data, error } = await pedir(false));
+
+  // Un número que no se pudo calcular es un cero, no una pantalla rota: el
+  // globito se apaga y la bandeja sigue mostrando lo suyo al abrirla.
+  if (error || !data) return 0;
+
+  return (data as Fila[]).reduce((s, c) => s + Number(c.sin_leer ?? 0), 0);
+}
