@@ -157,12 +157,50 @@ const TOPE_AUTH_MS = 3000;
  * escriba. Envolverlo donde se arma el cliente lo deja puesto para todos, y
  * para los que todavía no existen.
  *
- * Al vencerse contesta lo mismo que contestaría Supabase si no hubiera sesión:
- * sin usuario. No es un invento cómodo —es la verdad disponible—: no se pudo
- * confirmar quién es, así que no se puede actuar como si se supiera. Las
- * acciones del servidor niegan, y la pantalla manda al login, que es lo que ya
- * hacen cuando la sesión no vale.
+ * Al vencerse contesta sin usuario: no se pudo confirmar quién es, así que no
+ * se puede actuar como si se supiera, y las acciones del servidor niegan.
+ *
+ * ============================================================================
+ * PERO «NO SE PUDO PREGUNTAR» NO ES «NO HAY SESIÓN», Y ACÁ SE DIJO QUE SÍ
+ * ============================================================================
+ *
+ * Esto decía antes que al vencerse contestaba «lo mismo que contestaría
+ * Supabase si no hubiera sesión», y que por lo tanto la pantalla mandaba al
+ * login. Las dos mitades eran ciertas y juntas eran un desastre:
+ *
+ *     Supabase tarda más de tres segundos  →  getUser dice «no hay nadie»
+ *                                          →  page.tsx manda al login
+ *                                          →  la persona pierde lo que hacía
+ *
+ * Y con la sesión INTACTA: la pantalla de login le decía «ya tenés una sesión
+ * abierta como …», que es exactamente lo que se vio en la captura.
+ *
+ * Pasó de verdad, y bastante: el 6 y el 7 de octubre de 2026 las dos asesoras
+ * que más usan el CRM volvieron a entrar veinte y trece veces en un día. Tres
+ * de esas veces en dos minutos, con tokens de segundos de vida —o sea que no
+ * era vencimiento ni refresco: era esto—. Las cuentas de poco uso no lo
+ * sufrieron, porque la lentitud llega con la carga.
+ *
+ * El middleware ya distinguía los dos casos y dejaba pasar a quien traía
+ * galleta. Esta capa lo deshacía cinco milisegundos después.
+ *
+ * Ahora el vencimiento se marca con `SIN_RESPUESTA`, y quien necesite
+ * distinguir pregunta con `quienEs()`. Los diecisiete lugares que sólo miran
+ * `data.user` siguen negando igual, que para una escritura es lo correcto.
  */
+
+/**
+ * La marca de «no contestó a tiempo», para poder distinguirla de «no hay
+ * sesión».
+ *
+ * Es un objeto único y se compara por identidad: el texto de un error cambia
+ * con cada versión de la librería, y comparar textos es cómo se vuelve a
+ * confundir una cosa con la otra.
+ */
+export const SIN_RESPUESTA = Object.assign(
+  new Error("Supabase no contestó a tiempo al preguntar quién es"),
+  { name: "SinRespuesta" },
+);
 function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
   const original = cliente.auth.getUser.bind(cliente.auth);
 
@@ -179,10 +217,15 @@ function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
 
     if (contestó !== SE_PASO && contestó !== null) return contestó;
 
+    // El número faltaba en el texto —decía «no contestó en  ms»— y es el único
+    // dato que vuelve útil esta línea cuando alguien la busca en el registro.
     console.warn(
-      `[supabase] getUser no contestó en  ms: se sigue sin sesión`,
+      `[supabase] getUser no contestó en ${TOPE_AUTH_MS} ms: no se pudo confirmar la sesión`,
     );
-    return { data: { user: null }, error: null } as unknown as Respuesta;
+    return {
+      data: { user: null },
+      error: SIN_RESPUESTA,
+    } as unknown as Respuesta;
   }) as typeof cliente.auth.getUser;
 
   return cliente;
@@ -224,4 +267,39 @@ export async function getUser() {
   if (!supabase) return null;
   const { data } = await supabase.auth.getUser();
   return data.user ?? null;
+}
+
+/**
+ * Quién es, DICIENDO ADEMÁS si se pudo preguntar.
+ *
+ * ============================================================================
+ * PARA QUÉ HACE FALTA LA SEGUNDA MITAD
+ * ============================================================================
+ *
+ * `getUser()` devuelve `null` en dos situaciones que no se parecen en nada:
+ *
+ *   NO HAY SESIÓN        La persona no entró, o su sesión venció. Hay que
+ *                        mandarla al login: es lo que corresponde.
+ *
+ *   NO SE PUDO PREGUNTAR Supabase tardó más de lo que se le dio. La sesión
+ *                        puede estar perfecta. Mandarla al login le hace
+ *                        perder lo que estaba haciendo y le pide la contraseña
+ *                        para volver a donde ya estaba.
+ *
+ * Quien sólo necesita negar —las acciones del servidor— puede seguir usando
+ * `getUser()`: para una escritura, no poder confirmar es razón suficiente para
+ * no escribir. Quien decide si echar a alguien de la pantalla tiene que usar
+ * esto.
+ */
+export async function quienEs(): Promise<{
+  user: Awaited<ReturnType<typeof getUser>>;
+  /** Falso sólo cuando Supabase no contestó a tiempo. */
+  respondio: boolean;
+}> {
+  const supabase = await getServerClient();
+  // Sin configurar no es una caída pasajera: es un no definitivo.
+  if (!supabase) return { user: null, respondio: true };
+
+  const { data, error } = await supabase.auth.getUser();
+  return { user: data.user ?? null, respondio: error !== SIN_RESPUESTA };
 }

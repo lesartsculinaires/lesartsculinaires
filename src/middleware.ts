@@ -169,17 +169,29 @@ export async function middleware(request: NextRequest) {
        */
       const { data, error } = await supabase.auth.getClaims();
       /*
-       * Sólo cuenta como caída cuando NO hubo respuesta.
+       * Sólo DOS códigos significan «esta persona no está autenticada».
        *
-       * Un token vencido SÍ es una respuesta y tiene que mandar al login como
-       * siempre. Confundir las dos cosas sería peor que el problema original:
-       * una sesión vencida no volvería a pedir contraseña nunca. Por eso se
-       * mira si vino código de respuesta y no el texto del error, que cambia
-       * con cada versión de la librería.
+       * ----------------------------------------------------------------------
+       * ESTO DECÍA «CUALQUIER CÓDIGO», Y ESO ECHABA GENTE
+       * ----------------------------------------------------------------------
+       *
+       * La condición era `!(error && !error.status)`: alcanzaba con que la
+       * respuesta trajera CUALQUIER código para darla por buena y mandar al
+       * login. Pero un 429 —demasiadas peticiones— o un 500 no dicen nada sobre
+       * la sesión de nadie: dicen que el servidor de sesiones no está en
+       * condiciones de contestar. Tratarlos como un «no» convierte un mal rato
+       * de Supabase en una expulsión, que es justo lo que este archivo dice
+       * veinte líneas más arriba que no hay que hacer.
+       *
+       * 401 y 403 sí lo dicen: ésos mandan al login, como siempre. Una sesión
+       * vencida tiene que volver a pedir contraseña, o nunca la pediría.
        */
+      const codigo = error?.status;
+      const diceQueNo = codigo === 401 || codigo === 403;
+
       return {
         user: data?.claims?.sub ? String(data.claims.sub) : null,
-        huboRespuesta: !(error && !error.status),
+        huboRespuesta: !error || diceQueNo,
       };
     } catch {
       return { user: null, huboRespuesta: false };
