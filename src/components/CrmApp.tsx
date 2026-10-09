@@ -180,6 +180,46 @@ export default function CrmApp({
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
 
   /*
+   * El `?mod=` de la dirección se quita apenas se usó.
+   *
+   * Es una intención de ENTRADA —«abrí en esta pantalla»— y `modInicial` ya la
+   * consumió. Pero la dirección no cambia cuando se cambia de pantalla, así que
+   * se quedaba ahí TODA LA SESIÓN diciendo una cosa que dejó de ser verdad, y
+   * cada refresco volvía a pedir esa dirección. Los dos casos reales:
+   *
+   *     /?mod=admin     quien entra «como administrador»
+   *     /?mod=Canales   quien vuelve de conectar una cuenta de Meta
+   *
+   * El servidor mandaba los datos de la pantalla nombrada ahí y no de la que se
+   * estaba mirando, y la bandeja se reemplazaba por «Cargando…»: se perdía el
+   * hilo abierto y el texto escrito sin enviar.
+   *
+   * El servidor ya lo distingue por su lado (`pantallaProbable` y
+   * `Sec-Fetch-Dest`), pero eso depende de una cabecera que no se pudo
+   * comprobar que Netlify reenvíe. Con la dirección limpia no hace falta
+   * ninguna cabecera: no queda nada que creerle.
+   *
+   * ==========================================================================
+   * POR QUÉ `router.replace` Y NO `history.replaceState`
+   * ==========================================================================
+   *
+   * Se probó primero con `history.replaceState`, que es lo que ya hace `Canales`
+   * con sus propios parámetros. La barra del navegador quedaba limpia y NO
+   * SERVÍA DE NADA: el router de Next guarda su propia copia de la dirección y
+   * `router.refresh()` seguía pidiendo `/?mod=Canales`, medido en el banco. Para
+   * `Canales` no importa —ahí sólo es estética— pero acá es todo el asunto.
+   *
+   * `router.replace` sí actualiza esa copia. Cuesta una vuelta más del servidor,
+   * una sola vez, y sólo en la entrada de quien trae un `?mod=`.
+   */
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("mod")) return;
+    u.searchParams.delete("mod");
+    router.replace(u.pathname + u.search + u.hash, { scroll: false });
+  }, [router]);
+
+  /*
    * ==========================================================================
    * LOS DATOS DE LA PANTALLA ABIERTA, Y SÓLO LOS DE ÉSA
    * ==========================================================================

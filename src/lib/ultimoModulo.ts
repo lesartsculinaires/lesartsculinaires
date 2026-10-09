@@ -126,26 +126,67 @@ export function moduloInicial(opciones: {
  * la petición. Así los datos se piden JUNTO con los accesos y no después.
  *
  * ============================================================================
+ * LAS DOS REGLAS QUE LE FALTARON LA PRIMERA VEZ
+ * ============================================================================
+ *
+ * La primera versión se creía el `?mod=` de la dirección a ciegas, y eso rompía
+ * la bandeja de quien tenía uno puesto. Hay dos casos reales, y los dos duran
+ * TODA LA SESIÓN porque cambiar de pantalla no cambia la dirección:
+ *
+ *     /?mod=admin     quien entra «como administrador»
+ *     /?mod=Canales   quien vuelve de conectar una cuenta de Meta
+ *
+ * Cada refresco —el de cada minuto, el de cada aviso del websocket, el que hace
+ * `enviar`— vuelve a pedir ESA dirección. El servidor mandaba los datos de la
+ * pantalla nombrada ahí, que no tenía nada que ver con la que la persona estaba
+ * mirando, y la bandeja se reemplazaba por «Cargando…»: se perdía el hilo
+ * abierto y el texto escrito sin enviar, en cada refresco.
+ *
+ *   1. SÓLO VALE SI NOMBRA UNA PANTALLA DE VERDAD. `?mod=admin` no es una
+ *      pantalla: es un pedido de abrir el panel de administración, y eso lo
+ *      resuelve `moduloInicial`, que sí sabe de permisos. Acá no suma nada.
+ *
+ *   2. EN UN REFRESCO MANDA LA GALLETA. El `?mod=` es una intención de ENTRADA:
+ *      sólo cuenta cuando se abre la página. Un refresco no es entrar: es la
+ *      misma persona, en la misma pantalla, pidiendo datos nuevos. Y dónde está
+ *      parada lo dice la galleta, que se escribe cada vez que cambia de
+ *      pantalla.
+ *
+ * ============================================================================
  * QUÉ PASA CUANDO LE ERRA
  * ============================================================================
  *
- * Le erra sólo si la galleta nombra una pantalla que el rol no puede ver, que
- * es raro: la galleta la escribe el propio CRM al entrar a una pantalla que ya
- * le dejó ver. Y cuando le erra no rompe nada:
+ * Le erra, ahora raramente, si la galleta nombra una pantalla que el rol no
+ * puede ver: la escribe el propio CRM al entrar a una pantalla que ya le dejó
+ * ver. Y cuando le erra no rompe nada:
  *
  *   PIDIÓ DE MÁS   Se cargaron datos que la pantalla buena no usa. Se tiran.
  *                  No se filtró nada: cada consulta corre como esa persona y
  *                  la base aplica sus políticas igual.
  *
  *   PIDIÓ DE MENOS El navegador ve que falta y lo pide. Se ve un «Cargando…»
- *                  de medio segundo la primera vez.
+ *                  de medio segundo.
  */
 export function pantallaProbable(
   pedido: string | null | undefined,
   guardado: string | null | undefined,
   porOmision: string,
+  /** Los nombres de pantalla que existen. Lo demás no es una pantalla. */
+  conocidas: readonly string[],
+  /** La petición es un refresco de la página, no una entrada a ella. */
+  esRefresco = false,
 ): string {
-  return decodificar(pedido) ?? decodificar(guardado) ?? porOmision;
+  const sabida = (valor: string | null | undefined): string | null => {
+    const d = decodificar(valor);
+    return d && conocidas.includes(d) ? d : null;
+  };
+
+  if (!esRefresco) {
+    const pide = sabida(pedido);
+    if (pide) return pide;
+  }
+
+  return sabida(guardado) ?? porOmision;
 }
 
 /**

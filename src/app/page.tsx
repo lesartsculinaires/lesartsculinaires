@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import CrmApp from "@/components/CrmApp";
@@ -170,7 +170,34 @@ export default async function Page({
    * uno en el medio corre todos los demás.
    */
   const galleta = (await cookies()).get(COOKIE_MODULO)?.value;
-  const necesarios = queSeNecesita(pantallaProbable(mod, galleta, MOD_POR_OMISION));
+  /*
+   * ¿Es un refresco o es entrar?
+   *
+   * Importa porque el `?mod=` de la dirección es una intención de ENTRADA y se
+   * queda en la dirección toda la sesión: sin esta distinción, cada refresco de
+   * quien entró «como administrador» o volvió de conectar Meta pedía los datos
+   * de una pantalla que ya no estaba mirando, y la bandeja se reemplazaba por
+   * «Cargando…» —con el hilo abierto y el borrador perdidos—. Ver
+   * `pantallaProbable`.
+   *
+   * Se distingue por `Sec-Fetch-Dest`, que el navegador manda solo: `document`
+   * cuando abre la página, `empty` cuando pide datos con `fetch`, que es lo que
+   * hacen `router.refresh()` y las acciones. Se probó con la cabecera `RSC` y NO
+   * sirve: Next se la esconde al código de la página, y la prueba daba siempre
+   * «entrada». Sin la cabecera —un cliente que no es un navegador— se trata como
+   * entrada, que es lo de siempre.
+   */
+  const destino = (await headers()).get("sec-fetch-dest");
+  const esRefresco = destino !== null && destino !== "document";
+  const necesarios = queSeNecesita(
+    pantallaProbable(
+      mod,
+      galleta,
+      MOD_POR_OMISION,
+      [...MODULOS, MOD_USUARIOS, MOD_CANALES],
+      esRefresco,
+    ),
+  );
 
   const [
     ops,

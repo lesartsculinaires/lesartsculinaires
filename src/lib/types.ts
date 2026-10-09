@@ -631,6 +631,34 @@ export interface ReaccionMensaje {
   direccion: "entrante" | "saliente";
 }
 
+/**
+ * Lo que contesta `responderConversacion`: el resultado de siempre, MÁS el
+ * mensaje ya guardado.
+ *
+ * El mensaje viene para que la pantalla cambie la burbuja provisoria por la
+ * verdadera, con su `id` de la base, sin esperar a ningún refresco. Esa espera
+ * era el problema: entre el envío y la burbuja pasaban de cinco a ocho segundos
+ * en una tarde cargada, sin que cambiara nada en pantalla, y quien atendía
+ * apretaba Enter otra vez. Ver `enviar` en la bandeja.
+ *
+ * Es opcional porque a veces no se puede devolver —ver `guardarSaliente`— y
+ * entonces la pantalla espera al refresco, que es como era siempre.
+ */
+export interface ResultadoRespuesta {
+  ok: boolean;
+  error: string | null;
+  mensaje?: Mensaje;
+  /**
+   * El mensaje SALIÓ al cliente aunque `ok` sea falso.
+   *
+   * Pasa cuando Meta lo aceptó y lo que falló fue anotarlo en la base. La
+   * pantalla devuelve al recuadro el texto de un envío que falló, para no
+   * perderlo; con esto en verdadero NO lo devuelve, porque tenerlo de nuevo a
+   * mano es una invitación a mandarlo otra vez, y el cliente ya lo tiene.
+   */
+  yaSalio?: boolean;
+}
+
 export interface Mensaje {
   id: number;
   conversacionId: number;

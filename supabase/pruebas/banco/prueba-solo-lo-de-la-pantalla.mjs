@@ -257,7 +257,65 @@ console.log("\n── 5. cada pantalla, lo suyo ──");
   }
 }
 
-console.log("\n── 6. y nada reventó por el camino ──");
+// ══════════════════════════════════════════════════════════════════════════
+console.log("\n── 6. CON UN `?mod=` DE SOBRA EN LA DIRECCIÓN, UN REFRESCO NO DESARMA LA BANDEJA ──");
+// ══════════════════════════════════════════════════════════════════════════
+{
+  /*
+   * El defecto que se metió con este mismo cambio, y que sólo se vio con la
+   * prueba de la nota interna: la dirección conserva el `?mod=` TODA LA SESIÓN
+   * —quien entra «como administrador» o vuelve de conectar Meta—, cada refresco
+   * lo vuelve a pedir, y el servidor mandaba los datos de la pantalla NOMBRADA
+   * ahí y no de la que se estaba mirando. La bandeja se reemplazaba por
+   * «Cargando…»: se perdía el hilo abierto y el texto escrito sin enviar.
+   *
+   * Se reproduce tal cual: se entra por `/?mod=Canales`, se pasa a la bandeja,
+   * se abre un hilo, se deja un borrador y se pide un refresco. El borrador
+   * tiene que seguir ahí.
+   */
+  const ctx2 = await nav.newContext({ viewport: { width: 1500, height: 1050 } });
+  await ctx2.addCookies([{ name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" }]);
+  await ctx2.addInitScript(
+    (h) => { try { localStorage.setItem("lac.reservas.visto", h); } catch {} },
+    new Date().toISOString().slice(0, 10),
+  );
+  const q = await ctx2.newPage();
+  let refrescos = 0;
+  q.on("request", (r) => { if (r.url().includes("_rsc")) refrescos += 1; });
+
+  try {
+    await q.goto("http://127.0.0.1:3142/?mod=Canales", { waitUntil: "networkidle" });
+    await q.waitForTimeout(1500);
+    await q.locator("aside nav button", { hasText: "Inbox" }).click();
+    await q.waitForTimeout(3000);
+    await q.locator("button.row", { hasText: "Pantalla Sola" }).first().click();
+    await q.waitForTimeout(1500);
+
+    const BORRADOR = "BORRADOR SIN ENVIAR " + crypto.randomUUID().slice(0, 6);
+    await q.locator("main textarea").first().fill(BORRADOR);
+
+    const antes = refrescos;
+    await q.getByTitle("Traer los datos ahora mismo").click();
+    await q.waitForTimeout(4500);
+
+    // Que de verdad hubo un refresco, o lo de abajo pasaría sin haber probado nada.
+    es("hubo un refresco", refrescos > antes, true);
+    es(
+      "EL BORRADOR SIGUE EN EL RECUADRO",
+      await q.locator("main textarea").first().inputValue().catch(() => null),
+      BORRADOR,
+    );
+    es(
+      "y no quedó un «Cargando…» en pantalla",
+      (await q.locator("body").innerText()).includes("Cargando…"),
+      false,
+    );
+  } finally {
+    await ctx2.close();
+  }
+}
+
+console.log("\n── 7. y nada reventó por el camino ──");
 es("sin errores de JavaScript", errores, []);
 
 await p.screenshot({ path: "/tmp/solo-lo-de-la-pantalla.png" });

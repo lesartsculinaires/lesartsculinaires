@@ -58,6 +58,16 @@ import { COMO_SE_DICE, acuseDe } from "@/lib/acuses";
 import { activosCon } from "@/lib/types";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
+/**
+ * Un mensaje mandado desde esta pantalla, todavía provisorio o ya confirmado.
+ *
+ * `despuesDe` es el mayor `id` real que había en el hilo al apretar Enter. Sirve
+ * para una sola cosa: reconocer, entre lo que llega del servidor, el eco de este
+ * mismo envío si le gana a la confirmación. Un `id` mayor y con el mismo texto
+ * sólo puede ser el suyo.
+ */
+type EnviadoAca = Mensaje & { despuesDe?: number };
+
 interface Props {
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
@@ -319,40 +329,70 @@ export function Inbox({
    */
   const [plantillaAMano, setPlantillaAMano] = useState(false);
   const [texto, setTexto] = useState("");
-  const [enviando, setEnviando] = useState(false);
   /**
-   * Que ya hay un envío en camino, SIN ESPERAR A QUE REACT REDIBUJE.
+   * Lo que se mandó desde esta pantalla, para dibujarlo SIN esperar a la base.
    *
    * ==========================================================================
-   * POR QUÉ NO ALCANZA CON `enviando`
+   * POR QUÉ LA BURBUJA SALE ANTES QUE EL SERVIDOR
    * ==========================================================================
    *
-   * `setEnviando(true)` deshabilita el botón, pero el botón no es por donde se
-   * manda: se manda con Enter, que es lo que dice el propio recuadro («Enter
-   * envía»). Y el `onKeyDown` del recuadro llamaba a `enviar()` sin mirar nada.
+   * El mensaje se mandaba, y la burbuja aparecía recién cuando terminaban DOS
+   * cosas una tras otra: la acción del servidor —tres consultas seguidas— y el
+   * refresco completo que se pedía a continuación. Entre cinco y ocho segundos
+   * en una tarde cargada; 7,9 s medidos en el banco con la base a 700 ms por
+   * consulta. En ese rato el texto seguía en el recuadro y el hilo no cambiaba:
+   * parecía que no había salido, y el cliente ya lo tenía. Quien atendía
+   * apretaba Enter otra vez y el cliente lo recibía dos veces.
    *
-   * Así que mientras el primer envío estaba en vuelo, cada Enter de más
-   * arrancaba un envío entero: otra llamada a Meta, otro `wamid`, otro mensaje
-   * de verdad en el teléfono del cliente. No era la pantalla mostrando dos
-   * veces lo mismo —eran dos mensajes—.
+   * Pasó desde el 11 de septiembre con Gerencia, Jefatura y Ventas por igual.
+   * El 3 de octubre, tres veces el mismo texto con 5,3 y 5,7 segundos de por
+   * medio; el 8, tres veces a las 12:21, 12:22 y 12:22. Dos de cada uno, con
+   * `wamid` distinto, que prueba que WhatsApp aceptó dos envíos y no que la
+   * pantalla dibujó dos veces.
    *
-   * Pasó dos veces el 8 de octubre de 2026, y las dos se ven en la base con
-   * `wamid` distintos, que es la prueba de que WhatsApp aceptó dos envíos:
+   * Ahora, al apretar Enter el recuadro se vacía y la burbuja aparece EN ESE
+   * INSTANTE, marcada «enviando». Cuando el servidor confirma, se cambia por la
+   * verdadera —la que devuelve él, con su `id` de la base—.
    *
-   *     Beatriz   18:58:13 y 18:58:15   el mismo texto de 168 caracteres
-   *     Laura     18:21:57 y 18:22:01   el mismo texto, y a las 18:22:05 el
-   *                                     mismo con una errata corregida
+   * ==========================================================================
+   * POR QUÉ NO SE VEN DOS BURBUJAS: EL `id`
+   * ==========================================================================
    *
-   * Y se entiende por qué lo apretaron de nuevo: hasta que vuelve la respuesta
-   * no se mueve NADA en pantalla —el texto sigue en el recuadro, el hilo sigue
-   * igual— así que parece que no salió. Esas esperas de uno a cuatro segundos
-   * son las mismas que se están arreglando del lado del servidor.
+   * Al volver la confirmación la burbuja provisional se reemplaza por una con
+   * el `id` real, y `delHilo` junta todo POR `id`. Cuando después llega la
+   * misma por el refresco o el websocket, es la misma clave: se pisan, no se
+   * suman. No se compara texto ni hora, que es como se terminan viendo dos
+   * burbujas o perdiendo una.
    *
-   * Un `useRef` y no un `useState` porque hace falta que valga en el mismo
-   * instante. El estado se ve recién en el siguiente dibujo, y dos Enter
-   * seguidos caben de sobra antes de eso.
+   * La única excepción es la ventana entre que el servidor ya guardó y la
+   * confirmación vuelve —el websocket puede ganarle— y ahí `delHilo` esconde
+   * la provisional, que es sólo cosmética: no puede perder nada.
    */
-  const yendo = useRef(false);
+  const [enviadosAca, setEnviadosAca] = useState<EnviadoAca[]>([]);
+  /** Para darle a cada burbuja provisional un `id` que no choque con uno real. */
+  const contadorProvisorio = useRef(0);
+  /**
+   * Los envíos que van o esperan turno, por su texto.
+   *
+   * Es la red de abajo, no el mecanismo principal —el principal es que el
+   * recuadro se vacía y no queda nada que reenviar—. Sirve para el caso en que
+   * el segundo Enter llegue antes de que React redibuje: el texto todavía figura
+   * en el recuadro, pero ya está en camino, y no se manda de nuevo.
+   *
+   * Un `useRef` y no un `useState` porque tiene que valer en el mismo instante.
+   */
+  const enCamino = useRef<Set<string>>(new Set());
+  /**
+   * La cola: de a un envío por vez, en el orden en que se escribieron.
+   *
+   * Hace falta desde que el recuadro se vacía al instante: la persona puede
+   * escribir el siguiente mientras el primero todavía va, y dos acciones a la
+   * vez pueden llegar a Meta en cualquier orden. Un cliente que lee «Gracias»
+   * antes que «Hola» es un problema distinto, igual de feo.
+   */
+  const cola = useRef<Promise<void>>(Promise.resolve());
+  /** El hilo que está a la vista AHORA, para saber si un fallo es de éste. */
+  const hiloALaVista = useRef<number | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement | null>(null);
   /** Para meter el emoji donde está el cursor y no siempre al final. */
@@ -548,28 +588,79 @@ export function Inbox({
     if (abierta == null) return [];
     const enLaVentana = mensajes.filter((m) => m.conversacionId === abierta);
     const delServidor = traidos[abierta];
+    const mios = enviadosAca.filter((m) => m.conversacionId === abierta);
 
-    // Todavía no llegó el historial: se dibuja lo que hay, que es lo que
-    // permite que el hilo aparezca al instante.
-    if (!delServidor) return enLaVentana;
+    // Todavía no llegó el historial ni mandé nada: se dibuja lo que hay, que es
+    // lo que permite que el hilo aparezca al instante.
+    if (!delServidor && mios.length === 0) return enLaVentana;
 
     /*
-     * Unidos por id, y los de la ventana pisan a los traídos.
+     * Unidos por id, y manda el servidor.
      *
-     * Los de la ventana son más nuevos en el sentido que importa: si un acuse
-     * cambió el estado de un mensaje —«enviado» a «leído»— o si le pusieron una
-     * reacción, eso llegó por ahí.
+     * Van de menos a más fiable, porque el último que escribe una clave gana:
+     * lo que mandé yo desde esta pantalla, después el historial traído, y por
+     * último lo de la ventana. Los de la ventana son más nuevos en el sentido
+     * que importa: si un acuse cambió el estado de un mensaje —«enviado» a
+     * «leído»— o si le pusieron una reacción, eso llegó por ahí.
+     *
+     * Y por eso no hay doble burbuja: lo que mandé, una vez confirmado, tiene
+     * el `id` de la base, y cuando el refresco trae el mismo mensaje es la misma
+     * clave. Se pisa, no se suma.
      */
     const porId = new Map<number, Mensaje>();
-    for (const m of delServidor) porId.set(m.id, m);
+    for (const m of mios) porId.set(m.id, m);
+    for (const m of delServidor ?? []) porId.set(m.id, m);
     for (const m of enLaVentana) porId.set(m.id, m);
+
+    /*
+     * Una provisoria se esconde si el servidor ya trajo ESE mismo mensaje.
+     *
+     * Pasa si el websocket le gana a la confirmación: el refresco llega con el
+     * mensaje real mientras la acción todavía no volvió, y por un instante
+     * habría las dos. Es la única forma de ver doble, y se ve igual que el
+     * defecto que se está curando aunque en la base haya uno solo.
+     *
+     * Se reconoce por tres cosas juntas —mismo texto, mismo tipo de mensaje y un
+     * `id` mayor que el último que había al mandar—. Un `id` posterior con el
+     * mismo texto sólo puede ser el eco de este envío. Y esto sólo esconde a la
+     * PROVISORIA, que es cosmética: no puede hacer desaparecer un mensaje real.
+     */
+    const reales = [...porId.values()].filter((m) => m.id > 0);
+    const visibles = [...porId.values()].filter((m) => {
+      if (m.id > 0) return true;
+      const t = m as EnviadoAca;
+      return !reales.some(
+        (r) =>
+          r.id > (t.despuesDe ?? 0) &&
+          r.direccion === "saliente" &&
+          r.privado === t.privado &&
+          r.texto === t.texto &&
+          // Un mensaje ya confirmado de los míos no es un eco: es el mío.
+          !mios.some((x) => x.id === r.id && x.id > 0 && x !== t),
+      );
+    });
 
     // En orden de conversación, que es como se dibuja. El id desempata los que
     // caen en el mismo instante, como los de una misma campaña.
-    return [...porId.values()].sort(
-      (a, b) => a.creadoEn.localeCompare(b.creadoEn) || a.id - b.id,
+    return visibles.sort(
+      (a, b) =>
+        // Las provisorias van siempre al final: son lo último que se escribió.
+        Number(a.id < 0) - Number(b.id < 0) ||
+        a.creadoEn.localeCompare(b.creadoEn) ||
+        a.id - b.id,
     );
-  }, [mensajes, abierta, traidos]);
+  }, [mensajes, abierta, traidos, enviadosAca]);
+
+  /*
+   * Cuál es el hilo que se ve, para quien vuelve de una acción que tardó.
+   *
+   * Si el envío falla cuando ya se cambió de hilo, el texto NO puede volver al
+   * recuadro: caería en la conversación equivocada, y la próxima persona a la
+   * que se le escriba lo recibiría.
+   */
+  useEffect(() => {
+    hiloALaVista.current = abierta;
+  }, [abierta]);
 
   useEffect(() => {
     if (abierta == null) return;
@@ -1012,57 +1103,149 @@ export function Inbox({
     });
   };
 
-  const enviar = async () => {
+  /**
+   * Manda lo escrito, y lo muestra AL INSTANTE.
+   *
+   * ==========================================================================
+   * QUÉ PASA, EN ORDEN
+   * ==========================================================================
+   *
+   *   1. Se vacía el recuadro y aparece la burbuja, marcada «enviando». Sin
+   *      esperar a nada: ni a la base, ni a Meta, ni al servidor.
+   *   2. El envío se pone en la cola y sale cuando le toca.
+   *   3. Si salió, la burbuja provisoria se cambia por la verdadera, con su `id`.
+   *   4. Si NO salió, la burbuja se retira y el texto vuelve al recuadro con el
+   *      motivo.
+   *
+   * Hecho así, un segundo Enter no encuentra nada que mandar: el recuadro ya
+   * está vacío. Eso es lo que corta de raíz los mensajes dobles —antes el texto
+   * seguía ahí hasta que el servidor terminaba, cinco segundos en una tarde
+   * cargada, y volver a apretar parecía lo razonable—.
+   */
+  const enviar = () => {
     if (!actual || !texto.trim()) return;
-    // Un envío a la vez. Ver `yendo`: el segundo Enter le llegaba al cliente.
-    if (yendo.current) return;
-    yendo.current = true;
-    setEnviando(true);
+
+    const cuerpo = texto;
+    const hilo = actual.id;
+    const aQuien = actual.nombrePerfil;
+    const esNota = nota;
+    const huella = `${hilo}|${esNota ? "n" : "m"}|${cuerpo.trim()}`;
+
+    /*
+     * La red de abajo: el mismo texto, al mismo hilo, ya en camino.
+     *
+     * No es lo que evita los dobles —es el recuadro vacío—. Es para el segundo
+     * Enter que llega antes de que React redibuje, cuando el recuadro todavía
+     * dice lo mismo. Mandar el mismo texto dos veces seguidas a propósito, a
+     * los pocos milisegundos, no es una cosa que alguien quiera.
+     */
+    if (enCamino.current.has(huella)) return;
+    enCamino.current.add(huella);
+
+    const temporal = -(contadorProvisorio.current += 1);
+    const despuesDe = delHilo.reduce((mayor, m) => (m.id > mayor ? m.id : mayor), 0);
+
+    setEnviadosAca((v) => [
+      // Un tope por si alguien pasa el día entero con la pestaña abierta: son
+      // burbujas de esta sesión, y las viejas ya las trae el servidor.
+      ...v.slice(-49),
+      {
+        id: temporal,
+        conversacionId: hilo,
+        direccion: "saliente",
+        tipo: "text",
+        texto: cuerpo.trim(),
+        estado: "enviando",
+        error: null,
+        creadoEn: new Date().toISOString(),
+        privado: esNota,
+        reacciones: [],
+        // Todavía no existe en WhatsApp: no se le puede reaccionar.
+        reaccionable: false,
+        mediaRuta: null,
+        mediaMime: null,
+        mediaNombre: null,
+        mediaError: null,
+        origen: null,
+        despuesDe,
+      },
+    ]);
+    setTexto("");
     setAviso(null);
-    try {
-      const r = await responderConversacion(actual.id, texto, nota);
-      if (r.ok) {
-        setTexto("");
-        onRefrescar();
-      } else {
-        setAviso(r.error);
+
+    /** Retira la provisoria, y devuelve el texto si no salió. */
+    const deshacer = (devolverTexto: boolean, motivo: string | null) => {
+      setEnviadosAca((v) => v.filter((m) => m.id !== temporal));
+
+      if (!devolverTexto) {
+        if (motivo) setAviso(motivo);
+        return;
       }
-    } catch (e) {
-      /*
-       * Una llamada que no contesta NO puede dejar el botón en «Enviando…».
-       *
-       * ======================================================================
-       * LO QUE LE PASÓ A VENTAS
-       * ======================================================================
-       *
-       * Acá se hacía `await` y después `setEnviando(false)`, sin `try`. Cuando
-       * la llamada LANZA —el CRM se desplegó con la pestaña abierta, la sesión
-       * venció, se cortó el wifi— la excepción se lleva puesta esa línea y el
-       * botón se queda diciendo «Enviando…» para siempre.
-       *
-       * Y lo peor no es el botón: EL MENSAJE PUEDE HABER SALIDO IGUAL. Lo que
-       * se rompe es la respuesta, no el envío. Así que quien atiende ve
-       * «Enviando…» eternamente, lo manda de nuevo, y el cliente lo recibe dos
-       * veces. Pasó: el mensaje estaba entregado y leído mientras la pantalla
-       * seguía girando.
-       *
-       * Por eso lo primero del `catch` es RECARGAR EL HILO. No hay forma de
-       * saber desde acá si salió, y el hilo sí lo sabe: que lo diga él en vez
-       * de que alguien adivine.
-       *
-       * Es la misma lección que ya estaba aprendida un poco más arriba, en
-       * `mandarFoto` —«sin atraparlo el visor quedaba trabado sin forma de
-       * salir»— y que a este camino no se le había aplicado.
-       */
-      onRefrescar();
-      const falla = porQueFalloElServidor(e);
-      setAviso(
-        `${falla.dice} Fijate en el hilo antes de mandarlo de nuevo: si el mensaje ya aparece, salió.`,
-      );
-    } finally {
-      yendo.current = false;
-      setEnviando(false);
-    }
+
+      if (hiloALaVista.current === hilo) {
+        // Si ya empezó a escribir otra cosa, no se le pisa: van las dos.
+        setTexto((ahora) => (ahora.trim() === "" ? cuerpo : `${cuerpo}\n${ahora}`));
+        if (motivo) setAviso(motivo);
+      } else if (motivo) {
+        // Se cambió de hilo mientras tanto: el texto NO puede volver al recuadro
+        // —caería en otra conversación—, así que se dice acá con todas las letras.
+        setAviso(`No salió el mensaje a ${aQuien ?? "un cliente"}: «${cuerpo.trim()}». ${motivo}`);
+      }
+    };
+
+    cola.current = cola.current.then(async () => {
+      try {
+        const r = await responderConversacion(hilo, cuerpo, esNota);
+
+        if (r.ok) {
+          // La verdadera ocupa el lugar de la provisoria. Si no vino —ver
+          // `guardarSaliente`— se retira sin más, y el refresco la trae.
+          setEnviadosAca((v) =>
+            v.flatMap((m) =>
+              m.id !== temporal ? [m] : r.mensaje ? [{ ...r.mensaje, despuesDe }] : [],
+            ),
+          );
+          onRefrescar();
+          return;
+        }
+
+        /*
+         * Si el mensaje YA SALIÓ y lo que falló fue anotarlo, el texto NO vuelve.
+         *
+         * Tenerlo de nuevo a mano en el recuadro invita a mandarlo otra vez, y
+         * el cliente ya lo tiene: es fabricar el doble que se está curando.
+         */
+        deshacer(!r.yaSalio, r.error);
+        if (r.yaSalio) onRefrescar();
+      } catch (e) {
+        /*
+         * Una llamada que no contesta NO puede dejar el botón en «Enviando…».
+         *
+         * ======================================================================
+         * LO QUE LE PASÓ A VENTAS
+         * ======================================================================
+         *
+         * Cuando la llamada LANZA —el CRM se desplegó con la pestaña abierta, la
+         * sesión venció, se cortó el wifi— lo que se rompe es la respuesta, no
+         * el envío: EL MENSAJE PUEDE HABER SALIDO IGUAL. Quien atiende lo manda
+         * de nuevo y el cliente lo recibe dos veces. Pasó: el mensaje estaba
+         * entregado y leído mientras la pantalla seguía girando.
+         *
+         * Por eso lo primero es RECARGAR EL HILO. No hay forma de saber desde acá
+         * si salió, y el hilo sí lo sabe: que lo diga él en vez de que alguien
+         * adivine. El texto vuelve al recuadro —si no salió, no se pierde— y el
+         * aviso dice que se mire el hilo antes de mandarlo de nuevo.
+         */
+        onRefrescar();
+        const falla = porQueFalloElServidor(e);
+        deshacer(
+          true,
+          `${falla.dice} Fijate en el hilo antes de mandarlo de nuevo: si el mensaje ya aparece, salió.`,
+        );
+      } finally {
+        enCamino.current.delete(huella);
+      }
+    });
   };
 
   const cambiarVendedor = async (vendedorId: number | null) => {
@@ -2567,7 +2750,16 @@ export function Inbox({
               <button
                 type="button"
                 onClick={enviar}
-                disabled={(!nota && !puedeResponder) || !texto.trim() || enviando}
+                /*
+                 * Ya no se deshabilita mientras hay un envío en camino.
+                 *
+                 * Antes sí, y tenía sentido: el texto seguía en el recuadro y un
+                 * segundo clic era un duplicado. Ahora el recuadro se vacía al
+                 * apretar, y quien ya mandó puede escribir el siguiente sin
+                 * esperar. Si el botón siguiera apagado, lo único que lograba era
+                 * que Enter anduviera y el clic no.
+                 */
+                disabled={(!nota && !puedeResponder) || !texto.trim()}
                 style={{
                   ...botonLleno(accent),
                   height: 40,
@@ -2575,13 +2767,7 @@ export function Inbox({
                   opacity: (!nota && !puedeResponder) || !texto.trim() ? 0.5 : 1,
                 }}
               >
-                {enviando
-                  ? nota
-                    ? "Guardando…"
-                    : "Enviando…"
-                  : nota
-                    ? "Guardar nota"
-                    : "Enviar"}
+                {nota ? "Guardar nota" : "Enviar"}
               </button>
               )}
             </div>

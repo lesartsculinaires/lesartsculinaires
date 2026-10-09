@@ -9,7 +9,7 @@ import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { comoLosLee } from "@/lib/supabase/inbox";
 import { leerContactos, type ContactoCompartido } from "@/lib/whatsapp/contactos";
-import type { Mensaje } from "@/lib/types";
+import type { Mensaje, ResultadoRespuesta } from "@/lib/types";
 import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
@@ -290,7 +290,7 @@ export async function responderConversacion(
   conversacionId: number,
   texto: string,
   privado = false,
-): Promise<ActionResult> {
+): Promise<ResultadoRespuesta> {
   const cuerpo = texto.trim();
   if (!cuerpo) return { ok: true, error: null };
 
@@ -333,36 +333,132 @@ export async function responderConversacion(
 
   if (!envio.ok) return { ok: false, error: envio.error };
 
-  const { error: errGuardar } = await supabase.from("mensajes").insert({
-    conversacion_id: conversacionId,
-    wa_id: envio.waId,
-    direccion: "saliente",
-    tipo: "text",
-    texto: cuerpo,
-    estado: "enviado",
-    enviado_por: user.id,
-  });
+  /*
+   * Guardar el mensaje y actualizar el hilo, LOS DOS A LA VEZ.
+   *
+   * Eran uno detrás del otro, y no dependen entre sí: el hilo muestra cuál fue
+   * el último texto sin importar con qué fila se guardó. Con la base cargada
+   * cada ida y vuelta son segundos —se midieron 1,1 s de promedio y 4,4 de p95
+   * el 8 de octubre de 2026—, y esto era uno entero de más mientras el cliente
+   * ya tenía el mensaje.
+   */
+  const [guardado] = await Promise.all([
+    guardarSaliente(supabase, {
+      conversacion_id: conversacionId,
+      wa_id: envio.waId,
+      direccion: "saliente",
+      tipo: "text",
+      texto: cuerpo,
+      estado: "enviado",
+      enviado_por: user.id,
+    }),
+    supabase
+      .from("conversaciones")
+      .update({
+        ultimo_texto: cuerpo.slice(0, 200),
+        ultimo_mensaje_en: new Date().toISOString(),
+        sin_leer: 0,
+      })
+      .eq("id", conversacionId),
+  ]);
 
   // Si llega acá el mensaje ya salió. Que falle el registro es molesto, pero
   // decir «no se envió» sería mentir y llevaría a mandarlo dos veces.
-  if (errGuardar) {
+  if (guardado.error) {
     return {
       ok: false,
-      error: `Se envió, pero no se pudo guardar en la ficha: ${errGuardar.message}`,
+      error: `Se envió, pero no se pudo guardar en la ficha: ${guardado.error}`,
+      yaSalio: true,
     };
   }
 
-  await supabase
-    .from("conversaciones")
-    .update({
-      ultimo_texto: cuerpo.slice(0, 200),
-      ultimo_mensaje_en: new Date().toISOString(),
-      sin_leer: 0,
-    })
-    .eq("id", conversacionId);
+  /*
+   * ==========================================================================
+   * POR QUÉ ESTO TARDABA, Y POR QUÉ NO ES `revalidatePath`
+   * ==========================================================================
+   *
+   * Lo que se midió, y lo que NO se pudo demostrar:
+   *
+   * LO QUE SÍ. Contestar le pedía a la base TRES cosas una detrás de otra —buscar
+   * el hilo, guardar el mensaje, actualizar el hilo— y la pantalla recién
+   * dibujaba la burbuja cuando volvía eso Y el refresco completo que
+   * `enviar` pedía a continuación. Con la base como la dejó la tarde del 8 de
+   * octubre de 2026 —1,1 s de promedio por consulta y 4,4 de p95— son entre
+   * cinco y ocho segundos en los que NO CAMBIA NADA en pantalla: el texto sigue
+   * en el recuadro y no hay burbuja. Parece que no salió, y el cliente ya lo
+   * tiene.
+   *
+   * Y quien atiende aprieta Enter otra vez. Pasó desde el 11 de septiembre con
+   * Gerencia, Jefatura y Ventas por igual, y la huella es inconfundible: el 3
+   * de octubre, el mismo texto tres veces con 5,3 y 5,7 segundos de por medio.
+   *
+   * LO QUE NO. Se sospechó de `revalidatePath("/")`, que en Next puede obligar a
+   * armar la pantalla antes de contestar. Medido en el banco con la base lenta,
+   * la respuesta de esta acción llega sin la portada armada tanto con esa línea
+   * como sin ella, así que no se puede decir que fuera lo caro.
+   *
+   * Se quitó igual, y por otra razón: sobra. `enviar` pide su propio refresco
+   * apenas vuelve esto, y la portada es dinámica —no hay nada guardado que
+   * invalidar—. Una llamada que no aporta, en el camino de lo más usado del CRM,
+   * es una que algún día cuesta.
+   *
+   * Lo que arregla el problema NO está acá sino en la pantalla: la burbuja sale
+   * al apretar Enter, sin esperar a nada. Lo de acá achica la espera real —dos
+   * consultas a la vez en vez de una detrás de otra— y devuelve el mensaje con
+   * su `id`, para que la pantalla cambie la burbuja provisoria por la verdadera.
+   */
+  return { ok: true, error: null, mensaje: guardado.mensaje ?? undefined };
+}
 
-  revalidatePath("/");
-  return { ok: true, error: null };
+/**
+ * Las columnas que hacen falta para dibujar la burbuja que se acaba de guardar.
+ *
+ * Son las mismas que lee `comoLosLee`, menos las de archivos y reacciones: un
+ * texto recién mandado no tiene ni una cosa ni la otra.
+ */
+const COLUMNAS_DE_LA_BURBUJA =
+  "id, conversacion_id, direccion, tipo, texto, estado, error, creado_en, privado, wa_id";
+
+/**
+ * Guarda un mensaje saliente y devuelve cómo quedó, o nada si no se pudo leer.
+ *
+ * ============================================================================
+ * POR QUÉ PUEDE DEVOLVER «SIN MENSAJE» Y AUN ASÍ ESTAR BIEN
+ * ============================================================================
+ *
+ * Devolver la fila obliga a la base a comprobar que quien la insertó también
+ * puede LEERLA, y las dos políticas no son la misma: insertar sólo pide que el
+ * mensaje sea saliente y de quien escribe; leer, que el hilo sea suyo o de
+ * nadie. Si el hilo se reasigna a otra persona justo entre que se mira y se
+ * guarda, el insert es válido y devolver la fila no.
+ *
+ * Y la consecuencia sería la peor: el mensaje YA salió a WhatsApp, y la base
+ * contesta «viola la seguridad de la fila» como si el envío hubiera fallado. La
+ * persona lo manda de nuevo.
+ *
+ * Por eso, si el error es de ese tipo (42501), se reintenta SIN pedir la fila.
+ * Es seguro: una sentencia que falla se deshace entera, así que no puede haber
+ * quedado nada guardado, y si el rechazo fuera por la regla de insertar el
+ * segundo intento falla igual y devuelve el mismo error de siempre.
+ */
+async function guardarSaliente(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  fila: Record<string, unknown>,
+): Promise<{ mensaje: Mensaje | null; error: string | null }> {
+  const r = await supabase
+    .from("mensajes")
+    .insert(fila)
+    .select(COLUMNAS_DE_LA_BURBUJA)
+    .single();
+
+  if (!r.error) return { mensaje: comoLosLee([r.data])[0] ?? null, error: null };
+
+  if (r.error.code === "42501") {
+    const plano = await supabase.from("mensajes").insert(fila);
+    return { mensaje: null, error: plano.error?.message ?? null };
+  }
+
+  return { mensaje: null, error: r.error.message };
 }
 
 /**
@@ -539,8 +635,8 @@ async function guardarNotaInterna(
   conversacionId: number,
   texto: string,
   autorId: string,
-): Promise<ActionResult> {
-  const { error } = await supabase.from("mensajes").insert({
+): Promise<ResultadoRespuesta> {
+  const guardada = await guardarSaliente(supabase, {
     conversacion_id: conversacionId,
     direccion: "saliente",
     tipo: "text",
@@ -549,12 +645,14 @@ async function guardarNotaInterna(
     enviado_por: autorId,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (guardada.error) return { ok: false, error: guardada.error };
 
   await copiarNotaALaFicha(supabase, conversacionId, texto, autorId);
 
-  revalidatePath("/");
-  return { ok: true, error: null };
+  // Sin `revalidatePath("/")`, por lo mismo que `responderConversacion`: la
+  // pantalla dibuja la nota con lo que devuelve esto y refresca aparte, en
+  // segundo plano, para que la ficha se entere.
+  return { ok: true, error: null, mensaje: guardada.mensaje ?? undefined };
 }
 
 /**
