@@ -907,7 +907,28 @@ export function Inbox({
    * tarde —después de que la persona cerró el visor— no vuelva a encender un
    * cartel sobre una pantalla en la que ya está haciendo otra cosa.
    */
-  const enCurso = useRef<{ ruta: string; cancelado: boolean } | null>(null);
+  const enCurso = useRef<{
+    ruta: string;
+    nombre: string;
+    cancelado: boolean;
+    /** Ya se le pidió al servidor que lo mande: desde acá no hay vuelta atrás. */
+    enServidor: boolean;
+    /** Se cerró la ventana con el envío ya en el servidor. Ver `cancelarEnvio`. */
+    oculto: boolean;
+  } | null>(null);
+
+  /**
+   * Qué archivo se mandó a qué hilo, y cuándo.
+   *
+   * Para preguntar antes de mandar el mismo archivo dos veces seguidas al mismo
+   * cliente. Es lo que pasó el 9 de octubre de 2026: «TEMARIO BOLLERIA
+   * FRANCESA.png» le llegó CUATRO veces a la misma clienta en dos minutos y
+   * medio, porque cada intento tardaba ~30 segundos sin que nada se viera en el
+   * hilo. Se mira nombre y tamaño, que alcanza para «es el mismo archivo» sin
+   * leerlo entero.
+   */
+  const mandadosHace = useRef<Map<string, number>>(new Map());
+  const VENTANA_REPETIDO_MS = 3 * 60_000;
 
   /** Traduce a algo que se entienda lo que devuelve un envío que falló. */
   const porQueFallo = (e: unknown, nombre: string): string => {
@@ -961,11 +982,30 @@ export function Inbox({
       return;
     }
 
+    /*
+     * ¿Ya se mandó este mismo archivo a este mismo hilo hace un rato?
+     *
+     * Se pregunta, no se prohíbe: puede ser a propósito. Pero la pregunta es la
+     * que hacía falta el 9 de octubre: la asesora no veía la imagen en el hilo
+     * y no tenía forma de saber que ya había salido.
+     */
+    const huella = `${actual.id}|${archivo.name}|${archivo.size}`;
+    const antes = mandadosHace.current.get(huella);
+    if (antes != null && Date.now() - antes < VENTANA_REPETIDO_MS) {
+      const segundos = Math.max(1, Math.round((Date.now() - antes) / 1000));
+      const seguir = window.confirm(
+        `«${archivo.name}» ya se le mandó a este cliente hace ${segundos} segundos. ` +
+          "Puede tardar en aparecer en el hilo.\n\n¿Mandarlo otra vez?",
+      );
+      if (!seguir) return;
+    }
+
     // Un nombre nuevo y sin relación con el original: dos personas mandando
     // «Lista de precios.pdf» el mismo día no se pisan, y el nombre de verdad
     // viaja aparte, que es el que va a ver el cliente.
     const ruta = `${CARPETA_SALIENTE}/${actual.id}/${crypto.randomUUID()}`;
-    const envio = { ruta, cancelado: false };
+    const envio = { ruta, nombre: archivo.name, cancelado: false, enServidor: false, oculto: false };
+    const pie = texto;
     enCurso.current = envio;
 
     setMandandoFoto(true);
@@ -986,6 +1026,10 @@ export function Inbox({
       }
 
       setFase("enviando");
+      // Desde acá el servidor ya puede estar hablando con WhatsApp, y eso no se
+      // frena desde el navegador. Ver `cancelarEnvio`.
+      envio.enServidor = true;
+      mandadosHace.current.set(huella, Date.now());
       const r = await conTiempoLimite(
         enviarArchivo({
           conversacionId: actual.id,
@@ -993,17 +1037,22 @@ export function Inbox({
           nombre: archivo.name,
           mime: archivo.type,
           bytes: archivo.size,
-          pie: texto,
+          pie,
         }),
       );
 
       if (envio.cancelado) return;
 
       if (r.ok) {
-        setTexto("");
-        cerrarVisor();
+        // Sólo se borra el pie si sigue siendo el mismo: con la ventana cerrada,
+        // la persona puede estar escribiendo otra cosa.
+        setTexto((t) => (t === pie ? "" : t));
+        if (envio.oculto) setAviso(`«${archivo.name}» se envió.`);
+        else cerrarVisor();
         onRefrescar();
       } else {
+        // El servidor no lo mandó: ahí sí se puede volver a intentar.
+        mandadosHace.current.delete(huella);
         setAviso(r.error);
       }
     } catch (e) {
@@ -1029,6 +1078,33 @@ export function Inbox({
    */
   const cancelarEnvio = () => {
     const envio = enCurso.current;
+
+    /*
+     * ========================================================================
+     * SI YA ESTÁ EN EL SERVIDOR, NO SE CANCELA: SE CIERRA LA VENTANA
+     * ========================================================================
+     *
+     * Antes este botón decía «Cancelar» también durante «Enviando…», y mentía.
+     * Para ese momento el servidor ya le había pasado la imagen a WhatsApp: el
+     * botón cerraba la ventana, borraba el archivo del bucket e IGNORABA el
+     * resultado. La imagen le llegaba al cliente igual, en el hilo no aparecía
+     * nada, y la asesora la volvía a mandar. El 9 de octubre de 2026 una
+     * clienta recibió así cuatro veces el mismo temario.
+     *
+     * Ahora: la ventana se cierra, el archivo NO se borra —es la copia que el
+     * hilo va a mostrar, y la que WhatsApp puede estar descargando— y cuando el
+     * servidor contesta se refresca el hilo y se avisa cómo terminó.
+     */
+    if (envio?.enServidor) {
+      envio.oculto = true;
+      cerrarVisor();
+      setAviso(
+        `«${envio.nombre}» ya estaba en manos de WhatsApp y se sigue enviando. ` +
+          "Va a aparecer en el hilo en unos segundos: no hace falta mandarlo de nuevo.",
+      );
+      return;
+    }
+
     if (envio) {
       envio.cancelado = true;
       void getBrowserClient()
@@ -1489,6 +1565,11 @@ export function Inbox({
               <button
                 type="button"
                 onClick={cancelarEnvio}
+                title={
+                  fase === "enviando"
+                    ? "Ya está en manos de WhatsApp: se cierra esta ventana, pero el envío sigue"
+                    : undefined
+                }
                 style={{
                   height: 34,
                   padding: "0 14px",
@@ -1499,7 +1580,8 @@ export function Inbox({
                   color: T.ink,
                 }}
               >
-                Cancelar
+                {/* «Cancelar» sólo cuando de verdad cancela: mientras sube. */}
+                {fase === "enviando" ? "Cerrar" : "Cancelar"}
               </button>
               <button
                 type="button"

@@ -1512,7 +1512,24 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     };
   }
 
-  const { conv } = await aQuienLeEscribimos(supabase, datos.conversacionId);
+  /*
+   * Buscar el hilo y firmar el enlace, A LA VEZ.
+   *
+   * Iban uno detrás del otro y no dependen entre sí. El 9 de octubre de 2026,
+   * con la base cargada, fueron 2,6 s y 3,3 s seguidos en el envío de una
+   * imagen de 80 KB que tardó unos 33 segundos en total; juntos cuesta el más
+   * lento de los dos. Firmar de más cuando el hilo no existe no le hace nada a
+   * nadie: la firma vence sola en cinco minutos y el archivo se borra abajo.
+   *
+   * Cinco minutos, que es mucho más de lo que Meta tarda y mucho menos de lo
+   * que dura un descuido. Meta busca el archivo mientras contesta la llamada,
+   * así que la firma está viva apenas el rato necesario y después la dirección
+   * no sirve más para nadie.
+   */
+  const [{ conv }, { data: firmado, error: errFirma }] = await Promise.all([
+    aQuienLeEscribimos(supabase, datos.conversacionId),
+    supabase.storage.from(BALDE_WHATSAPP).createSignedUrl(datos.ruta, 300),
+  ]);
 
   if (!conv) {
     await limpiar();
@@ -1534,16 +1551,6 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     await limpiar();
     return { ok: false, error: falta };
   }
-
-  /*
-   * Cinco minutos, que es mucho más de lo que Meta tarda y mucho menos de lo
-   * que dura un descuido. Meta busca el archivo mientras contesta la llamada
-   * —un par de segundos—, así que la firma está viva apenas el rato necesario
-   * y después la dirección no sirve más para nadie.
-   */
-  const { data: firmado, error: errFirma } = await supabase.storage
-    .from(BALDE_WHATSAPP)
-    .createSignedUrl(datos.ruta, 300);
 
   if (errFirma || !firmado?.signedUrl) {
     await limpiar();
