@@ -38,14 +38,20 @@ create table if not exists public.errores_cliente (
   despliegue  text check (char_length(despliegue) <= 120)
 );
 
+-- El comentario no nombra archivos a propósito: con una ruta adentro, el
+-- conector de Supabase que se usó para aplicar esto se colgaba sin llegar a la
+-- base (10 de octubre de 2026, cuatro intentos). La explicación está arriba.
 comment on table public.errores_cliente is
-  'Fallas de pantalla que el navegador atajó y se recuperó. Ver src/lib/recuperarse.ts.';
+  'Fallas de pantalla que el navegador atajo y de las que se recupero sola.';
 
 create index if not exists ix_errores_cliente_reciente on public.errores_cliente (creado_en desc);
 
 alter table public.errores_cliente enable row level security;
 
+-- Supabase les da TODO a `anon` y `authenticated` sobre cada tabla nueva, y
+-- RLS no frena un TRUNCATE. Se quita todo y se devuelve sólo lo que se usa.
 revoke all on public.errores_cliente from anon;
+revoke all on public.errores_cliente from authenticated;
 grant insert, select on public.errores_cliente to authenticated;
 
 drop policy if exists errores_cliente_anotar on public.errores_cliente;
