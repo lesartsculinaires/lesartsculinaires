@@ -34,11 +34,24 @@ export async function fetchAccesos(userId: string): Promise<{
   const supabase = await getServerClient();
   if (!supabase) return { data: VACIO, faltaMigracion: false };
 
-  const [mods, rls, perms, usrs] = await Promise.all([
+  /*
+   * Las siete consultas van juntas.
+   *
+   * Las tres de abajo —las dos casillas de roles y el enlace con vendedores—
+   * se pedían después de las cuatro primeras y una detrás de otra, sin
+   * depender de nada de lo anterior: cuatro viajes a la base en fila en cada
+   * refresco de cada pestaña. Con la base lenta del 10 de octubre de 2026,
+   * cuatro veces lo que tardaba una. Separadas siguen estando, por lo que
+   * explica cada una; lo que cambió es que ya no se esperan.
+   */
+  const [mods, rls, perms, usrs, casillaPropios, casillaReparto, vends] = await Promise.all([
     supabase.from("modulos").select("clave, nombre, padre, orden").order("orden"),
     supabase.from("roles").select("id, nombre, descripcion, activo, es_admin, ve_todo").order("nombre"),
     supabase.from("rol_permisos").select("*"),
     supabase.from("usuarios").select("id, nombre, correo, rol_id, activo").order("correo"),
+    supabase.from("roles").select("id, pipeline_solo_propios"),
+    supabase.from("roles").select("id, recibe_leads"),
+    supabase.from("vendedores").select("id, usuario_id").not("usuario_id", "is", null),
   ]);
 
   /*
@@ -57,7 +70,7 @@ export async function fetchAccesos(userId: string): Promise<{
   const soloPropios = new Set<number>();
   const recibenLeads = new Set<number>();
   {
-    const { data, error } = await supabase.from("roles").select("id, pipeline_solo_propios");
+    const { data, error } = casillaPropios;
     if (!error) {
       for (const r of (data ?? []) as Row[]) {
         if (r.pipeline_solo_propios === true) soloPropios.add(Number(r.id));
@@ -72,7 +85,7 @@ export async function fetchAccesos(userId: string): Promise<{
    * también la otra.
    */
   {
-    const { data, error } = await supabase.from("roles").select("id, recibe_leads");
+    const { data, error } = casillaReparto;
     if (!error) {
       for (const r of (data ?? []) as Row[]) {
         if (r.recibe_leads === true) recibenLeads.add(Number(r.id));
@@ -82,13 +95,8 @@ export async function fetchAccesos(userId: string): Promise<{
 
   // El enlace usuario→vendedor vive en `vendedores`, no en `usuarios`: es esa
   // ficha la que apunta a la cuenta. Se trae aparte y se cruza acá.
-  const { data: vends } = await supabase
-    .from("vendedores")
-    .select("id, usuario_id")
-    .not("usuario_id", "is", null);
-
   const vendedorDe = new Map<string, number>();
-  for (const v of (vends ?? []) as Row[]) {
+  for (const v of (vends.data ?? []) as Row[]) {
     if (v.usuario_id) vendedorDe.set(str(v.usuario_id), Number(v.id));
   }
 

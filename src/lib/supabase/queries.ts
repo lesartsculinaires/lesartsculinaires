@@ -136,15 +136,52 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    * El segundo `order` por `id` no es decorativo: sin un orden que no empate
    * nunca, dos tandas distintas podrían devolver la misma fila dos veces y
    * saltearse otra.
+   *
+   * ==========================================================================
+   * LAS CUATRO LISTAS SE PIDEN A LA VEZ
+   * ==========================================================================
+   *
+   * El embudo, los programas, las etiquetas y el último toque no dependen uno
+   * del otro: se cruzan por `oportunidad_id` recién acá, en memoria. Antes se
+   * pedían en fila, y con sus tandas sumaban NUEVE viajes a la base esperando
+   * cada uno al anterior. Con la base lenta del 10 de octubre a las 10:35 eso
+   * pasaba los sesenta segundos en que Netlify corta la respuesta, y el
+   * refresco cortado es la pantalla blanca de «Application error». Ahora son
+   * dos: la primera tanda de cada una, con su total, y el resto todo junto.
    */
-  const { data, error } = await traerTodo<Row>(() =>
-    supabase
-      .from("vw_pipeline")
-      .select("*")
-      .order("fecha_registro", { ascending: false })
-      .order("id", { ascending: false }),
-  );
+  const conTotal = (si: boolean) => (si ? { count: "exact" as const } : undefined);
 
+  const [embudo, programas, etiquetasPuestas, ultimosToques] = await Promise.all([
+    traerTodo<Row>((t) =>
+      supabase
+        .from("vw_pipeline")
+        .select("*", conTotal(t))
+        .order("fecha_registro", { ascending: false })
+        .order("id", { ascending: false }),
+    ),
+    traerTodo<{ oportunidad_id: number; producto_id: number }>((t) =>
+      supabase
+        .from("oportunidad_programas")
+        .select("oportunidad_id, producto_id", conTotal(t))
+        .order("oportunidad_id")
+        .order("producto_id"),
+    ),
+    traerTodo<{ oportunidad_id: number; etiqueta_id: number }>((t) =>
+      supabase
+        .from("oportunidad_etiquetas")
+        .select("oportunidad_id, etiqueta_id", conTotal(t))
+        .order("oportunidad_id")
+        .order("etiqueta_id"),
+    ),
+    traerTodo<{ oportunidad_id: number; ultimo_toque: string | null }>((t) =>
+      supabase
+        .from("vw_ultimo_toque")
+        .select("oportunidad_id, ultimo_toque", conTotal(t))
+        .order("oportunidad_id"),
+    ),
+  ]);
+
+  const { data, error } = embudo;
   if (error) return { data: [], error };
 
   const filas = data.map(toOportunidad);
@@ -178,15 +215,7 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    * queda con su lista vacía y todo lo demás anda igual.
    */
   {
-    const { data: intereses, error: errIntereses } = await traerTodo<{
-      oportunidad_id: number;
-      producto_id: number;
-    }>(() =>
-      supabase
-        .from("oportunidad_programas")
-        .select("oportunidad_id, producto_id")
-        .order("oportunidad_id"),
-    );
+    const { data: intereses, error: errIntereses } = programas;
 
     if (errIntereses) {
       // PGRST205 es «esa tabla no existe». Cualquier otro error tampoco vale
@@ -217,15 +246,7 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    * veces para no hacer una búsqueda en un arreglo de diez.
    */
   {
-    const { data: puestas, error: errEtiquetas } = await traerTodo<{
-      oportunidad_id: number;
-      etiqueta_id: number;
-    }>(() =>
-      supabase
-        .from("oportunidad_etiquetas")
-        .select("oportunidad_id, etiqueta_id")
-        .order("oportunidad_id"),
-    );
+    const { data: puestas, error: errEtiquetas } = etiquetasPuestas;
 
     if (errEtiquetas) {
       console.warn("[queries] sin etiquetas de leads:", errEtiquetas);
@@ -250,15 +271,7 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    * igual, mientras que dentro de `vw_pipeline` tumbaría todas las pantallas.
    */
   {
-    const { data: toques, error: errToques } = await traerTodo<{
-      oportunidad_id: number;
-      ultimo_toque: string | null;
-    }>(() =>
-      supabase
-        .from("vw_ultimo_toque")
-        .select("oportunidad_id, ultimo_toque")
-        .order("oportunidad_id"),
-    );
+    const { data: toques, error: errToques } = ultimosToques;
 
     if (errToques) {
       console.warn("[queries] sin fechas de último toque:", errToques);

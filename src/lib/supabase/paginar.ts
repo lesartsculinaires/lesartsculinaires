@@ -63,8 +63,13 @@ const TANDAS_MAXIMAS = 50;
 
 /** Una consulta a la que todavía se le puede pedir un tramo. */
 interface Consultable<T> {
-  range(desde: number, hasta: number): PromiseLike<{ data: T[] | null; error: unknown }>;
+  range(
+    desde: number,
+    hasta: number,
+  ): PromiseLike<{ data: T[] | null; error: unknown; count?: number | null }>;
 }
+
+type Tanda<T> = { data: T[] | null; error: unknown; count?: number | null };
 
 /**
  * Pide de a tandas hasta que la base deja de devolver filas.
@@ -75,23 +80,62 @@ interface Consultable<T> {
  * Un error corta y se devuelve, en vez de quedarse con lo que alcanzó a
  * traer. Media tabla sin decirlo es exactamente el problema que esto vino a
  * arreglar.
+ *
+ * ------------------------------------------------------------------------
+ * LAS TANDAS VAN A LA VEZ, NO UNA DETRÁS DE OTRA
+ * ------------------------------------------------------------------------
+ *
+ * Antes cada tanda esperaba a la anterior para saber si hacía falta. Con 2592
+ * leads son tres tandas del embudo y tres del último toque, y la portada
+ * encadenaba nueve viajes a la base antes de poder terminar. Con la base
+ * cargada —el 10 de octubre de 2026 a las 10:35 cada consulta tardaba entre
+ * tres y siete segundos— eso son más de sesenta, que es donde Netlify corta la
+ * respuesta. Y una respuesta cortada a la mitad es la pantalla blanca de
+ * «Application error» en todas las computadoras que estaban refrescando.
+ *
+ * Ahora `armar(true)` pide la primera tanda CON EL TOTAL de filas, y con eso
+ * se sabe de una cuántas tandas faltan: van todas juntas. Dos viajes, tenga la
+ * tabla las filas que tenga.
+ *
+ * Quien no pide el total —`armar` ignora el argumento— sigue andando como
+ * antes, de a una. Y si entre el conteo y las tandas entraron filas nuevas, la
+ * última llega llena y se sigue pidiendo de a una desde ahí: el total es una
+ * forma de ir más rápido, no un límite.
  */
 export async function traerTodo<T>(
-  armar: () => Consultable<T>,
+  armar: (conTotal: boolean) => Consultable<T>,
 ): Promise<{ data: T[]; error: string | null }> {
   const todo: T[] = [];
+  const tramo = (tanda: number, conTotal = false) =>
+    armar(conTotal).range(tanda * POR_TANDA, tanda * POR_TANDA + POR_TANDA - 1);
 
-  for (let tanda = 0; tanda < TANDAS_MAXIMAS; tanda += 1) {
-    const desde = tanda * POR_TANDA;
-    const { data, error } = await armar().range(desde, desde + POR_TANDA - 1);
+  const primera = await tramo(0, true);
+  if (primera.error) return { data: [], error: mensajeDe(primera.error) };
+  todo.push(...(primera.data ?? []));
+  if ((primera.data ?? []).length < POR_TANDA) return { data: todo, error: null };
 
-    if (error) {
-      const mensaje =
-        typeof error === "object" && error !== null && "message" in error
-          ? String((error as { message: unknown }).message)
-          : "No se pudieron traer los datos.";
-      return { data: [], error: mensaje };
+  let siguiente = 1;
+
+  const total = primera.count;
+  if (typeof total === "number" && total > POR_TANDA) {
+    const cuantas = Math.min(Math.ceil(total / POR_TANDA), TANDAS_MAXIMAS);
+    const resto: Promise<Tanda<T>>[] = [];
+    for (let tanda = 1; tanda < cuantas; tanda += 1) resto.push(Promise.resolve(tramo(tanda)));
+
+    const llegaron = await Promise.all(resto);
+    for (const t of llegaron) {
+      if (t.error) return { data: [], error: mensajeDe(t.error) };
+      todo.push(...(t.data ?? []));
     }
+    siguiente = cuantas;
+
+    const ultima = llegaron[llegaron.length - 1];
+    if (!ultima || (ultima.data ?? []).length < POR_TANDA) return { data: todo, error: null };
+  }
+
+  for (let tanda = siguiente; tanda < TANDAS_MAXIMAS; tanda += 1) {
+    const { data, error } = await tramo(tanda);
+    if (error) return { data: [], error: mensajeDe(error) };
 
     const filas = data ?? [];
     todo.push(...filas);
@@ -106,4 +150,10 @@ export async function traerTodo<T>(
     data: todo,
     error: `Se trajeron ${todo.length} filas y puede haber más. Avisá que hay que paginar distinto.`,
   };
+}
+
+function mensajeDe(error: unknown): string {
+  return typeof error === "object" && error !== null && "message" in error
+    ? String((error as { message: unknown }).message)
+    : "No se pudieron traer los datos.";
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import type { CambioEnVivo } from "@/lib/aviso";
 import { crearRafaga } from "@/lib/rafaga";
+import { DISPERSION_MS } from "@/lib/refrescoEnVivo";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getBrowserClient } from "@/lib/supabase/browser";
 
@@ -71,21 +72,40 @@ export type EstadoEnVivo =
  * `onCambio` recibe cada aviso suelto, sin juntar y sin esperar. Lo usa el
  * sonido, que necesita saber qué pasó —un mensaje no suena igual que un lead
  * movido— y no le sirve la ráfaga, que junta todo en un «algo cambió».
+ *
+ * `importa` decide qué avisos valen un refresco de la pantalla que se mira
+ * (ver `pideRefresco`). El sonido los recibe todos igual.
+ *
+ * ============================================================================
+ * SÓLO REFRESCA LA PESTAÑA QUE ALGUIEN ESTÁ MIRANDO
+ * ============================================================================
+ *
+ * Hasta el 10 de octubre de 2026 refrescaba cualquier pestaña abierta, aunque
+ * estuviera minimizada o detrás de otra: quien tenía el CRM abierto en tres
+ * pestañas pagaba tres portadas enteras por cada cambio de cualquier persona
+ * del equipo. Ahora la que no está a la vista sólo anota que algo cambió, y
+ * refresca una vez cuando se la vuelve a mirar. El refresco automático ya
+ * hacía lo mismo; éste era el único que no.
  */
-export function useEnVivo(onCambio?: (c: CambioEnVivo) => void): EstadoEnVivo {
+export function useEnVivo(
+  onCambio?: (c: CambioEnVivo) => void,
+  importa?: (c: CambioEnVivo) => boolean,
+): EstadoEnVivo {
   const router = useRouter();
   const [estado, setEstado] = useState<EstadoEnVivo>("conectando");
 
   /**
-   * La función se guarda en una caja y no se pone como dependencia.
+   * Las funciones se guardan en una caja y no se ponen como dependencia.
    *
-   * Quien la pasa la arma de nuevo en cada dibujado; usándola de dependencia,
-   * el canal se cerraría y se volvería a abrir todo el tiempo, y en cada corte
-   * se perderían los avisos.
+   * Quien las pasa las arma de nuevo en cada dibujado; usándolas de
+   * dependencia, el canal se cerraría y se volvería a abrir todo el tiempo, y
+   * en cada corte se perderían los avisos.
    */
   const avisarAfuera = useRef(onCambio);
+  const vale = useRef(importa);
   useEffect(() => {
     avisarAfuera.current = onCambio;
+    vale.current = importa;
   });
 
   useEffect(() => {
@@ -118,24 +138,50 @@ export function useEnVivo(onCambio?: (c: CambioEnVivo) => void): EstadoEnVivo {
       setEstado(publicadas ? "conectado" : "sin-publicar");
     };
 
+    /** Algo cambió mientras la pestaña no estaba a la vista. */
+    let quedoPendiente = false;
+    /** El refresco ya programado, para no programar dos. */
+    let escalon: number | null = null;
+
+    const refrescar = () => {
+      if (!vivo || escalon != null) return;
+      escalon = window.setTimeout(() => {
+        escalon = null;
+        if (vivo) router.refresh();
+      }, Math.random() * DISPERSION_MS);
+    };
+
     const rafaga = crearRafaga(
       () => {
-        if (vivo) router.refresh();
+        if (!vivo) return;
+        if (document.visibilityState !== "visible") {
+          quedoPendiente = true;
+          return;
+        }
+        refrescar();
       },
       { esperaMs: ESPERA_MS, topeMs: TOPE_MS },
     );
 
+    const alVolverALaVista = () => {
+      if (document.visibilityState !== "visible" || !quedoPendiente) return;
+      quedoPendiente = false;
+      refrescar();
+    };
+    document.addEventListener("visibilitychange", alVolverALaVista);
+
     const canal = supabase.channel("crm-en-vivo");
     for (const table of TABLAS) {
       canal.on("postgres_changes", { event: "*", schema: "public", table }, (p) => {
-        rafaga.avisar();
-        if (!vivo) return;
-        avisarAfuera.current?.({
+        const cambio: CambioEnVivo = {
           tabla: table,
           evento: p.eventType,
           // En los borrados viene vacío; quien escucha ya lo contempla.
           fila: (p.new ?? null) as Record<string, unknown> | null,
-        });
+        };
+        if (vale.current?.(cambio) ?? true) rafaga.avisar();
+        if (!vivo) return;
+        avisarAfuera.current?.(cambio);
       });
     }
 
@@ -157,6 +203,8 @@ export function useEnVivo(onCambio?: (c: CambioEnVivo) => void): EstadoEnVivo {
     return () => {
       vivo = false;
       rafaga.cancelar();
+      if (escalon != null) window.clearTimeout(escalon);
+      document.removeEventListener("visibilitychange", alVolverALaVista);
       supabase.removeChannel(canal);
     };
   }, [router]);

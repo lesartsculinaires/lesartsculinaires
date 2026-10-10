@@ -41,6 +41,7 @@ import { useEnVivo } from "@/hooks/useEnVivo";
 import { useLlamadaEnVivo } from "@/hooks/useLlamadaEnVivo";
 import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
+import { pideRefresco } from "@/lib/refrescoEnVivo";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import { friosDe } from "@/lib/frios";
@@ -298,7 +299,12 @@ export default function CrmApp({
   // hacer él mismo.
   const campanita = useCampanita();
   const yo = accesos.yo?.id ?? null;
-  const enVivo = useEnVivo((c) => campanita.avisar(queSuena(c, yo)));
+  const enVivo = useEnVivo(
+    (c) => campanita.avisar(queSuena(c, yo)),
+    // Los tildes de un mensaje no le cambian nada a quien está en el Pipeline:
+    // ver `pideRefresco`.
+    (c) => pideRefresco(c, state.mod),
+  );
 
   /*
    * Las llamadas van por su propio canal y no por el de arriba.

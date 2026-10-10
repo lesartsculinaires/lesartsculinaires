@@ -27,6 +27,8 @@ export const metadata: Metadata = {
   title: "CRM · Les Arts Culinaires",
   description:
     "CRM de ventas de Les Arts Culinaires: leads, seguimiento, pipeline y cierre de matrículas.",
+  // Ver el `translate="no"` de abajo: esto es lo mismo dicho a Google.
+  other: { google: "notranslate" },
 };
 
 export default function RootLayout({
@@ -35,7 +37,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${titulos.variable} ${cuerpo.variable}`}>
+    /*
+     * `translate="no"`: que el traductor del navegador no toque la página.
+     *
+     * Si alguien tiene Chrome en inglés con «traducir siempre del español», el
+     * traductor reescribe los textos por debajo de React, y en el siguiente
+     * refresco React no encuentra lo que dejó: la pantalla revienta con el
+     * mismo «Application error» del 10 de octubre de 2026. El CRM está en
+     * castellano y lo usa un equipo que habla castellano; no hay nada que
+     * traducir y sí mucho que perder.
+     */
+    <html lang="es" translate="no" className={`${titulos.variable} ${cuerpo.variable}`}>
       <body>{children}</body>
     </html>
   );
