@@ -114,6 +114,71 @@ function toOportunidad(r: Row): Oportunidad {
   };
 }
 
+type Lista<T> = { data: T[]; error: string | null };
+type ListasDelEmbudo = [
+  Lista<Row>,
+  Lista<{ oportunidad_id: number; producto_id: number }>,
+  Lista<{ oportunidad_id: number; etiqueta_id: number }>,
+  Lista<{ oportunidad_id: number; ultimo_toque: string | null }>,
+];
+
+/**
+ * El embudo ya armado por la base, si se lo puede compartir.
+ *
+ * ============================================================================
+ * POR QUÉ
+ * ============================================================================
+ *
+ * El 12 de octubre de 2026 el CRM se cayó tres veces en la mañana con poca gente
+ * conectada. Las tres empezaron con cinco o seis cargas completas de la portada
+ * en los mismos veinte segundos, y cada una armaba de cero el embudo entero
+ * —2592 leads, 2,3 MB, trece consultas— aunque la anterior, de hacía dos
+ * segundos, hubiera traído exactamente lo mismo. Con eso alcanzó para que la
+ * base pasara de 0,07 s a 17 s por consulta.
+ *
+ * `embudo_compartido()` lo arma una vez, lo guarda con una huella de los datos,
+ * y mientras la huella no cambie lo devuelve tal cual en una sola consulta. Ver
+ * la migración `embudo_compartido`.
+ *
+ * ============================================================================
+ * CUÁNDO DEVUELVE NULL, Y QUÉ PASA AHÍ
+ * ============================================================================
+ *
+ *   NO VE TODO         A quien no ve todas las oportunidades no se le comparte
+ *                      nada: su embudo depende de su RLS y se arma como siempre.
+ *   SIN MIGRACIÓN      La función no existe todavía. Mismo camino.
+ *   LA BASE NO PUDO    Cualquier error, o que la espera por el armado de otro
+ *                      pasara de cuatro segundos. Mismo camino.
+ *
+ * O sea que esto sólo puede ahorrar: en el peor caso cuesta una consulta corta y
+ * se hace lo de antes.
+ */
+async function embudoCompartido(supabase: SupabaseClient): Promise<ListasDelEmbudo | null> {
+  const { data, error } = await supabase.rpc("embudo_compartido");
+  if (error) {
+    // PGRST202 es «esa función no existe»: la migración todavía no corrió, y
+    // eso es normal un rato después de desplegar. Lo demás sí vale anotarlo.
+    if (error.code !== "PGRST202") console.warn("[queries] embudo compartido:", error.message);
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+
+  const d = data as {
+    embudo?: Row[];
+    programas?: { oportunidad_id: number; producto_id: number }[];
+    etiquetas?: { oportunidad_id: number; etiqueta_id: number }[];
+    toques?: { oportunidad_id: number; ultimo_toque: string | null }[];
+  };
+  if (!Array.isArray(d.embudo)) return null;
+
+  return [
+    { data: d.embudo, error: null },
+    { data: d.programas ?? [], error: null },
+    { data: d.etiquetas ?? [], error: null },
+    { data: d.toques ?? [], error: null },
+  ];
+}
+
 /**
  * Load every opportunity, newest first.
  *
@@ -151,7 +216,9 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    */
   const conTotal = (si: boolean) => (si ? { count: "exact" as const } : undefined);
 
-  const [embudo, programas, etiquetasPuestas, ultimosToques] = await Promise.all([
+  const [embudo, programas, etiquetasPuestas, ultimosToques] =
+    (await embudoCompartido(supabase)) ??
+    (await Promise.all([
     traerTodo<Row>((t) =>
       supabase
         .from("vw_pipeline")
@@ -179,7 +246,7 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
         .select("oportunidad_id, ultimo_toque", conTotal(t))
         .order("oportunidad_id"),
     ),
-  ]);
+  ]));
 
   const { data, error } = embudo;
   if (error) return { data: [], error };
