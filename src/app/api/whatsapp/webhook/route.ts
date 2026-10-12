@@ -11,6 +11,7 @@ import {
 import { comoSeLee, type EstadoLlamada } from "@/lib/llamadas";
 import { repararArchivo } from "@/lib/meta/repararArchivo";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { decidirReenvio, type Decision } from "@/lib/whatsapp/filtroCarnet";
 import { firmaValida } from "@/lib/whatsapp/firma";
 import {
   comoTermino,
@@ -97,6 +98,10 @@ export async function POST(req: NextRequest) {
    * el camino crítico, así que no debe esperar a que termine de guardarse el
    * mensaje ni puede impedirlo. `after` deja que la respuesta a Meta salga
    * ya mismo y hace la copia en segundo plano.
+   *
+   * Sólo sale lo que es de carnet. El filtro está en `filtroCarnet` y la
+   * explicación de por qué vive de este lado y no dentro del workflow está
+   * ahí arriba del todo.
    */
   after(() => copiarAN8n(carga));
 
@@ -1087,7 +1092,7 @@ async function guardarArchivo(
 const SEGUNDOS_PARA_BAJAR = 8;
 
 /**
- * Copia el payload de Meta, tal cual llegó, hacia el bot de carnets en n8n.
+ * Copia hacia el bot de carnets en n8n los mensajes que le tocan.
  *
  * ----------------------------------------------------------------------------
  * n8n NO ESTÁ EN EL CAMINO CRÍTICO
@@ -1099,8 +1104,18 @@ const SEGUNDOS_PARA_BAJAR = 8;
  * por eso se llama con `after` en vez de con `await` en la ruta principal —
  * la respuesta a Meta no espera a que esto termine.
  *
- * Se manda el payload crudo, sin volver a tocarlo, para que el parser del
- * workflow de n8n sea el mismo que si Meta le hablara directo.
+ * ----------------------------------------------------------------------------
+ * SÓLO SALE LO QUE ES DE CARNET
+ * ----------------------------------------------------------------------------
+ *
+ * Antes salía todo, y eso costaba una ejecución de n8n por cada aviso de
+ * estado de cada mensaje que manda un asesor desde la bandeja. `decidirReenvio`
+ * corta los avisos de estado, las conversaciones de ventas y los tipos sin
+ * texto; deja pasar los disparadores de carnet y lo que siga en ese mismo chat
+ * durante los 20 minutos siguientes.
+ *
+ * Cuando pasa el filtro se manda el payload crudo, sin volver a tocarlo, para
+ * que el parser del workflow de n8n sea el mismo que si Meta le hablara directo.
  *
  * `N8N_WEBHOOK_URL` y `N8N_SECRETO` son opcionales a propósito: sin ellos,
  * el CRM sigue guardando los mensajes de WhatsApp como siempre, sólo que sin
@@ -1110,6 +1125,24 @@ async function copiarAN8n(payloadDeMeta: unknown) {
   const url = process.env.N8N_WEBHOOK_URL;
   const secreto = process.env.N8N_SECRETO;
   if (!url || !secreto) return;
+
+  // Se mira el filtro antes de armar la petición: lo que no es de carnet no
+  // debe ni abrir una conexión, que es de donde sale el ahorro.
+  const supabase = getAdminClient();
+  if (!supabase) {
+    console.error("[n8n] sin service role no se puede filtrar; no se copia nada");
+    return;
+  }
+
+  let decision: Decision;
+  try {
+    decision = await decidirReenvio(supabase, payloadDeMeta);
+  } catch (err) {
+    console.error("[n8n] el filtro falló; no se copia:", err instanceof Error ? err.message : err);
+    return;
+  }
+
+  if (!decision.reenviar) return;
 
   try {
     await fetch(url, {
