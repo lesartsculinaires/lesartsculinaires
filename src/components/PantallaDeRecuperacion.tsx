@@ -70,7 +70,7 @@ function moduloActual(): string | null {
  * `keepalive` es para que llegue aunque lo que sigue sea recargar la página.
  * Si no llega, no pasa nada: recuperarse importa más que contarlo.
  */
-function contarAlServidor(error: ErrorDeNext, donde: ReporteDeError["donde"], intento: number) {
+export function contarAlServidor(error: ErrorDeNext, donde: ReporteDeError["donde"], intento: number) {
   if (reportesMandados >= 10) return;
   reportesMandados += 1;
   const reporte: ReporteDeError = {
@@ -96,7 +96,7 @@ function contarAlServidor(error: ErrorDeNext, donde: ReporteDeError["donde"], in
 }
 
 /** Recarga entera, pero no en bucle: si recién se recargó por lo mismo, se deja quieta. */
-function recargarUnaVez(): boolean {
+export function recargarUnaVez(): boolean {
   const CLAVE = "lac.recargado";
   try {
     const antes = Number(sessionStorage.getItem(CLAVE) ?? 0);

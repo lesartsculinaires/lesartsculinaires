@@ -34,6 +34,14 @@ chunk.name = "ChunkLoadError";
 es("una pieza de un despliegue viejo se recarga", queHacerConElError(chunk), "recargar");
 es("también si sólo lo dice el mensaje", queHacerConElError(new Error("Loading CSS chunk 3 failed")), "recargar");
 es("y el import dinámico que falta", queHacerConElError(new TypeError("Failed to fetch dynamically imported module: https://x/a.js")), "recargar");
+{
+  // Lo que tira Next 15 cuando una pestaña de antes de un despliegue llama a
+  // una acción del servidor que el servidor nuevo ya no tiene.
+  const accion = new Error('Server Action "7f3a" was not found on the server. \nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action');
+  accion.name = "UnrecognizedActionError";
+  es("una acción del servidor de un despliegue viejo se recarga", queHacerConElError(accion), "recargar");
+  es("aunque llegue sin el nombre", queHacerConElError(new Error('Server Action "7f3a" was not found on the server.')), "recargar");
+}
 es("algo que no es un Error no rompe nada", queHacerConElError(undefined), "reintentar");
 
 console.log("\n── 2. INSISTE RÁPIDO, DESPUÉS MÁS DESPACIO, Y AL FINAL SE DETIENE ──");

@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cargarConjuntos } from "@/app/modulo-actions";
+import { contarAlServidor, recargarUnaVez } from "@/components/PantallaDeRecuperacion";
 import { queFalta, type Conjunto } from "@/lib/datosDelModulo";
 import type { DatosPerezosos } from "@/lib/datosPerezosos";
+import { ESPERAS_MS, queHacerConElError } from "@/lib/recuperarse";
 
 /**
  * Tener en la mano lo que la pantalla abierta necesita, y nada más.
@@ -84,6 +86,30 @@ export function useDatosDelModulo(
   /** Lo que se está pidiendo ahora, para no pedir dos veces lo mismo. */
   const enVuelo = useRef<string | null>(null);
 
+  /** Cuántas veces seguidas falló el pedido, para esperar más entre intentos. */
+  const fallas = useRef(0);
+  /** Cambia para volver a pedir después de una falla. */
+  const [reintento, setReintento] = useState(0);
+
+  /*
+   * Si la pestaña sigue montada, y no si sigue vivo el efecto que pidió.
+   *
+   * Antes la respuesta se descartaba cuando el efecto que la pidió ya no estaba
+   * —`vivo = false` en su limpieza—. Pero el efecto se vuelve a correr con cada
+   * refresco del servidor (cambia `sello`), y si lo que falta sigue siendo lo
+   * mismo, el efecto nuevo NO lo pide de nuevo porque «ya se está pidiendo».
+   * Resultado: la respuesta del primero se tiraba, el segundo no pedía nada, y
+   * la pantalla quedaba en «Cargando…» para siempre. Lo que decide si una
+   * respuesta sirve es `enVuelo`: si sigue siendo lo que se pidió, sirve.
+   */
+  const montado = useRef(true);
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
+
   /*
    * Las listas como texto, para poder compararlas.
    *
@@ -95,11 +121,11 @@ export function useDatosDelModulo(
   const servidosClave = servidos.join(",");
 
   useEffect(() => {
-    let vivo = true;
-
     if (selloVisto.current !== sello) {
       selloVisto.current = sello;
       traidos.current = {};
+      // Un dibujado nuevo —también el de «Actualizar»— merece intentos nuevos.
+      fallas.current = 0;
     }
 
     const yaEstan = [
@@ -122,20 +148,52 @@ export function useDatosDelModulo(
     setCargando(falta);
 
     void (async () => {
-      const r = await cargarConjuntos(falta);
-      if (!vivo || enVuelo.current !== pedido) return;
+      let r: Awaited<ReturnType<typeof cargarConjuntos>>;
+      try {
+        r = await cargarConjuntos(falta);
+      } catch (e) {
+        /*
+         * El pedido no llegó: se cortó la red, Netlify cortó la función, o la
+         * pestaña es de antes de un despliegue y el servidor ya no conoce esta
+         * acción. Antes esto no lo atajaba nadie y la pantalla quedaba en
+         * «Cargando…» sin decir nada —lo que vio Estefany el 12 de octubre de
+         * 2026 en el Pipeline—. Ahora se cuenta, se dice y se vuelve a pedir.
+         */
+        if (!montado.current || enVuelo.current !== pedido) return;
+        enVuelo.current = null;
+
+        const original = e instanceof Error ? e : new Error(String(e));
+        const aviso = new Error(`Datos de la pantalla (${pedido}): ${original.message}`);
+        aviso.name = original.name;
+        aviso.stack = original.stack;
+        contarAlServidor(aviso, "pagina", fallas.current);
+
+        if (queHacerConElError(original) === "recargar" && recargarUnaVez()) return;
+
+        const n = fallas.current++;
+        if (n < ESPERAS_MS.length) {
+          setError("Se cortó la conexión al traer esta pantalla. Reintentando…");
+          setTimeout(() => {
+            if (montado.current) setReintento((x) => x + 1);
+          }, ESPERAS_MS[n]);
+        } else {
+          setError(
+            "No pudimos traer los datos de esta pantalla. Revisá la conexión y tocá «Actualizar».",
+          );
+          setCargando([]);
+        }
+        return;
+      }
+      if (!montado.current || enVuelo.current !== pedido) return;
 
       enVuelo.current = null;
+      fallas.current = 0;
       setError(r.error);
       if (!r.error) traidos.current = { ...traidos.current, ...r.datos };
       setCargando([]);
       redibujar((n) => n + 1);
     })();
-
-    return () => {
-      vivo = false;
-    };
-  }, [clave, servidosClave, sello]);
+  }, [clave, servidosClave, sello, reintento]);
 
   /*
    * Lo del servidor pisa a lo traído a mano, y no al revés.

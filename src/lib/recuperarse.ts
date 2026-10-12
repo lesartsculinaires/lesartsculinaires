@@ -68,7 +68,12 @@ export function queHacerConElError(error: unknown): QueHacer {
     /ChunkLoadError/i.test(texto) ||
     /Loading (CSS )?chunk [\w-]+ failed/i.test(texto) ||
     /Failed to fetch dynamically imported module/i.test(texto) ||
-    /Importing a module script failed/i.test(texto)
+    /Importing a module script failed/i.test(texto) ||
+    // Una acción del servidor de antes de un despliegue: el servidor nuevo ya
+    // no la conoce, y pedirla de nuevo da lo mismo.
+    /UnrecognizedActionError/i.test(texto) ||
+    /Server Action .* was not found on the server/i.test(texto) ||
+    /Failed to find Server Action/i.test(texto)
   ) {
     return "recargar";
   }
