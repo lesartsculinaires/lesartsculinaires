@@ -61,22 +61,30 @@ plantilla_roles   los roles base y sus permisos   ← de donde se copian al crea
 - **«Dueño de la plataforma» no es lo mismo que «Administrador de una marca».**
   El Administrador manda dentro de su marca y nada más. Crear marcas y verlas todas
   es de otro nivel (`plataforma_admins`), y tiene que ser una puerta aparte.
-- **La marca activa viaja en la sesión.** Se guarda como un dato firmado dentro del
-  pase de Supabase (un *claim* del JWT, puesto por un «Custom Access Token Hook»).
-  Cambiar de marca = una función que comprueba que la persona es de esa marca y le
-  pide a Supabase un pase nuevo. Las políticas de seguridad leen ese dato, así que
-  **no hay que tocar las ~100 consultas del código**: ya van como la persona y la
-  base filtra sola.
-- **Defensa extra:** la función que lee la marca activa vuelve a comprobar en
-  `membresias` que la persona sigue siendo de esa marca. Si se la da de baja, deja
-  de ver los datos al instante, sin esperar a que venza el pase (una hora).
+- **La marca activa va en la dirección de cada pestaña** (`/m/lac/…`,
+  `/m/haute-couture/…`), no en la sesión. Así una misma persona, con un solo
+  inicio de sesión, tiene **varias marcas abiertas a la vez, una por pestaña**
+  (decisión del 12/10/2026). La aplicación manda esa marca en cada consulta a
+  Supabase como una cabecera (`x-marca`), y la base la lee con `marca_activa()`.
+- **La seguridad no depende de la cabecera, sino de la pertenencia.** Las políticas
+  dejan ver una fila sólo si su `marca_id` es de una marca de la que la persona es
+  miembro activo (`membresias`), y los permisos se calculan con el rol que tiene
+  *en esa marca*. La cabecera sólo acota a la marca de la pestaña. Si alguien
+  falsea la cabecera con una marca que no es suya, `marca_activa()` devuelve nada y
+  no ve nada. **No hay que tocar las ~100 consultas del código**: ya van como la
+  persona y la base filtra sola.
+- **Se descartó la idea anterior** (la marca dentro del pase de Supabase, con un
+  «Custom Access Token Hook»): obligaba a que todas las pestañas del navegador
+  compartieran marca.
+- **Tiempo real:** Supabase Realtime no pasa cabeceras, así que ahí manda sólo la
+  pertenencia: llegan avisos de las marcas de la persona, y cada pestaña se queda
+  con los de su marca (cada fila trae `marca_id`).
+- **Dar de baja surte efecto al instante:** la pertenencia se lee de `membresias`
+  en cada consulta, sin esperar a que venza el pase.
 
-**Una consecuencia que hay que decir claro:** como la marca va en la sesión del
-navegador, dos pestañas del mismo navegador comparten marca. Para trabajar dos
-marcas *a la vez*, hay que usar dos perfiles (o dos navegadores). Mostrar el nombre
-y el color de la marca en un lugar muy visible, siempre, es parte del diseño: la
-equivocación más cara de un CRM multimarca es escribirle a un cliente desde la
-marca equivocada.
+Mostrar el nombre y el color de la marca en un lugar muy visible, siempre, es parte
+del diseño: la equivocación más cara de un CRM multimarca es escribirle a un
+cliente desde la marca equivocada.
 
 ---
 
@@ -168,6 +176,10 @@ durante cinco minutos los programas de la A. Es código mío de hace poco: la cl
 tiene que llevar la marca. Y lo mismo la cookie del último módulo, y todo lo que se
 guarde en el navegador.
 
+Lo mismo el **embudo compartido** (`embudo_guardado`, del 12/10/2026): hoy guarda
+un solo embudo para «todo» (`alcance = 'todo'`). Pasa a guardar uno por marca
+(clave = la marca), con su huella calculada sólo sobre las filas de esa marca.
+
 ### 5.5 Las credenciales de WhatsApp están en variables de entorno
 
 `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`,
@@ -239,10 +251,22 @@ base de conocimiento (`documents`), y los programas del módulo de Programas.
 Cada fase termina en algo **comprobable**. No se pasa a la siguiente sin eso.
 
 ### Fase 0 — Decisiones y red de seguridad
-- Responder las preguntas de la sección 8.
-- Trabajar en una **rama de Supabase** (`create_branch`), no en producción: se
-  prueban las migraciones contra una copia con los datos reales.
-- Copia de respaldo de producción antes de tocar nada.
+- Responder las preguntas de la sección 8. *Hecho el 12/10/2026.*
+- El código va en la rama `multimarca` de GitHub, que no pasa a `main` hasta la
+  Fase 4. Los arreglos de Les Arts siguen saliendo por su rama de siempre.
+- Dónde se prueba, **sin gastar**:
+  - **El banco local** (`supabase/pruebas/banco`): la mayor parte del trabajo.
+  - **Un proyecto de prueba en el plan gratuito de Supabase**, en una organización
+    gratuita aparte (en la organización Pro cada base se cobra), con datos
+    inventados, más un **sitio aparte en Netlify** apuntando a él. Sitio aparte y
+    no una versión de prueba del sitio de hoy: el de hoy tiene las llaves de la
+    base real, y un descuido haría que la prueba escriba en producción.
+  - **Ensayo final con los datos reales**: una rama de Supabase con datos, 2 o 3
+    días (se cobra por hora, ~1 USD) y se borra.
+  - Ojo: una rama de Supabase **no** trae los datos de producción salvo que se
+    marque «incluir datos» al crearla. Lo que decía antes este plan estaba mal.
+- Copia de respaldo de producción antes de tocar nada (el plan Pro guarda una
+  diaria por 7 días).
 - Terminar de bajar la carga actual (sección 5.8).
 - **Listo cuando:** las decisiones están escritas aquí y existe la rama de pruebas.
 
@@ -266,8 +290,8 @@ Cada fase termina en algo **comprobable**. No se pasa a la siguiente sin eso.
   una marca de mentira cargada en el banco.
 
 ### Fase 2 — La aplicación
-- Activar el *Custom Access Token Hook* y el selector de marca (con nombre y color
-  bien visibles, siempre).
+- La marca en la dirección (`/m/<marca>/…`), la cabecera `x-marca` en cada
+  consulta y el selector de marca (con nombre y color bien visibles, siempre).
 - Revisar cada uso de la llave de servicio y los 3 webhooks: cada uno recibe la
   marca explícitamente, desde el número o la cuenta que escribió.
 - Caché del catálogo, cookies y almacenamiento del navegador **por marca**.
@@ -285,8 +309,8 @@ Cada fase termina en algo **comprobable**. No se pasa a la siguiente sin eso.
   caer en A** (ya existe `prueba-webhook-cruzado`; se extiende).
 
 ### Fase 4 — Producción
+- Subir el tamaño de la base antes de que la segunda marca empiece a trabajar.
 - Aplicar la migración en una ventana tranquila, con el respaldo hecho.
-- Activar el hook en el panel de Supabase.
 - Desplegar. Verificar. Recién entonces, dar de alta la primera marca nueva.
 
 ---
@@ -313,30 +337,23 @@ Estas pruebas tienen que correr **antes de cada despliegue** de aquí en adelant
 
 ---
 
-## 8. Decisiones que necesito de ustedes
+## 8. Decisiones (respondidas el 12/10/2026)
 
-Cada una con lo que recomiendo; cambian el diseño si la respuesta es otra.
-
-1. **¿La misma persona puede trabajar en varias marcas con el mismo correo?**
-   *Recomiendo: sí.* Es lo que se describió («cambia de sesión»). Si fuera que no,
-   todo es más simple.
-2. **¿Cada marca tiene su propio número de WhatsApp y su propia página de
-   Facebook/Instagram?** ¿Y su propia aplicación de Meta, o usan la de la escuela?
-   *Recomiendo: números y páginas propias, una sola aplicación de Meta.* Define
-   cómo se firman los avisos (sección 5.5).
-3. **¿Los programas (productos) son distintos por marca?** *Recomiendo: sí.*
-   ¿Y el embudo —las etapas— igual para todas? *Recomiendo: igual al principio.*
-4. **¿Se comparten clientes entre marcas?** *Recomiendo: no.* El mismo teléfono puede
-   existir en las dos marcas como dos clientes independientes.
-5. **¿Cómo se entra a cada marca?** *Recomiendo: un selector dentro del CRM, en la
-   misma dirección.* Más adelante, si lo quieren, una dirección propia por marca
-   (`marca.crm…`) es posible, pero necesita un dominio propio.
-6. **¿Quién puede crear marcas?** *Recomiendo: sólo ustedes*, con un nivel
-   «dueño de la plataforma» separado del Administrador de cada marca.
-7. **¿Cuántas marcas se prevén?** Dos o tres es lo que este plan supone. Si son
-   decenas, cambia el cálculo de costos y de rendimiento.
-8. **¿Alguna marca exige datos físicamente separados** (legal, contrato, cliente
-   grande)? Si sí, la opción B de la sección 2.
+1. **La misma persona trabaja en varias marcas con el mismo correo.** Sí: un solo
+   usuario por persona, con un rol propio en cada marca.
+2. **Varias marcas abiertas a la vez, una por pestaña.** Sí (ver sección 3).
+3. **Cada marca tiene su propio número de WhatsApp y sus propias páginas de
+   Facebook e Instagram.** Sí. Si usan una sola aplicación de Meta o una por
+   marca queda por confirmar; el diseño admite las dos (sección 5.5).
+4. **Los clientes no se comparten entre marcas**: son rubros distintos. El mismo
+   teléfono puede existir en dos marcas como dos clientes independientes.
+5. **Los programas son de cada marca.** La segunda marca es **Haute Couture**
+   (El Salvador, rubro Diseño y Moda), con programas nuevos. El embudo (las
+   etapas) empieza igual para todas. Misma zona horaria que Les Arts
+   (`America/El_Salvador`).
+6. **Se prevén 5 marcas.** Crean marcas **sólo los dueños** (`plataforma_admins`),
+   no el Administrador de cada marca.
+7. **Separación física de datos**: no se pidió. Se sigue con una sola base.
 
 ---
 
@@ -344,8 +361,8 @@ Cada una con lo que recomiendo; cambian el diseño si la respuesta es otra.
 
 Cosas que no se pueden hacer desde el código ni desde aquí:
 
-- **Panel de Supabase:** activar el *Custom Access Token Hook* (Authentication →
-  Hooks) en la Fase 4, y confirmar que el plan Pro incluye el respaldo diario.
+- **Panel de Supabase:** crear la organización gratuita para el proyecto de
+  prueba, y confirmar que el plan Pro incluye el respaldo diario.
 - **Meta:** por cada marca nueva, conectar su número de WhatsApp Business y su
   página; si hay aplicaciones distintas, pasar el secreto de cada una por un canal
   seguro (nunca por el chat).

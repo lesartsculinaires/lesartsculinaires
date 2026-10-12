@@ -68,9 +68,12 @@ psql_ "-c \"do \\\$\\\$ begin
   if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
 end \\\$\\\$;
 grant anon, authenticated, service_role to authenticator;
-grant usage on schema public to anon, authenticated, service_role;
-grant all on all tables in schema public to anon, authenticated, service_role;
-grant all on all sequences in schema public to anon, authenticated, service_role;\"" >/dev/null
+grant usage on schema public to anon, authenticated, service_role;\"" >/dev/null
+# Acá antes se daba «grant all on all tables» a todos, DESPUÉS de las
+# migraciones, y eso deshacía cada «revoke» que ellas hacen: el banco dejaba
+# leer tablas que en producción están cerradas (`embudo_guardado`). Los
+# permisos de cada tabla los ponen los privilegios por defecto del shim —igual
+# que en Supabase— y los recortan las migraciones, como en producción.
 echo "   ok"
 
 echo "── 4. gente y fichas inventadas ──"
