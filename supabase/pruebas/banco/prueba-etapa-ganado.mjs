@@ -70,12 +70,43 @@ console.log("\n── y el camino de vuelta: el estado mueve la tarjeta ──")
   es("un guardado que cambia los dos deja el que mandó la persona", mirar(), "Ganado / Perdido / —");
 }
 
-console.log("\n── salir de Ganado no revierte nada ──");
+/*
+ * Desde el 14 de octubre de 2026 la columna y el estado van juntos en los
+ * dos sentidos (20261116120000_etapa_y_estado_siempre_de_acuerdo). Antes,
+ * arrastrar a «Perdido» no cambiaba el estado, y el Dashboard —que cuenta por
+ * estado— seguía contando esos leads como abiertos: 771 en producción.
+ */
+console.log("\n── arrastrar a Perdido pone el estado ──");
 {
+  poner("Pago", "Activo");
+  poner("Perdido", null);
+  es("AL LLEGAR A PERDIDO, EL ESTADO CAMBIA SOLO", mirar(), "Perdido / Perdido / —");
+
   poner("Pago", "Activo");
   poner("Ganado", null);
   poner("Perdido", null);
-  es("sigue Ganado después de moverla", mirar(), "Perdido / Ganado / —");
+  es("y de Ganado a Perdido también", mirar(), "Perdido / Perdido / —");
+}
+
+console.log("\n── sacarla de Ganado o Perdido la reabre ──");
+{
+  poner("Pago", "Activo");
+  poner("Ganado", null);
+  poner("Negociación", null);
+  es("de Ganado a una columna abierta vuelve a Activo", mirar(), "Negociación / Activo / —");
+
+  sql(`update oportunidades set estado_id=(select id from estados where nombre='Perdido'), motivo_perdida_id=(select id from motivos_perdida where nombre='Muy caro') where id=${OP}`);
+  poner("Propuesta", null);
+  es("de Perdido a una abierta vuelve a Activo y pierde el motivo", mirar(), "Propuesta / Activo / —");
+}
+
+console.log("\n── reabrirla desde la ficha la saca de la columna ──");
+{
+  poner("Negociación", "Activo");
+  sql(`update oportunidades set estado_id=(select id from estados where nombre='Perdido') where id=${OP}`);
+  es("(marcada perdida desde la ficha)", mirar(), "Perdido / Perdido / —");
+  sql(`update oportunidades set estado_id=(select id from estados where nombre='En pausa/inactivo') where id=${OP}`);
+  es("ponerla En pausa la VUELVE A SU COLUMNA de antes", mirar(), "Negociación / En pausa/inactivo / —");
 }
 
 console.log("\n── un alta que nace en Ganado ──");
