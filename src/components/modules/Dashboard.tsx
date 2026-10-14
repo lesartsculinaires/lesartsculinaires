@@ -9,6 +9,7 @@ import { variacion } from "@/lib/periodos";
 import {
   TODO,
   comoSeExplicaElVacio,
+  ganadaEnElPeriodo,
   periodoAnterior,
   periodoInicial,
   periodosDisponibles,
@@ -47,8 +48,13 @@ interface Props {
  * primero que se ve.
  *
  * ============================================================================
- * EL MES ES EL DE REGISTRO DEL LEAD
+ * EL MES ES EL DE REGISTRO DEL LEAD (SALVO LOS GANADOS)
  * ============================================================================
+ *
+ * Desde el 14 de octubre de 2026 los GANADOS —y la tasa de cierre, que sale de
+ * ellos— cuentan en el mes en que se cerró la venta, no en el que entró el
+ * lead. Lo de abajo explica por qué el resto sigue por registro; lo de los
+ * ganados está en `periodos.ts`.
  *
  * Y se dice en pantalla, porque cambia lo que significan los números. «Agosto:
  * 33 leads, $4.790» son los leads que ENTRARON en agosto y lo que esos leads
@@ -87,8 +93,25 @@ export function Dashboard({ oportunidades, accent }: Props) {
     [oportunidades, previo],
   );
 
-  const metrics = medir(delPeriodo);
-  const antes = previo ? medir(delPrevio) : null;
+  /*
+   * Los ganados del período se buscan en la lista COMPLETA y por mes de
+   * cierre: una venta de octubre de un lead que entró en septiembre es de
+   * octubre. Ver `periodos.ts`.
+   */
+  const ganadasDelPeriodo = useMemo(
+    () => oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, periodo.clave)).length,
+    [oportunidades, periodo.clave],
+  );
+  const ganadasDelPrevio = useMemo(
+    () =>
+      previo
+        ? oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, previo.clave)).length
+        : 0,
+    [oportunidades, previo],
+  );
+
+  const metrics = medir(delPeriodo, ganadasDelPeriodo);
+  const antes = previo ? medir(delPrevio, ganadasDelPrevio) : null;
 
   const charts = [
     { title: "Vendedores", hint: "por cartera", bars: groupBars(delPeriodo, "vendedor") },
@@ -127,8 +150,8 @@ export function Dashboard({ oportunidades, accent }: Props) {
           */
           <>
             Todo lo de abajo es de{" "}
-            <strong style={{ color: T.muted }}>{periodo.etiqueta}</strong>, por mes de registro
-            del lead
+            <strong style={{ color: T.muted }}>{periodo.etiqueta}</strong>: los leads por mes
+            de registro y los ganados por mes de cierre de la venta
             {previo ? ` · comparado contra ${previo.etiqueta}` : ""}.
           </>
         }
@@ -295,11 +318,14 @@ interface Indicador {
   esPorcentaje?: boolean;
 }
 
-function medir(list: readonly Oportunidad[]): Indicador[] {
+/**
+ * `ganadas` viene aparte porque no sale de `list`: los leads del período son
+ * los que ENTRARON en él, y los ganados son los que se CERRARON en él.
+ */
+function medir(list: readonly Oportunidad[], ganadas: number): Indicador[] {
   const total = list.length;
   const abiertas = list.filter(estaAbierta).length;
   const cerrado = totalCerrado(list);
-  const ganadas = list.filter(esGanada).length;
   const tasa = total ? Math.round((ganadas / total) * 100) : 0;
 
   return [

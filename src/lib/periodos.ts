@@ -1,11 +1,18 @@
 /**
  * Aggregation by calendar period for the dashboard charts.
  *
- * Everything here groups by the month the opportunity was *registered*
- * (`o.mes`, the first day of that month), not by the month it closed.
- * `fecha_cierre` is empty on almost every row, so grouping by it would hide
- * nearly all the revenue; grouping by registration reads each month as a
- * cohort — "of the leads that came in during July, this much has closed".
+ * Leads, amounts and open pipeline group by the month the opportunity was
+ * *registered* (`o.mes`): each month reads as a cohort — "of the leads that
+ * came in during July, this much is still open".
+ *
+ * GANADOS ARE THE EXCEPTION, since October 14, 2026: a sale counts in the
+ * month it CLOSED (`fecha_cierre`). Counted by registration, Alexandra's
+ * eight October sales showed as four, because four of those leads had come
+ * in during September; the school reads «ganados de octubre» as «sales made
+ * in October». The close date used to be empty almost everywhere, which is
+ * why this read by registration; since September a trigger fills it on every
+ * win (30 of 31 in September, 11 of 11 in October). A win without a close
+ * date falls back to its registration month, so nothing is ever dropped.
  */
 
 import { mesCorto, parseISO } from "@/lib/format";
@@ -46,15 +53,24 @@ const vacio = (
   pipeline: 0,
 });
 
+/** Lo que va por mes de registro. Los ganados se suman aparte: ver arriba. */
 function acumular(r: ResumenPeriodo, o: Oportunidad): void {
   r.leads += 1;
-  if (esGanada(o)) r.ganados += 1;
   r.cerrado += o.cerrada ?? 0;
   if (estaAbierta(o)) r.pipeline += o.valor ?? 0;
 }
 
 /** "2026-07-01" → "2026-07". */
 export const claveMes = (mesISO: string): string => mesISO.slice(0, 7);
+
+/**
+ * El mes en que se ganó un lead: el de su fecha de cierre, y si no la tiene,
+ * el de registro. Null sólo si no tiene ninguna de las dos.
+ */
+export const mesDeLaVenta = (o: Oportunidad): string | null => {
+  const crudo = o.fechaCierre || o.mes || o.fechaRegistro;
+  return crudo ? claveMes(crudo) : null;
+};
 
 const etiquetasMes = (clave: string): [corta: string, larga: string] => {
   const iso = `${clave}-01`;
@@ -76,17 +92,22 @@ const etiquetasMes = (clave: string): [corta: string, larga: string] => {
  */
 export function porMes(list: readonly Oportunidad[]): ResumenPeriodo[] {
   const mapa = new Map<string, ResumenPeriodo>();
-
-  for (const o of list) {
-    if (!o.mes) continue;
-    const clave = claveMes(o.mes);
+  const delMes = (clave: string): ResumenPeriodo => {
     let r = mapa.get(clave);
     if (!r) {
       const [corta, larga] = etiquetasMes(clave);
       r = vacio(clave, corta, larga);
       mapa.set(clave, r);
     }
-    acumular(r, o);
+    return r;
+  };
+
+  for (const o of list) {
+    if (o.mes) acumular(delMes(claveMes(o.mes)), o);
+    if (esGanada(o)) {
+      const clave = mesDeLaVenta(o);
+      if (clave) delMes(clave).ganados += 1;
+    }
   }
 
   const claves = [...mapa.keys()].sort();
@@ -112,16 +133,21 @@ export function porMes(list: readonly Oportunidad[]): ResumenPeriodo[] {
 /** One entry per calendar year, oldest first. */
 export function porAnio(list: readonly Oportunidad[]): ResumenPeriodo[] {
   const mapa = new Map<string, ResumenPeriodo>();
-
-  for (const o of list) {
-    if (!o.mes) continue;
-    const clave = o.mes.slice(0, 4);
+  const delAnio = (clave: string): ResumenPeriodo => {
     let r = mapa.get(clave);
     if (!r) {
       r = vacio(clave, clave, `Año ${clave}`);
       mapa.set(clave, r);
     }
-    acumular(r, o);
+    return r;
+  };
+
+  for (const o of list) {
+    if (o.mes) acumular(delAnio(o.mes.slice(0, 4)), o);
+    if (esGanada(o)) {
+      const mes = mesDeLaVenta(o);
+      if (mes) delAnio(mes.slice(0, 4)).ganados += 1;
+    }
   }
 
   return [...mapa.values()].sort((a, b) => a.clave.localeCompare(b.clave));

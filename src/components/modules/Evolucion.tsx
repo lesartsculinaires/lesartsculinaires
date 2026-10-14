@@ -123,8 +123,8 @@ export function Evolucion({ oportunidades, accent }: Props) {
             Evolución
           </h3>
           <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
-            {VISTAS.find((v) => v.id === vista)?.hint} · agrupado por mes de
-            registro del lead
+            {VISTAS.find((v) => v.id === vista)?.hint} · los leads por mes de registro y
+            los ganados por mes de cierre
           </p>
         </div>
         <div

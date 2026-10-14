@@ -33,7 +33,7 @@
  * eso la pantalla lo dice con todas las letras.
  */
 
-import { claveMes } from "@/lib/periodos";
+import { claveMes, mesDeLaVenta } from "@/lib/periodos";
 import type { Oportunidad } from "@/lib/types";
 
 /** Todo el histórico, que es lo que el tablero mostraba siempre. */
@@ -135,6 +135,18 @@ export function enElPeriodo(o: Oportunidad, clave: string): boolean {
     return false;
   }
   // Un año: "2026" contra "2026-09". Un mes: comparación directa.
+  return clave.length === 4 ? m.slice(0, 4) === clave : m === clave;
+}
+
+/**
+ * ¿Este lead se GANÓ en el período elegido? Por el mes de cierre, no el de
+ * registro: es lo que cuenta el tablero como «ganados» desde el 14/10/2026.
+ * Ver `periodos.ts`.
+ */
+export function ganadaEnElPeriodo(o: Oportunidad, clave: string): boolean {
+  if (clave === TODO) return true;
+  const m = mesDeLaVenta(o);
+  if (!m) return false;
   return clave.length === 4 ? m.slice(0, 4) === clave : m === clave;
 }
 

@@ -123,7 +123,10 @@ const sembrar = () => {
                  when i <= ganados[m] + perdidos[m] then 5 else 1 end,
             -- Dentro del mes, sin pasarse al siguiente ni al futuro.
             least(base + ((i * 2) % 27), current_date),
-            null,
+            -- Los ganados, cerrados el mismo día que entraron: con la fecha
+            -- vacía, el disparador les pondría HOY, y desde el 14/10/2026 el
+            -- tablero cuenta los ganados por mes de cierre.
+            case when i <= ganados[m] then least(base + ((i * 2) % 27), current_date) else null end,
             400 + (n % 5) * 150,
             case when i <= ganados[m] then 350 + (n % 4) * 120 else null end
           );
@@ -148,10 +151,13 @@ const verdad = (mes) => {
     select count(*)
       || '|' || count(*) filter (where not coalesce(e.es_final,false))
       || '|' || coalesce(sum(o.venta_cerrada),0)::numeric(12,0)
-      || '|' || coalesce(round(100.0*count(*) filter (where s.nombre='Ganado')/nullif(count(*),0)),0)
+      || '|' || coalesce(round(100.0*(
+           select count(*) from public.oportunidades g join public.estados gs on gs.id = g.estado_id
+            where gs.nombre = 'Ganado'
+              ${mes === "TODO" ? "" : `and to_char(coalesce(g.fecha_cierre, g.fecha_registro),'YYYY-MM') = '${mes}'`}
+         )/nullif(count(*),0)),0)
       from public.oportunidades o
       left join public.estados e on e.id = o.estado_id
-      left join public.estados s on s.id = o.estado_id
       ${donde};
   `).split("|");
   return { leads: Number(leads), pipeline: Number(pipeline), cerrado: Number(cerrado), tasa: Number(tasa) };
