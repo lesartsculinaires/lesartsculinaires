@@ -6,6 +6,8 @@ import { reactivarVendedor } from "@/app/vendedores-actions";
 import { NuevoVendedor } from "@/components/modules/NuevoVendedor";
 import { EditarVendedor } from "@/components/modules/EditarVendedor";
 import { QuitarVendedor } from "@/components/modules/QuitarVendedor";
+import { RevisionDelEquipo } from "@/components/modules/RevisionDelEquipo";
+import { TraspasarCartera } from "@/components/modules/TraspasarCartera";
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
 import { porMes, variacion } from "@/lib/periodos";
@@ -73,6 +75,14 @@ export function Equipos({
   const [creando, setCreando] = useState(false);
   const [quitando, setQuitando] = useState<Vendedor | null>(null);
   const [editando, setEditando] = useState<Vendedor | null>(null);
+  const [traspasando, setTraspasando] = useState<Vendedor | null>(null);
+  // Sube cada vez que se mueve algo, para que la revisión del equipo se
+  // vuelva a hacer con lo que quedó.
+  const [sello, setSello] = useState(0);
+  const despuesDeMover = () => {
+    setSello((x) => x + 1);
+    onRefrescar();
+  };
 
   // El catálogo llega entero para que el resto del CRM pueda seguir poniéndole
   // nombre a lo que atendió alguien que ya no está. Acá se trabaja sólo con los
@@ -81,26 +91,33 @@ export function Equipos({
   const vendedores = activos(todos);
   const bajas = todos.filter((x) => !x.activo);
 
-  /** El botón, arriba a la derecha. Se dibuja igual con la lista vacía. */
+  /** Arriba de todo: lo que está desparejo en el equipo y el botón de agregar. */
   const boton = esAdmin ? (
-    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-      <button
-        type="button"
-        onClick={() => setCreando(true)}
-        style={{
-          height: 34,
-          padding: "0 15px",
-          fontSize: 12.5,
-          fontWeight: 600,
-          borderRadius: 7,
-          background: accent,
-          color: "#fff",
-          cursor: "pointer",
-        }}
-      >
-        Nuevo vendedor
-      </button>
-    </div>
+    <>
+      <RevisionDelEquipo
+        sello={sello}
+        onHecho={despuesDeMover}
+        onTraspasar={(id) => setTraspasando(todos.find((x) => x.id === id) ?? null)}
+      />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button
+          type="button"
+          onClick={() => setCreando(true)}
+          style={{
+            height: 34,
+            padding: "0 15px",
+            fontSize: 12.5,
+            fontWeight: 600,
+            borderRadius: 7,
+            background: accent,
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Nuevo vendedor
+        </button>
+      </div>
+    </>
   ) : null;
 
   const dialogo = (
@@ -126,7 +143,20 @@ export function Equipos({
           nombre={quitando.nombre}
           accent={accent}
           onCerrar={() => setQuitando(null)}
-          onHecho={onRefrescar}
+          onHecho={despuesDeMover}
+          onTraspasar={() => {
+            setTraspasando(quitando);
+            setQuitando(null);
+          }}
+        />
+      )}
+      {traspasando && (
+        <TraspasarCartera
+          de={traspasando}
+          candidatas={vendedores.filter((x) => x.id !== traspasando.id)}
+          accent={accent}
+          onCerrar={() => setTraspasando(null)}
+          onHecho={despuesDeMover}
         />
       )}
     </>
@@ -367,6 +397,14 @@ export function Equipos({
                       style={{ fontSize: 12.5, color: T.muted }}
                     >
                       Editar perfil
+                    </button>
+                    <button
+                      type="button"
+                      data-abrir-traspaso
+                      onClick={() => setTraspasando(v)}
+                      style={{ fontSize: 12.5, color: T.muted }}
+                    >
+                      Traspasar cartera
                     </button>
                     <button
                       type="button"

@@ -16,6 +16,8 @@ interface Props {
   accent: string;
   onCerrar: () => void;
   onHecho: () => void;
+  /** Abre el traspaso de su cartera, para hacerlo antes de darlo de baja. */
+  onTraspasar?: () => void;
 }
 
 /**
@@ -36,7 +38,7 @@ interface Props {
  * cuelga trabajo, la única salida es la baja. Eliminar queda sólo para el
  * nombre cargado por error, que es el caso en que de verdad no se pierde nada.
  */
-export function QuitarVendedor({ id, nombre, accent, onCerrar, onHecho }: Props) {
+export function QuitarVendedor({ id, nombre, accent, onCerrar, onHecho, onTraspasar }: Props) {
   const [dep, setDep] = useState<Dependencias | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +142,21 @@ export function QuitarVendedor({ id, nombre, accent, onCerrar, onHecho }: Props)
                   </li>
                 )}
               </ul>
+            )}
+
+            {!limpio && onTraspasar && (dep.oportunidades > 0 || dep.conversaciones > 0) && (
+              <p style={{ margin: "0 0 12px", fontSize: 12.5, color: T.ink, lineHeight: 1.55 }}>
+                Si alguien sigue con sus clientes,{" "}
+                <button
+                  type="button"
+                  onClick={onTraspasar}
+                  disabled={trabajando}
+                  style={{ fontSize: 12.5, fontWeight: 600, color: accent, textDecoration: "underline" }}
+                >
+                  traspasale su cartera primero
+                </button>
+                : así sus leads abiertos y sus chats no quedan a nombre de alguien que ya no está.
+              </p>
             )}
 
             <div

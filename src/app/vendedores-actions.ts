@@ -382,3 +382,131 @@ export async function editarVendedor(
 
   return { ok: true, error: null, tieneCuenta: await tieneCuentaCrm(supabase, correo) };
 }
+
+/**
+ * Lo que se lleva quien recibe una cartera: los leads abiertos, los chats y
+ * las citas que vienen. Los leads ganados y perdidos se quedan con quien los
+ * trabajó, que es como cuentan en sus números de cada mes.
+ */
+export interface Cartera {
+  leads: number;
+  conversaciones: number;
+  citas: number;
+}
+
+export async function carteraDe(id: number): Promise<Cartera> {
+  const supabase = await getServerClient();
+  const vacia = { leads: 0, conversaciones: 0, citas: 0 };
+  if (!supabase) return vacia;
+
+  const [leads, conversaciones, citas] = await Promise.all([
+    supabase
+      .from("oportunidades")
+      .select("id", { count: "exact", head: true })
+      .eq("vendedor_id", id)
+      .is("fecha_cierre", null),
+    supabase
+      .from("conversaciones")
+      .select("id", { count: "exact", head: true })
+      .eq("vendedor_id", id),
+    supabase
+      .from("eventos")
+      .select("id", { count: "exact", head: true })
+      .eq("vendedor_id", id)
+      .gte("inicia_en", new Date().toISOString()),
+  ]);
+
+  return {
+    leads: leads.error ? 0 : (leads.count ?? 0),
+    conversaciones: conversaciones.error ? 0 : (conversaciones.count ?? 0),
+    citas: citas.error ? 0 : (citas.count ?? 0),
+  };
+}
+
+/**
+ * Pasar la cartera entera de una persona a otra, de una sola vez.
+ *
+ * Es lo que hace falta cuando alguien entra a cubrir a otra o cuando alguien
+ * se va: hacerlo lead por lead fue como quedaron dos de Estefany a nombre de
+ * Alexandra y los chats de Katya sin nadie que los viera como propios. La base
+ * lo hace todo junto o nada, y cada cambio queda en el historial del lead con
+ * el nombre de quien lo pidió.
+ */
+export async function traspasarCartera(
+  de: number,
+  a: number,
+): Promise<{ ok: boolean; error: string | null; movido?: Cartera }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data, error } = await supabase.rpc("traspasar_cartera", { p_de: de, p_a: a });
+  if (error) {
+    if (error.code === "PGRST202") {
+      return { ok: false, error: "El traspaso todavía no está habilitado en la base. Avisale a sistemas." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  revalidatePath("/");
+  return {
+    ok: true,
+    error: null,
+    movido: {
+      leads: Number(r.leads ?? 0),
+      conversaciones: Number(r.conversaciones ?? 0),
+      citas: Number(r.citas ?? 0),
+    },
+  };
+}
+
+/** Un problema de la revisión del equipo: qué, de quién y cuántos. */
+export interface ProblemaDelEquipo {
+  tipo:
+    | "baja_con_leads"
+    | "baja_con_chats"
+    | "chat_de_otra"
+    | "cuenta_sin_ficha"
+    | "ficha_sin_cuenta";
+  vendedorId: number | null;
+  nombre: string;
+  cantidad: number;
+}
+
+/**
+ * Lo que está desparejo en el equipo: gente dada de baja con trabajo a su
+ * nombre, chats que no están con la dueña de su lead, y cuentas o fichas a
+ * medio armar que dejan a alguien afuera del reparto. Sólo dirección recibe
+ * algo; al resto la base le devuelve la lista vacía.
+ */
+export async function revisionDelEquipo(): Promise<ProblemaDelEquipo[]> {
+  const supabase = await getServerClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase.rpc("revision_del_equipo");
+  if (error) return [];
+
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    tipo: String(r.tipo) as ProblemaDelEquipo["tipo"],
+    vendedorId: r.vendedor_id == null ? null : Number(r.vendedor_id),
+    nombre: String(r.nombre ?? ""),
+    cantidad: Number(r.cantidad ?? 0),
+  }));
+}
+
+/** Cada chat con quien tiene el lead abierto de ese cliente. */
+export async function alinearChatsConLeads(): Promise<{ ok: boolean; error: string | null; movidos?: number }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data, error } = await supabase.rpc("alinear_chats_con_leads");
+  if (error) {
+    if (error.code === "PGRST202") {
+      return { ok: false, error: "Esto todavía no está habilitado en la base. Avisale a sistemas." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, error: null, movidos: Number(data ?? 0) };
+}
