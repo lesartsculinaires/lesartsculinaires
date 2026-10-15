@@ -76,6 +76,14 @@ const finMes = m === 12 ? `${a + 1}-01-01` : `${a}-${String(m + 1).padStart(2, "
 const delDia = base(HOY, manana);
 const delMes = base(`${MES}-01`, finMes);
 
+// Lo contestado hoy, contado en la base: otras pruebas del banco también
+// contestan chats, así que no se puede suponer que sólo esté el de esta.
+const [convHoy, mensHoy] = sql(`select count(distinct conversacion_id)||'|'||count(*) from mensajes
+  where direccion='saliente' and not coalesce(privado,false)
+    and creado_en >= ('${HOY}'::timestamp at time zone 'America/El_Salvador')
+    and creado_en <  ('${manana}'::timestamp at time zone 'America/El_Salvador')`).split("|").map(Number);
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
 const jwt = fs.readFileSync(`${BANCO}/jwt-jefa.txt`, "utf8").trim();
 const galleta = "base64-" + Buffer.from(JSON.stringify({
   access_token: jwt, token_type: "bearer", expires_in: 86400,
@@ -118,8 +126,8 @@ try {
   es("LEADS NUEVOS como en la base", Number(await valor(r, "nuevos")), delDia.nuevos);
   es("GANADOS como en la base", Number(await valor(r, "ganados")), delDia.ganados);
   es("PERDIDOS como en la base", Number(await valor(r, "perdidos")), delDia.perdidos);
-  es("conversaciones contestadas", Number(await valor(r, "conversaciones")), 1);
-  es("mensajes enviados", Number(await valor(r, "mensajes")), 2);
+  es("conversaciones contestadas, como en la base", Number(await valor(r, "conversaciones")), convHoy);
+  es("mensajes enviados, como en la base", Number(await valor(r, "mensajes")), mensHoy);
   const texto = (await r.locator("main").innerText()).replace(/\s+/g, " ");
   es("POR QUÉ SE PIERDEN: aparece el motivo", await r.locator('[data-motivo="Problema de horario"]').count(), 1);
   const ficha = (await r.locator(`[data-perdido="${codigoPerdido}"]`).innerText()).replace(/\s+/g, " ");
@@ -164,7 +172,8 @@ try {
   await i.waitForTimeout(2500);
   const resumen = (await i.locator("[data-resumen-contestadas]").innerText()).trim();
   if (process.env.SP) await i.screenshot({ path: `${process.env.SP}/inbox-dia.png`, clip: { x: 0, y: 0, width: 900, height: 700 } });
-  es("DICE CUÁNTAS SE CONTESTARON", resumen, "1 conversación contestada ese día, con 2 mensajes.");
+  es("DICE CUÁNTAS SE CONTESTARON", resumen,
+    `${plural(convHoy, "conversación contestada", "conversaciones contestadas")} ese día, con ${plural(mensHoy, "mensaje", "mensajes")}.`);
   const ayer = new Date(Date.parse(`${HOY}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
   await i.locator("#inbox-contestadas").fill(ayer);
   await i.waitForTimeout(2500);
