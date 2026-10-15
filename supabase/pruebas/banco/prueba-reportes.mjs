@@ -44,10 +44,15 @@ sql(`insert into oportunidad_etiquetas (oportunidad_id, etiqueta_id) values (${n
 const cliente = sql(`select cliente_id from oportunidades where id=${nuevo}`);
 const conv = sql(`insert into conversaciones (identificador, telefono, canal, cliente_id, vendedor_id, ultimo_mensaje_en) values ('50379990001', '50379990001', 'whatsapp', ${cliente}, 901, now()) returning id`).split("\n")[0];
 sql(`insert into mensajes (conversacion_id, direccion, tipo, texto, enviado_por, creado_en) values (${conv}, 'saliente', 'text', 'Hola, te paso la info', '${ALE}', now()), (${conv}, 'saliente', 'text', 'Quedo atenta', '${ALE}', now())`);
+// Una nota interna del Inbox en el chat del perdido: también tiene que salir.
+const clientePerdido = sql(`select cliente_id from oportunidades where id=${perdido}`);
+const convPerdido = sql(`insert into conversaciones (identificador, telefono, canal, cliente_id, vendedor_id, ultimo_mensaje_en, archivada) values ('50379990002', '50379990002', 'whatsapp', ${clientePerdido}, 901, now(), true) returning id`).split("\n")[0];
+sql(`insert into mensajes (conversacion_id, direccion, tipo, texto, enviado_por, privado, creado_en) values (${convPerdido}, 'saliente', 'text', 'Nota interna: quiere volver a intentarlo en enero.', '${ALE}', true, now())`);
+const codigoPerdido = sql(`select codigo from oportunidades where id=${perdido}`);
 
 const limpiar = () => {
-  sql(`delete from mensajes where conversacion_id=${conv}`);
-  sql(`delete from conversaciones where id=${conv}`);
+  sql(`delete from mensajes where conversacion_id in (${conv}, ${convPerdido})`);
+  sql(`delete from conversaciones where id in (${conv}, ${convPerdido})`);
   sql(`delete from oportunidad_etiquetas where etiqueta_id=${etiqueta}`);
   sql(`delete from etiquetas where id=${etiqueta}`);
   sql(`delete from oportunidad_notas where oportunidad_id=${perdido} and nota like 'Trabaja los sábados%'`);
@@ -117,7 +122,11 @@ try {
   es("mensajes enviados", Number(await valor(r, "mensajes")), 2);
   const texto = (await r.locator("main").innerText()).replace(/\s+/g, " ");
   es("POR QUÉ SE PIERDEN: aparece el motivo", await r.locator('[data-motivo="Problema de horario"]').count(), 1);
-  es("y el perdido con su comentario", texto.includes("Trabaja los sábados; pidió avisarle del horario nocturno."), true);
+  const ficha = (await r.locator(`[data-perdido="${codigoPerdido}"]`).innerText()).replace(/\s+/g, " ");
+  es("el perdido, debajo de su motivo", await r.locator(`[data-grupo-motivo="Problema de horario"] [data-perdido="${codigoPerdido}"]`).count(), 1);
+  es("con el comentario de la ficha", ficha.includes("Trabaja los sábados; pidió avisarle del horario nocturno."), true);
+  es("y la nota interna del Inbox", ficha.includes("nota del Inbox: Nota interna: quiere volver a intentarlo en enero."), true);
+  es("y quién lo pasó a Perdido", ficha.includes("Pasado a Perdido por"), true);
   const activos = Number(sql("select count(*) from productos where activo"));
   const filasProgramas = await r.locator("section", { hasText: "Todos los cursos" }).locator("tbody tr").count();
   es("TODOS LOS PROGRAMAS activos, con o sin movimiento", filasProgramas >= activos, true);
@@ -131,7 +140,7 @@ try {
   const csv = fs.readFileSync(ruta, "utf8");
   es("SE BAJA PARA EXCEL", descarga.suggestedFilename(), `reporte-dia-${HOY}.csv`);
   es("con BOM y punto y coma", [csv.charCodeAt(0), csv.includes("Motivo;Leads;%;Programa donde más se repite")], [0xfeff, true]);
-  es("y el comentario adentro", csv.includes('"Trabaja los sábados; pidió avisarle del horario nocturno."'), true);
+  es("y las notas adentro, con el registro", csv.includes("Pasado a Perdido por;Notas de la asesora") && /"[^"]*Trabaja los sábados; pidió avisarle[^"]*\(Inbox\): Nota interna[^"]*"/.test(csv), true);
 
   // ══════════════════════════════════════════════════════════════════════
   console.log("\n── 3. EL REPORTE DEL MES ──");
@@ -143,6 +152,7 @@ try {
   es("ganados del mes como en la base", Number(await valor(r, "ganados")), delMes.ganados);
   es("trae las semanas", await r.locator("section", { hasText: "Semana por semana" }).count(), 1);
   es("y NO el listado lead por lead (es más sintetizado)", await r.locator("section", { hasText: "Todos los leads del día" }).count(), 0);
+  es("pero SÍ los perdidos con sus notas", (await r.locator(`[data-perdido="${codigoPerdido}"]`).innerText()).includes("Trabaja los sábados"), true);
 
   // ══════════════════════════════════════════════════════════════════════
   console.log("\n── 4. EL INBOX: CONTESTADAS UN DÍA ──");

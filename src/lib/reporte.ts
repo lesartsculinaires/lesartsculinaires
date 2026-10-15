@@ -50,8 +50,25 @@ export interface LeadDelReporte {
   cerrada: number | null;
   programas: number[];
   etiquetas: number[];
-  /** El último comentario, sólo en los perdidos. */
-  nota: string | null;
+  /**
+   * Lo que el equipo escribió sobre el lead, sólo en los perdidos: los
+   * comentarios de la ficha y las notas internas del Inbox, del más viejo al
+   * más nuevo.
+   */
+  notas?: NotaDelLead[] | null;
+  /** Quién lo pasó a Perdido y cuándo, según el historial. */
+  perdidoPor?: { quien: string; fecha: string } | null;
+  /** Lo que mandaba la base antes de 20261120: el último comentario. */
+  nota?: string | null;
+}
+
+export interface NotaDelLead {
+  /** Fecha y hora, ISO. */
+  fecha: string;
+  quien: string;
+  texto: string;
+  /** «ficha»: comentario en el lead; «inbox»: nota interna del chat. */
+  donde: "ficha" | "inbox";
 }
 
 export interface DatosDelReporte {
@@ -143,6 +160,8 @@ export interface FilaEtiqueta {
 
 export interface FilaMotivo {
   motivo: string;
+  /** Los perdidos de este motivo, cada uno con sus notas. */
+  detalle: FilaLead[];
   leads: number;
   porcentaje: number;
   /** El programa en que más se repite, para saber dónde mirar. */
@@ -169,7 +188,10 @@ export interface FilaLead {
   estado: string;
   etiquetas: string;
   motivo: string;
-  nota: string;
+  /** Las notas de un perdido, ya con fecha y autora, en orden. */
+  notas: { fecha: string; quien: string; texto: string; donde: "ficha" | "inbox" }[];
+  /** «Estefany Gonzalez, 14/10/2026 3:05 p. m.», o vacío. */
+  perdidoPor: string;
   /** Qué le pasó en el período: entró, se ganó, se perdió. */
   queTuvo: string;
 }
@@ -206,6 +228,36 @@ const sumarDias = (s: string, n: number) => {
   d.setUTCDate(d.getUTCDate() + n);
   return iso(d);
 };
+
+/** «14/10/2026 3:05 p. m.», en hora de El Salvador. */
+export const fechaHora = (s: string): string =>
+  new Date(s).toLocaleString("es-SV", {
+    timeZone: "America/El_Salvador",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+/**
+ * Las notas de un perdido, sin repetir: una nota del Inbox que también quedó
+ * en la ficha se muestra una sola vez.
+ */
+function notasDe(l: LeadDelReporte): FilaLead["notas"] {
+  const crudas: NotaDelLead[] =
+    l.notas ?? (l.nota ? [{ fecha: l.cierre ?? l.registro, quien: "", texto: l.nota, donde: "ficha" }] : []);
+  const vistas = new Set<string>();
+  const out: FilaLead["notas"] = [];
+  for (const x of crudas) {
+    const texto = (x.texto ?? "").trim();
+    const clave = texto.toLowerCase().replace(/\s+/g, " ");
+    if (!texto || vistas.has(clave)) continue;
+    vistas.add(clave);
+    out.push({ fecha: fechaHora(x.fecha), quien: x.quien ?? "", texto, donde: x.donde === "inbox" ? "inbox" : "ficha" });
+  }
+  return out;
+}
 
 /** Hoy en El Salvador, que es donde trabaja el equipo. */
 export const hoyEnElSalvador = (ahora: Date = new Date()): string =>
@@ -444,6 +496,7 @@ export function armarReporte(
         porcentaje: pct(ls.length, perdidos.length),
         programaPrincipal: principal,
         sinDecir: motivo === "",
+        detalle: [] as FilaLead[],
       };
     })
     .sort((x, y) => (x.sinDecir !== y.sinDecir ? (x.sinDecir ? 1 : -1) : y.leads - x.leads));
@@ -470,10 +523,15 @@ export function armarReporte(
       estado: l.estado || "—",
       etiquetas: l.etiquetas.map((id) => nombreEtiqueta.get(id)).filter(Boolean).join(", "),
       motivo: l.estado === "Perdido" ? l.motivo || "Sin motivo anotado" : "",
-      nota: l.nota ?? "",
+      notas: notasDe(l),
+      perdidoPor: l.perdidoPor ? `${l.perdidoPor.quien}, ${fechaHora(l.perdidoPor.fecha)}` : "",
       queTuvo: que.join(" y ") || "—",
     };
   };
+
+  for (const m of motivos) {
+    m.detalle = (porMotivo.get(m.sinDecir ? "" : m.motivo) ?? []).map(fila);
+  }
 
   // ------------------------------------------------------------- semanas
   const semanas: FilaSemana[] = [];
@@ -505,8 +563,14 @@ export function armarReporte(
   if (perdidos.length > 0) {
     const m = motivos.find((x) => !x.sinDecir);
     const sin = motivos.find((x) => x.sinDecir);
+    const conNotas = perdidos.filter((l) => notasDe(l).length > 0).length;
     if (m) conclusiones.push(`${perdidos.length === 1 ? "Se perdió" : "Se perdieron"} ${n(perdidos.length, "lead", "leads")}. El motivo principal: «${m.motivo}», ${m.leads} (${m.porcentaje} %)${m.programaPrincipal ? `, sobre todo en ${m.programaPrincipal}` : ""}.`);
     if (sin) conclusiones.push(`${sin.leads === 1 ? "1 de los perdidos no tiene" : `${sin.leads} de los perdidos no tienen`} motivo anotado: sin el motivo no se puede saber qué corregir.`);
+    conclusiones.push(
+      conNotas === perdidos.length
+        ? `${perdidos.length === 1 ? "El perdido tiene" : "Todos los perdidos tienen"} notas de la asesora: están abajo, en «Por qué se pierden».`
+        : `${conNotas} de ${n(perdidos.length, "perdido tiene", "perdidos tienen")} notas de la asesora (están abajo, en «Por qué se pierden»); ${perdidos.length - conNotas === 1 ? "1 no tiene" : `${perdidos.length - conNotas} no tienen`} ninguna.`,
+    );
   }
   if (t.conversaciones > 0) conclusiones.push(`El equipo contestó ${n(t.conversaciones, "conversación", "conversaciones")} con ${n(t.mensajes, "mensaje", "mensajes")}.`);
 
@@ -555,9 +619,15 @@ export function reporteACsv(r: Reporte): string {
   seccion("Territorios", ["Territorio", "Leads nuevos", "%"], r.territorios.map((t) => [t.territorio, t.nuevos, t.porcentaje]));
   seccion("Por qué se pierden", ["Motivo", "Leads", "%", "Programa donde más se repite"], r.motivos.map((m) => [m.motivo, m.leads, m.porcentaje, m.programaPrincipal ?? ""]));
   if (r.semanas.length) seccion("Por semana", ["Semana", "Leads nuevos", "Ganados", "Perdidos"], r.semanas.map((s) => [s.etiqueta, s.nuevos, s.ganados, s.perdidos]));
-  const encLead = ["Código", "Cliente", "Qué pasó", "Registro", "Cierre", "Canal", "Programas", "Asesora", "Etapa", "Estado", "Etiquetas", "Motivo de pérdida", "Último comentario"];
-  const filaLead = (l: FilaLead) => [l.codigo, l.cliente, l.queTuvo, l.registro, l.cierre ?? "", l.canal, l.programas, l.asesora, l.etapa, l.estado, l.etiquetas, l.motivo, l.nota];
-  seccion("Leads perdidos, uno por uno", encLead, r.perdidos.map(filaLead));
+  const encLead = ["Código", "Cliente", "Qué pasó", "Registro", "Cierre", "Canal", "Programas", "Asesora", "Etapa", "Estado", "Etiquetas"];
+  const filaLead = (l: FilaLead) => [l.codigo, l.cliente, l.queTuvo, l.registro, l.cierre ?? "", l.canal, l.programas, l.asesora, l.etapa, l.estado, l.etiquetas];
+  const notasEnTexto = (l: FilaLead) =>
+    l.notas.map((x) => `${x.fecha}${x.quien ? ` ${x.quien}` : ""}${x.donde === "inbox" ? " (Inbox)" : ""}: ${x.texto}`).join(" | ");
+  seccion(
+    "Leads perdidos, uno por uno",
+    [...encLead, "Motivo de pérdida", "Pasado a Perdido por", "Notas de la asesora"],
+    r.perdidos.map((l) => [...filaLead(l), l.motivo, l.perdidoPor, notasEnTexto(l)]),
+  );
   if (r.leads.length) seccion("Todos los leads del día", encLead, r.leads.map(filaLead));
   return "﻿" + out.join("\r\n");
 }

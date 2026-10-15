@@ -93,7 +93,7 @@ function Tabla({ cabeza, filas, numericas = [] }: { cabeza: string[]; filas: Rea
   );
 }
 
-const filaDeLead = (l: FilaLead, conMotivo: boolean): ReactNode[] => [
+const filaDeLead = (l: FilaLead): ReactNode[] => [
   <span key="c" style={{ whiteSpace: "nowrap" }}>{l.codigo}</span>,
   l.cliente,
   l.queTuvo,
@@ -102,8 +102,44 @@ const filaDeLead = (l: FilaLead, conMotivo: boolean): ReactNode[] => [
   l.asesora,
   `${l.etapa} / ${l.estado}`,
   l.etiquetas || "—",
-  ...(conMotivo ? [l.motivo || "—", l.nota || "—"] : []),
 ];
+
+/**
+ * Un lead perdido, con lo que escribió el equipo: se lee como una ficha, no
+ * como una fila, porque lo que importa son las palabras de la asesora.
+ */
+function PerdidoConNotas({ l }: { l: FilaLead }) {
+  return (
+    <article data-perdido={l.codigo} className="rp-perdido" style={{ borderTop: `1px solid ${BORDE}`, padding: "10px 0" }}>
+      <p style={{ margin: 0, fontSize: 13 }}>
+        <strong>{l.cliente}</strong>
+        <span style={{ color: TENUE }}> · {l.codigo}</span>
+        <span style={{ color: GRIS }}> · {l.programas} · {l.canal} · {l.asesora}</span>
+      </p>
+      {l.perdidoPor && (
+        <p style={{ margin: "2px 0 0", fontSize: 11.5, color: TENUE }}>Pasado a Perdido por {l.perdidoPor}</p>
+      )}
+      {l.notas.length === 0 ? (
+        <p style={{ margin: "6px 0 0", fontSize: 12.5, color: TENUE, fontStyle: "italic" }}>
+          Sin notas: no se dejó ningún comentario en la ficha ni en el Inbox.
+        </p>
+      ) : (
+        <ul data-notas style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12.5, lineHeight: 1.55 }}>
+          {l.notas.map((x, i) => (
+            <li key={i}>
+              <span style={{ color: TENUE }}>
+                {x.fecha}
+                {x.quien ? ` · ${x.quien}` : ""}
+                {x.donde === "inbox" ? " · nota del Inbox" : ""}:
+              </span>{" "}
+              <span style={{ whiteSpace: "pre-wrap" }}>{x.texto}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
 
 export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; csv: string; generado: string }) {
   const esDia = r.periodo.tipo === "dia";
@@ -124,6 +160,7 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
           .rp { padding: 0 !important; max-width: none !important; }
           .rp-seccion { break-inside: auto; }
           .rp-tabla tr { break-inside: avoid; }
+          .rp-perdido { break-inside: avoid; }
           .rp-tabla th { background: #eef1f8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           @page { margin: 14mm; }
         }
@@ -164,7 +201,7 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
 
       <Seccion
         titulo="Por qué se pierden"
-        explica={totalPerdidos === 1 ? "El lead que se cerró como perdido en el período, con el motivo que anotó la asesora." : `Los ${totalPerdidos} leads que se cerraron como perdidos en el período, agrupados por el motivo que anotó la asesora.`}
+        explica={totalPerdidos === 1 ? "El lead que se cerró como perdido en el período, con el motivo y las notas que dejó la asesora." : `Los ${totalPerdidos} leads que se cerraron como perdidos en el período, agrupados por el motivo que anotó la asesora, y abajo lo que escribió sobre cada uno.`}
       >
         {r.motivos.length === 0 ? (
           <p style={{ fontSize: 13, color: TENUE, margin: 0 }}>No se perdió ningún lead en este período.</p>
@@ -184,12 +221,21 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
             ))}
           </div>
         )}
-        {esDia && r.perdidos.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <Tabla
-              cabeza={["Código", "Cliente", "Qué pasó", "Canal", "Programa", "Asesora", "Etapa / estado", "Etiquetas", "Motivo", "Último comentario"]}
-              filas={r.perdidos.map((l) => filaDeLead(l, true))}
-            />
+        {r.motivos.some((m) => m.detalle.length > 0) && (
+          <div data-detalle-perdidos style={{ marginTop: 20 }}>
+            <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Lo que anotaron las asesoras</h3>
+            <p style={{ margin: "0 0 10px", fontSize: 12.5, color: GRIS }}>
+              Cada lead perdido, agrupado por motivo, con los comentarios de su ficha y las notas internas del Inbox,
+              y quién lo pasó a Perdido.
+            </p>
+            {r.motivos.map((m) => (
+              <section key={m.motivo} data-grupo-motivo={m.motivo} className="rp-seccion" style={{ marginTop: 12 }}>
+                <h4 style={{ margin: "0 0 2px", fontSize: 13.5, color: m.sinDecir ? GRIS : "#9E2F29" }}>
+                  {m.motivo} · {m.leads}
+                </h4>
+                {m.detalle.map((l) => <PerdidoConNotas key={l.codigo} l={l} />)}
+              </section>
+            ))}
           </div>
         )}
       </Seccion>
@@ -278,7 +324,7 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
         <Seccion titulo="Todos los leads del día" explica="Cada lead que entró, se ganó o se perdió en el día.">
           <Tabla
             cabeza={["Código", "Cliente", "Qué pasó", "Canal", "Programas", "Asesora", "Etapa / estado", "Etiquetas"]}
-            filas={r.leads.map((l) => filaDeLead(l, false))}
+            filas={r.leads.map(filaDeLead)}
           />
         </Seccion>
       )}

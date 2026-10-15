@@ -74,7 +74,15 @@ console.log("\n── el reporte del día ──");
       lead("2026-10-14", { canal: "Instagram", programas: [1, 2] }),
       lead("2026-10-14", { canal: "Feria", productoId: 2, producto: "Pastelería", programas: [2] }),
       lead("2026-10-01", { estado: "Ganado", cierre: "2026-10-14", cerrada: 430 }),
-      lead("2026-10-10", { estado: "Perdido", cierre: "2026-10-14", motivo: "Muy caro", nota: "Le pareció caro; dijo que vuelve en enero." }),
+      lead("2026-10-10", {
+        estado: "Perdido", cierre: "2026-10-14", motivo: "Muy caro",
+        perdidoPor: { quien: "Alexandra", fecha: "2026-10-14T21:05:00Z" },
+        notas: [
+          { fecha: "2026-10-12T16:00:00Z", quien: "Alexandra", texto: "Pidió el precio con descuento.", donde: "ficha" },
+          { fecha: "2026-10-14T20:30:00Z", quien: "Alexandra", texto: "Le pareció caro; dijo que vuelve en enero.", donde: "inbox" },
+          { fecha: "2026-10-14T20:31:00Z", quien: "Alexandra", texto: "le pareció caro;  dijo que vuelve en enero.", donde: "ficha" },
+        ],
+      }),
       lead("2026-10-11", { estado: "Perdido", cierre: "2026-10-14", motivo: "Muy caro", productoId: 2, producto: "Pastelería" }),
       lead("2026-10-12", { estado: "Perdido", cierre: "2026-10-14", motivo: null }),
     ],
@@ -98,11 +106,19 @@ console.log("\n── el reporte del día ──");
   es("los programas traen su información", [cocina.categoria, cocina.precio, cocina.horario], ["Diplomado", 430, "Sábados"]);
   es("el dado de baja sin movimiento no aparece", r.programas.some((x) => x.nombre === "Viejo"), false);
   es("la etiqueta puesta se cuenta", r.etiquetas, [{ nombre: "Visita al instituto", color: "#8a5200", leads: 1 }]);
-  es("POR QUÉ SE PIERDEN: el motivo, cuántos y dónde", r.motivos[0], { motivo: "Muy caro", leads: 2, porcentaje: 67, programaPrincipal: "Cocina", sinDecir: false });
+  const { detalle, ...motivo } = r.motivos[0];
+  es("POR QUÉ SE PIERDEN: el motivo, cuántos y dónde", motivo, { motivo: "Muy caro", leads: 2, porcentaje: 67, programaPrincipal: "Cocina", sinDecir: false });
   es("los sin motivo, al final y dichos", r.motivos[1].motivo, "Sin motivo anotado");
-  es("cada perdido, uno por uno, con su comentario", r.perdidos.map((x) => [x.motivo, x.nota]), [
-    ["Muy caro", "Le pareció caro; dijo que vuelve en enero."], ["Muy caro", ""], ["Sin motivo anotado", ""],
+  es("cada motivo trae sus perdidos", [detalle.length, r.motivos[1].detalle.length], [2, 1]);
+  const caro = detalle[0];
+  es("con todas sus notas, en orden y sin repetir la misma dos veces", caro.notas.map((x) => [x.texto, x.donde]), [
+    ["Pidió el precio con descuento.", "ficha"],
+    ["Le pareció caro; dijo que vuelve en enero.", "inbox"],
   ]);
+  es("cada nota dice quién y cuándo, en hora de El Salvador", [caro.notas[1].quien, caro.notas[1].fecha.startsWith("14/10/2026")], ["Alexandra", true]);
+  es("y quién lo pasó a Perdido", caro.perdidoPor.startsWith("Alexandra, 14/10/2026"), true);
+  es("el que no tiene notas, sin notas", detalle[1].notas, []);
+  es("la conclusión cuenta cuántos tienen notas", r.conclusiones.some((c) => c.startsWith("1 de 3 perdidos tienen notas")), true);
   es("el listado del día tiene a todos", r.leads.length, 7);
   es("y dice qué le pasó a cada uno", r.leads.find((x) => x.estado === "Ganado").queTuvo, "Se ganó");
   es("las conclusiones lo dicen en palabras", r.conclusiones.some((c) => c.includes("«Muy caro»")), true);
@@ -111,7 +127,8 @@ console.log("\n── el reporte del día ──");
   const csv = reporteACsv(r);
   es("el archivo empieza con BOM, para los acentos en Excel", csv.charCodeAt(0), 0xfeff);
   es("separa con punto y coma", csv.includes("Canal;Leads nuevos;% de los nuevos;Ganados;Perdidos"), true);
-  es("y protege el texto con punto y coma adentro", csv.includes('"Le pareció caro; dijo que vuelve en enero."'), true);
+  es("y protege el texto con punto y coma adentro", /"[^"]*Le pareció caro; dijo que vuelve en enero\.[^"]*"/.test(csv), true);
+  es("las notas y el registro van en el archivo", csv.includes("Pasado a Perdido por;Notas de la asesora") && csv.includes("(Inbox): Le pareció caro"), true);
 }
 
 console.log("\n── el reporte del mes: más corto, con semanas ──");
@@ -123,6 +140,8 @@ console.log("\n── el reporte del mes: más corto, con semanas ──");
     ["Del 1 al 7", 1], ["Del 8 al 14", 1], ["Del 15 al 21", 0], ["Del 22 al 28", 0], ["Del 29 al 31", 1],
   ]);
   es("sin mes anterior, sin comparación", r.indicadores[0].anterior, null);
+  const conPerdido = armarReporte(p.actual, { ...vacio, leads: [lead("2026-10-02", { estado: "Perdido", cierre: "2026-10-03", motivo: "Horario", notas: [{ fecha: "2026-10-03T15:00:00Z", quien: "Estefany", texto: "Trabaja de noche.", donde: "ficha" }] })] }, null, null, catalogo);
+  es("el del mes también trae las notas de los perdidos", conPerdido.motivos[0].detalle[0].notas.map((x) => x.texto), ["Trabaja de noche."]);
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
