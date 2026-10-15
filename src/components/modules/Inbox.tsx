@@ -71,6 +71,9 @@ import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/
  */
 type EnviadoAca = Mensaje & { despuesDe?: number };
 
+/** Dónde queda el borrador del chat mientras se recarga la pestaña. */
+const CLAVE_BORRADOR = "lac.inbox.borrador";
+
 interface Props {
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
@@ -376,6 +379,39 @@ export function Inbox({
    */
   const [plantillaAMano, setPlantillaAMano] = useState(false);
   const [texto, setTexto] = useState("");
+
+  /*
+   * El borrador sobrevive a una recarga.
+   *
+   * Cuando se publica una versión nueva del CRM hay que recargar, y recargar
+   * borraba lo que la asesora estaba escribiendo y la sacaba del chat. Ahora el
+   * chat abierto y el texto se guardan en esta pestaña (sessionStorage: no
+   * sale de la computadora ni pasa a otras pestañas) y vuelven solos al
+   * recargar, si no pasó más de una hora.
+   */
+  const recuperado = useRef(false);
+  useEffect(() => {
+    if (recuperado.current) return;
+    recuperado.current = true;
+    try {
+      const guardado = JSON.parse(sessionStorage.getItem(CLAVE_BORRADOR) ?? "null") as
+        | { abierta: number | null; texto: string; en: number }
+        | null;
+      if (!guardado || Date.now() - guardado.en > 60 * 60_000) return;
+      if (guardado.abierta != null) setAbierta((a) => a ?? guardado.abierta);
+      if (guardado.texto) setTexto((t) => t || guardado.texto);
+    } catch {
+      // Sin almacenamiento (ventana privada, bloqueado): se sigue sin borrador.
+    }
+  }, []);
+  useEffect(() => {
+    if (!recuperado.current) return;
+    try {
+      sessionStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ abierta, texto, en: Date.now() }));
+    } catch {
+      // Idem: no guardar el borrador no impide trabajar.
+    }
+  }, [abierta, texto]);
   /**
    * Lo que se mandó desde esta pantalla, para dibujarlo SIN esperar a la base.
    *
@@ -989,6 +1025,10 @@ export function Inbox({
     if (dice === "TIEMPO") {
       return `«${nombre}» tardó demasiado y se canceló. Puede ser la conexión: probá de nuevo.`;
     }
+    // La pestaña es de una versión anterior del CRM (15/10/2026: «No se pudo
+    // enviar «LAC - PENSUM BARISMO.pdf»: Server Action … was not found»).
+    const delServidor = porQueFalloElServidor(e);
+    if (delServidor.recargar) return `«${nombre}» no salió. ${delServidor.dice}`;
     // El caso más probable la primera vez, y el más difícil de adivinar: la
     // base todavía no tiene el permiso que deja subir al bucket.
     if (/row-level security|Unauthorized|violates|403/i.test(dice)) {

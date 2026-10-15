@@ -496,6 +496,9 @@ export async function mandarTanda(
       // Los valores de cada quien: el cuerpo lleva su nombre, el resto de las
       // piezas es igual para todos.
       componentesPara(pide, { ...datos, idEncabezado: subida.id }),
+      // Reintentar una falla pasajera de Meta cuesta hasta tres segundos:
+      // sólo si todavía entran en la tanda.
+      { reintentar: Date.now() - arranque < TOPE_MS - 3_500 },
     );
 
     if (envio.ok) {

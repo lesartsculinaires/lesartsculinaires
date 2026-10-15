@@ -85,44 +85,7 @@ export async function enviarTexto(
   telefono: string,
   texto: string,
 ): Promise<ResultadoEnvio> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  if (!token || !numero) {
-    return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
-  }
-
-  try {
-    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: telefono,
-        type: "text",
-        text: { preview_url: false, body: texto },
-      }),
-    });
-
-    const cuerpo = (await r.json().catch(() => null)) as
-      | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
-      | null;
-
-    if (!r.ok) {
-      return { ok: false, waId: null, error: explicar(cuerpo?.error, r.status) };
-    }
-
-    return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      waId: null,
-      error: noLlegamosAMeta(e, "WhatsApp"),
-    };
-  }
+  return mandar(telefono, { type: "text", text: { preview_url: false, body: texto } });
 }
 
 /**
@@ -233,6 +196,7 @@ export async function enviarImagen(
 async function mandar(
   telefono: string,
   cuerpoDelMensaje: Record<string, unknown>,
+  { reintentar = true }: { reintentar?: boolean } = {},
 ): Promise<ResultadoEnvio> {
   const token = process.env.WHATSAPP_TOKEN;
   const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -241,32 +205,66 @@ async function mandar(
     return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
   }
 
-  try {
-    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: telefono,
-        ...cuerpoDelMensaje,
-      }),
-    });
+  for (let intento = 0; ; intento++) {
+    try {
+      const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: telefono,
+          ...cuerpoDelMensaje,
+        }),
+      });
 
-    const cuerpo = (await r.json().catch(() => null)) as
-      | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
-      | null;
+      const cuerpo = (await r.json().catch(() => null)) as
+        | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
+        | null;
 
-    if (!r.ok) return { ok: false, waId: null, error: explicar(cuerpo?.error, r.status) };
+      if (r.ok) return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
 
-    return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      waId: null,
-      error: noLlegamosAMeta(e, "WhatsApp"),
-    };
+      if (reintentar && esFallaPasajera(cuerpo?.error?.code, r.status) && intento < ESPERAS_REINTENTO_MS.length) {
+        await esperar(ESPERAS_REINTENTO_MS[intento]);
+        continue;
+      }
+      return { ok: false, waId: null, error: explicar(cuerpo?.error, r.status) };
+    } catch (e) {
+      return {
+        ok: false,
+        waId: null,
+        error: noLlegamosAMeta(e, "WhatsApp"),
+      };
+    }
   }
 }
+
+/**
+ * Las fallas de Meta que se arreglan solas.
+ *
+ * ------------------------------------------------------------------------
+ * EL «(#131000) SOMETHING WENT WRONG» DEL 14 DE OCTUBRE
+ * ------------------------------------------------------------------------
+ *
+ * A las 3:55 p. m. Estefany le contestó a una clienta y Meta devolvió
+ * «(#131000) Something went wrong»; a las 4:01 mandó el mismo texto y salió.
+ * Es la respuesta de Meta cuando algo falla de su lado —un servidor de ellos
+ * que no contestó a tiempo—, y su propia documentación dice que se reintente.
+ * Lo mismo con 1 y 2 («servicio no disponible por un momento»), 131016 y
+ * cualquier 500 de Meta.
+ *
+ * Por eso se reintenta acá, dos veces y con una pausa corta, antes de
+ * decírselo a nadie. Lo que no está en esta lista no se reintenta: un número
+ * sin WhatsApp, una plantilla pausada o el tope de envíos (4, 429) fallan
+ * igual una y otra vez, y reintentarlos sólo gasta tiempo o empeora el tope.
+ */
+const ESPERAS_REINTENTO_MS = [800, 2_000] as const;
+
+export function esFallaPasajera(codigo: number | undefined, estado: number): boolean {
+  if (codigo === 131000 || codigo === 1 || codigo === 2 || codigo === 131016) return true;
+  return codigo == null && estado >= 500;
+}
+
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Tope de Meta para audio. Un minuto de nota de voz pesa unos 100 KB, así que
@@ -382,49 +380,23 @@ export async function enviarPlantilla(
    * sólo se mandan. Esta función vuelve a hacer una sola cosa: hablarle a Meta.
    */
   componentes?: { type: string; [k: string]: unknown }[],
+  /**
+   * El envío masivo apaga los reintentos cuando le queda poco tiempo en la
+   * tanda: tres segundos de espera de más la harían pasar el tope de la
+   * función. Ahí la falla queda anotada en ese destinatario, como antes.
+   */
+  opciones: { reintentar?: boolean } = {},
 ): Promise<ResultadoEnvio> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-  if (!token || !numero) {
-    return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };
-  }
-
-  try {
-    const r = await fetch(`${base()}/${VERSION}/${numero}/messages`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: telefono,
-        type: "template",
-        template: {
-          name: nombre,
-          language: { code: idioma },
-          // Una plantilla sin piezas no lleva `components` en absoluto:
-          // mandarlo vacío Meta lo rechaza igual que si faltara.
-          ...(componentes && componentes.length > 0 ? { components: componentes } : {}),
-        },
-      }),
-    });
-
-    const cuerpo = (await r.json().catch(() => null)) as
-      | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
-      | null;
-
-    if (!r.ok) return { ok: false, waId: null, error: explicar(cuerpo?.error, r.status) };
-
-    return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      waId: null,
-      error: noLlegamosAMeta(e, "WhatsApp"),
-    };
-  }
+  return mandar(telefono, {
+    type: "template",
+    template: {
+      name: nombre,
+      language: { code: idioma },
+      // Una plantilla sin piezas no lleva `components` en absoluto:
+      // mandarlo vacío Meta lo rechaza igual que si faltara.
+      ...(componentes && componentes.length > 0 ? { components: componentes } : {}),
+    },
+  }, opciones);
 }
 
 /**
@@ -594,6 +566,13 @@ function explicar(
 
   if (codigo === 131056) {
     return "Se le mandó demasiado seguido a esta misma persona. Hay que esperar un rato antes de reintentar.";
+  }
+
+  if (esFallaPasajera(codigo, estado)) {
+    return (
+      "WhatsApp tuvo una falla de su lado y no recibió el mensaje (se probó tres veces). " +
+      "No salió: tu texto sigue en la caja, volvé a tocar Enviar en un minuto."
+    );
   }
 
   if (codigo === 80007 || codigo === 4 || estado === 429) {

@@ -39,6 +39,9 @@ let n = 0;
 /** Lo que se le mandó, para poder revisarlo desde la prueba. */
 const recibidos = [];
 
+/** Cuántas veces se intentó cada texto con «[falla:N]». */
+const fallasPasajeras = new Map();
+
 /**
  * Si Meta deja leer el perfil de quien escribe.
  *
@@ -612,6 +615,24 @@ const servidor = http.createServer((req, res) => {
             },
           }),
         );
+        return;
+      }
+    }
+
+    /*
+     * La falla pasajera de Meta: «(#131000) Something went wrong».
+     *
+     * Un texto que lleve «[falla:N]» falla las primeras N veces que se manda y
+     * después sale, que es lo que hizo Meta el 14/10/2026: el mismo mensaje,
+     * seis minutos después, llegó. Sirve para probar que el CRM reintenta solo.
+     */
+    const seña = /\[falla:(\d+)\]/.exec(leido?.text?.body ?? "");
+    if (seña) {
+      const veces = (fallasPasajeras.get(leido.text.body) ?? 0) + 1;
+      fallasPasajeras.set(leido.text.body, veces);
+      if (veces <= Number(seña[1])) {
+        res.writeHead(500, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "(#131000) Something went wrong", code: 131000, type: "OAuthException" } }));
         return;
       }
     }

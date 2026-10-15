@@ -28,6 +28,7 @@ import { Sonido } from "@/components/Sonido";
 import { Plantillas } from "@/components/modules/Plantillas";
 import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
+import { AvisoDeVersionNueva } from "@/components/AvisoDeVersionNueva";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
@@ -853,6 +854,8 @@ export default function CrmApp({
               en Supabase → SQL Editor y recargá.
             </p>
           )}
+
+          <AvisoDeVersionNueva />
 
           <SyncBanner
             loadError={loadError}

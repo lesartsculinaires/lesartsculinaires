@@ -49,7 +49,13 @@ const texto = (e: unknown): string => (e instanceof Error ? e.message : String(e
 export function porQueFalloElServidor(e: unknown): FallaDelServidor {
   const dice = texto(e);
 
-  if (/unexpected response was received|Failed to find Server Action|Connection closed/i.test(dice)) {
+  // «Server Action "…" was not found on the server» es la forma que tomó el
+  // mismo error en Next 15.5: la vieron ventas el 14 y el 15 de octubre de 2026
+  // y, como no se reconocía, salía en inglés y sin el botón de recargar.
+  if (
+    /unexpected response was received|Failed to find Server Action|Connection closed/i.test(dice) ||
+    /Server Action .* was not found on the server|UnrecognizedActionError/i.test(dice)
+  ) {
     return {
       dice:
         "El CRM se actualizó —o venció la sesión— mientras tenías esta pestaña abierta, " +
