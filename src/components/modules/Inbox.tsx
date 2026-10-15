@@ -13,6 +13,8 @@ import {
   responderConversacion,
   urlsDeMedia,
   contactosDeMensajes,
+  contestadasDelDia,
+  type ContestadaDelDia,
 } from "@/app/inbox-actions";
 import {
   ACEPTA_ADJUNTOS,
@@ -56,6 +58,7 @@ import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { AcuseDeMensaje } from "@/components/ui/AcuseDeMensaje";
 import { COMO_SE_DICE, acuseDe } from "@/lib/acuses";
 import { activosCon } from "@/lib/types";
+import { hoyEnElSalvador } from "@/lib/reporte";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 
 /**
@@ -291,6 +294,50 @@ export function Inbox({
    * contesta y se sale.
    */
   const [porVendedor, setPorVendedor] = useState<number | null>(null);
+
+  /*
+   * «Contestadas el día»: las conversaciones que recibieron respuesta en una
+   * fecha. Lo pidió la escuela el 14/10/2026 para que ventas vea qué contestó
+   * cada una un día dado. Con una asesora elegida arriba, son las que contestó
+   * ELLA ese día —no las que tiene asignadas—, que es la pregunta.
+   */
+  const [diaContestadas, setDiaContestadas] = useState<string | null>(null);
+  const [contestadas, setContestadas] = useState<ContestadaDelDia[] | null>(null);
+  const [errorContestadas, setErrorContestadas] = useState<string | null>(null);
+  // Hoy cambia con cada respuesta: se vuelve a pedir cuando llega la bandeja nueva.
+  const selloContestadas = diaContestadas === hoyEnElSalvador() ? conversaciones : null;
+  useEffect(() => {
+    if (!diaContestadas) {
+      setContestadas(null);
+      setErrorContestadas(null);
+      return;
+    }
+    let vivo = true;
+    setContestadas(null);
+    contestadasDelDia(diaContestadas)
+      .then((r) => {
+        if (!vivo) return;
+        setErrorContestadas(r.ok ? null : r.error);
+        setContestadas(r.ok ? r.filas : []);
+      })
+      .catch(() => {
+        if (vivo) {
+          setErrorContestadas("No se pudo consultar ese día. Probá de nuevo.");
+          setContestadas([]);
+        }
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [diaContestadas, selloContestadas]);
+  const contestadasIds = useMemo(() => {
+    if (!diaContestadas || !contestadas) return null;
+    return new Set(
+      contestadas
+        .filter((f) => porVendedor == null || f.vendedorId === porVendedor)
+        .map((f) => f.conversacionId),
+    );
+  }, [diaContestadas, contestadas, porVendedor]);
   const [nuevoChat, setNuevoChat] = useState(false);
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
@@ -489,10 +536,15 @@ export function Inbox({
             (buscando ||
               // `verTodas` ignora el archivado: es «todos los chats», que es
               // distinto de las activas y de las archivadas por separado.
-              ((verTodas || c.archivada === verArchivadas) &&
-                (!soloSinAsignar || c.vendedorId == null) &&
-                (!soloPendientes || estaPendiente(c)) &&
-                (porVendedor == null || c.vendedorId === porVendedor) &&
+              // Con un día elegido manda el día: una conversación contestada
+              // ese día cuenta aunque después se haya archivado, y la asesora
+              // elegida es quien contestó, no a quién está asignada.
+              ((contestadasIds != null
+                ? contestadasIds.has(c.id)
+                : (verTodas || c.archivada === verArchivadas) &&
+                  (!soloSinAsignar || c.vendedorId == null) &&
+                  (!soloPendientes || estaPendiente(c)) &&
+                  (porVendedor == null || c.vendedorId === porVendedor)) &&
                 (abiertos.size === 0 || abiertos.has(c.canal)) &&
                 (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
             (!buscando || coincideHilo(c, busqueda, nombreEnElCrm(c.clienteId))),
@@ -510,7 +562,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -1397,7 +1449,7 @@ export function Inbox({
         <div style={{ ...th, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); }}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && !verArchivadas && !soloSinAsignar && !soloPendientes, accent)}
           >
             Activas
@@ -1418,6 +1470,7 @@ export function Inbox({
             type="button"
             onClick={() => {
               setSoloPendientes(true);
+              setDiaContestadas(null);
               setVerArchivadas(false);
               setSoloSinAsignar(false);
               setVerTodas(false);
@@ -1445,7 +1498,7 @@ export function Inbox({
           </button>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); }}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
             Sin asignar
@@ -1472,14 +1525,14 @@ export function Inbox({
           </button>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); }}
+            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && verArchivadas, accent)}
           >
             Archivadas
           </button>
           <button
             type="button"
-            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); }}
+            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(verTodas, accent)}
           >
             Todas
@@ -1726,6 +1779,60 @@ export function Inbox({
                 <option key={v.id} value={v.id}>{v.nombre}</option>
               ))}
             </select>
+          )}
+
+          <div data-contestadas style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
+            <label htmlFor="inbox-contestadas" style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap" }}>
+              Contestadas el
+            </label>
+            <input
+              id="inbox-contestadas"
+              type="date"
+              value={diaContestadas ?? ""}
+              max={hoyEnElSalvador()}
+              onChange={(e) => {
+                setDiaContestadas(e.target.value || null);
+                // Con un día puesto, las pestañas de trabajo no aplican.
+                setSoloPendientes(false);
+                setSoloSinAsignar(false);
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                height: 30,
+                boxSizing: "border-box",
+                padding: "0 6px",
+                fontSize: 12.5,
+                borderRadius: 7,
+                border: `1px solid ${diaContestadas ? accent : T.border}`,
+                background: diaContestadas ? softer(accent) : T.surface,
+                color: T.ink,
+              }}
+            />
+            {diaContestadas && (
+              <button
+                type="button"
+                onClick={() => setDiaContestadas(null)}
+                style={{ height: 30, padding: "0 10px", fontSize: 12, borderRadius: 7, border: `1px solid ${T.border}`, background: T.surface, color: T.ink }}
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+          {diaContestadas && (
+            <p data-resumen-contestadas style={{ margin: "6px 0 0", fontSize: 12, color: errorContestadas ? "#9E2F29" : T.muted, lineHeight: 1.45 }}>
+              {errorContestadas
+                ? errorContestadas
+                : contestadas == null
+                  ? "Buscando…"
+                  : (() => {
+                      const filas = contestadas.filter((f) => porVendedor == null || f.vendedorId === porVendedor);
+                      const conv = new Set(filas.map((f) => f.conversacionId)).size;
+                      const msjs = filas.reduce((a, f) => a + f.mensajes, 0);
+                      const quien = porVendedor == null ? "" : ` por ${cat.vendedores.find((v) => v.id === porVendedor)?.nombre ?? "esa asesora"}`;
+                      return `${conv} ${conv === 1 ? "conversación contestada" : "conversaciones contestadas"}${quien} ese día, con ${msjs} ${msjs === 1 ? "mensaje" : "mensajes"}.`;
+                    })()}
+            </p>
           )}
         </div>
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { SelectorDePeriodo } from "@/components/SelectorDePeriodo";
+import { BotonesDeReporte } from "@/components/reporte/BotonesDeReporte";
 import { Evolucion } from "@/components/modules/Evolucion";
 import { money } from "@/lib/format";
 import { variacion } from "@/lib/periodos";
@@ -156,6 +157,8 @@ export function Dashboard({ oportunidades, accent }: Props) {
           </>
         }
       />
+
+      <BotonesDeReporte periodoClave={periodo.clave} />
 
       <div
         style={{

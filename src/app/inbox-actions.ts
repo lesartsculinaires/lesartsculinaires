@@ -725,6 +725,51 @@ async function copiarNotaALaFicha(
   }
 }
 
+/** Una conversación contestada un día, por una persona. */
+export interface ContestadaDelDia {
+  conversacionId: number;
+  /** La ficha de vendedor de quien contestó; null si no tiene o fue automático. */
+  vendedorId: number | null;
+  quien: string;
+  mensajes: number;
+}
+
+/**
+ * Qué conversaciones se contestaron un día, y quién.
+ *
+ * Lo pidió la escuela el 14 de octubre de 2026: «el filtro de días para que
+ * los de ventas vean qué mensajes contestaron determinado día». Cuenta los
+ * mensajes salientes de ese día en hora de El Salvador, sin las notas
+ * internas. Corre con la sesión de quien pregunta: cada asesora ve las
+ * conversaciones que ya ve en la bandeja.
+ */
+export async function contestadasDelDia(
+  dia: string,
+): Promise<{ ok: boolean; error: string | null; filas: ContestadaDelDia[] }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return { ok: false, error: "Fecha inválida.", filas: [] };
+  const supabase = await getServerClient();
+  if (!supabase) return { ...SIN_SESION, filas: [] };
+
+  const { data, error } = await supabase.rpc("contestadas_del_dia", { p_dia: dia });
+  if (error) {
+    return {
+      ok: false,
+      error:
+        error.code === "PGRST202"
+          ? "El filtro por día todavía no está habilitado en la base."
+          : error.message,
+      filas: [],
+    };
+  }
+  const filas = ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    conversacionId: Number(r.conversacion_id),
+    vendedorId: r.vendedor_id == null ? null : Number(r.vendedor_id),
+    quien: String(r.quien ?? ""),
+    mensajes: Number(r.mensajes ?? 0),
+  }));
+  return { ok: true, error: null, filas };
+}
+
 /**
  * Asigna la conversación a un vendedor.
  *
