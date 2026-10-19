@@ -123,6 +123,16 @@ interface Props {
    * persona cerró el hilo.
    */
   abrirHilo: { conversacionId: number; n: number } | null;
+  /**
+   * Sólo el hilo, sin la lista de conversaciones.
+   *
+   * Es como se dibuja a la izquierda de la ficha de un lead (`ChatDeLaFicha`):
+   * ahí ya se sabe de quién es el chat, la lista sobra y el espacio es poco.
+   * Se quita también lo que sale de la bandeja —«Ver ficha», el estado del
+   * lead, que la ficha de al lado ya muestra— y no se guarda el borrador, que
+   * es de la bandeja de verdad y no tiene que pisarlo.
+   */
+  soloHilo?: boolean;
 }
 
 /** Etiqueta legible de un mensaje sin texto. */
@@ -225,6 +235,7 @@ export function Inbox({
   onVerFicha,
   onLlamar,
   abrirHilo,
+  soloHilo = false,
 }: Props) {
   const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
@@ -391,6 +402,7 @@ export function Inbox({
    */
   const recuperado = useRef(false);
   useEffect(() => {
+    if (soloHilo) return;
     if (recuperado.current) return;
     recuperado.current = true;
     try {
@@ -405,13 +417,13 @@ export function Inbox({
     }
   }, []);
   useEffect(() => {
-    if (!recuperado.current) return;
+    if (soloHilo || !recuperado.current) return;
     try {
       sessionStorage.setItem(CLAVE_BORRADOR, JSON.stringify({ abierta, texto, en: Date.now() }));
     } catch {
       // Idem: no guardar el borrador no impide trabajar.
     }
-  }, [abierta, texto]);
+  }, [abierta, texto, soloHilo]);
   /**
    * Lo que se mandó desde esta pantalla, para dibujarlo SIN esperar a la base.
    *
@@ -1461,13 +1473,14 @@ export function Inbox({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "minmax(240px, 320px) 1fr",
+        gridTemplateColumns: soloHilo ? "1fr" : "minmax(240px, 320px) 1fr",
         gap: 12,
-        height: "calc(100vh - 150px)",
-        minHeight: 420,
+        height: soloHilo ? "100%" : "calc(100vh - 150px)",
+        minHeight: soloHilo ? 0 : 420,
       }}
     >
       {/* ------------------------------------------------------- los hilos */}
+      {!soloHilo && (
       <div
         style={{
           background: T.surface,
@@ -2176,6 +2189,7 @@ export function Inbox({
           })}
         </div>
       </div>
+      )}
 
       {/* --------------------------------------------------- la conversación */}
       <div
@@ -2190,7 +2204,9 @@ export function Inbox({
       >
         {!actual ? (
           <p style={{ margin: "auto", fontSize: 13, color: T.muted }}>
-            Elegí una conversación de la izquierda.
+            {soloHilo
+              ? "Este cliente todavía no tiene una conversación."
+              : "Elegí una conversación de la izquierda."}
           </p>
         ) : (
           <>
@@ -2306,7 +2322,7 @@ export function Inbox({
                   para no perder lo que escribió el cliente. Éste es el clic
                   que lo completa.
                 */}
-                {suOportunidad ? (
+                {soloHilo ? null : suOportunidad ? (
                   <button
                     type="button"
                     onClick={() => onVerFicha(suOportunidad.id)}
@@ -2326,21 +2342,27 @@ export function Inbox({
                     {abriendoLead ? "Abriendo…" : "Abrir lead"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={descartar}
-                  title="Número equivocado o proveedor: quita el cliente creado y archiva"
-                  style={boton(T.muted)}
-                >
-                  No era lead
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void archivar(actual.id, !actual.archivada).then(onRefrescar)}
-                  style={boton(T.muted)}
-                >
-                  {actual.archivada ? "Desarchivar" : "Archivar"}
-                </button>
+                {/* «No era lead» borra al cliente y «Archivar» lo saca de la
+                    bandeja: con la ficha del mismo lead al lado, no van acá. */}
+                {!soloHilo && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={descartar}
+                      title="Número equivocado o proveedor: quita el cliente creado y archiva"
+                      style={boton(T.muted)}
+                    >
+                      No era lead
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void archivar(actual.id, !actual.archivada).then(onRefrescar)}
+                      style={boton(T.muted)}
+                    >
+                      {actual.archivada ? "Desarchivar" : "Archivar"}
+                    </button>
+                  </>
+                )}
               </span>
             </div>
 
@@ -2358,7 +2380,7 @@ export function Inbox({
                 background: T.surface,
               }}
             >
-              {suOportunidad ? (
+              {soloHilo ? null : suOportunidad ? (
                 <EstadoDelLead
                   oportunidad={suOportunidad}
                   accent={accent}

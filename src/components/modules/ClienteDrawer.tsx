@@ -86,6 +86,8 @@ interface Props {
    * lo lleva `CrmApp`: la ficha no sabe abrirse sola.
    */
   onIrALead: (id: number) => void;
+  /** El chat del cliente, a la izquierda de la ficha (sólo en pantallas anchas). */
+  lateral?: React.ReactNode;
 }
 
 /** Text box → the value a nullable column should store. */
@@ -126,6 +128,7 @@ export function ClienteDrawer({
   onEditarCliente,
   onClose,
   onIrALead,
+  lateral,
 }: Props) {
   const cat = useCatalogo();
   const soft = softer(accent);
@@ -643,7 +646,7 @@ export function ClienteDrawer({
   } as const;
 
   return (
-    <Drawer width={500} onClose={intentarCerrar}>
+    <Drawer width={500} onClose={intentarCerrar} lateral={lateral}>
       <div
         style={{
           display: "flex",

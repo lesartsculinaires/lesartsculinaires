@@ -95,6 +95,17 @@ const POR_PANTALLA: Readonly<Record<string, readonly Conjunto[]>> = {
 };
 
 /**
+ * Las pantallas donde la ficha se abre con el chat del cliente al lado.
+ *
+ * Pidieron esto ventas para el Pipeline (16/10/2026). El chat sale de la
+ * bandeja, así que abrir una ficha ahí trae también la bandeja y las plantillas
+ * —lo que ya trae el Inbox, y se queda en memoria para la próxima—. En el resto
+ * de las pantallas la ficha sigue sin pedirlas.
+ */
+export const CON_CHAT_AL_LADO: ReadonlySet<string> = new Set(["Pipeline"]);
+const CONJUNTOS_DEL_CHAT = ["bandeja", "plantillas"] as const;
+
+/**
  * Todo lo que hay que tener para dibujar esta pantalla.
  *
  * `fichaAbierta` no es un detalle: la ficha del cliente se abre ENCIMA de
@@ -109,7 +120,9 @@ const POR_PANTALLA: Readonly<Record<string, readonly Conjunto[]>> = {
  */
 export function queSeNecesita(mod: string, fichaAbierta = false): Conjunto[] {
   const suyos = POR_PANTALLA[mod] ?? [];
-  const todos = fichaAbierta ? [...suyos, "etiquetas" as const] : suyos;
+  const todos = fichaAbierta
+    ? [...suyos, "etiquetas" as const, ...(CON_CHAT_AL_LADO.has(mod) ? CONJUNTOS_DEL_CHAT : [])]
+    : suyos;
   return [...new Set(todos)].sort();
 }
 

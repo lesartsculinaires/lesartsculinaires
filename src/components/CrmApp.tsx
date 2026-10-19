@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Autorizaciones } from "@/components/modules/Autorizaciones";
 import { Bases } from "@/components/modules/Bases";
 import { Calendario } from "@/components/modules/Calendario";
+import { ChatDeLaFicha } from "@/components/modules/ChatDeLaFicha";
 import { ClienteDrawer } from "@/components/modules/ClienteDrawer";
 import { Clientes } from "@/components/modules/Clientes";
 import { Dashboard } from "@/components/modules/Dashboard";
@@ -33,7 +34,7 @@ import { SyncBanner } from "@/components/SyncBanner";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { useDatosDelModulo } from "@/hooks/useDatosDelModulo";
-import { queSeNecesita, type Conjunto } from "@/lib/datosDelModulo";
+import { CON_CHAT_AL_LADO, queSeNecesita, type Conjunto } from "@/lib/datosDelModulo";
 import type { DatosPerezosos } from "@/lib/datosPerezosos";
 import { useAvisoDiario } from "@/hooks/useAvisoDiario";
 import { useCampanita } from "@/hooks/useCampanita";
@@ -1194,6 +1195,33 @@ export default function CrmApp({
               // Saltar de un lead al otro de la misma persona sin cerrar la
               // ficha: es lo que se hace apenas se ve que hay otro.
               onIrALead={(id) => actions.select(id)}
+              // Ventas pidió ver el chat al lado de la ficha para ir llenando
+              // los datos mientras lo leen. Sólo en el Pipeline.
+              lateral={
+                CON_CHAT_AL_LADO.has(mod) ? (
+                  <ChatDeLaFicha
+                    oportunidad={seleccionada}
+                    conversaciones={conversaciones}
+                    mensajes={mensajes}
+                    oportunidades={oportunidades}
+                    etiquetas={etiquetas}
+                    plantillas={plantillas.plantillas}
+                    canalesConectados={canalesConectados}
+                    puedeResponder={puedeResponderWhatsapp}
+                    accent={accent}
+                    onRefrescar={() => router.refresh()}
+                    onLlamar={
+                      puedeLlamarPorWhatsapp
+                        ? (conversacionId) => {
+                            cuantasVecesPidio.current += 1;
+                            setPedidoDeLlamada({ conversacionId, n: cuantasVecesPidio.current });
+                          }
+                        : null
+                    }
+                    cargando={enCamino.includes("bandeja")}
+                  />
+                ) : undefined
+              }
             />
           )}
 

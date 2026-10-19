@@ -173,3 +173,11 @@ body {
       transform 140ms ease;
   }
 }
+
+/* El chat al lado de la ficha necesita lugar: 500 px de ficha y al menos 420
+   de chat. Debajo de eso se esconde y queda sólo la ficha. */
+@media (max-width: 1000px) {
+  .drawer-lateral {
+    display: none !important;
+  }
+}

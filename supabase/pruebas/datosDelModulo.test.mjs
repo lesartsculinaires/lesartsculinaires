@@ -95,7 +95,12 @@ console.log("\n── Y LAS QUE NO PIDEN NADA, QUE SON LA MITAD ──");
 
 console.log("\n── LA FICHA DEL CLIENTE SUMA SUS ETIQUETAS, SE ABRA DONDE SE ABRA ──");
 {
-  es("desde el Pipeline", queSeNecesita("Pipeline", true), ["bases", "etiquetas"]);
+  // Con el chat del cliente al lado (16/10/2026) el Pipeline también trae la
+  // bandeja y las plantillas, pero sólo cuando hay una ficha abierta.
+  es("desde el Pipeline, con el chat al lado", queSeNecesita("Pipeline", true), [
+    "bandeja", "bases", "etiquetas", "plantillas",
+  ]);
+  es("el Pipeline sin ficha no carga la bandeja", queSeNecesita("Pipeline"), ["bases"]);
   es("desde Fríos", queSeNecesita("Fríos", true), ["etiquetas"]);
   es("desde el Dashboard", queSeNecesita("Dashboard", true), ["etiquetas"]);
 

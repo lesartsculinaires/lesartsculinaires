@@ -9,10 +9,16 @@ interface Props {
   width: number;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * Un panel a la izquierda del cajón, del mismo alto: el chat del cliente al
+   * lado de su ficha. En pantallas angostas no se dibuja (`.drawer-lateral`,
+   * en globals.css): ahí la ficha manda y el chat se abre desde la bandeja.
+   */
+  lateral?: ReactNode;
 }
 
 /** Right-hand overlay panel shared by the client and event detail views. */
-export function Drawer({ width, onClose, children }: Props) {
+export function Drawer({ width, onClose, children, lateral }: Props) {
   return (
     <div
       style={{
@@ -33,6 +39,24 @@ export function Drawer({ width, onClose, children }: Props) {
           background: "rgba(31,29,26,0.3)",
         }}
       />
+      {lateral && (
+        <div
+          className="drawer-lateral"
+          style={{
+            position: "relative",
+            width: "min(620px, calc(100% - 500px))",
+            height: "100%",
+            padding: "20px 14px 20px 20px",
+            background: T.paper,
+            borderLeft: `1px solid ${T.borderStrong}`,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+          {lateral}
+        </div>
+      )}
       <aside
         style={{
           position: "relative",
