@@ -79,10 +79,10 @@ const base = { from: "15558934547", timestamp: "1789000000" };
 
 /** Lo que dice la burbuja cuando WhatsApp no entregó el contenido. */
 const NO_SOPORTADO =
-  "WhatsApp no deja recibir este mensaje acá: llegó el aviso pero no el " +
-  "contenido. Suele pasar con encuestas, mensajes que se borran solos y " +
-  "códigos de verificación que manda otra empresa. No se puede recuperar " +
-  "desde el CRM.";
+  "El cliente mandó algo que WhatsApp no deja ver desde el CRM. Si esperabas " +
+  "un archivo o un dato y no lo ves, pedíselo de nuevo. Pasa a veces cuando " +
+  "manda varias fotos juntas, y con encuestas, mensajes que se borran solos " +
+  "o códigos de verificación de otra empresa.";
 /** El texto con que queda guardado el primer mensaje de una carga. */
 const leido = (msg) => leerWebhook(carga({ ...base, ...msg })).mensajes[0]?.texto ?? null;
 /** Y lo que se ve en la lista, que es lo que cae cuando no hay texto. */

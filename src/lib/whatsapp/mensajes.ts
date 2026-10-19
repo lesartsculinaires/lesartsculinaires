@@ -436,14 +436,19 @@ function leerTexto(msg: Record<string, unknown>, tipo: string): string | null {
        * la API de negocios no recibe.
        *
        * Se dice qué pasó y qué hacer, porque hay algo concreto que hacer.
+       *
+       * El 19/10/2026 una asesora preguntó por este aviso al lado de las fotos
+       * del DUI de una clienta que sí habían llegado: el aviso es de algo que el
+       * teléfono mandó JUNTO a las fotos —suele ser un álbum— y por eso el texto
+       * lo dice desde lo que importa en el momento: pedirlo de nuevo si falta.
        */
       const codigo = err?.code;
       if (codigo === 131051 || Number(codigo) === 131051) {
         return (
-          "WhatsApp no deja recibir este mensaje acá: llegó el aviso pero no el " +
-          "contenido. Suele pasar con encuestas, mensajes que se borran solos y " +
-          "códigos de verificación que manda otra empresa. No se puede recuperar " +
-          "desde el CRM."
+          "El cliente mandó algo que WhatsApp no deja ver desde el CRM. Si esperabas " +
+          "un archivo o un dato y no lo ves, pedíselo de nuevo. Pasa a veces cuando " +
+          "manda varias fotos juntas, y con encuestas, mensajes que se borran solos " +
+          "o códigos de verificación de otra empresa."
         );
       }
       return titulo
