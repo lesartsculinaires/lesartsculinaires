@@ -2,7 +2,9 @@ import "server-only";
 
 import {
   TOPE_DOCUMENTO_BYTES,
+  TOPE_VIDEO_BYTES,
   esDocumentoAceptado,
+  esVideoAceptado,
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
@@ -154,6 +156,39 @@ export async function enviarDocumento(
       filename: archivo.nombre,
       ...(pie.trim() ? { caption: pie.trim() } : {}),
     },
+  });
+}
+
+/**
+ * Manda un video (MP4 o 3GP, hasta 16 MB).
+ *
+ * Mismo camino que la foto: un enlace firmado, no los bytes. Lleva pie, que
+ * es lo que se escribió en la caja junto al video.
+ */
+export async function enviarVideo(
+  telefono: string,
+  archivo: { enlace: string; mime: string; nombre: string; bytes: number },
+  pie: string,
+): Promise<ResultadoEnvio> {
+  if (!esVideoAceptado(archivo.mime, archivo.nombre)) {
+    return {
+      ok: false,
+      waId: null,
+      error: "WhatsApp sólo acepta videos MP4 o 3GP.",
+    };
+  }
+  if (archivo.bytes > TOPE_VIDEO_BYTES) {
+    return {
+      ok: false,
+      waId: null,
+      error:
+        `WhatsApp no acepta videos de más de ${TOPE_VIDEO_BYTES / 1024 / 1024} MB. ` +
+        "Mandá un enlace de YouTube o Drive.",
+    };
+  }
+  return mandar(telefono, {
+    type: "video",
+    video: pie.trim() ? { link: archivo.enlace, caption: pie.trim() } : { link: archivo.enlace },
   });
 }
 

@@ -14,6 +14,7 @@ import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
   esDocumentoAceptado,
+  revisarVideo,
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
 import {
@@ -32,6 +33,7 @@ import {
   enviarAudio,
   enviarDocumento,
   enviarImagen,
+  enviarVideo,
   enviarReaccion,
   enviarTexto,
   hayWhatsapp,
@@ -1543,17 +1545,26 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
   }
 
   const esImagen = datos.mime.startsWith("image/");
+  // Un video entra sólo si es de los que Meta acepta y no pasa su tope; el
+  // navegador ya lo avisó, pero acá no se le cree.
+  const esVideo = datos.mime.startsWith("video/");
+  const errorDeVideo = esVideo ? revisarVideo({ name: datos.nombre, size: datos.bytes, type: datos.mime }) : null;
   const esDocumento = esDocumentoAceptado(datos.mime);
   // Las notas de voz entran por la misma puerta que las fotos: se graban en el
   // navegador, se suben al bucket y el servidor sólo maneja la ruta. Lo que
   // cambia es qué se le manda a Meta y cómo queda escrito en el hilo.
   const esAudio = datos.mime.startsWith("audio/");
 
-  if (!esImagen && !esDocumento && !esAudio) {
+  if (errorDeVideo) {
+    await limpiar();
+    return { ok: false, error: errorDeVideo };
+  }
+
+  if (!esImagen && !esVideo && !esDocumento && !esAudio) {
     await limpiar();
     return {
       ok: false,
-      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar fotos, ${tiposQueSePueden()}.`,
+      error: `WhatsApp no acepta este tipo de archivo. Se pueden mandar fotos, videos MP4, ${tiposQueSePueden()}.`,
     };
   }
 
@@ -1639,7 +1650,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
           mime: datos.mime,
           bytes: datos.bytes,
         })
-      : await (esImagen ? enviarImagen : enviarDocumento)(
+      : await (esVideo ? enviarVideo : esImagen ? enviarImagen : enviarDocumento)(
           aQuien,
           { enlace: firmado.signedUrl, mime: datos.mime, nombre: datos.nombre, bytes: datos.bytes },
           datos.pie,
@@ -1664,7 +1675,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     direccion: "saliente",
     // El mismo vocabulario que usa Meta en lo que entra, para que el hilo no
     // tenga que distinguir si el mensaje lo mandamos nosotros o el cliente.
-    tipo: esAudio ? "audio" : esImagen ? "image" : "document",
+    tipo: esAudio ? "audio" : esVideo ? "video" : esImagen ? "image" : "document",
     texto: esAudio ? null : datos.pie.trim() || null,
     estado: "enviado",
     enviado_por: user.id,
@@ -1690,7 +1701,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
       // cuál es cuál y la palabra sola no dice nada.
       ultimo_texto: (esAudio
         ? "Nota de voz"
-        : datos.pie.trim() || (esImagen ? "Foto" : datos.nombre)
+        : datos.pie.trim() || (esVideo ? "Video" : esImagen ? "Foto" : datos.nombre)
       ).slice(0, 200),
       ultimo_mensaje_en: new Date().toISOString(),
       sin_leer: 0,

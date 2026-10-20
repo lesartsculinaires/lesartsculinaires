@@ -21,6 +21,7 @@ import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
   TOPE_DOCUMENTO_BYTES,
+  revisarVideo,
 } from "@/lib/whatsapp/adjuntos";
 import { porQueFalloElServidor } from "@/lib/crm/fallaDelServidor";
 import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
@@ -1077,6 +1078,14 @@ export function Inbox({
    */
   const mandarFoto = async (archivo: File) => {
     if (!actual) return;
+
+    // Un video tiene sus propias reglas (MP4, 16 MB) y su propio consejo: se
+    // dice antes de subir decenas de megas que después se van a rechazar.
+    const errorDeVideo = revisarVideo(archivo);
+    if (errorDeVideo) {
+      setAviso(errorDeVideo);
+      return;
+    }
 
     if (archivo.size > TOPE_DOCUMENTO_BYTES) {
       setAviso(
@@ -2859,7 +2868,15 @@ export function Inbox({
                   e.target.value = "";
                   // `createObjectURL` lo muestra desde el disco, sin subirlo:
                   // si la persona cancela, el archivo no salió a ningún lado.
-                  if (f) setPorEnviar({ archivo: f, url: URL.createObjectURL(f) });
+                  if (!f) return;
+                  // Un video que no sirve se dice al elegirlo, no después de
+                  // abrir la vista previa y apretar Enviar.
+                  const malo = revisarVideo(f);
+                  if (malo) {
+                    setAviso(malo);
+                    return;
+                  }
+                  setPorEnviar({ archivo: f, url: URL.createObjectURL(f) });
                 }}
               />
               {/* Mientras se graba, la fila es del grabador y nada más: el
@@ -2876,7 +2893,7 @@ export function Inbox({
                     ? "Una nota interna no lleva archivos"
                     : ventanaCerrada
                       ? "Pasadas las 24 horas sólo se puede mandar una plantilla"
-                      : "Adjuntar una foto o un documento"
+                      : "Adjuntar una foto, un video (MP4) o un documento"
                 }
                 style={{
                   alignSelf: "flex-end",
