@@ -7,6 +7,8 @@ import { signOut } from "@/app/actions";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { olvidarModulo } from "@/lib/ultimoModulo";
 import { ACCENT, T, soft } from "@/lib/theme";
+import { SelectorDeIdioma } from "@/components/SelectorDeIdioma";
+import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
   redirectTo: string;
@@ -42,6 +44,7 @@ export function LoginForm({
   sesionDe,
   recienCerrada,
 }: Props) {
+  const t = useT();
   const router = useRouter();
   const [modo, setModo] = useState<Modo>("ventas");
   const [email, setEmail] = useState("");
@@ -154,21 +157,24 @@ export function LoginForm({
             textTransform: "uppercase",
           }}
         >
-          Les Arts Culinaires · CRM
+          {t("Les Arts Culinaires · CRM")}
         </p>
+        <div style={{ margin: "0 0 14px", color: T.faint }}>
+          <SelectorDeIdioma />
+        </div>
         <h1
           className="dsp"
           style={{ margin: "0 0 6px", fontSize: 32, fontWeight: 700, lineHeight: 1.1 }}
         >
-          {COPIA[modo].titulo}
+          {t(COPIA[modo].titulo)}
         </h1>
         <p style={{ margin: "0 0 18px", fontSize: 14, color: T.muted, maxWidth: "44ch" }}>
-          {COPIA[modo].bajada}
+          {t(COPIA[modo].bajada)}
         </p>
 
         <div
           role="tablist"
-          aria-label="Tipo de acceso"
+          aria-label={t("Tipo de acceso")}
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
@@ -200,7 +206,7 @@ export function LoginForm({
                 boxShadow: modo === m ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
               }}
             >
-              {m === "ventas" ? "Acceso de ventas" : "Modo administrador"}
+              {m === "ventas" ? t("Acceso de ventas") : t("Modo administrador")}
             </button>
           ))}
         </div>
@@ -217,17 +223,17 @@ export function LoginForm({
               color: T.ink,
             }}
           >
-            Ya tenés una sesión abierta como <strong>{sesionDe}</strong>.
+            {t("Ya tenés una sesión abierta como")} <strong>{sesionDe}</strong>.
             <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
               <a href="/" style={{ fontSize: 12.5, color: ACCENT, textDecoration: "underline" }}>
-                Continuar al CRM ›
+                {t("Continuar al CRM ›")}
               </a>
               <button
                 type="button"
                 onClick={cerrarSesion}
                 style={{ fontSize: 12.5, color: T.muted, textDecoration: "underline" }}
               >
-                Cerrar sesión y entrar con otra cuenta
+                {t("Cerrar sesión y entrar con otra cuenta")}
               </button>
             </div>
           </div>
@@ -244,7 +250,7 @@ export function LoginForm({
               color: "#2F6B4F",
             }}
           >
-            Cerraste sesión. Ya podés entrar con otra cuenta.
+            {t("Cerraste sesión. Ya podés entrar con otra cuenta.")}
           </p>
         )}
 
@@ -260,8 +266,8 @@ export function LoginForm({
               color: "#7A5A12",
             }}
           >
-            Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en{" "}
-            <code>.env.local</code>. Sin eso no se puede iniciar sesión.
+            {t("Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en")}{" "}
+            <code>.env.local</code>{t(". Sin eso no se puede iniciar sesión.")}
           </p>
         )}
 
@@ -270,7 +276,7 @@ export function LoginForm({
           style={{ display: "grid", gap: 12, background: T.surface, padding: 20, borderRadius: 12, border: `1px solid ${T.border}` }}
         >
           <label style={{ display: "grid", gap: 5 }}>
-            <span style={{ fontSize: 12.5, color: T.muted }}>Usuario</span>
+            <span style={{ fontSize: 12.5, color: T.muted }}>{t("Usuario")}</span>
             <input
               type="email"
               autoComplete="email"
@@ -281,13 +287,13 @@ export function LoginForm({
               // correo con la que se creó la cuenta: es lo que identifica a la
               // persona en Supabase. El ejemplo evita que alguien escriba un
               // alias y choque contra la validación del navegador.
-              placeholder="tucorreo@lesarts.com"
+              placeholder={t("tucorreo@lesarts.com")}
               style={field}
             />
           </label>
 
           <label style={{ display: "grid", gap: 5 }}>
-            <span style={{ fontSize: 12.5, color: T.muted }}>Contraseña</span>
+            <span style={{ fontSize: 12.5, color: T.muted }}>{t("Contraseña")}</span>
             <input
               type="password"
               autoComplete="current-password"
@@ -324,9 +330,7 @@ export function LoginForm({
                 color: "#7A5A12",
               }}
             >
-              La contraseña es correcta, pero esta cuenta no tiene rol de
-              administrador. Un administrador puede asignártelo desde Usuarios y
-              Roles.
+              {t("La contraseña es correcta, pero esta cuenta no tiene rol de administrador. Un administrador puede asignártelo desde Usuarios y Roles.")}
               <button
                 type="button"
                 onClick={() => entrar(false)}
@@ -338,7 +342,7 @@ export function LoginForm({
                   textDecoration: "underline",
                 }}
               >
-                Continuar al CRM con tu acceso normal ›
+                {t("Continuar al CRM con tu acceso normal ›")}
               </button>
             </div>
           )}
@@ -356,16 +360,16 @@ export function LoginForm({
               cursor: busy || !configured ? "not-allowed" : "pointer",
             }}
           >
-            {busy ? "Entrando…" : COPIA[modo].boton}
+            {busy ? t("Entrando…") : t(COPIA[modo].boton)}
           </button>
         </form>
 
         <p style={{ margin: "18px 0 0", fontSize: 12, color: T.faint, lineHeight: 1.5 }}>
           {modo === "admin"
-            ? "El rol lo define la cuenta, no esta pantalla: entrar por acá no da permisos de más."
-            : "Las cuentas las crea un administrador desde Usuarios y Roles."}
+            ? t("El rol lo define la cuenta, no esta pantalla: entrar por acá no da permisos de más.")
+            : t("Las cuentas las crea un administrador desde Usuarios y Roles.")}
           <br />
-          ¿Problemas para entrar? Escribí a sistemas@lesarts.com
+          {t("¿Problemas para entrar? Escribí a sistemas@lesarts.com")}
         </p>
       </div>
     </div>

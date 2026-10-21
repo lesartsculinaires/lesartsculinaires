@@ -61,6 +61,7 @@ import { COMO_SE_DICE, acuseDe } from "@/lib/acuses";
 import { activosCon } from "@/lib/types";
 import { hoyEnElSalvador } from "@/lib/reporte";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Un mensaje mandado desde esta pantalla, todavía provisorio o ya confirmado.
@@ -238,6 +239,7 @@ export function Inbox({
   abrirHilo,
   soloHilo = false,
 }: Props) {
+  const t = useT();
   const cat = useCatalogo();
   const [abierta, setAbierta] = useState<number | null>(null);
 
@@ -1466,9 +1468,8 @@ export function Inbox({
           color: "#7A5A12",
         }}
       >
-        La bandeja todavía no tiene sus tablas. Corré{" "}
-        <code>supabase/migrations/20260814120000_whatsapp_inbox.sql</code> en Supabase →
-        SQL Editor y recargá.
+        {t("La bandeja todavía no tiene sus tablas. Corré")}{" "}
+        <code>supabase/migrations/20260814120000_whatsapp_inbox.sql</code> {t("en Supabase → SQL Editor y recargá.")}
       </p>
     );
   }
@@ -1514,7 +1515,7 @@ export function Inbox({
             onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && !verArchivadas && !soloSinAsignar && !soloPendientes, accent)}
           >
-            Activas
+            {t("Activas")}
           </button>
           {/*
             PENDIENTES, y va segunda.
@@ -1539,7 +1540,7 @@ export function Inbox({
             }}
             style={pestana(soloPendientes, accent)}
           >
-            Pendientes
+            {t("Pendientes")}
             {pendientes > 0 && (
               <span
                 style={{
@@ -1563,7 +1564,7 @@ export function Inbox({
             onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
-            Sin asignar
+            {t("Sin asignar")}
             {sinAsignar > 0 && (
               /* El número, en su propia pastilla. Suelto al lado del texto se
                  lee como parte del nombre —«sin asignar 2»— en vez de como una
@@ -1590,14 +1591,14 @@ export function Inbox({
             onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && verArchivadas, accent)}
           >
-            Archivadas
+            {t("Archivadas")}
           </button>
           <button
             type="button"
             onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); setDiaContestadas(null); }}
             style={pestana(verTodas, accent)}
           >
-            Todas
+            {t("Todas")}
           </button>
 
           <span style={{ flex: 1 }} />
@@ -1605,7 +1606,7 @@ export function Inbox({
           <button
             type="button"
             onClick={() => setNuevoChat(true)}
-            title="Escribirle a alguien que ya está en el CRM"
+            title={t("Escribirle a alguien que ya está en el CRM")}
             style={{
               height: 24,
               padding: "0 10px",
@@ -1617,7 +1618,7 @@ export function Inbox({
               whiteSpace: "nowrap",
             }}
           >
-            + Nuevo chat
+            {t("+ Nuevo chat")}
           </button>
         </div>
 
@@ -1664,7 +1665,7 @@ export function Inbox({
               <input
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
-                placeholder="Un mensaje junto al archivo (opcional)"
+                placeholder={t("Un mensaje junto al archivo (opcional)")}
                 style={{
                   flex: 1,
                   minWidth: 180,
@@ -1682,7 +1683,7 @@ export function Inbox({
                 onClick={cancelarEnvio}
                 title={
                   fase === "enviando"
-                    ? "Ya está en manos de WhatsApp: se cierra esta ventana, pero el envío sigue"
+                    ? t("Ya está en manos de WhatsApp: se cierra esta ventana, pero el envío sigue")
                     : undefined
                 }
                 style={{
@@ -1696,7 +1697,7 @@ export function Inbox({
                 }}
               >
                 {/* «Cancelar» sólo cuando de verdad cancela: mientras sube. */}
-                {fase === "enviando" ? "Cerrar" : "Cancelar"}
+                {fase === "enviando" ? t("Cerrar") : t("Cancelar")}
               </button>
               <button
                 type="button"
@@ -1713,7 +1714,7 @@ export function Inbox({
                   cursor: mandandoFoto ? "wait" : "pointer",
                 }}
               >
-                {fase === "subiendo" ? "Subiendo…" : fase === "enviando" ? "Enviando…" : "Enviar"}
+                {fase === "subiendo" ? t("Subiendo…") : fase === "enviando" ? t("Enviando…") : t("Enviar")}
               </button>
             </div>
           }
@@ -1748,8 +1749,8 @@ export function Inbox({
               type="search"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por nombre, teléfono o mensaje"
-              aria-label="Buscar una conversación"
+              placeholder={t("Buscar por nombre, teléfono o mensaje")}
+              aria-label={t("Buscar una conversación")}
               style={{
                 width: "100%",
                 height: 32,
@@ -1766,8 +1767,8 @@ export function Inbox({
               <button
                 type="button"
                 onClick={() => setBusqueda("")}
-                aria-label="Limpiar la búsqueda"
-                title="Limpiar la búsqueda"
+                aria-label={t("Limpiar la búsqueda")}
+                title={t("Limpiar la búsqueda")}
                 style={{
                   position: "absolute",
                   right: 6,
@@ -1795,7 +1796,7 @@ export function Inbox({
           {buscando && (
             <p style={{ margin: "6px 0 0", fontSize: 11, color: T.muted }}>
               {lista.length === 0
-                ? "No hay ninguna conversación con eso."
+                ? t("No hay ninguna conversación con eso.")
                 : `${lista.length} ${lista.length === 1 ? "conversación" : "conversaciones"}, buscando en todas las redes y también en las archivadas.`}
             </p>
           )}
@@ -1819,8 +1820,8 @@ export function Inbox({
               onChange={(e) =>
                 setPorVendedor(e.target.value === "" ? null : Number(e.target.value))
               }
-              aria-label="Filtrar por asesor"
-              title="Ver sólo los hilos de una asesora"
+              aria-label={t("Filtrar por asesor")}
+              title={t("Ver sólo los hilos de una asesora")}
               style={{
                 width: "100%",
                 height: 30,
@@ -1834,7 +1835,7 @@ export function Inbox({
                 color: T.ink,
               }}
             >
-              <option value="">Todas las asesoras</option>
+              <option value="">{t("Todas las asesoras")}</option>
               {/* Igual que en la ficha: no se ofrece a quien está de baja, pero
                   si el filtro puesto es el suyo su nombre no desaparece. */}
               {activosCon(cat.vendedores, porVendedor).map((v) => (
@@ -1845,7 +1846,7 @@ export function Inbox({
 
           <div data-contestadas style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
             <label htmlFor="inbox-contestadas" style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap" }}>
-              Contestadas el
+              {t("Contestadas el")}
             </label>
             <input
               id="inbox-contestadas"
@@ -1877,7 +1878,7 @@ export function Inbox({
                 onClick={() => setDiaContestadas(null)}
                 style={{ height: 30, padding: "0 10px", fontSize: 12, borderRadius: 7, border: `1px solid ${T.border}`, background: T.surface, color: T.ink }}
               >
-                Quitar
+                {t("Quitar")}
               </button>
             )}
           </div>
@@ -1886,7 +1887,7 @@ export function Inbox({
               {errorContestadas
                 ? errorContestadas
                 : contestadas == null
-                  ? "Buscando…"
+                  ? t("Buscando…")
                   : (() => {
                       const filas = contestadas.filter((f) => porVendedor == null || f.vendedorId === porVendedor);
                       const conv = new Set(filas.map((f) => f.conversacionId)).size;
@@ -1977,11 +1978,11 @@ export function Inbox({
                      no ha escrito nadie»— sería falso y alarmante: hay
                      conversaciones, lo que no hay es nada por contestar.
                    */
-                  "No queda nada pendiente: todos los hilos están leídos y contestados."
+                  t("No queda nada pendiente: todos los hilos están leídos y contestados.")
                 : verArchivadas
-                ? "No hay conversaciones archivadas."
+                ? t("No hay conversaciones archivadas.")
                 : abiertos.size === 0
-                  ? "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá."
+                  ? t("Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá.")
                   : abiertos.size === 1
                     ? `Todavía no ha escrito nadie por ${canalDe([...abiertos][0]).nombre}. ` +
                       `Cuando llegue el primer mensaje ${canalDe([...abiertos][0]).porDondeLlega}, va a aparecer acá.`
@@ -2046,7 +2047,7 @@ export function Inbox({
                     }}
                   >
                     {c.fijada && (
-                      <span title="Fijada arriba" style={{ fontSize: 10, flexShrink: 0 }}>
+                      <span title={t("Fijada arriba")} style={{ fontSize: 10, flexShrink: 0 }}>
                         📌
                       </span>
                     )}
@@ -2100,7 +2101,7 @@ export function Inbox({
                       {tituloDeHilo(c)}
                     </span>
                     {c.silenciada && (
-                      <span title="Silenciada: no cuenta para el número rojo" style={{ fontSize: 10, flexShrink: 0 }}>
+                      <span title={t("Silenciada: no cuenta para el número rojo")} style={{ fontSize: 10, flexShrink: 0 }}>
                         🔕
                       </span>
                     )}
@@ -2150,10 +2151,10 @@ export function Inbox({
                     );
                   })}
                   {c.vendedorId == null ? (
-                    <span className="pill" style={chip("#8A5200", "#FFF6D6")}>sin asignar</span>
+                    <span className="pill" style={chip("#8A5200", "#FFF6D6")}>{t("sin asignar")}</span>
                   ) : (
                     <span className="pill" style={chip(T.muted, T.paper)}>
-                      {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? "asignada"}
+                      {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? t("asignada")}
                     </span>
                   )}
                   {/* Con la marca puesta a mano se dice con todas las letras.
@@ -2161,7 +2162,7 @@ export function Inbox({
                       que es lo contrario de lo que pasó: alguien lo leyó y
                       decidió dejarlo pendiente. */}
                   {c.noLeida ? (
-                    <span className="pill" style={chip("#fff", accent)}>pendiente</span>
+                    <span className="pill" style={chip("#fff", accent)}>{t("pendiente")}</span>
                   ) : (
                     c.sinLeer > 0 && (
                       <span
@@ -2214,8 +2215,8 @@ export function Inbox({
         {!actual ? (
           <p style={{ margin: "auto", fontSize: 13, color: T.muted }}>
             {soloHilo
-              ? "Este cliente todavía no tiene una conversación."
-              : "Elegí una conversación de la izquierda."}
+              ? t("Este cliente todavía no tiene una conversación.")
+              : t("Elegí una conversación de la izquierda.")}
           </p>
         ) : (
           <>
@@ -2269,7 +2270,7 @@ export function Inbox({
                   onChange={(e) =>
                     void cambiarVendedor(e.target.value === "" ? null : Number(e.target.value))
                   }
-                  title="A quién le toca dar seguimiento"
+                  title={t("A quién le toca dar seguimiento")}
                   style={{
                     height: 30,
                     padding: "0 8px",
@@ -2280,7 +2281,7 @@ export function Inbox({
                     color: T.ink,
                   }}
                 >
-                  <option value="">Sin asignar</option>
+                  <option value="">{t("Sin asignar")}</option>
                   {/* Igual que en la ficha: no se ofrece a quien está de baja,
                       pero si el hilo ya es suyo su nombre no desaparece. */}
                   {activosCon(cat.vendedores, actual.vendedorId).map((v) => (
@@ -2314,7 +2315,7 @@ export function Inbox({
                     title={comoSeExplica(conElTelefono, permiso)}
                     style={boton(conElTelefono === "llamar" ? "#2F6B4F" : accent)}
                   >
-                    📞 {pidiendoPermiso ? "Mandando…" : textoDelBoton}
+                    📞 {pidiendoPermiso ? t("Mandando…") : textoDelBoton}
                   </button>
                 )}
 
@@ -2338,17 +2339,17 @@ export function Inbox({
                     title={`Ver la ficha de ${suOportunidad.codigo}, sin salir de la bandeja`}
                     style={boton(accent)}
                   >
-                    Ver ficha
+                    {t("Ver ficha")}
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() => void abrirElLead(actual.id)}
                     disabled={abriendoLead}
-                    title="Esta persona todavía no tiene lead: se le abre uno y se ve su ficha"
+                    title={t("Esta persona todavía no tiene lead: se le abre uno y se ve su ficha")}
                     style={boton(accent)}
                   >
-                    {abriendoLead ? "Abriendo…" : "Abrir lead"}
+                    {abriendoLead ? t("Abriendo…") : t("Abrir lead")}
                   </button>
                 )}
                 {/* «No era lead» borra al cliente y «Archivar» lo saca de la
@@ -2358,17 +2359,17 @@ export function Inbox({
                     <button
                       type="button"
                       onClick={descartar}
-                      title="Número equivocado o proveedor: quita el cliente creado y archiva"
+                      title={t("Número equivocado o proveedor: quita el cliente creado y archiva")}
                       style={boton(T.muted)}
                     >
-                      No era lead
+                      {t("No era lead")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void archivar(actual.id, !actual.archivada).then(onRefrescar)}
                       style={boton(T.muted)}
                     >
-                      {actual.archivada ? "Desarchivar" : "Archivar"}
+                      {actual.archivada ? t("Desarchivar") : t("Archivar")}
                     </button>
                   </>
                 )}
@@ -2398,9 +2399,7 @@ export function Inbox({
                 />
               ) : (
                 <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
-                  Todavía no tiene una oportunidad abierta, así que no hay etapa ni
-                  estado que mostrar. Con «Abrir lead», acá arriba, entra al
-                  Pipeline y al tablero.
+                  {t("Todavía no tiene una oportunidad abierta, así que no hay etapa ni estado que mostrar. Con «Abrir lead», acá arriba, entra al Pipeline y al tablero.")}
                 </span>
               )}
 
@@ -2492,7 +2491,7 @@ export function Inbox({
                     >
                       {m.privado && (
                         <span style={{ display: "block", fontSize: 10, fontWeight: 600, marginBottom: 3 }}>
-                          NOTA INTERNA
+                          {t("NOTA INTERNA")}
                         </span>
                       )}
                       {/*
@@ -2696,14 +2695,14 @@ export function Inbox({
                      * realidad nunca empezó a correr.
                      */
                     <>
-                      Esta persona todavía no le escribió al {canal.nombre} de la escuela.{" "}
+                      {t("Esta persona todavía no le escribió al")} {canal.nombre} {t("de la escuela.")}{" "}
                       {canal.puede.plantillas === "si"
-                        ? "Hasta que lo haga, sólo deja llegarle con una plantilla aprobada."
+                        ? t("Hasta que lo haga, sólo deja llegarle con una plantilla aprobada.")
                         : `Hasta que lo haga no hay forma de escribirle: ${canal.nombre} no deja escribir primero.`}
                     </>
                   ) : (
                     <>
-                      Se pasó la ventana para contestarle por {canal.nombre}. {canal.laVentana}
+                      {t("Se pasó la ventana para contestarle por")} {canal.nombre}. {canal.laVentana}
                     </>
                   )}
                 </p>
@@ -2754,7 +2753,7 @@ export function Inbox({
                       }}
                     >
                       <strong style={{ fontSize: 11.5, color: T.muted }}>
-                        Usar una plantilla
+                        {t("Usar una plantilla")}
                       </strong>
                       <button
                         type="button"
@@ -2769,7 +2768,7 @@ export function Inbox({
                           cursor: "pointer",
                         }}
                       >
-                        Cerrar
+                        {t("Cerrar")}
                       </button>
                     </div>
                     <MandarPlantilla
@@ -2811,7 +2810,7 @@ export function Inbox({
                       la nota interna lo agarró apretando el que no era; una
                       persona apurada haría lo mismo.
                     */}
-                    Usar una plantilla
+                    {t("Usar una plantilla")}
                   </button>
                 )}
               </div>
@@ -2829,7 +2828,7 @@ export function Inbox({
               }}
             >
               <input type="checkbox" checked={nota} onChange={(e) => setNota(e.target.checked)} />
-              Nota interna — la ve el equipo, no el cliente
+              {t("Nota interna — la ve el equipo, no el cliente")}
             </label>
 
             {/*
@@ -2890,10 +2889,10 @@ export function Inbox({
                 disabled={!puedeResponder || nota || mandandoFoto || ventanaCerrada}
                 title={
                   nota
-                    ? "Una nota interna no lleva archivos"
+                    ? t("Una nota interna no lleva archivos")
                     : ventanaCerrada
-                      ? "Pasadas las 24 horas sólo se puede mandar una plantilla"
-                      : "Adjuntar una foto, un video (MP4) o un documento"
+                      ? t("Pasadas las 24 horas sólo se puede mandar una plantilla")
+                      : t("Adjuntar una foto, un video (MP4) o un documento")
                 }
                 style={{
                   alignSelf: "flex-end",
@@ -2985,7 +2984,7 @@ export function Inbox({
                   nota
                     ? `Una nota para el equipo. No sale a ${canal.nombre}.`
                     : puedeResponder
-                      ? "Escribí tu respuesta… (Enter envía)"
+                      ? t("Escribí tu respuesta… (Enter envía)")
                       : `${canal.nombre} no está configurado en el servidor.`
                 }
                 /*
@@ -3035,7 +3034,7 @@ export function Inbox({
                   opacity: (!nota && !puedeResponder) || !texto.trim() ? 0.5 : 1,
                 }}
               >
-                {nota ? "Guardar nota" : "Enviar"}
+                {nota ? t("Guardar nota") : t("Enviar")}
               </button>
               )}
             </div>

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { archivar, marcar, type Marca } from "@/app/whatsapp-actions";
 import { T } from "@/lib/theme";
 import type { Conversacion } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Las acciones secundarias de un hilo, en el «⋮» de su fila.
@@ -60,6 +61,7 @@ export function AccionesDelHilo({
   onCerrar,
   onVerFicha,
 }: Props) {
+  const t = useT();
   const [menu, setMenu] = useState(false);
   const [haciaArriba, setHaciaArriba] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,8 +126,8 @@ export function AccionesDelHilo({
       <button
         type="button"
         onClick={abrir}
-        title="Más acciones"
-        aria-label={`Más acciones de ${c.nombrePerfil ?? c.telefono}`}
+        title={t("Más acciones")}
+        aria-label={`${t("Más acciones")}: ${c.nombrePerfil ?? c.telefono}`}
         aria-expanded={menu}
         style={{
           width: 26,
@@ -184,7 +186,7 @@ export function AccionesDelHilo({
             }}
             style={item}
           >
-            {c.noLeida ? "✓ Quitar de pendientes" : "● Marcar como no leída"}
+            {c.noLeida ? t("✓ Quitar de pendientes") : t("● Marcar como no leída")}
           </button>
 
           <button
@@ -194,7 +196,7 @@ export function AccionesDelHilo({
             onClick={() => void marcarla("fijada", !c.fijada)}
             style={item}
           >
-            {c.fijada ? "📌 Quitar de arriba" : "📌 Fijar arriba"}
+            {c.fijada ? t("📌 Quitar de arriba") : t("📌 Fijar arriba")}
           </button>
 
           <button
@@ -204,7 +206,7 @@ export function AccionesDelHilo({
             onClick={() => void marcarla("silenciada", !c.silenciada)}
             style={item}
           >
-            {c.silenciada ? "🔔 Volver a avisar" : "🔕 Silenciar"}
+            {c.silenciada ? t("🔔 Volver a avisar") : t("🔕 Silenciar")}
           </button>
 
           <span style={{ display: "block", height: 1, margin: "4px 2px", background: T.border }} />
@@ -216,7 +218,7 @@ export function AccionesDelHilo({
             onClick={() => void hacer(() => archivar(c.id, !c.archivada))}
             style={item}
           >
-            {c.archivada ? "↩ Desarchivar" : "📁 Archivar"}
+            {c.archivada ? t("↩ Desarchivar") : t("📁 Archivar")}
           </button>
 
           {onVerFicha && (
@@ -229,7 +231,7 @@ export function AccionesDelHilo({
               }}
               style={item}
             >
-              👤 Ver ficha
+              {t("👤 Ver ficha")}
             </button>
           )}
 

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/SelectorPlantilla";
 import { T } from "@/lib/theme";
 import type { Plantilla } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Mandar una plantilla desde la conversación.
@@ -32,6 +33,7 @@ export function MandarPlantilla({
   accent: string;
   onEnviado: () => void;
 }) {
+  const t = useT();
   const [elegida, setElegida] = useState<string>("");
   const [valores, setValores] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
@@ -88,7 +90,7 @@ export function MandarPlantilla({
             cursor: enviando ? "wait" : completa ? "pointer" : "not-allowed",
           }}
         >
-          {enviando ? "Mandando…" : "Mandar"}
+          {enviando ? t("Mandando…") : t("Mandar")}
         </button>
       )}
 

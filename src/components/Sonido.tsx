@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { NOMBRES, VOLUMENES, type Ajustes } from "@/lib/campanita";
 import { T, soft } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * El interruptor del sonido, al lado de la campana.
@@ -39,6 +40,7 @@ export function Sonido({
   onAlternar: () => void;
   onAjustar: (cambios: Partial<Ajustes>) => void;
 }) {
+  const t = useT();
   const esperando = encendido && bloqueado;
   const color = encendido ? (esperando ? T.muted : accent) : T.faint;
   const [abierto, setAbierto] = useState(false);
@@ -66,14 +68,14 @@ export function Sonido({
     <button
       type="button"
       onClick={onAlternar}
-      aria-label={encendido ? "Apagar el sonido de los avisos" : "Prender el sonido de los avisos"}
+      aria-label={encendido ? t("Apagar el sonido de los avisos") : t("Prender el sonido de los avisos")}
       aria-pressed={encendido}
       title={
         esperando
-          ? "El sonido está prendido, pero el navegador no deja sonar hasta que toques la pantalla una vez. Hacé clic acá."
+          ? t("El sonido está prendido, pero el navegador no deja sonar hasta que toques la pantalla una vez. Hacé clic acá.")
           : encendido
-            ? "Suena cuando llega un mensaje o alguien mueve un lead. Clic para apagarlo."
-            : "El sonido de los avisos está apagado. Clic para prenderlo."
+            ? t("Suena cuando llega un mensaje o alguien mueve un lead. Clic para apagarlo.")
+            : t("El sonido de los avisos está apagado. Clic para prenderlo.")
       }
       style={{
         position: "relative",
@@ -108,9 +110,9 @@ export function Sonido({
     <button
       type="button"
       onClick={() => setAbierto((v) => !v)}
-      aria-label="Elegir el sonido de los avisos"
+      aria-label={t("Elegir el sonido de los avisos")}
       aria-expanded={abierto}
-      title="Elegir el sonido y el volumen"
+      title={t("Elegir el sonido y el volumen")}
       style={{
         width: 16,
         height: 34,
@@ -130,7 +132,7 @@ export function Sonido({
     {abierto && (
       <div
         role="dialog"
-        aria-label="Sonido de los avisos"
+        aria-label={t("Sonido de los avisos")}
         style={{
           position: "absolute",
           top: 40,
@@ -145,7 +147,7 @@ export function Sonido({
         }}
       >
         <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 700, color: T.ink }}>
-          Sonido del aviso
+          {t("Sonido del aviso")}
         </p>
 
         <div style={{ display: "grid", gap: 4 }}>
@@ -180,7 +182,7 @@ export function Sonido({
         </div>
 
         <p style={{ margin: "12px 0 7px", fontSize: 12.5, fontWeight: 700, color: T.ink }}>
-          Volumen
+          {t("Volumen")}
         </p>
         <div style={{ display: "flex", gap: 6 }}>
           {VOLUMENES.map((v) => {
@@ -215,8 +217,8 @@ export function Sonido({
           escucharlos no se puede.
         */}
         <p style={{ margin: "10px 0 0", fontSize: 11, color: T.faint, lineHeight: 1.45 }}>
-          Cada opción suena al tocarla.
-          {!encendido && " El aviso está apagado: prendelo con la bocina de al lado."}
+          {t("Cada opción suena al tocarla.")}
+          {!encendido && t(" El aviso está apagado: prendelo con la bocina de al lado.")}
         </p>
       </div>
     )}

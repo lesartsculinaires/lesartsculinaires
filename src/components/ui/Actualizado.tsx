@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { T } from "@/lib/theme";
 import type { EstadoEnVivo } from "@/hooks/useEnVivo";
+import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
   /** Momento en que llegaron los últimos datos del servidor. */
@@ -31,6 +32,7 @@ function hace(ms: number): string {
  * porque la laptop estuvo cerrada.
  */
 export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
+  const t = useT();
   const [ahora, setAhora] = useState(() => Date.now());
 
   // El texto es relativo, así que envejece solo aunque no llegue nada nuevo.
@@ -55,18 +57,18 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
       {vivo ? (
         <span
           className="mono"
-          title="Los cambios de otras personas aparecen solos"
+          title={t("Los cambios de otras personas aparecen solos")}
           style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: T.muted }}
         >
           <span
             aria-hidden
             style={{ width: 6, height: 6, borderRadius: "50%", background: "#2F6B4F" }}
           />
-          En vivo
+          {t("En vivo")}
         </span>
       ) : (
         <span className="mono" style={{ fontSize: 11.5, color: T.faint }}>
-          Actualizado {hace(Math.max(0, ahora - en))}
+          {t("Actualizado")} {hace(Math.max(0, ahora - en))}
         </span>
       )}
 
@@ -84,18 +86,18 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
           className="mono"
           title={
             sinPublicar
-              ? "Las tablas no están publicadas para cambios en vivo. Corré la migración 20260813213000_cambios_en_vivo.sql en Supabase. Mientras tanto la pantalla se actualiza sola cada minuto."
-              : "No llega la conexión en vivo: puede ser la red de acá, o que Realtime esté apagado en el proyecto de Supabase. Mientras tanto la pantalla se actualiza sola cada minuto."
+              ? t("Las tablas no están publicadas para cambios en vivo. Corré la migración 20260813213000_cambios_en_vivo.sql en Supabase. Mientras tanto la pantalla se actualiza sola cada minuto.")
+              : t("No llega la conexión en vivo: puede ser la red de acá, o que Realtime esté apagado en el proyecto de Supabase. Mientras tanto la pantalla se actualiza sola cada minuto.")
           }
           style={{ fontSize: 11.5, color: T.warn, cursor: "help" }}
         >
-          {sinPublicar ? "en vivo sin activar" : "sin conexión en vivo"}
+          {sinPublicar ? t("en vivo sin activar") : t("sin conexión en vivo")}
         </span>
       )}
       <button
         type="button"
         onClick={onRefrescar}
-        title="Traer los datos ahora mismo"
+        title={t("Traer los datos ahora mismo")}
         style={{
           fontSize: 11.5,
           padding: "3px 9px",
@@ -105,7 +107,7 @@ export function Actualizado({ en, accent, enVivo, onRefrescar }: Props) {
           background: T.surface,
         }}
       >
-        Actualizar
+        {t("Actualizar")}
       </button>
     </span>
   );

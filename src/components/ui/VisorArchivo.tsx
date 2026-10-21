@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * La ventana que muestra un archivo en grande.
@@ -47,6 +48,7 @@ export function VisorArchivo({
   pie?: ReactNode;
   onCerrar: () => void;
 }) {
+  const t = useT();
   // Escape cierra, como en el resto del CRM. Un visor que tapa la pantalla y
   // sólo se cierra con el ratón interrumpe a quien está escribiendo.
   useEffect(() => {
@@ -115,7 +117,7 @@ export function VisorArchivo({
           <button
             type="button"
             onClick={onCerrar}
-            aria-label="Cerrar"
+            aria-label={t("Cerrar")}
             style={{ fontSize: 18, lineHeight: 1, color: T.muted, cursor: "pointer" }}
           >
             ×
@@ -153,6 +155,7 @@ function Contenido({
   mime: string;
   nombre: string | null;
 }) {
+  const t = useT();
   if (mime.startsWith("image/")) {
     // Sin `next/image` a propósito: las direcciones vienen firmadas y caducan,
     // así que el optimizador no puede cachearlas ni conoce el dominio. Y en el
@@ -161,7 +164,7 @@ function Contenido({
     return (
       <img
         src={url}
-        alt={nombre ?? "Archivo"}
+        alt={nombre ?? t("Archivo")}
         style={{ maxWidth: "100%", maxHeight: "72vh", borderRadius: 8, display: "block" }}
       />
     );
@@ -171,7 +174,7 @@ function Contenido({
     return (
       <iframe
         src={url}
-        title={nombre ?? "Documento"}
+        title={nombre ?? t("Documento")}
         style={{ width: "100%", height: "72vh", border: "none", borderRadius: 8, background: "#fff" }}
       />
     );
@@ -190,10 +193,10 @@ function Contenido({
   return (
     <div style={{ textAlign: "center", padding: "28px 12px" }}>
       <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700, color: T.ink }}>
-        {nombre ?? "Archivo"}
+        {nombre ?? t("Archivo")}
       </p>
       <p style={{ margin: "0 0 14px", fontSize: 12, color: T.muted }}>
-        {mime || "tipo desconocido"} — no se puede ver acá dentro.
+        {mime || t("tipo desconocido")} {t("— no se puede ver acá dentro.")}
       </p>
       <a
         href={url}
@@ -211,7 +214,7 @@ function Contenido({
           textDecoration: "none",
         }}
       >
-        Abrirlo en una pestaña
+        {t("Abrirlo en una pestaña")}
       </a>
     </div>
   );

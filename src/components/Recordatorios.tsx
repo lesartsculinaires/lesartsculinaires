@@ -12,6 +12,7 @@ import {
   type SeguimientoPendiente,
 } from "@/lib/seguimientos";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * El reloj de la cabecera.
@@ -44,6 +45,7 @@ export function Recordatorios({
   onAbrirFicha: (oportunidadId: number) => void;
   onVerTodos: () => void;
 }) {
+  const t = useT();
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement | null>(null);
 
@@ -82,7 +84,7 @@ export function Recordatorios({
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={
-          cuantos > 0 ? `Recordatorios, ${cuantos} por atender` : "Recordatorios"
+          cuantos > 0 ? `Recordatorios, ${cuantos} por atender` : t("Recordatorios")
         }
         aria-expanded={abierto}
         style={{
@@ -125,7 +127,7 @@ export function Recordatorios({
       {abierto && (
         <div
           role="dialog"
-          aria-label="Recordatorios"
+          aria-label={t("Recordatorios")}
           style={{
             position: "absolute",
             top: 42,
@@ -144,10 +146,10 @@ export function Recordatorios({
         >
           <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${T.border}` }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: T.ink }}>
-              A quién llamar
+              {t("A quién llamar")}
             </p>
             <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.45 }}>
-              Reservas por cobrar y seguimientos anotados en las fichas.
+              {t("Reservas por cobrar y seguimientos anotados en las fichas.")}
             </p>
           </div>
 
@@ -162,7 +164,7 @@ export function Recordatorios({
                   lineHeight: 1.5,
                 }}
               >
-                Nada por cobrar ni por llamar en los próximos días.
+                {t("Nada por cobrar ni por llamar en los próximos días.")}
               </p>
             ) : (
               urgentes.map((r, i) => {
@@ -265,7 +267,7 @@ export function Recordatorios({
               textAlign: "left",
             }}
           >
-            Ver todos los recordatorios
+            {t("Ver todos los recordatorios")}
           </button>
         </div>
       )}

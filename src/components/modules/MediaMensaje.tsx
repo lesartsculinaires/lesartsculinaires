@@ -6,6 +6,7 @@ import { guardarEnFicha } from "@/app/inbox-actions";
 import { VisorArchivo } from "@/components/ui/VisorArchivo";
 import { T } from "@/lib/theme";
 import type { Mensaje } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * El archivo que trajo un mensaje de WhatsApp.
@@ -40,6 +41,7 @@ export function MediaMensaje({
   oportunidadId: number | null;
   onGuardado: () => void;
 }) {
+  const t = useT();
   /** Si el visor está abierto. Vale para fotos y para documentos. */
   const [abierto, setAbierto] = useState(false);
 
@@ -54,7 +56,7 @@ export function MediaMensaje({
           opacity: 0.85,
         }}
       >
-        No se pudo traer el archivo. {m.mediaError}
+        {t("No se pudo traer el archivo.")} {m.mediaError}
       </span>
     );
   }
@@ -66,7 +68,7 @@ export function MediaMensaje({
   if (!url) {
     return (
       <span style={{ display: "block", marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-        Abriendo el archivo…
+        {t("Abriendo el archivo…")}
       </span>
     );
   }
@@ -77,7 +79,7 @@ export function MediaMensaje({
         <button
           type="button"
           onClick={() => setAbierto(true)}
-          title="Ver en grande"
+          title={t("Ver en grande")}
           style={{ display: "block", marginTop: 5, padding: 0, cursor: "zoom-in" }}
         >
           {/* Sin next/image a propósito: la dirección viene firmada y caduca, así
@@ -85,7 +87,7 @@ export function MediaMensaje({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={url}
-            alt={m.texto ?? "Foto enviada por WhatsApp"}
+            alt={m.texto ?? t("Foto enviada por WhatsApp")}
             style={{
               display: "block",
               maxWidth: "100%",
@@ -140,7 +142,7 @@ export function MediaMensaje({
           cursor: "pointer",
         }}
       >
-        {m.mediaNombre ?? "Ver el archivo"}
+        {m.mediaNombre ?? t("Ver el archivo")}
       </button>
       <AFicha mensaje={m} oportunidadId={oportunidadId} mio={mio} onGuardado={onGuardado} />
       {abierto && (
@@ -178,6 +180,7 @@ function AFicha({
   mio: boolean;
   onGuardado: () => void;
 }) {
+  const t = useT();
   const [estado, setEstado] = useState<"listo" | "yendo" | "guardado">("listo");
   const [error, setError] = useState<string | null>(null);
 
@@ -211,10 +214,10 @@ function AFicha({
         }}
       >
         {estado === "yendo"
-          ? "Guardando…"
+          ? t("Guardando…")
           : estado === "guardado"
-            ? "✓ Guardado en la ficha"
-            : "Guardar en la ficha"}
+            ? t("✓ Guardado en la ficha")
+            : t("Guardar en la ficha")}
       </button>
       {error && (
         <span style={{ display: "block", fontSize: 10.5, color: T.warn, lineHeight: 1.4 }}>

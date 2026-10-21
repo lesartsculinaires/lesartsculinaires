@@ -2,6 +2,7 @@
 
 import { NOMBRE, SIMBOLO, type Marca } from "@/lib/formatoDeWhatsapp";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Los botones de formato del cuadro de respuesta.
@@ -47,10 +48,11 @@ export function BarraDeFormato({
   onMarca: (marca: Marca) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       role="toolbar"
-      aria-label="Formato del texto"
+      aria-label={t("Formato del texto")}
       style={{
         display: "flex",
         alignItems: "center",
@@ -95,7 +97,7 @@ export function BarraDeFormato({
       {/* Dicho una vez, acá: es la primera pregunta de quien mira la barra y
           no encuentra la S subrayada que tiene cualquier otro editor. */}
       <span style={{ fontSize: 10.5, color: T.faint, marginLeft: 5, lineHeight: 1.4 }}>
-        WhatsApp no tiene subrayado
+        {t("WhatsApp no tiene subrayado")}
       </span>
     </div>
   );

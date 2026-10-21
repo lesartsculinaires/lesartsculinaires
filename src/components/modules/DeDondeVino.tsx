@@ -2,6 +2,7 @@
 
 import type { OrigenDelLead } from "@/lib/whatsapp/mensajes";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * La tarjeta de «este mensaje vino de un anuncio», como la dibuja WhatsApp.
@@ -31,6 +32,7 @@ import { T } from "@/lib/theme";
  * WhatsApp la dibuja así por lo mismo, y la idea era parecerse a WhatsApp.
  */
 export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boolean }) {
+  const t = useT();
   const titulo = origen.titular ?? origen.cuerpo;
 
   return (
@@ -92,7 +94,7 @@ export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boole
             color: mio ? "rgba(255,255,255,0.85)" : T.muted,
           }}
         >
-          {COMO_SE_LEE[origen.red] ?? "Vino de un enlace"}
+          {COMO_SE_LEE[origen.red] ?? t("Vino de un enlace")}
         </span>
 
         {/*

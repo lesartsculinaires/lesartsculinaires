@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
 import { GRUPOS, buscar, type Emoji } from "@/lib/emojis";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * El teclado de emojis del cuadro de mensaje.
@@ -90,6 +91,7 @@ export function PanelEmoji({
   onElegir: (emoji: string) => void;
   accent: string;
 }) {
+  const t = useT();
   const [grupo, setGrupo] = useState(0);
   const [q, setQ] = useState("");
   const [recientes, setRecientes] = useState<string[]>([]);
@@ -155,7 +157,7 @@ export function PanelEmoji({
   return (
     <div
       role="dialog"
-      aria-label="Elegir un emoji"
+      aria-label={t("Elegir un emoji")}
       style={{
         width: 306,
         background: T.surface,
@@ -169,8 +171,8 @@ export function PanelEmoji({
         ref={buscador}
         value={q}
         onChange={(ev) => setQ(ev.target.value)}
-        placeholder="Buscar: pastel, gracias, fuego…"
-        aria-label="Buscar un emoji"
+        placeholder={t("Buscar: pastel, gracias, fuego…")}
+        aria-label={t("Buscar un emoji")}
         style={{
           width: "100%",
           height: 30,
@@ -215,8 +217,7 @@ export function PanelEmoji({
         {buscando ? (
           hallados.length === 0 ? (
             <p style={{ margin: "14px 6px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
-              No hay ninguno que se llame «{q.trim()}». Probá con una palabra
-              más corta: «past», «gra», «fue».
+              {t("No hay ninguno que se llame «")}{q.trim()}{t("». Probá con una palabra más corta: «past», «gra», «fue».")}
             </p>
           ) : (
             rejilla(hallados)
@@ -227,7 +228,7 @@ export function PanelEmoji({
                 cada grupo sería la misma fila cinco veces. */}
             {grupo === 0 && recientes.length > 0 && (
               <>
-                <p style={titulito}>Los que más usás</p>
+                <p style={titulito}>{t("Los que más usás")}</p>
                 {rejilla(recientes.map((e) => ({ e, nombre: e })))}
                 <p style={titulito}>{GRUPOS[0].titulo}</p>
               </>
@@ -258,6 +259,7 @@ export function SelectorEmoji({
   disabled?: boolean;
   title?: string;
 }) {
+  const t = useT();
   const [abierto, setAbierto] = useState(false);
   const caja = useRef<HTMLDivElement | null>(null);
 
@@ -292,8 +294,8 @@ export function SelectorEmoji({
         type="button"
         onClick={() => setAbierto((v) => !v)}
         disabled={disabled}
-        title={disabled ? "No se puede escribir en este momento" : title}
-        aria-label="Emojis"
+        title={disabled ? t("No se puede escribir en este momento") : title}
+        aria-label={t("Emojis")}
         aria-expanded={abierto}
         style={{
           width: 40,

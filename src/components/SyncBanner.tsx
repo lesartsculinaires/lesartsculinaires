@@ -2,6 +2,7 @@
 
 import { enCastellano } from "@/lib/supabase/enCastellano";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
   loadError: string | null;
@@ -25,6 +26,7 @@ const BOX = {
 
 /** Silent when everything is healthy, so it never becomes wallpaper. */
 export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
+  const t = useT();
   if (syncError) {
     /*
      * El botón de recargar aparece sólo cuando recargar sirve.
@@ -41,8 +43,8 @@ export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
     return (
       <div style={{ ...BOX, background: "#F7EBE9", color: "#8C3B2F" }}>
         <span>
-          No se pudo guardar el último cambio. {syncError}
-          {!conviene && " Lo que ves sigue actualizado, pero todavía no está guardado."}
+          {t("No se pudo guardar el último cambio.")} {syncError}
+          {!conviene && t(" Lo que ves sigue actualizado, pero todavía no está guardado.")}
           {conviene && (
             <button
               type="button"
@@ -60,14 +62,14 @@ export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
                 cursor: "pointer",
               }}
             >
-              Recargar
+              {t("Recargar")}
             </button>
           )}
         </span>
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Descartar"
+          aria-label={t("Descartar")}
           style={{ flexShrink: 0, color: "#8C3B2F", fontSize: 14 }}
         >
           ✕
@@ -88,7 +90,7 @@ export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
     const explicado = enCastellano(loadError);
     return (
       <div style={{ ...BOX, background: "#F6EEDC", color: "#7A5A12" }}>
-        <span>No se pudieron cargar los datos. {explicado?.texto}</span>
+        <span>{t("No se pudieron cargar los datos.")} {explicado?.texto}</span>
       </div>
     );
   }
@@ -104,8 +106,7 @@ export function SyncBanner({ loadError, syncError, vacio, onDismiss }: Props) {
         }}
       >
         <span>
-          No hay oportunidades visibles. Si esperabas ver datos, revisá que tu
-          usuario tenga permiso de lectura en las políticas de Supabase.
+          {t("No hay oportunidades visibles. Si esperabas ver datos, revisá que tu usuario tenga permiso de lectura en las políticas de Supabase.")}
         </span>
       </div>
     );

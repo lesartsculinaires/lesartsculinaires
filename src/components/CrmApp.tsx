@@ -31,6 +31,7 @@ import { RegistroActividad } from "@/components/modules/RegistroActividad";
 import { Sidebar } from "@/components/Sidebar";
 import { AvisoDeVersionNueva } from "@/components/AvisoDeVersionNueva";
 import { SyncBanner } from "@/components/SyncBanner";
+import { useT } from "@/lib/i18n/idioma";
 import { Actualizado } from "@/components/ui/Actualizado";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { useDatosDelModulo } from "@/hooks/useDatosDelModulo";
@@ -179,6 +180,7 @@ export default function CrmApp({
   modInicial,
   loadError,
 }: Props) {
+  const t = useT();
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
 
@@ -791,10 +793,10 @@ export default function CrmApp({
                   textTransform: "uppercase",
                 }}
               >
-                {rol ?? "Sesión activa"}
+                {rol ? t(rol) : t("Sesión activa")}
               </p>
               <h1 className="dsp" style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>
-                {mod}
+                {t(mod)}
               </h1>
             </div>
             <div
@@ -809,9 +811,9 @@ export default function CrmApp({
               <p className="mono" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
                 {/* Los dados de baja no se cuentan: el pie dice con qué se está
                     trabajando ahora, no cuánta gente pasó por acá. */}
-                {oportunidades.length} oportunidades ·{" "}
+                {oportunidades.length} {t("oportunidades")} ·{" "}
                 {activos(catalogo.vendedores).length}{" "}
-                vendedores · {catalogo.productos.length} programas
+                {t("vendedores")} · {catalogo.productos.length} {t("programas")}
               </p>
               <Actualizado
                 en={refrescado}

@@ -6,6 +6,8 @@ import { signOut } from "@/app/actions";
 import { IconoModulo } from "@/components/ui/IconoModulo";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { T, soft } from "@/lib/theme";
+import { SelectorDeIdioma } from "@/components/SelectorDeIdioma";
+import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
   accent: string;
@@ -51,9 +53,10 @@ export function Sidebar({
   avisos = {},
   onSelect,
 }: Props) {
+  const t = useT();
 
   // Quién sos, con lo mejor que se sepa y sin repetir.
-  const principal = rol ?? nombre ?? userEmail;
+  const principal = rol ? t(rol) : (nombre ?? userEmail);
   const secundario =
     principal === userEmail ? null : rol && nombre ? `${nombre} · ${userEmail}` : userEmail;
 
@@ -127,7 +130,7 @@ export function Sidebar({
           textTransform: "uppercase",
         }}
       >
-        Les Arts Culinaires
+        {t("Les Arts Culinaires")}
       </p>
 
       <div
@@ -148,7 +151,7 @@ export function Sidebar({
             opacity: 0.85,
           }}
         >
-          Sesión activa
+          {t("Sesión activa")}
         </p>
         {/* Arriba el rol, porque es lo que dice qué se puede hacer. Si no se
             sabe, manda el nombre; y si tampoco, el correo. Nunca un valor
@@ -184,7 +187,7 @@ export function Sidebar({
           textTransform: "uppercase",
         }}
       >
-        Módulos
+        {t("Módulos")}
       </p>
       {/*
         Si los módulos no entran —una laptop de pantalla baja, o el navegador
@@ -211,11 +214,11 @@ export function Sidebar({
               onClick={() => onSelect(m)}
               // El número también en el rótulo hablado: quien navega con
               // lector de pantalla no ve el globito rojo.
-              aria-label={cuantos > 0 ? `${m}, ${cuantos} sin leer` : undefined}
+              aria-label={cuantos > 0 ? `${t(m)}, ${cuantos} ${t("sin leer")}` : undefined}
               style={navStyle(m)}
             >
               <IconoModulo nombre={m} color={puesto ? accent : T.faint} />
-              <span style={{ flex: 1, minWidth: 0 }}>{m}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{t(m)}</span>
               {cuantos > 0 && (
                 <span
                   style={{
@@ -251,6 +254,9 @@ export function Sidebar({
           paddingTop: 12,
         }}
       >
+        <div style={{ padding: "0 10px 8px", color: T.faint }}>
+          <SelectorDeIdioma />
+        </div>
         <button
           type="button"
           onClick={cerrarSesion}
@@ -261,7 +267,7 @@ export function Sidebar({
             color: T.faint,
           }}
         >
-          Cerrar sesión
+          {t("Cerrar sesión")}
         </button>
       </div>
     </aside>

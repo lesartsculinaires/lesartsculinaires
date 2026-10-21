@@ -5,6 +5,7 @@ import { useState } from "react";
 import { crearEtiqueta, marcarConversacion, marcarLead } from "@/app/etiquetas-actions";
 import { T } from "@/lib/theme";
 import type { Etiqueta } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /** Colores para elegir. Ninguno tan claro que su texto blanco no se lea. */
 const COLORES = [
@@ -51,6 +52,7 @@ function Etiquetas({
   accent,
   onCambio,
 }: Props) {
+  const t = useT();
   const [abierto, setAbierto] = useState(false);
   const [nueva, setNueva] = useState("");
   const [color, setColor] = useState(COLORES[0]);
@@ -105,7 +107,7 @@ function Etiquetas({
           type="button"
           onClick={() => void alternar(e.id, false)}
           disabled={trabajando}
-          title="Quitar esta etiqueta"
+          title={t("Quitar esta etiqueta")}
           className="pill"
           style={{
             display: "inline-flex",
@@ -139,7 +141,7 @@ function Etiquetas({
             color: T.muted,
           }}
         >
-          + Etiqueta
+          {t("+ Etiqueta")}
         </button>
 
         {abierto && (
@@ -166,7 +168,7 @@ function Etiquetas({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 9 }}>
                 {disponibles.length === 0 && (
                   <p style={{ margin: 0, fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-                    Todavía no hay etiquetas. Creá la primera acá abajo.
+                    {t("Todavía no hay etiquetas. Creá la primera acá abajo.")}
                   </p>
                 )}
                 {disponibles.map((e) => {
@@ -205,7 +207,7 @@ function Etiquetas({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void agregar();
                   }}
-                  placeholder="Nueva etiqueta…"
+                  placeholder={t("Nueva etiqueta…")}
                   style={{
                     width: "100%",
                     height: 27,
@@ -251,7 +253,7 @@ function Etiquetas({
                     cursor: trabajando ? "wait" : nueva.trim() ? "pointer" : "not-allowed",
                   }}
                 >
-                  {trabajando ? "Un momento…" : "Crear y ponerla"}
+                  {trabajando ? t("Un momento…") : t("Crear y ponerla")}
                 </button>
               </div>
 

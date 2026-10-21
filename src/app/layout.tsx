@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Montserrat, Old_Standard_TT } from "next/font/google";
+
+import { GALLETA_IDIOMA, type Idioma } from "@/lib/i18n/galleta";
+import { IdiomaProvider } from "@/lib/i18n/idioma";
 
 import "./globals.css";
 
@@ -31,11 +35,14 @@ export const metadata: Metadata = {
   other: { google: "notranslate" },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // El idioma que se eligió la última vez; castellano si no hay nada.
+  const idioma: Idioma = (await cookies()).get(GALLETA_IDIOMA)?.value === "en" ? "en" : "es";
+
   return (
     /*
      * `translate="no"`: que el traductor del navegador no toque la página.
@@ -47,8 +54,10 @@ export default function RootLayout({
      * castellano y lo usa un equipo que habla castellano; no hay nada que
      * traducir y sí mucho que perder.
      */
-    <html lang="es" translate="no" className={`${titulos.variable} ${cuerpo.variable}`}>
-      <body>{children}</body>
+    <html lang={idioma} translate="no" className={`${titulos.variable} ${cuerpo.variable}`}>
+      <body>
+        <IdiomaProvider inicial={idioma}>{children}</IdiomaProvider>
+      </body>
     </html>
   );
 }

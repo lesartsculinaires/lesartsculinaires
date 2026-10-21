@@ -5,6 +5,7 @@ import { useState } from "react";
 import { altaYChat } from "@/app/inbox-actions";
 import { comoSeDice, type ContactoCompartido } from "@/lib/whatsapp/contactos";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * El contacto que alguien compartió, con su número y qué hacer con él.
@@ -42,6 +43,7 @@ export function ContactoDelMensaje({
   /** Se llama cuando se creó la ficha, para refrescar la bandeja. */
   onAbierto: () => void;
 }) {
+  const tr = useT();
   const [haciendo, setHaciendo] = useState<string | null>(null);
   const [dicho, setDicho] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
@@ -118,7 +120,7 @@ export function ContactoDelMensaje({
               tenía correo o dirección. Se dice, porque el hueco callado se lee
               como que el CRM no pudo.
             */
-            <span style={{ fontSize: 11, color: suave }}>Este contacto no traía teléfono.</span>
+            <span style={{ fontSize: 11, color: suave }}>{tr("Este contacto no traía teléfono.")}</span>
           ) : (
             c.telefonos.map((t) => (
               <div
@@ -145,7 +147,7 @@ export function ContactoDelMensaje({
                 )}
 
                 <button type="button" onClick={() => void copiar(t.paraMarcar)} style={boton}>
-                  {copiado === t.paraMarcar ? "Copiado" : "Copiar"}
+                  {copiado === t.paraMarcar ? tr("Copiado") : tr("Copiar")}
                 </button>
 
                 <button
@@ -154,7 +156,7 @@ export function ContactoDelMensaje({
                   disabled={haciendo === t.paraMarcar}
                   style={{ ...boton, opacity: haciendo === t.paraMarcar ? 0.6 : 1 }}
                 >
-                  {haciendo === t.paraMarcar ? "Creando…" : "Crear ficha y abrir chat"}
+                  {haciendo === t.paraMarcar ? tr("Creando…") : tr("Crear ficha y abrir chat")}
                 </button>
               </div>
             ))

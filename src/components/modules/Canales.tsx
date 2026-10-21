@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { desconectarCuenta, estadoDeCanales, type EstadoCanales } from "@/app/conexiones-actions";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Las cuentas de WhatsApp, Instagram y Messenger que el CRM tiene conectadas.
@@ -75,6 +76,7 @@ const COMO_FUE: Record<string, { bien: boolean; dice: string }> = {
 };
 
 export function Canales({ accent }: { accent: string }) {
+  const t = useT();
   const [estado, setEstado] = useState<EstadoCanales | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const [vuelta, setVuelta] = useState<{ bien: boolean; dice: string; detalle: string | null } | null>(
@@ -112,7 +114,7 @@ export function Canales({ accent }: { accent: string }) {
   }, []);
 
   if (!estado) {
-    return <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Leyendo las conexiones…</p>;
+    return <p style={{ margin: 0, fontSize: 13, color: T.muted }}>{t("Leyendo las conexiones…")}</p>;
   }
 
   if (!estado.ok) {
@@ -126,9 +128,7 @@ export function Canales({ accent }: { accent: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760 }}>
       <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: T.muted }}>
-        Con qué cuentas habla el CRM. La cuenta de la escuela viene de las variables del
-        servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la
-        aplicación en Meta— sin tocar nada del servidor.
+        {t("Con qué cuentas habla el CRM. La cuenta de la escuela viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación en Meta— sin tocar nada del servidor.")}
       </p>
 
       {vuelta && (
@@ -178,14 +178,14 @@ export function Canales({ accent }: { accent: string }) {
                 color: c.porVariables || c.conectadas.some((x) => x.activo) ? "#2F5D3A" : "#8C3B2F",
               }}
             >
-              {c.porVariables || c.conectadas.some((x) => x.activo) ? "conectado" : "sin conectar"}
+              {c.porVariables || c.conectadas.some((x) => x.activo) ? t("conectado") : t("sin conectar")}
             </span>
           </div>
 
           <p style={{ margin: "7px 0 0", fontSize: 12.5, color: T.muted }}>
             {c.porVariables
-              ? "La cuenta de la escuela, configurada en el servidor."
-              : "No hay cuenta configurada en el servidor."}
+              ? t("La cuenta de la escuela, configurada en el servidor.")
+              : t("No hay cuenta configurada en el servidor.")}
           </p>
 
           {c.conectadas.length > 0 && (
@@ -205,7 +205,7 @@ export function Canales({ accent }: { accent: string }) {
                   }}
                 >
                   <span style={{ flex: 1, color: T.ink }}>
-                    {x.pageNombre ?? "Página sin nombre"}
+                    {x.pageNombre ?? t("Página sin nombre")}
                     <span className="mono" style={{ marginLeft: 7, fontSize: 11, color: T.faint }}>
                       {x.igId ? `IG ${x.igId}` : `Página ${x.pageId}`}
                     </span>
@@ -233,10 +233,10 @@ export function Canales({ accent }: { accent: string }) {
                         cursor: trabajando ? "wait" : "pointer",
                       }}
                     >
-                      Desconectar
+                      {t("Desconectar")}
                     </button>
                   ) : (
-                    <span style={{ fontSize: 11.5, color: T.faint }}>desconectada</span>
+                    <span style={{ fontSize: 11.5, color: T.faint }}>{t("desconectada")}</span>
                   )}
                 </div>
               ))}
@@ -270,16 +270,15 @@ export function Canales({ accent }: { accent: string }) {
                     textDecoration: "none",
                   }}
                 >
-                  {c.canal === "instagram" ? "Conectar Instagram" : "Conectar Facebook"}
+                  {c.canal === "instagram" ? t("Conectar Instagram") : t("Conectar Facebook")}
                 </a>
               ) : (
                 <p style={{ margin: 0, fontSize: 12, color: "#8C3B2F" }}>
-                  Para poder conectar falta {estado.queFalta} en el servidor.
+                  {t("Para poder conectar falta")} {estado.queFalta} {t("en el servidor.")}
                 </p>
               )}
               <p style={{ margin: "7px 0 0", fontSize: 11.5, lineHeight: 1.55, color: T.faint }}>
-                Se abre Facebook para elegir la Página y la cuenta de Instagram. Hay que ser
-                administrador de esa Página; el CRM no puede conectar una cuenta ajena.
+                {t("Se abre Facebook para elegir la Página y la cuenta de Instagram. Hay que ser administrador de esa Página; el CRM no puede conectar una cuenta ajena.")}
               </p>
             </div>
           )}

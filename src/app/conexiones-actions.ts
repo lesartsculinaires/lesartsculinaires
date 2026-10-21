@@ -101,7 +101,7 @@ export async function estadoDeCanales(): Promise<EstadoCanales> {
       { canal: "messenger", porVariables: hayMessenger(), conectadas: suyas("messenger") },
     ],
     sePuedeConectar: falta.length === 0,
-    queFalta: falta.length === 0 ? null : falta.join(" y "),
+    queFalta: falta.length === 0 ? null : falta.join(", "),
   };
 }
 

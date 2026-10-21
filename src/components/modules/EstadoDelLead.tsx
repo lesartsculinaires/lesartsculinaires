@@ -7,6 +7,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { estadoTone } from "@/lib/selectors";
 import { T } from "@/lib/theme";
 import type { Oportunidad } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * En qué anda la venta, dentro de la bandeja.
@@ -34,6 +35,7 @@ export function EstadoDelLead({
   onCambio: () => void;
   onVerFicha: () => void;
 }) {
+  const t = useT();
   const cat = useCatalogo();
   const [guardando, setGuardando] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export function EstadoDelLead({
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 7 }}>
       <Selector
-        etiqueta="Etapa"
+        etiqueta={t("Etapa")}
         valor={o.etapaId}
         items={cat.etapas}
         cargando={guardando === "etapa_id"}
@@ -63,7 +65,7 @@ export function EstadoDelLead({
       />
 
       <Selector
-        etiqueta="Estado"
+        etiqueta={t("Estado")}
         valor={o.estadoId}
         items={cat.estados}
         cargando={guardando === "estado_id"}
@@ -76,7 +78,7 @@ export function EstadoDelLead({
         onClick={onVerFicha}
         style={{ fontSize: 11.5, color: accent, whiteSpace: "nowrap" }}
       >
-        Ver ficha ›
+        {t("Ver ficha ›")}
       </button>
 
       {error && <span style={{ fontSize: 11, color: T.warn }}>{error}</span>}

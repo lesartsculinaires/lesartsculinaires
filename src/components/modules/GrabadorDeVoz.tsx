@@ -7,6 +7,7 @@ import { BALDE_WHATSAPP, CARPETA_SALIENTE } from "@/lib/whatsapp/adjuntos";
 import { TIPO_OGG, webmAOgg } from "@/lib/audio/ogg";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Grabar una nota de voz y mandarla.
@@ -83,6 +84,7 @@ export function GrabadorDeVoz({
    */
   onOcupado: (ocupado: boolean) => void;
 }) {
+  const t = useT();
   const [fase, setFase] = useState<Fase>("quieto");
   const [segundos, setSegundos] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -293,10 +295,10 @@ export function GrabadorDeVoz({
           disabled={disabled}
           title={
             disabled
-              ? "Pasadas las 24 horas sólo se puede mandar una plantilla"
-              : "Grabar una nota de voz"
+              ? t("Pasadas las 24 horas sólo se puede mandar una plantilla")
+              : t("Grabar una nota de voz")
           }
-          aria-label="Grabar una nota de voz"
+          aria-label={t("Grabar una nota de voz")}
           style={{
             width: 40,
             height: 40,
@@ -357,17 +359,17 @@ export function GrabadorDeVoz({
           <span className="mono" style={{ fontSize: 13, color: T.ink, minWidth: 44 }}>
             {reloj(segundos)}
           </span>
-          <span style={{ fontSize: 12, color: T.muted }}>Grabando…</span>
+          <span style={{ fontSize: 12, color: T.muted }}>{t("Grabando…")}</span>
           <span style={{ flex: 1 }} />
           <button type="button" onClick={descartar} style={secundario}>
-            Descartar
+            {t("Descartar")}
           </button>
           <button
             type="button"
             onClick={parar}
             style={{ ...principal(accent), background: accent }}
           >
-            Parar
+            {t("Parar")}
           </button>
         </>
       ) : (
@@ -376,7 +378,7 @@ export function GrabadorDeVoz({
             controls
             src={nota?.url}
             style={{ flex: 1, minWidth: 200, height: 34 }}
-            aria-label="Escuchar la nota antes de mandarla"
+            aria-label={t("Escuchar la nota antes de mandarla")}
           />
           <button
             type="button"
@@ -384,7 +386,7 @@ export function GrabadorDeVoz({
             disabled={fase === "mandando"}
             style={secundario}
           >
-            Descartar
+            {t("Descartar")}
           </button>
           <button
             type="button"
@@ -395,7 +397,7 @@ export function GrabadorDeVoz({
               cursor: fase === "mandando" ? "wait" : "pointer",
             }}
           >
-            {fase === "mandando" ? "Mandando…" : "Mandar"}
+            {fase === "mandando" ? t("Mandando…") : t("Mandar")}
           </button>
         </>
       )}

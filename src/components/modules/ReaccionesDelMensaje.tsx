@@ -6,6 +6,7 @@ import { reaccionar } from "@/app/inbox-actions";
 import { PanelEmoji } from "@/components/ui/SelectorEmoji";
 import { T } from "@/lib/theme";
 import type { Mensaje } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Las reacciones de un mensaje: las que hay y el botón para poner una.
@@ -58,6 +59,7 @@ export function ReaccionesDelMensaje({
   ventanaAbierta: boolean;
   onCambio: () => void;
 }) {
+  const t = useT();
   const [abierto, setAbierto] = useState(false);
   const [todos, setTodos] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -132,7 +134,7 @@ export function ReaccionesDelMensaje({
       {/* Las que ya están. La nuestra se puede tocar para sacarla; la del
           cliente no —es suya— y por eso va como texto y no como botón. */}
       {suya && (
-        <span title="La puso el cliente" style={pastilla(false, accent)}>
+        <span title={t("La puso el cliente")} style={pastilla(false, accent)}>
           {suya.emoji}
         </span>
       )}
@@ -141,7 +143,7 @@ export function ReaccionesDelMensaje({
           type="button"
           onClick={() => void poner(nuestra.emoji)}
           disabled={!puede || enviando}
-          title={puede ? "Tocá para sacarla" : "Pasaron más de 24 horas"}
+          title={puede ? t("Tocá para sacarla") : t("Pasaron más de 24 horas")}
           style={{ ...pastilla(true, accent), cursor: puede ? "pointer" : "default" }}
         >
           {nuestra.emoji}
@@ -160,8 +162,8 @@ export function ReaccionesDelMensaje({
           type="button"
           onClick={() => setAbierto((v) => !v)}
           disabled={enviando}
-          title="Reaccionar a este mensaje"
-          aria-label="Reaccionar a este mensaje"
+          title={t("Reaccionar a este mensaje")}
+          aria-label={t("Reaccionar a este mensaje")}
           aria-expanded={abierto}
           style={{
             height: 19,
@@ -197,7 +199,7 @@ export function ReaccionesDelMensaje({
           ) : (
             <div
               role="menu"
-              aria-label="Reaccionar"
+              aria-label={t("Reaccionar")}
               style={{
                 display: "flex",
                 gap: 2,
@@ -232,8 +234,8 @@ export function ReaccionesDelMensaje({
                 type="button"
                 role="menuitem"
                 onClick={() => setTodos(true)}
-                title="Todos los emojis"
-                aria-label="Todos los emojis"
+                title={t("Todos los emojis")}
+                aria-label={t("Todos los emojis")}
                 style={{
                   width: 30,
                   height: 30,

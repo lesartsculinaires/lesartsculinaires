@@ -6,6 +6,7 @@ import { IconoDeCanal } from "@/components/IconoDeCanal";
 import { refrescarNombresMeta } from "@/app/meta-nombres-actions";
 import { CANALES, CAPACIDADES, COMO_SE_DICE, canalDe, type Canal } from "@/lib/canales";
 import { T } from "@/lib/theme";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * La fila para cambiar de red social, arriba de los hilos.
@@ -225,6 +226,7 @@ function Seccion({
   accent: string;
   onAlternar: () => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -234,12 +236,12 @@ function Seccion({
       data-abierta={abierta ? "si" : "no"}
       title={
         nota === "falta la llave"
-          ? `${nombre}: listo en el CRM, falta cargar las credenciales`
+          ? `${t(nombre)}: ${t("listo en el CRM, falta cargar las credenciales")}`
           : nota === "pronto"
-            ? `${nombre}: todavía no está conectado`
+            ? `${t(nombre)}: ${t("todavía no está conectado")}`
             : abierta
-              ? `Replegar ${nombre}`
-              : `Ver ${nombre}`
+              ? `${t("Replegar")} ${t(nombre)}`
+              : `${t("Ver")} ${t(nombre)}`
       }
       style={{
         display: "flex",
@@ -276,7 +278,7 @@ function Seccion({
         <span aria-hidden style={{ width: 15 }} />
       )}
 
-      <span style={{ flex: 1 }}>{nombre}</span>
+      <span style={{ flex: 1 }}>{t(nombre)}</span>
 
       {nota && (
         <span
@@ -286,7 +288,7 @@ function Seccion({
             color: nota === "falta la llave" ? "#8A7020" : T.faint,
           }}
         >
-          {nota}
+          {t(nota)}
         </span>
       )}
 
@@ -347,6 +349,7 @@ function Ficha({
   faltaElToken: boolean;
   onCerrar: () => void;
 }) {
+  const t = useT();
   return (
     <div
       style={{
@@ -367,16 +370,16 @@ function Ficha({
           }}
         >
           {faltaElToken
-            ? "listo en el CRM, falta la llave"
+            ? t("listo en el CRM, falta la llave")
             : canal.disponible
-              ? "conectado"
-              : "todavía no conectado"}
+              ? t("conectado")
+              : t("todavía no conectado")}
         </span>
         <span style={{ flex: 1 }} />
         <button
           type="button"
           onClick={onCerrar}
-          aria-label="Cerrar"
+          aria-label={t("Cerrar")}
           style={{ fontSize: 14, color: T.faint, lineHeight: 1, padding: "0 3px" }}
         >
           ×
@@ -393,11 +396,9 @@ function Ficha({
       */}
       {faltaElToken && (
         <p style={{ margin: "7px 0 0", fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
-          El CRM ya sabe recibir y contestar por acá: están el webhook, el envío y la
-          base. Lo que falta es cargar las credenciales en el servidor —en Netlify,
+          {t("El CRM ya sabe recibir y contestar por acá: están el webhook, el envío y la base. Lo que falta es cargar las credenciales en el servidor —en Netlify,")}
           {" "}
-          <strong>{VARIABLES[canal.clave] ?? "las variables del canal"}</strong>— y
-          apuntar el webhook de Meta a <strong>/api/{canal.clave}/webhook</strong>.
+          <strong>{VARIABLES[canal.clave] ?? t("las variables del canal")}</strong>{t("— y apuntar el webhook de Meta a")} <strong>{t("/api/")}{canal.clave}{t("/webhook")}</strong>.
         </p>
       )}
 
@@ -475,9 +476,7 @@ function Ficha({
           }}
         >
           <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
-            <strong>Llamadas:</strong> Messenger sí tiene API de llamadas, y no es sólo el
-            botón de llamar —tampoco se pueden <em>atender</em> las entrantes—. Las cinco
-            acciones devuelven:
+            <strong>{t("Llamadas:")}</strong> {t("Messenger sí tiene API de llamadas, y no es sólo el botón de llamar —tampoco se pueden")} <em>{t("atender")}</em> {t("las entrantes—. Las cinco acciones devuelven:")}
           </p>
           <p
             style={{
@@ -488,12 +487,10 @@ function Ficha({
               wordBreak: "break-word",
             }}
           >
-            (#-1, 2018389) Page is not allowlisted to access this feature
+            {t("(#-1, 2018389) Page is not allowlisted to access this feature")}
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 11.5, lineHeight: 1.55, color: "#6B5200" }}>
-            Hay que pedirle a Meta que habilite la página para llamadas de Messenger. Mientras
-            tanto, las llamadas de Messenger se contestan desde la aplicación de Messenger o
-            desde Meta Business Suite, no acá.
+            {t("Hay que pedirle a Meta que habilite la página para llamadas de Messenger. Mientras tanto, las llamadas de Messenger se contestan desde la aplicación de Messenger o desde Meta Business Suite, no acá.")}
           </p>
         </div>
       )}
@@ -532,6 +529,7 @@ function Ficha({
  * poder comprobar en el momento si Meta ya está dejando.
  */
 function NombresDeMeta({ canal }: { canal: string }) {
+  const t = useT();
   const [andando, setAndando] = useState(false);
   const [dicho, setDicho] = useState<string | null>(null);
 
@@ -581,7 +579,7 @@ function NombresDeMeta({ canal }: { canal: string }) {
           cursor: andando ? "default" : "pointer",
         }}
       >
-        {andando ? "Preguntándole a Meta…" : "Buscar los nombres que faltan"}
+        {andando ? t("Preguntándole a Meta…") : t("Buscar los nombres que faltan")}
       </button>
 
       <p style={{ margin: "5px 0 0", fontSize: 11, lineHeight: 1.5, color: T.faint }}>

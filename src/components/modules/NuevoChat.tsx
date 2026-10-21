@@ -17,6 +17,7 @@ import { CANALES, canalDe } from "@/lib/canales";
 import { coincideHilo } from "@/lib/buscarEnBandeja";
 import { aInternacional, bonito } from "@/lib/whatsapp/numero";
 import type { Conversacion, Oportunidad, Plantilla } from "@/lib/types";
+import { useT } from "@/lib/i18n/idioma";
 
 /**
  * Abrir un chat con alguien que ya está en la base.
@@ -77,6 +78,7 @@ export function NuevoChat({
   /** Recibe la conversación lista, para que la bandeja la muestre abierta. */
   onAbierta: (conversacionId: number) => void;
 }) {
+  const t = useT();
   const cat = useCatalogo();
   const [canal, setCanal] = useState("whatsapp");
   const esWhatsapp = canal === "whatsapp";
@@ -242,7 +244,7 @@ export function NuevoChat({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Nuevo chat"
+      aria-label={t("Nuevo chat")}
       style={{
         position: "fixed",
         inset: 0,
@@ -290,11 +292,11 @@ export function NuevoChat({
         }}
       >
         <h2 className="dsp" style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700 }}>
-          Nuevo chat
+          {t("Nuevo chat")}
         </h2>
         <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, lineHeight: 1.5 }}>
           {esWhatsapp
-            ? "Buscá a quién le querés escribir entre los contactos que ya están en el CRM. Al elegirlo vas a poder mandarle una plantilla."
+            ? t("Buscá a quién le querés escribir entre los contactos que ya están en el CRM. Al elegirlo vas a poder mandarle una plantilla.")
             : `Buscá una conversación de ${canalDe(canal).nombre} que ya exista, por su @usuario o por su nombre.`}
         </p>
 
@@ -350,7 +352,7 @@ export function NuevoChat({
                 }}
               >
                 {c.icono} {c.nombre}
-                {!listo && <span style={{ fontSize: 10.5 }}> · pronto</span>}
+                {!listo && <span style={{ fontSize: 10.5 }}> {t("· pronto")}</span>}
               </button>
             );
           })}
@@ -363,7 +365,7 @@ export function NuevoChat({
             setElegido(null);
             setError(null);
           }}
-          placeholder={esWhatsapp ? "Nombre, código o teléfono…" : "@usuario o nombre…"}
+          placeholder={esWhatsapp ? t("Nombre, código o teléfono…") : t("@usuario o nombre…")}
           autoFocus
         />
 
@@ -392,20 +394,16 @@ export function NuevoChat({
         {!esWhatsapp && (
           <div style={{ marginTop: 10, minHeight: 60 }}>
             <p style={{ margin: "0 0 9px", fontSize: 11.5, color: T.muted, lineHeight: 1.55 }}>
-              En {canalDe(canal).nombre} la conversación la empieza siempre la persona:
-              no hay plantillas y Meta no deja escribir primero. Acá se abre un hilo
-              que ya existe.
+              {t("En")} {canalDe(canal).nombre} {t("la conversación la empieza siempre la persona: no hay plantillas y Meta no deja escribir primero. Acá se abre un hilo que ya existe.")}
             </p>
 
             {busqueda.trim() === "" ? (
               <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
-                Escribí algo para buscar.
+                {t("Escribí algo para buscar.")}
               </p>
             ) : hilos.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
-                Ninguna conversación de {canalDe(canal).nombre} con eso. Si esa persona
-                todavía no te escribió, no va a aparecer: su identificador llega recién
-                con su primer mensaje.
+                {t("Ninguna conversación de")} {canalDe(canal).nombre} {t("con eso. Si esa persona todavía no te escribió, no va a aparecer: su identificador llega recién con su primer mensaje.")}
               </p>
             ) : (
               hilos.map((c) => (
@@ -424,10 +422,10 @@ export function NuevoChat({
                   }}
                 >
                   <span style={{ display: "block", fontSize: 13, color: T.ink }}>
-                    {c.nombrePerfil ?? c.usuario ?? "Contacto sin nombre"}
+                    {c.nombrePerfil ?? c.usuario ?? t("Contacto sin nombre")}
                   </span>
                   <span className="mono" style={{ fontSize: 11, color: T.faint }}>
-                    {c.usuario ? `@${c.usuario.replace(/^@+/, "")}` : "sin @usuario"}
+                    {c.usuario ? `@${c.usuario.replace(/^@+/, "")}` : t("sin @usuario")}
                   </span>
                 </button>
               ))
@@ -439,12 +437,12 @@ export function NuevoChat({
           <div style={{ marginTop: 10, minHeight: 60 }}>
             {busqueda.trim() === "" ? (
               <p style={{ margin: 0, fontSize: 12, color: T.faint, lineHeight: 1.6 }}>
-                Escribí algo para buscar.
+                {t("Escribí algo para buscar.")}
               </p>
             ) : resultados.length === 0 ? (
               <div>
                 <p style={{ margin: "0 0 8px", fontSize: 12, color: T.muted, lineHeight: 1.6 }}>
-                  Nadie con ese nombre ni ese número en el CRM.
+                  {t("Nadie con ese nombre ni ese número en el CRM.")}
                 </p>
                 <button
                   type="button"
@@ -471,7 +469,7 @@ export function NuevoChat({
                     background: "transparent",
                   }}
                 >
-                  + Ingresar un número nuevo
+                  {t("+ Ingresar un número nuevo")}
                 </button>
               </div>
             ) : (
@@ -492,7 +490,7 @@ export function NuevoChat({
                 >
                   <span style={{ display: "block", fontSize: 13, color: T.ink }}>{o.cliente}</span>
                   <span className="mono" style={{ fontSize: 11, color: T.faint }}>
-                    {o.telefono ? bonito(o.telefono) : "sin teléfono"} · {o.codigo}
+                    {o.telefono ? bonito(o.telefono) : t("sin teléfono")} · {o.codigo}
                   </span>
                 </button>
               ))
@@ -509,7 +507,7 @@ export function NuevoChat({
                 onClick={() => setElegido(null)}
                 style={{ fontSize: 11.5, color: accent }}
               >
-                cambiar
+                {t("cambiar")}
               </button>
             </p>
 
@@ -524,7 +522,7 @@ export function NuevoChat({
                   color: T.faint,
                 }}
               >
-                Número de WhatsApp
+                {t("Número de WhatsApp")}
               </span>
               <input
                 value={numero}
@@ -538,7 +536,7 @@ export function NuevoChat({
                 // en el caso en que está vacío porque el contacto no tiene
                 // teléfono. Acá lo que se muestre tiene que ser lo que se va a
                 // usar, o nada.
-                placeholder="Escribilo con código de país"
+                placeholder={t("Escribilo con código de país")}
                 className="mono"
                 style={{
                   width: "100%",
@@ -568,13 +566,11 @@ export function NuevoChat({
         {dandoAlta && (
           <div style={{ marginTop: 12 }}>
             <p style={{ margin: "0 0 10px", fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
-              Se da de alta el contacto <strong>y su oportunidad</strong>, para que
-              aparezca en Clientes y en el pipeline y no sólo acá. Después se le abre
-              el chat.
+              {t("Se da de alta el contacto")} <strong>{t("y su oportunidad")}</strong>{t(", para que aparezca en Clientes y en el pipeline y no sólo acá. Después se le abre el chat.")}
             </p>
 
             <label style={{ display: "block", marginBottom: 9 }}>
-              <span style={ETIQUETA}>Nombre y apellido</span>
+              <span style={ETIQUETA}>{t("Nombre y apellido")}</span>
               <input
                 value={nombreNuevo}
                 onChange={(e) => {
@@ -582,14 +578,14 @@ export function NuevoChat({
                   setParecidos(null);
                   setError(null);
                 }}
-                placeholder="Marta Rivas"
+                placeholder={t("Marta Rivas")}
                 autoFocus
                 style={CAMPO}
               />
             </label>
 
             <label style={{ display: "block", marginBottom: 9 }}>
-              <span style={ETIQUETA}>Número de WhatsApp</span>
+              <span style={ETIQUETA}>{t("Número de WhatsApp")}</span>
               <input
                 value={numero}
                 onChange={(e) => {
@@ -598,34 +594,34 @@ export function NuevoChat({
                   setError(null);
                 }}
                 inputMode="numeric"
-                placeholder="Escribilo con código de país"
+                placeholder={t("Escribilo con código de país")}
                 className="mono"
                 style={{ ...CAMPO, borderColor: listo ? T.border : T.warn }}
               />
               <span style={{ fontSize: 10.5, color: T.faint, lineHeight: 1.4 }}>
-                Con código de país: 503 y los ocho dígitos.
+                {t("Con código de país: 503 y los ocho dígitos.")}
               </span>
             </label>
 
             <label style={{ display: "block", marginBottom: 9 }}>
-              <span style={ETIQUETA}>Correo</span>
+              <span style={ETIQUETA}>{t("Correo")}</span>
               <input
                 value={correoNuevo}
                 onChange={(e) => setCorreoNuevo(e.target.value)}
                 type="email"
-                placeholder="opcional"
+                placeholder={t("opcional")}
                 style={CAMPO}
               />
             </label>
 
             <label style={{ display: "block", marginBottom: 4 }}>
-              <span style={ETIQUETA}>A quién le toca</span>
+              <span style={ETIQUETA}>{t("A quién le toca")}</span>
               <select
                 value={vendedorNuevo}
                 onChange={(e) => setVendedorNuevo(e.target.value === "" ? "" : Number(e.target.value))}
                 style={CAMPO}
               >
-                <option value="">Sin asignar</option>
+                <option value="">{t("Sin asignar")}</option>
                 {activos(cat.vendedores).map((v) => (
                   <option key={v.id} value={v.id}>{v.nombre}</option>
                 ))}
@@ -646,7 +642,7 @@ export function NuevoChat({
                 }}
               >
                 <p style={{ margin: "0 0 5px", fontSize: 12.5, color: T.ink, lineHeight: 1.5 }}>
-                  Ya hay {parecidos.length === 1 ? "alguien" : "gente"} con estos datos:
+                  {t("Ya hay")} {parecidos.length === 1 ? t("alguien") : t("gente")} {t("con estos datos:")}
                 </p>
                 <ul style={{ margin: "0 0 6px", paddingLeft: 18, fontSize: 12.5, color: T.ink }}>
                   {parecidos.map((n) => (
@@ -654,8 +650,7 @@ export function NuevoChat({
                   ))}
                 </ul>
                 <p style={{ margin: 0, fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-                  Si es la misma persona, cerrá y buscala por su nombre: darla de alta
-                  otra vez la parte en dos fichas.
+                  {t("Si es la misma persona, cerrá y buscala por su nombre: darla de alta otra vez la parte en dos fichas.")}
                 </p>
               </div>
             )}
@@ -685,11 +680,10 @@ export function NuevoChat({
             }}
           >
             <p style={{ margin: "0 0 3px", fontSize: 12.5, fontWeight: 600, color: T.ink }}>
-              Con qué le escribimos
+              {t("Con qué le escribimos")}
             </p>
             <p style={{ margin: "0 0 8px", fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-              A quien no escribió primero, WhatsApp sólo deja mandarle una
-              plantilla aprobada por Meta. Cualquier otro texto rebota.
+              {t("A quien no escribió primero, WhatsApp sólo deja mandarle una plantilla aprobada por Meta. Cualquier otro texto rebota.")}
             </p>
 
             <SelectorPlantilla
@@ -716,8 +710,7 @@ export function NuevoChat({
             */}
             {!plantilla && (
               <p style={{ margin: "8px 0 0", fontSize: 11, color: T.faint, lineHeight: 1.5 }}>
-                Sin plantilla el hilo se abre igual, pero sólo vas a poder
-                escribirle si esa persona te escribió en las últimas 24 horas.
+                {t("Sin plantilla el hilo se abre igual, pero sólo vas a poder escribirle si esa persona te escribió en las últimas 24 horas.")}
               </p>
             )}
           </div>
@@ -753,7 +746,7 @@ export function NuevoChat({
               color: T.ink,
             }}
           >
-            {abiertaConError != null ? "Cerrar" : dandoAlta ? "Volver" : "Cancelar"}
+            {abiertaConError != null ? t("Cerrar") : dandoAlta ? t("Volver") : t("Cancelar")}
           </button>
           {abiertaConError != null ? (
             <button
@@ -770,7 +763,7 @@ export function NuevoChat({
                 cursor: "pointer",
               }}
             >
-              Entrar al chat igual
+              {t("Entrar al chat igual")}
             </button>
           ) : !esWhatsapp ? (
             // En Instagram y Messenger no hay nada que confirmar: se toca el
@@ -794,12 +787,12 @@ export function NuevoChat({
               }}
             >
               {abriendo
-                ? "Dando de alta…"
+                ? t("Dando de alta…")
                 : parecidos
-                  ? "Darlo de alta igual"
+                  ? t("Darlo de alta igual")
                   : plantilla
-                    ? "Dar de alta y enviar"
-                    : "Dar de alta y abrir chat"}
+                    ? t("Dar de alta y enviar")
+                    : t("Dar de alta y abrir chat")}
             </button>
           ) : (
             <button
@@ -822,11 +815,11 @@ export function NuevoChat({
             >
               {abriendo
                 ? plantilla
-                  ? "Enviando…"
-                  : "Abriendo…"
+                  ? t("Enviando…")
+                  : t("Abriendo…")
                 : plantilla
-                  ? "Abrir y enviar la plantilla"
-                  : "Abrir chat sin enviar"}
+                  ? t("Abrir y enviar la plantilla")
+                  : t("Abrir chat sin enviar")}
             </button>
           )}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n/idioma";
 
 /** La versión con la que se compiló esta pantalla. */
 const ESTA = process.env.VERSION_DEL_CRM ?? "desarrollo";
@@ -22,6 +23,7 @@ const CADA_MS = 3 * 60_000;
  * para no recargarle la pantalla a nadie en medio de algo.
  */
 export function AvisoDeVersionNueva() {
+  const t = useT();
   const [hayOtra, setHayOtra] = useState(false);
 
   useEffect(() => {
@@ -77,8 +79,7 @@ export function AvisoDeVersionNueva() {
       }}
     >
       <span>
-        Se publicó una versión nueva del CRM. Recargá para tenerla: lo que estás escribiendo en el
-        chat queda guardado.
+        {t("Se publicó una versión nueva del CRM. Recargá para tenerla: lo que estás escribiendo en el chat queda guardado.")}
       </span>
       <button
         type="button"
@@ -94,7 +95,7 @@ export function AvisoDeVersionNueva() {
           cursor: "pointer",
         }}
       >
-        Recargar
+        {t("Recargar")}
       </button>
     </div>
   );
