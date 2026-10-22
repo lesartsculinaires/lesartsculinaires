@@ -18,6 +18,7 @@ import {
   CAMPOS,
   construirFilas,
   detectarMapeo,
+  leerTextoDelArchivo,
   parseDelimitado,
   type ClaveCampo,
   type FilaImportada,
@@ -216,7 +217,7 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
         );
       } else {
         setHoja(null);
-        datos = parseDelimitado(await file.text());
+        datos = parseDelimitado(leerTextoDelArchivo(await file.arrayBuffer()));
       }
 
       const utiles = datos.filter((f) => f.some((c) => String(c).trim()));

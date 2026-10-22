@@ -166,6 +166,23 @@ function partirLinea(linea: string, sep: string): string[] {
   return out.map((s) => s.trim());
 }
 
+/**
+ * El texto de un .csv o .txt, en la codificación con que se guardó.
+ *
+ * `file.text()` lo lee siempre como UTF-8, y Excel en Windows guarda el CSV
+ * en Windows-1252: las tildes y las eñes llegaban como «�». Así entraron 91
+ * nombres rotos el 28/08/2026 («Lista por paises y municipios 2025-2026 CRM -
+ * copia.csv»: «V�squez», «Bola�os»). Se prueba UTF-8 estricto y, si el
+ * archivo no lo es, Windows-1252.
+ */
+export function leerTextoDelArchivo(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
 /** Texto delimitado → matriz. Respeta saltos de línea dentro de comillas. */
 export function parseDelimitado(texto: string, sep?: string): string[][] {
   const limpio = texto.replace(/^\uFEFF/, ""); // BOM de Excel

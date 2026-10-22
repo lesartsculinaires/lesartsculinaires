@@ -94,6 +94,61 @@ function equivalentes(campo: CampoFusion, a: string, b: string): boolean {
 }
 
 /**
+ * ¿El nombre que llega es el mismo que el guardado, pero mejor escrito?
+ *
+ * La excepción a «lo que está no se pisa», pedida el 22/10/2026. La base de
+ * egresados traía «Ana Rocio Rios Galvez» y la ficha decía «Ana +503-7559-
+ * 7529» —el nombre que deja WhatsApp—; traía «Jaime Sergio Vásquez Zúniga» y
+ * la ficha decía «Jaime Sergio V�squez Z�niga», de una planilla vieja que
+ * se leyó con la codificación equivocada. Lo guardado ganaba y quedaba lo
+ * peor. Se reemplaza sólo cuando no se pierde nada de lo que había:
+ *
+ *   LETRAS ROTAS      lo guardado tiene «�» y, salvo esas letras, es lo que
+ *                     llega.
+ *   SIN NOMBRE        lo guardado es un teléfono, o iniciales que calzan
+ *                     con el que llega («FP» → «Francesco Padovani»).
+ *   MÁS COMPLETO      cada palabra guardada está en el que llega, y el que
+ *                     llega tiene más («Cecilia Monge» → «Cecilia Yamileth
+ *                     Monge Blanco»). Un apodo («Feer Larios») no entra:
+ *                     ahí decide una persona.
+ */
+export function nombreMasCompleto(actual: string, nuevo: string): boolean {
+  const n = normalizarTexto(nuevo);
+  if (!n || n.includes("\uFFFD")) return false;
+
+  if (actual.includes("\uFFFD")) {
+    const patron = normalizarTexto(actual)
+      .split("\uFFFD")
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".{1,2}");
+    if (new RegExp(`^${patron}$`).test(n)) return true;
+  }
+
+  const palabrasNuevas = n.split(" ");
+  // Lo que deja WhatsApp («+503-7559-7529») no es parte del nombre.
+  const guardadas = normalizarTexto(actual)
+    .split(" ")
+    .filter((p) => p && !/[\d+]/.test(p));
+
+  if (guardadas.length === 0) return palabrasNuevas.length >= 2;
+  // Iniciales: cada letra tiene que ser, en orden, la inicial de una palabra
+  // del que llega («FP» → «Francesco Padovani»).
+  const iniciales = guardadas.map((p) => p.replace(/\./g, ""));
+  if (iniciales.every((p) => p.length <= 2)) {
+    let i = 0;
+    for (const letra of iniciales.join("")) {
+      while (i < palabrasNuevas.length && palabrasNuevas[i][0] !== letra) i += 1;
+      if (i === palabrasNuevas.length) return false;
+      i += 1;
+    }
+    return palabrasNuevas.length >= 2;
+  }
+  return (
+    palabrasNuevas.length > guardadas.length && guardadas.every((p) => palabrasNuevas.includes(p))
+  );
+}
+
+/**
  * Qué habría que escribir para fusionar `entrante` sobre `existente`.
  *
  * El teléfono tiene un tratamiento aparte: cuando el contacto ya tiene uno y
@@ -124,6 +179,13 @@ export function planificarFusion(
     const a = String(actual);
     const b = String(nuevo);
     if (equivalentes(campo, a, b)) continue;
+
+    // El mismo nombre, mejor escrito: ver `nombreMasCompleto`.
+    if (campo === "nombre" && nombreMasCompleto(a, b)) {
+      parche.nombre = b;
+      completados.push("nombre");
+      continue;
+    }
 
     // Un segundo teléfono no es un conflicto: es un dato más.
     if (campo === "telefono" && vacio(existente.telefono_secundario)) {

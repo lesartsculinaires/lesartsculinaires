@@ -71,7 +71,7 @@ sql(`
   with b as (insert into public.importaciones (archivo, filas) values ('${ORIGEN}', 3) returning id),
   c as (
     insert into public.clientes (nombre, correo) values
-      ('Egresada Uno', 'uno@egresado.test'),
+      ('Egresada  +503-7000-0001', 'uno@egresado.test'),
       ('Egresado Dos', 'dos@egresado.test'),
       ('Egresada Tres', 'tres@egresado.test')
     returning id
@@ -85,11 +85,12 @@ const csv = [
   "Egresada Uno,,uno@egresado.test",
   "Egresado Dos,,dos@egresado.test",
   "Egresada Tres,,tres@egresado.test",
-  "Egresado Cuatro,,cuatro@egresado.test",
+  "Egresado Cuatro Núñez,,cuatro@egresado.test",
   "Egresada Cinco,,cinco@egresado.test",
 ].join("\n");
 const RUTA = path.join(os.tmpdir(), ARCHIVO);
-fs.writeFileSync(RUTA, csv, "utf8");
+// Como lo guarda Excel en Windows: Windows-1252, no UTF-8.
+fs.writeFileSync(RUTA, Buffer.from(csv, "latin1"));
 
 const jwt = fs.readFileSync("/home/user/lesartsculinaires/supabase/pruebas/banco/jwt-jefa.txt", "utf8").trim();
 const galleta =
@@ -141,6 +142,10 @@ try {
   es("y un lead por persona", sql(`select count(*) from public.oportunidades o join public.clientes c on c.id = o.cliente_id where c.correo like '%@egresado.test';`), "5");
   es("LAS CINCO ESTÁN EN LA BASE NUEVA", enLaBase(ARCHIVO), "5");
   es("las tres de antes siguen también en la anterior", enLaBase(ORIGEN), "3");
+  es("el nombre que dejó WhatsApp se completó con el del archivo",
+    sql("select nombre from public.clientes where correo = 'uno@egresado.test';"), "Egresada Uno");
+  es("y las tildes del CSV de Excel entran bien",
+    sql("select nombre from public.clientes where correo = 'cuatro@egresado.test';"), "Egresado Cuatro Núñez");
   es("la base nueva sólo CREÓ las dos nuevas (borrarla no se lleva a las de antes)",
     sql(`select count(*) from public.oportunidades o join public.importaciones i on i.id = o.importacion_id where i.archivo = '${ARCHIVO}';`), "2");
 

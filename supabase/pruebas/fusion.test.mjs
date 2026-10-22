@@ -189,5 +189,36 @@ console.log("\n── LA LISTA CONTRA LA TABLA ──");
   es("y el id, para saber a quién actualizar", COLUMNAS_DE_FUSION.includes("id"), true);
 }
 
+console.log("\n── el mismo nombre, mejor escrito (base de egresados, 22/10/2026) ──");
+{
+  // Casos reales de esa base: lo que tenía la ficha y lo que traía el archivo.
+  const se = [
+    ["Ana  +503-7559-7529", "Ana Rocio Rios Galvez"],
+    ["Jaime Sergio V\uFFFDsquez Z\uFFFDniga", "Jaime Sergio Vásquez Zúniga"],
+    ["Elizabeth \uFFFDngeles Mej\uFFFDa", "Elizabeth Ángeles Mejía"],
+    ["Cecilia Monge", "Cecilia Yamileth Monge Blanco"],
+    ["Marco Martinez", "Marco Antonio Martínez Barahona"],
+    ["Diego", "Diego Adolfo Reyes Oliva"],
+    ["FP", "Francesco Padovani"],
+    ["AT", "Alisson Emperatriz Henríquez Torres"],
+  ];
+  for (const [antes, llega] of se) {
+    const p = planificarFusion({ nombre: antes }, { nombre: llega });
+    es(`«${antes}» → «${llega}»`, [p.parche.nombre, p.choques.length], [llega, 0]);
+  }
+  const no = [
+    ["Feer Larios", "María Fernanda Larios Morán"],
+    ["Ricardo Jaimes", "Ricardo Alberto Jaime Lopez"],
+    ["María José Pérez", "María Pérez"],
+    ["Ana López", "Carlos López Díaz"],
+    ["XY", "Francesco Padovani"],
+    ["Ana Gladys Cordova Lopez", "Gilberto Antonio Fuentes Cordova"],
+  ];
+  for (const [antes, llega] of no) {
+    const p = planificarFusion({ nombre: antes }, { nombre: llega });
+    es(`«${antes}» se queda (decide una persona)`, [p.parche.nombre, p.choques.length], [undefined, 1]);
+  }
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

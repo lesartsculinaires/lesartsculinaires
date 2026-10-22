@@ -78,11 +78,17 @@ export interface Agrupacion {
 
 // --------------------------------------------------------------- los nombres
 
-/** Las palabras del nombre, sin acentos y sin las de una sola letra. */
+/**
+ * Las palabras del nombre, sin acentos y sin las de una sola letra.
+ *
+ * Tampoco cuenta un teléfono: WhatsApp deja nombres como «Ana +503-7559-
+ * 7529», y contando el número como palabra empataba con «Ana Rocio» y ganaba
+ * por largo (base de egresados, 22/10/2026).
+ */
 function palabras(nombre: string): string[] {
   return normalizarTexto(nombre)
     .split(" ")
-    .filter((p) => p.length > 1);
+    .filter((p) => p.length > 1 && !/[\d+]/.test(p));
 }
 
 /**
@@ -124,7 +130,9 @@ export function elegirNombre(nombres: readonly string[]): string {
   const puntaje = (n: string): number => {
     const todoMayusculas = n === n.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(n);
     const conAcentos = /[áéíóúñÁÉÍÓÚÑ]/.test(n) ? 1 : 0;
-    return palabras(n).length * 10 + conAcentos * 5 - (todoMayusculas ? 8 : 0);
+    // «V\uFFFDsquez»: letras rotas de un CSV mal leído. Pierde contra cualquiera.
+    const roto = n.includes("\uFFFD") ? 100 : 0;
+    return palabras(n).length * 10 + conAcentos * 5 - (todoMayusculas ? 8 : 0) - roto;
   };
 
   return [...limpios].sort((a, b) => puntaje(b) - puntaje(a) || b.length - a.length)[0];
