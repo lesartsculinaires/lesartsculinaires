@@ -100,14 +100,14 @@ export function Dashboard({ oportunidades, accent }: Props) {
    * octubre. Ver `periodos.ts`.
    */
   const ganadasDelPeriodo = useMemo(
-    () => oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, periodo.clave)).length,
+    () => oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, periodo.clave)),
     [oportunidades, periodo.clave],
   );
   const ganadasDelPrevio = useMemo(
     () =>
       previo
-        ? oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, previo.clave)).length
-        : 0,
+        ? oportunidades.filter((o) => esGanada(o) && ganadaEnElPeriodo(o, previo.clave))
+        : [],
     [oportunidades, previo],
   );
 
@@ -152,7 +152,7 @@ export function Dashboard({ oportunidades, accent }: Props) {
           <>
             Todo lo de abajo es de{" "}
             <strong style={{ color: T.muted }}>{periodo.etiqueta}</strong>: los leads por mes
-            de registro y los ganados por mes de cierre de la venta
+            de registro y los ganados, con su venta, por mes de cierre
             {previo ? ` · comparado contra ${previo.etiqueta}` : ""}.
           </>
         }
@@ -325,11 +325,13 @@ interface Indicador {
  * `ganadas` viene aparte porque no sale de `list`: los leads del período son
  * los que ENTRARON en él, y los ganados son los que se CERRARON en él.
  */
-function medir(list: readonly Oportunidad[], ganadas: number): Indicador[] {
+function medir(list: readonly Oportunidad[], ganadas: readonly Oportunidad[]): Indicador[] {
   const total = list.length;
   const abiertas = list.filter(estaAbierta).length;
-  const cerrado = totalCerrado(list);
-  const tasa = total ? Math.round((ganadas / total) * 100) : 0;
+  // La venta de un ganado va en el mes en que se cerró, igual que su cuenta
+  // (22/10/2026); lo demás, en el de registro.
+  const cerrado = totalCerrado(list.filter((o) => !esGanada(o))) + totalCerrado(ganadas);
+  const tasa = total ? Math.round((ganadas.length / total) * 100) : 0;
 
   return [
     { label: "Oportunidades", texto: String(total), crudo: total },

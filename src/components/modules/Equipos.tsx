@@ -10,7 +10,7 @@ import { RevisionDelEquipo } from "@/components/modules/RevisionDelEquipo";
 import { TraspasarCartera } from "@/components/modules/TraspasarCartera";
 import { useCatalogo } from "@/lib/catalog";
 import { leadCount, money } from "@/lib/format";
-import { porMes, variacion } from "@/lib/periodos";
+import { mesDelLeadOVenta, porMes, variacion } from "@/lib/periodos";
 import {
   estaAbierta,
   esGanada,
@@ -210,8 +210,7 @@ export function Equipos({
 
   const propias = acumulado
     ? todasSuyas
-    : todasSuyas.filter((o) => o.mes?.slice(0, 7) === claveMes);
-  const ganadas = propias.filter(esGanada);
+    : todasSuyas.filter((o) => mesDelLeadOVenta(o) === claveMes);
 
   const tasa = (g: number, t: number) => (t ? `${Math.round((g / t) * 100)}%` : "—");
 

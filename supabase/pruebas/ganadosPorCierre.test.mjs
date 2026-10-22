@@ -10,9 +10,14 @@ import { compilar } from "./compilar.mjs";
  * registro. Ahora un ganado cuenta en el mes de su fecha de cierre; si no la
  * tiene, en el de registro. Los leads, el valor y el pipeline siguen por mes
  * de registro.
+ *
+ * El 22/10/2026, lo mismo para la plata y la ficha: CRM-4542 entró el 9/9 y se
+ * ganó el 22/10; su venta cerrada estaba en septiembre y la ficha decía «Mes:
+ * Septiembre 2026». Ahora la venta va a octubre, la ficha dice «Mes de
+ * cierre: Octubre 2026» y el filtro de mes del Pipeline lo muestra en octubre.
  */
-const { porMes, porAnio, mesDeLaVenta } = await compilar("src/lib/periodos.ts");
-const { ganadaEnElPeriodo, TODO } = await compilar("src/lib/periodoDelTablero.ts");
+const { porMes, porAnio, mesDeLaVenta, mesDelLeadOVenta } = await compilar("src/lib/periodos.ts");
+const { ganadaEnElPeriodo, esDelMes, TODO } = await compilar("src/lib/periodoDelTablero.ts");
 
 let f = 0;
 const es = (t, r, e) => {
@@ -57,7 +62,8 @@ console.log("── por mes ──");
   es("septiembre ninguno: se registraron ahí pero se ganaron en octubre", sep.ganados, 0);
   es("los leads siguen por registro: 5 en septiembre", sep.leads, 5);
   es("y 5 en octubre", oct.leads, 5);
-  es("el valor sigue por registro", [sep.cerrado, oct.cerrado], [2000, 2000]);
+  es("la venta cerrada de los ganados va al mes de cierre (sólo el Perdido queda en septiembre)",
+    [sep.cerrado, oct.cerrado], [400, 3600]);
   es("el pipeline abierto, también (sólo el Activo de octubre)", [sep.pipeline, oct.pipeline], [0, 100]);
 }
 
@@ -94,6 +100,23 @@ console.log("\n── el tablero: ¿se ganó en este período? ──");
   es("en septiembre no", ganadaEnElPeriodo(l, "2026-09"), false);
   es("en el año 2026 sí", ganadaEnElPeriodo(l, "2026"), true);
   es("en todo el histórico sí", ganadaEnElPeriodo(l, TODO), true);
+}
+
+console.log("\n── CRM-4542: la ficha y el filtro de mes del Pipeline ──");
+{
+  const l = lead("2026-09-09", "Ganado", "2026-10-22");
+  es("el mes del lead es octubre (el de cierre)", mesDelLeadOVenta(l), "2026-10");
+  es("filtrando octubre, aparece", esDelMes(l, 202610), true);
+  es("filtrando septiembre, no", esDelMes(l, 202609), false);
+  const abierto = lead("2026-09-09", "Activo");
+  es("uno abierto sigue en su mes de registro", [mesDelLeadOVenta(abierto), esDelMes(abierto, 202609)], ["2026-09", true]);
+  const perdido = lead("2026-09-09", "Perdido", "2026-10-22");
+  es("un perdido también (sólo se pidió para los ganados)", mesDelLeadOVenta(perdido), "2026-09");
+  const meses = porMes([l]);
+  es("su venta suma en octubre", meses.map((m) => [m.clave, m.leads, m.ganados, m.cerrado]), [
+    ["2026-09", 1, 0, 0],
+    ["2026-10", 0, 1, 400],
+  ]);
 }
 
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);

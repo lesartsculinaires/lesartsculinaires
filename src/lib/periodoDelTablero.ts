@@ -33,7 +33,7 @@
  * eso la pantalla lo dice con todas las letras.
  */
 
-import { claveMes, mesDeLaVenta } from "@/lib/periodos";
+import { claveMes, mesDeLaVenta, mesDelLeadOVenta } from "@/lib/periodos";
 import type { Oportunidad } from "@/lib/types";
 
 /** Todo el histórico, que es lo que el tablero mostraba siempre. */
@@ -102,10 +102,11 @@ export function periodosDisponibles(
   const anios = new Set<string>();
 
   for (const o of list) {
-    const m = mesDelLead(o);
-    if (!m) continue;
-    meses.add(m);
-    anios.add(m.slice(0, 4));
+    for (const m of [mesDelLead(o), mesDelLeadOVenta(o)]) {
+      if (!m) continue;
+      meses.add(m);
+      anios.add(m.slice(0, 4));
+    }
   }
 
   // El mes en curso y su año, siempre. Ver el comentario de arriba.
@@ -233,8 +234,14 @@ export function mesesComoOpciones(
     .map((p) => ({ id: mesComoNumero(p.clave), nombre: p.etiqueta }));
 }
 
-/** ¿Este lead entró en ese mes? `mes` viene en el formato aaaamm de la barra. */
+/**
+ * ¿Este lead es de ese mes? `mes` viene en el formato aaaamm de la barra.
+ *
+ * Un ganado es del mes en que se cerró la venta, no del que entró (pedido el
+ * 22/10/2026): filtrando octubre, la columna Ganado del Pipeline muestra las
+ * ventas de octubre, las mismas que cuenta el tablero.
+ */
 export function esDelMes(o: Oportunidad, mes: number): boolean {
-  const m = mesDelLead(o);
+  const m = mesDelLeadOVenta(o);
   return m != null && mesComoNumero(m) === mes;
 }

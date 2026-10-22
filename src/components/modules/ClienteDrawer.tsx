@@ -37,7 +37,8 @@ import { ROTULO_VALOR_OPORTUNIDAD, ROTULO_VENTA_CERRADA } from "@/lib/montosDelL
 import { fechaDeReactivacion, MESES_PARA_REACTIVAR } from "@/lib/reparto";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { promocionesUsadas } from "@/lib/promociones";
-import { estadoTone } from "@/lib/selectors";
+import { mesDelLeadOVenta } from "@/lib/periodos";
+import { esGanada, estadoTone } from "@/lib/selectors";
 import type { SeguimientoPendiente } from "@/lib/seguimientos";
 import { T, softer } from "@/lib/theme";
 import {
@@ -1052,8 +1053,15 @@ export function ClienteDrawer({
             borderTop: `1px solid ${T.border}`,
           }}
         >
-          <span style={{ fontSize: 12, color: T.muted }}>Mes</span>
-          <span style={{ fontSize: 13 }}>{mesLargo(o.mes)}</span>
+          {/* Un ganado es del mes en que se cerró, como lo cuenta el tablero
+              (pedido el 22/10/2026); los demás, del mes en que entraron. */}
+          <span style={{ fontSize: 12, color: T.muted }}>{esGanada(o) ? "Mes de cierre" : "Mes"}</span>
+          <span data-mes-del-lead style={{ fontSize: 13 }}>
+            {(() => {
+              const m = mesDelLeadOVenta(o);
+              return m ? mesLargo(`${m}-01`) : mesLargo(o.mes);
+            })()}
+          </span>
         </div>
         {editables.map((f) => (
           <div key={f.label} style={{ borderTop: `1px solid ${T.border}` }}>

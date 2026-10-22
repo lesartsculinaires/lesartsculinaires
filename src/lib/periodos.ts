@@ -13,6 +13,13 @@
  * why this read by registration; since September a trigger fills it on every
  * win (30 of 31 in September, 11 of 11 in October). A win without a close
  * date falls back to its registration month, so nothing is ever dropped.
+ *
+ * AND SO DOES ITS MONEY, since October 22, 2026: «venta cerrada» of a won
+ * lead goes to its close month too. Before, the count of October's sales
+ * included a September lead won on 22/10 (CRM-4542) but its amount stayed in
+ * September, and the file showed «Mes: Septiembre». The monthly report
+ * already counted it this way; now the Dashboard, Equipos, Evolución, the
+ * Pipeline month filter and the file all agree with it.
  */
 
 import { mesCorto, parseISO } from "@/lib/format";
@@ -56,8 +63,14 @@ const vacio = (
 /** Lo que va por mes de registro. Los ganados se suman aparte: ver arriba. */
 function acumular(r: ResumenPeriodo, o: Oportunidad): void {
   r.leads += 1;
-  r.cerrado += o.cerrada ?? 0;
+  if (!esGanada(o)) r.cerrado += o.cerrada ?? 0;
   if (estaAbierta(o)) r.pipeline += o.valor ?? 0;
+}
+
+/** Un ganado en el mes de su venta: se cuenta y se suma lo que dejó. */
+function venta(r: ResumenPeriodo, o: Oportunidad): void {
+  r.ganados += 1;
+  r.cerrado += o.cerrada ?? 0;
 }
 
 /** "2026-07-01" → "2026-07". */
@@ -69,6 +82,16 @@ export const claveMes = (mesISO: string): string => mesISO.slice(0, 7);
  */
 export const mesDeLaVenta = (o: Oportunidad): string | null => {
   const crudo = o.fechaCierre || o.mes || o.fechaRegistro;
+  return crudo ? claveMes(crudo) : null;
+};
+
+/**
+ * El mes al que pertenece un lead en las listas y filtros: el de registro, y
+ * si está ganado, el de su venta. Es el «Mes» de la ficha.
+ */
+export const mesDelLeadOVenta = (o: Oportunidad): string | null => {
+  if (esGanada(o)) return mesDeLaVenta(o);
+  const crudo = o.mes || o.fechaRegistro;
   return crudo ? claveMes(crudo) : null;
 };
 
@@ -106,7 +129,7 @@ export function porMes(list: readonly Oportunidad[]): ResumenPeriodo[] {
     if (o.mes) acumular(delMes(claveMes(o.mes)), o);
     if (esGanada(o)) {
       const clave = mesDeLaVenta(o);
-      if (clave) delMes(clave).ganados += 1;
+      if (clave) venta(delMes(clave), o);
     }
   }
 
@@ -146,7 +169,7 @@ export function porAnio(list: readonly Oportunidad[]): ResumenPeriodo[] {
     if (o.mes) acumular(delAnio(o.mes.slice(0, 4)), o);
     if (esGanada(o)) {
       const mes = mesDeLaVenta(o);
-      if (mes) delAnio(mes.slice(0, 4)).ganados += 1;
+      if (mes) venta(delAnio(mes.slice(0, 4)), o);
     }
   }
 
