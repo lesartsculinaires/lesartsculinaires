@@ -1,4 +1,5 @@
 import { fechaCorta } from "@/lib/format";
+import { basesDelLead } from "@/lib/bases";
 import { esDelMes } from "@/lib/periodoDelTablero";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type { CatalogItem, Catalogo, Importacion, Oportunidad } from "@/lib/types";
@@ -196,6 +197,8 @@ export function pasa(o: Oportunidad, defs: readonly DefFiltro[], filtros: Elegid
       if (key === "mes") return esDelMes(o, v);
       // Varias por lead: se pregunta si la puesta está entre las suyas.
       if (key === "etiqueta") return o.etiquetaIds.includes(v);
+      // También varias: la base que lo trajo y las que lo volvieron a traer.
+      if (key === "base") return basesDelLead(o).includes(v);
       return o[CAMPO[key]] === v;
     });
   });

@@ -1435,6 +1435,29 @@ export async function importarClientes(
   await guardarNotasDeLaBase(supabase, filas, porFila);
 
   /*
+   * Todos los de la planilla quedan en la base, también los que ya estaban.
+   *
+   * Los leads que creó este lote ya quedan anotados solos (un disparador en
+   * la base). Faltaban los que se unificaron con alguien que ya existía: no
+   * se duplican —bien—, pero tienen que figurar en esta base para poder
+   * elegirlos en Clientes y mandarles un masivo. «Base de egresados» (22/10)
+   * trajo 285 personas y mostraba 23.
+   *
+   * Si la tabla no existe —falta la migración— se sigue: la importación ya
+   * está escrita y esto no puede tumbarla.
+   */
+  if (baseId != null && porFila.size > 0) {
+    const ids = [...new Set(porFila.values())];
+    const { error: errMiembros } = await supabase
+      .from("base_leads")
+      .upsert(
+        ids.map((oportunidad_id) => ({ importacion_id: baseId, oportunidad_id })),
+        { onConflict: "importacion_id,oportunidad_id", ignoreDuplicates: true },
+      );
+    if (errMiembros) console.warn("[importar] no se anotaron todos en la base:", errMiembros.message);
+  }
+
+  /*
    * Y ahora sí, lo que llegó distinto de la PERSONA.
    *
    * Se escribe acá y no arriba porque recién en este punto se sabe en qué

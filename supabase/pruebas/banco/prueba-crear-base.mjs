@@ -204,7 +204,7 @@ es(
 await foto("1-marcados");
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 3. la ventana avisa lo que se va a mover ──");
+console.log("\n── 3. la ventana: cuántos lleva, y ya no avisa que se mueven ──");
 // ══════════════════════════════════════════════════════════════════════════
 await p.getByRole("button", { name: "Crear base nueva" }).first().click();
 await p.waitForTimeout(1200);
@@ -212,11 +212,8 @@ await p.waitForTimeout(1200);
 {
   const t = (await p.locator('[role=dialog]').innerText()).replace(/\s+/g, " ");
   es("dice cuántos leads lleva", /2 leads marcados/.test(t), true);
-  es(
-    "Y AVISA QUE UNO SE MUEVE DE OTRA BASE",
-    /1 de los marcados ya está en otra base/.test(t),
-    true,
-  );
+  // Desde el 22/10/2026 un lead puede estar en varias bases: no se mueve.
+  es("ya no avisa que se mueve de otra base", /se va a mover/.test(t), false);
   // `exact` para no chocar con «Crear base nueva», el de la barra de atrás.
   es(
     "el botón espera el nombre",
@@ -243,25 +240,35 @@ es(
 es(
   "LOS DOS MARCADOS QUEDARON ADENTRO",
   sql(`
-    select count(*) from public.oportunidades o
-    join public.importaciones i on i.id = o.importacion_id
+    select count(*) from public.base_leads b
+    join public.importaciones i on i.id = b.importacion_id
+    join public.oportunidades o on o.id = b.oportunidad_id
     where i.archivo = '${NOMBRE}' and o.codigo in ('BAS-0001','BAS-0002');
   `),
   "2",
 );
 es(
   "Y EL QUE NO SE MARCÓ SIGUE SIN BASE",
-  sql(`select coalesce(importacion_id::text, '(sin base)') from public.oportunidades where codigo = 'BAS-0003';`),
-  "(sin base)",
+  sql(`select count(*) from public.base_leads b join public.oportunidades o on o.id = b.oportunidad_id where o.codigo = 'BAS-0003';`),
+  "0",
 );
 es(
-  "el que venía de la vieja SALIÓ de la vieja",
+  "el que venía de la vieja SIGUE TAMBIÉN en la vieja",
+  sql(`
+    select count(*) from public.base_leads b
+    join public.importaciones i on i.id = b.importacion_id
+    where i.archivo = '${VIEJA}';
+  `),
+  "1",
+);
+es(
+  "y su base de origen no cambió",
   sql(`
     select count(*) from public.oportunidades o
     join public.importaciones i on i.id = o.importacion_id
     where i.archivo = '${VIEJA}';
   `),
-  "0",
+  "1",
 );
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -273,7 +280,7 @@ await p.waitForTimeout(2800);
 {
   const t = (await p.locator("main").innerText()).replace(/\s+/g, " ");
   es("LA BASE NUEVA ESTÁ EN LA LISTA", t.includes(NOMBRE), true);
-  es("y la vieja sigue estando, vacía", t.includes(VIEJA), true);
+  es("y la vieja sigue estando, con su lead", t.includes(VIEJA), true);
 }
 await foto("4-en-bases");
 

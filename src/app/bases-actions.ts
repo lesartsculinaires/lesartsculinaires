@@ -230,22 +230,15 @@ export interface ResultadoNuevaBase {
  * por mes, por etiqueta—, se marcan las filas y se agrupan con un nombre.
  *
  * ============================================================================
- * UN LEAD PERTENECE A UNA SOLA BASE, Y ESO TIENE UNA CONSECUENCIA
+ * UN LEAD PUEDE ESTAR EN VARIAS BASES
  * ============================================================================
  *
- * `oportunidades.importacion_id` es una sola columna. No es una decisión de
- * ahora: así entró el día que se registraron las importaciones, y es lo que
- * permite que la pregunta «¿de qué carga vino este lead?» tenga una respuesta
- * y no una lista.
+ * Desde el 22/10/2026 (`base_leads`). Meter en una base nueva leads que ya
+ * estaban en otra los SUMA a ésta y los deja en aquélla: nadie pierde filas.
+ * `importacion_id` —de qué carga vino— no se toca.
  *
- * La consecuencia es que meter en una base nueva un lead que ya estaba en otra
- * lo SACA de aquélla. No hay forma de que esté en las dos, y la pantalla de
- * Bases mostraría a la vieja con menos filas de las que dice haber cargado.
- *
- * Por eso esto cuenta cuántos venían de otra base y lo devuelve. Quien aprieta
- * el botón lo ve antes —la ventana lo avisa— y lo vuelve a ver después, con el
- * número real. Hacerlo en silencio sería vaciar una base sin que nadie se
- * entere.
+ * Si la tabla todavía no existe se hace lo de antes: se los mueve, y se
+ * devuelve cuántos venían de otra base para poder decirlo.
  *
  * ============================================================================
  * POR QUÉ NO SE TOCA `filas`
@@ -320,13 +313,24 @@ export async function crearBaseConLeads(
 
   const importacionId = Number((base as { id: number }).id);
 
-  const { error: errMarcar } = await supabase
-    .from("oportunidades")
-    .update({ importacion_id: importacionId })
-    .in(
-      "id",
-      visibles.map((o) => o.id),
+  const { error: errSumar } = await supabase
+    .from("base_leads")
+    .upsert(
+      visibles.map((o) => ({ importacion_id: importacionId, oportunidad_id: o.id })),
+      { onConflict: "importacion_id,oportunidad_id", ignoreDuplicates: true },
     );
+
+  // Sin la tabla nueva (PGRST205), lo de antes: se mueven a esta base.
+  const sinTabla = errSumar?.code === "PGRST205";
+  const { error: errMarcar } = sinTabla
+    ? await supabase
+        .from("oportunidades")
+        .update({ importacion_id: importacionId })
+        .in(
+          "id",
+          visibles.map((o) => o.id),
+        )
+    : { error: errSumar };
 
   if (errMarcar) {
     /*
@@ -346,6 +350,6 @@ export async function crearBaseConLeads(
     error: null,
     importacionId,
     leads: visibles.length,
-    movidos,
+    movidos: sinTabla ? movidos : 0,
   };
 }

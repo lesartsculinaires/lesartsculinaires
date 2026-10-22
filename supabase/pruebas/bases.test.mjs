@@ -172,5 +172,23 @@ console.log("\n── las cargas sin registro no se pueden marcar ──");
   es("y sin marca de copia", bases[0].duplicadaDe, null);
 }
 
+console.log("\n── un lead en varias bases (22/10/2026) ──");
+{
+  // Una persona que vino en «Origen» y que «Egresados» volvió a traer.
+  const imps = [
+    { id: 1, archivo: "Origen.xlsx", filas: 1, creadoEn: "2026-09-01T10:00:00Z" },
+    { id: 2, archivo: "Egresados.xlsx", filas: 2, creadoEn: "2026-10-22T16:16:00Z" },
+  ];
+  const yaEstaba = { ...lead(1), bases: [1, 2] };
+  const nueva = { ...lead(2), bases: [2] };
+  const bases = agruparBases([yaEstaba, nueva], imps);
+  const de = (n) => bases.find((b) => b.titulo === n).oportunidades.length;
+  es("la base nueva tiene a las dos", de("Egresados.xlsx"), 2);
+  es("y la de origen sigue con la suya", de("Origen.xlsx"), 1);
+  es("no aparece como carga suelta", bases.length, 2);
+  const sinTabla = agruparBases([{ ...lead(1) }], imps.slice(0, 1));
+  es("sin la tabla nueva, cada lead en la base que lo creó", sinTabla[0].oportunidades.length, 1);
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

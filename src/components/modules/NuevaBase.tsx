@@ -51,17 +51,6 @@ export function NuevaBase({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /*
-   * Cuántos de los marcados ya están en una base.
-   *
-   * Se cuenta acá con lo que ya está en pantalla, sin preguntarle al servidor:
-   * es para avisar, y el número que vale —el que se dice después— lo devuelve
-   * la acción, que es la que mira la base de datos en el momento de escribir.
-   */
-  const yaEnOtra = oportunidades.filter(
-    (o) => ids.includes(o.id) && o.importacionId != null,
-  ).length;
-
   const crear = async () => {
     setGuardando(true);
     setError(null);
@@ -146,32 +135,7 @@ export function NuevaBase({
           }}
         />
 
-        {/*
-          El aviso de lo que se mueve.
-
-          Va con el número puesto y antes del botón, no después de apretarlo.
-          Un lead está en una sola base: si ya estaba en otra, ésta se lo lleva
-          y la vieja queda con menos filas de las que dice haber cargado.
-        */}
-        {yaEnOtra > 0 && (
-          <p
-            style={{
-              margin: "12px 0 0",
-              padding: "10px 12px",
-              borderRadius: 8,
-              fontSize: 12,
-              lineHeight: 1.5,
-              background: "#F6EEDC",
-              color: "#7A5A12",
-            }}
-          >
-            {yaEnOtra === 1
-              ? "1 de los marcados ya está en otra base y se va a mover a ésta: un lead pertenece a una sola."
-              : `${yaEnOtra} de los marcados ya están en otras bases y se van a mover a ésta: un lead pertenece a una sola.`}
-          </p>
-        )}
-
-        {error && (
+                {error && (
           <p
             role="alert"
             style={{ margin: "12px 0 0", fontSize: 12, color: "#B85042", lineHeight: 1.45 }}

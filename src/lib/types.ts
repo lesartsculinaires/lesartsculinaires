@@ -337,6 +337,12 @@ export interface Oportunidad {
   creadoEn: string | null;
   /** Base de la que vino, si vino de una importación. */
   importacionId: number | null;
+  /**
+   * Todas las bases en las que está, incluida la que lo creó: una base que
+   * trae a alguien que ya estaba en el CRM lo unifica y lo suma a la lista.
+   * Ver `basesDelLead` en `@/lib/bases`.
+   */
+  bases?: number[];
 }
 
 /** Una base subida al sistema. */

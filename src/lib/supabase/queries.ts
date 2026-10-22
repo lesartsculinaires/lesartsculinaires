@@ -216,6 +216,16 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
    */
   const conTotal = (si: boolean) => (si ? { count: "exact" as const } : undefined);
 
+  // En qué bases está cada lead (pueden ser varias). Va aparte del embudo
+  // compartido y se pide a la par: son dos números por fila.
+  const enBases = traerTodo<{ importacion_id: number; oportunidad_id: number }>((t) =>
+    supabase
+      .from("base_leads")
+      .select("importacion_id, oportunidad_id", conTotal(t))
+      .order("importacion_id")
+      .order("oportunidad_id"),
+  );
+
   const [embudo, programas, etiquetasPuestas, ultimosToques] =
     (await embudoCompartido(supabase)) ??
     (await Promise.all([
@@ -296,6 +306,28 @@ export async function fetchOportunidades(): Promise<LoadResult<Oportunidad[]>> {
         else porLead.set(i.oportunidad_id, [i.producto_id]);
       }
       for (const f of filas) f.programasInteres = porLead.get(f.id) ?? [];
+    }
+  }
+
+  /*
+   * Las bases de cada lead. Si la tabla no existe todavía —falta la
+   * migración— cada lead queda en la base que lo creó, como antes.
+   */
+  {
+    const { data: miembros, error: errBases } = await enBases;
+    if (errBases) {
+      console.warn("[queries] sin bases por lead:", errBases);
+    } else if (miembros.length > 0) {
+      const porLead = new Map<number, number[]>();
+      for (const m of miembros) {
+        const suyas = porLead.get(m.oportunidad_id);
+        if (suyas) suyas.push(m.importacion_id);
+        else porLead.set(m.oportunidad_id, [m.importacion_id]);
+      }
+      for (const f of filas) {
+        const suyas = porLead.get(f.id);
+        if (suyas) f.bases = suyas;
+      }
     }
   }
 

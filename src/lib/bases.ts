@@ -34,6 +34,18 @@ export interface Base {
   duplicadaDe: string | null;
 }
 
+/**
+ * Las bases en las que está un lead.
+ *
+ * Desde el 22/10/2026 un lead puede estar en varias: «Base de egresados»
+ * traía 285 personas y 262 ya estaban en el CRM; se unificaron con su ficha y
+ * ahora igual figuran en esa base, para poder elegirlas en Clientes y
+ * mandarles un masivo. Sin la tabla `base_leads` —falta la migración— queda la
+ * base que lo creó, como antes.
+ */
+export const basesDelLead = (o: Oportunidad): readonly number[] =>
+  o.bases && o.bases.length > 0 ? o.bases : o.importacionId != null ? [o.importacionId] : [];
+
 /** "2026-07-29T17:36:47Z" → "2026-07-29". */
 const soloDia = (iso: string | null): string | null =>
   iso ? iso.slice(0, 10) : null;
@@ -53,13 +65,13 @@ export function agruparBases(
   const sueltas: Oportunidad[] = [];
 
   for (const o of oportunidades) {
-    if (o.importacionId != null) {
-      const lista = porImportacion.get(o.importacionId) ?? [];
+    const suyas = basesDelLead(o);
+    for (const id of suyas) {
+      const lista = porImportacion.get(id) ?? [];
       lista.push(o);
-      porImportacion.set(o.importacionId, lista);
-    } else {
-      sueltas.push(o);
+      porImportacion.set(id, lista);
     }
+    if (suyas.length === 0) sueltas.push(o);
   }
 
   const bases: Base[] = importaciones.map((imp) => ({

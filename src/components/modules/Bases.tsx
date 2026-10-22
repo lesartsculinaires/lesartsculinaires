@@ -485,7 +485,7 @@ export function Bases({
                           b.filasDeclaradas !== b.oportunidades.length && (
                             <span
                               style={{ marginLeft: 6, fontSize: 11, color: T.warn }}
-                              title={`Se cargaron ${b.filasDeclaradas}; el resto se eliminó después`}
+                              title={`El archivo traía ${b.filasDeclaradas} filas; las que faltan eran la misma persona repetida o se eliminaron después`}
                             >
                               de {b.filasDeclaradas}
                             </span>
