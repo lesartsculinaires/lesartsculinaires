@@ -150,7 +150,13 @@ const verdad = (mes) => {
   const [leads, pipeline, cerrado, tasa] = sql(`
     select count(*)
       || '|' || count(*) filter (where not coalesce(e.es_final,false))
-      || '|' || coalesce(sum(o.venta_cerrada),0)::numeric(12,0)
+      || '|' || coalesce((
+           -- La venta de un ganado va en el mes de su cierre (22/10/2026);
+           -- lo demás, en el de registro.
+           select sum(x.venta_cerrada) from public.oportunidades x
+             left join public.estados xs on xs.id = x.estado_id
+            ${mes === "TODO" ? "" : `where to_char(case when xs.nombre = 'Ganado' then coalesce(x.fecha_cierre, x.fecha_registro) else x.fecha_registro end,'YYYY-MM') = '${mes}'`}
+         ),0)::numeric(12,0)
       || '|' || coalesce(round(100.0*(
            select count(*) from public.oportunidades g join public.estados gs on gs.id = g.estado_id
             where gs.nombre = 'Ganado'
@@ -162,6 +168,18 @@ const verdad = (mes) => {
   `).split("|");
   return { leads: Number(leads), pipeline: Number(pipeline), cerrado: Number(cerrado), tasa: Number(tasa) };
 };
+
+/**
+ * Cuántas tarjetas deja el filtro de mes del Pipeline: las que entraron ese
+ * mes, salvo los ganados, que van en el mes en que se cerraron (22/10/2026).
+ * Sólo las que tienen etapa: un lead sin etapa no cae en ninguna columna.
+ */
+const enElFiltro = (mes) =>
+  Number(sql(`
+    select count(*) from public.oportunidades o left join public.estados s on s.id = o.estado_id
+     where o.etapa_id is not null
+       and to_char(case when s.nombre = 'Ganado' then coalesce(o.fecha_cierre, o.fecha_registro) else o.fecha_registro end,'YYYY-MM') = '${mes}';
+  `));
 
 // El mes en curso, que es con el que tiene que abrir el tablero.
 const MES_HOY = sql("select to_char(now(),'YYYY-MM');");
@@ -350,7 +368,7 @@ console.log("\n── PIPELINE: SE PUEDE VER EL EMBUDO DE UN MES ──");
   es("y arranca en «Todos»", (await filtro.innerText()).includes("Todos"), true);
 
   const totalSinFiltro = Number(sql("select count(*) from public.oportunidades;"));
-  const enElMes = verdad(MES_HOY).leads;
+  const enElMes = enElFiltro(MES_HOY);
 
   await filtro.click();
   await p.waitForTimeout(500);

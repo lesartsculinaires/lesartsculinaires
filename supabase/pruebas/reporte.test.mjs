@@ -124,7 +124,15 @@ console.log("\n── el reporte del día ──");
   es("las conclusiones lo dicen en palabras", r.conclusiones.some((c) => c.includes("«Muy caro»")), true);
   es("la asesora junta sus números", r.asesoras[0], { quien: "Alexandra", nuevos: 3, ganados: 1, perdidos: 3, conversaciones: 12, mensajes: 40, movimientos: 9, seguimientos: 5 });
 
+  // CURSOS Y DIPLOMADOS VENDIDOS (23/10/2026): el ganado del día es de
+  // «Cocina», un diplomado, y lo vendió Alexandra.
+  es("vendidos del día: 0 cursos, 1 diplomado", [r.vendidos.cursos, r.vendidos.diplomados, r.vendidos.otros], [0, 1, 0]);
+  es("y quién lo vendió", r.vendidos.porAsesora.map((a) => [a.quien, a.cursos, a.diplomados]), [["Alexandra", 0, 1]]);
+  es("ayer no se vendió nada", r.vendidosAntes, { cursos: 0, diplomados: 0, otros: 0, total: 0 });
+  es("la conclusión lo dice", r.conclusiones.some((c) => c.startsWith("Se vendió 1 diplomado. Todo lo vendió Alexandra.")), true);
+
   const csv = reporteACsv(r);
+  es("el CSV trae la sección de vendidos por asesora", csv.includes("Vendidos por asesora") && csv.includes("Alexandra;0;1;0;1;430"), true);
   es("el archivo empieza con BOM, para los acentos en Excel", csv.charCodeAt(0), 0xfeff);
   es("separa con punto y coma", csv.includes("Canal;Leads nuevos;% de los nuevos;Ganados;Perdidos"), true);
   es("y protege el texto con punto y coma adentro", /"[^"]*Le pareció caro; dijo que vuelve en enero\.[^"]*"/.test(csv), true);

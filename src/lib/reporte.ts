@@ -26,6 +26,7 @@
  */
 
 import { variacion } from "@/lib/periodos";
+import { contarVendidos, decirVendidos, type Vendidos } from "@/lib/vendidos";
 
 export type TipoReporte = "dia" | "mes";
 
@@ -209,6 +210,10 @@ export interface Reporte {
   perdidos: FilaLead[];
   leads: FilaLead[];
   semanas: FilaSemana[];
+  /** Cursos y diplomados vendidos, y quién los vendió. Ver `vendidos.ts`. */
+  vendidos: Vendidos;
+  /** Lo mismo en el período anterior, para comparar; null sin datos. */
+  vendidosAntes: Pick<Vendidos, "cursos" | "diplomados" | "otros" | "total"> | null;
 }
 
 // --------------------------------------------------------------- períodos
@@ -545,6 +550,18 @@ export function armarReporte(
     }
   }
 
+  // ------------------------------------------- cursos y diplomados vendidos
+  const categoriaDe = new Map(catalogo.programas.map((p) => [p.id, p.categoria]));
+  const comoVenta = (l: LeadDelReporte) => ({
+    quien: l.vendedor,
+    programa: l.productoId != null ? (nombrePrograma.get(l.productoId) ?? l.producto) : l.producto,
+    categoria: l.productoId != null ? (categoriaDe.get(l.productoId) ?? null) : null,
+    monto: montoDe(l),
+  });
+  const vendidos = contarVendidos(ganados.map(comoVenta));
+  const vendidosAntes =
+    anteriores && anterior ? contarVendidos(cortes(anteriores.leads, anterior).ganados.map(comoVenta)) : null;
+
   // -------------------------------------------------------- conclusiones
   const conclusiones: string[] = [];
   const cuando = periodo.tipo === "dia" ? "este día" : "este mes";
@@ -559,6 +576,15 @@ export function armarReporte(
     const tasa = t.tasa;
     const comp = a ? ` (${a.tasa} % ${periodo.anteriorDicho})` : "";
     conclusiones.push(`${ganados.length === 1 ? "Se ganó" : "Se ganaron"} ${n(ganados.length, "inscripción", "inscripciones")}; la tasa de cierre fue ${tasa} %${comp}.`);
+    const top = vendidos.porAsesora[0];
+    conclusiones.push(
+      `${vendidos.total === 1 ? "Se vendió" : "Se vendieron"} ${decirVendidos(vendidos)}.` +
+        (top && top.quien !== "Sin asignar" && vendidos.porAsesora.length > 1
+          ? ` Quien más vendió: ${top.quien}, con ${decirVendidos(top)}.`
+          : top && top.quien !== "Sin asignar"
+            ? ` Todo lo vendió ${top.quien}.`
+            : ""),
+    );
   } else conclusiones.push(`No se ganó ninguna inscripción ${cuando}.`);
   if (perdidos.length > 0) {
     const m = motivos.find((x) => !x.sinDecir);
@@ -587,6 +613,10 @@ export function armarReporte(
     perdidos: perdidos.map(fila),
     leads: periodo.tipo === "dia" ? delPeriodo.map(fila) : [],
     semanas,
+    vendidos,
+    vendidosAntes: vendidosAntes
+      ? { cursos: vendidosAntes.cursos, diplomados: vendidosAntes.diplomados, otros: vendidosAntes.otros, total: vendidosAntes.total }
+      : null,
   };
 }
 
@@ -612,6 +642,14 @@ export function reporteACsv(r: Reporte): string {
     i.nombre, i.valor, i.anterior ?? "", i.cambio == null ? "" : i.formato === "porcentaje" ? `${i.cambio} pts` : `${Math.round(i.cambio)} %`,
   ]));
   seccion("Conclusiones", ["Conclusión"], r.conclusiones.map((c) => [c]));
+  seccion("Cursos y diplomados vendidos", ["Tipo", "Vendidos", "Período anterior", "Monto"], [
+    ["Cursos", r.vendidos.cursos, r.vendidosAntes?.cursos ?? "", r.vendidos.montoCursos],
+    ["Diplomados", r.vendidos.diplomados, r.vendidosAntes?.diplomados ?? "", r.vendidos.montoDiplomados],
+    ["Otros programas", r.vendidos.otros, r.vendidosAntes?.otros ?? "", r.vendidos.montoOtros],
+    ["Total", r.vendidos.total, r.vendidosAntes?.total ?? "", r.vendidos.montoCursos + r.vendidos.montoDiplomados + r.vendidos.montoOtros],
+  ]);
+  seccion("Vendidos por asesora", ["Asesora", "Cursos", "Diplomados", "Otros", "Total", "Monto"], r.vendidos.porAsesora.map((a) => [a.quien, a.cursos, a.diplomados, a.otros, a.total, a.monto]));
+  seccion("Programas vendidos", ["Programa", "Tipo", "Vendidos", "Monto"], r.vendidos.porPrograma.map((p) => [p.programa, p.tipo === "curso" ? "Curso" : p.tipo === "diplomado" ? "Diplomado" : "Otro", p.ventas, p.monto]));
   seccion("Canales", ["Canal", "Leads nuevos", "% de los nuevos", "Ganados", "Perdidos"], r.canales.map((c) => [c.canal, c.nuevos, c.porcentaje, c.ganados, c.perdidos]));
   seccion("Programas", ["Programa", "Categoría", "Precio", "Horario", "Interesados", "Ganados", "Perdidos", "Monto ganado"], r.programas.map((p) => [p.nombre, p.categoria, p.precio ?? "", p.horario ?? "", p.interesados, p.ganados, p.perdidos, p.montoGanado]));
   seccion("Asesoras", ["Asesora", "Leads nuevos", "Ganados", "Perdidos", "Conversaciones contestadas", "Mensajes", "Movimientos", "Seguimientos"], r.asesoras.map((a) => [a.quien, a.nuevos, a.ganados, a.perdidos, a.conversaciones, a.mensajes, a.movimientos, a.seguimientos]));

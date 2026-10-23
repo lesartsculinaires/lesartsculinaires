@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { SelectorDePeriodo } from "@/components/SelectorDePeriodo";
 import { BotonesDeReporte } from "@/components/reporte/BotonesDeReporte";
 import { Evolucion } from "@/components/modules/Evolucion";
+import { VendidosDelTablero } from "@/components/modules/VendidosDelTablero";
 import { money } from "@/lib/format";
 import { variacion } from "@/lib/periodos";
 import {
@@ -194,6 +195,8 @@ export function Dashboard({ oportunidades, accent }: Props) {
           </div>
         ))}
       </div>
+
+      <VendidosDelTablero oportunidades={oportunidades} periodo={periodo} />
 
       {delPeriodo.length === 0 && (
         <p

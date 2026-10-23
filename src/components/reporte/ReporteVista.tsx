@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { AccionesDelReporte } from "@/components/reporte/AccionesDelReporte";
 import { money } from "@/lib/format";
 import type { FilaLead, Indicador, Reporte } from "@/lib/reporte";
+import type { Vendidos } from "@/lib/vendidos";
 
 /**
  * El reporte, dibujado para leerse sin conocer el CRM.
@@ -104,6 +105,87 @@ const filaDeLead = (l: FilaLead): ReactNode[] => [
   l.etiquetas || "—",
 ];
 
+/** Los colores de lo vendido: los mismos en las tarjetas y en las barras. */
+const COLOR_CURSO = "#2E6FBF";
+const COLOR_DIPLOMADO = "#B8862B";
+const COLOR_OTRO = "#8792AC";
+
+/**
+ * Cursos y diplomados vendidos, y quién los vendió (pedido el 23/10/2026).
+ *
+ * Tres tarjetas grandes para leer el resultado de un vistazo, y una barra por
+ * asesora partida en cursos y diplomados: se ve quién vendió más y de qué.
+ */
+function VendidosDelPeriodo({ v, antes, contra }: { v: Vendidos; antes: Reporte["vendidosAntes"]; contra: string }) {
+  const tarjetas = [
+    { clave: "cursos", nombre: "Cursos vendidos", valor: v.cursos, monto: v.montoCursos, previo: antes?.cursos, color: COLOR_CURSO },
+    { clave: "diplomados", nombre: "Diplomados vendidos", valor: v.diplomados, monto: v.montoDiplomados, previo: antes?.diplomados, color: COLOR_DIPLOMADO },
+    { clave: "otros", nombre: "Otros programas", valor: v.otros, monto: v.montoOtros, previo: antes?.otros, color: COLOR_OTRO },
+  ];
+  const mayor = Math.max(1, ...v.porAsesora.map((a) => a.total));
+  return (
+    <div data-vendidos>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+        {tarjetas.map((t) => (
+          <div key={t.clave} data-vendidos-tipo={t.clave} style={{ background: PAPEL, borderRadius: 10, padding: "12px 14px", borderLeft: `5px solid ${t.color}` }}>
+            <p style={{ margin: 0, fontSize: 12, color: GRIS }}>{t.nombre}</p>
+            <p data-valor style={{ margin: "4px 0", fontSize: 30, fontWeight: 600 }}>{t.valor}</p>
+            <p style={{ margin: 0, fontSize: 11.5, color: GRIS }}>
+              {t.monto ? money(t.monto) : "—"}
+              {t.previo != null && <span style={{ color: TENUE }}> · {contra}: {t.previo}</span>}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <h3 style={{ margin: "18px 0 4px", fontSize: 15 }}>Quién vendió qué</h3>
+      {v.porAsesora.length === 0 ? (
+        <p style={{ fontSize: 13, color: TENUE, margin: 0 }}>No se vendió ningún programa en este período.</p>
+      ) : (
+        <div style={{ display: "grid", gap: 10, maxWidth: 860 }}>
+          <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: GRIS }}>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: COLOR_CURSO, marginRight: 5 }} />Cursos</span>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: COLOR_DIPLOMADO, marginRight: 5 }} />Diplomados</span>
+            <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: COLOR_OTRO, marginRight: 5 }} />Otros</span>
+          </div>
+          {v.porAsesora.map((a) => (
+            <div key={a.quien} data-vendio={a.quien} style={{ display: "grid", gridTemplateColumns: "minmax(130px, 190px) 1fr minmax(170px, 230px)", gap: 12, alignItems: "center", fontSize: 13 }}>
+              <strong>{a.quien}</strong>
+              <div aria-hidden="true" style={{ display: "flex", height: 14, background: PAPEL, borderRadius: 4, overflow: "hidden" }}>
+                {[[a.cursos, COLOR_CURSO], [a.diplomados, COLOR_DIPLOMADO], [a.otros, COLOR_OTRO]].map(([k, c], i) =>
+                  Number(k) > 0 ? <div key={i} style={{ width: `${(Number(k) / mayor) * 100}%`, background: String(c) }} /> : null,
+                )}
+              </div>
+              <span style={{ textAlign: "right" }}>
+                <span data-cursos>{a.cursos}</span> {a.cursos === 1 ? "curso" : "cursos"} ·{" "}
+                <span data-diplomados>{a.diplomados}</span> {a.diplomados === 1 ? "diplomado" : "diplomados"}
+                {a.otros > 0 ? ` · ${a.otros} ${a.otros === 1 ? "otro" : "otros"}` : ""}
+                <span style={{ display: "block", fontSize: 11.5, color: GRIS }}>{a.monto ? money(a.monto) : "—"}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {v.porPrograma.length > 0 && (
+        <>
+          <h3 style={{ margin: "18px 0 8px", fontSize: 15 }}>Qué se vendió</h3>
+          <Tabla
+            cabeza={["Programa", "Tipo", "Vendidos", "Monto"]}
+            numericas={[2, 3]}
+            filas={v.porPrograma.map((p) => [
+              <strong key="p">{p.programa}</strong>,
+              p.tipo === "curso" ? "Curso" : p.tipo === "diplomado" ? "Diplomado" : "Otro",
+              p.ventas,
+              p.monto ? money(p.monto) : "—",
+            ])}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Un lead perdido, con lo que escribió el equipo: se lee como una ficha, no
  * como una fila, porque lo que importa son las palabras de la asesora.
@@ -191,6 +273,13 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
             </div>
           ))}
         </div>
+      </Seccion>
+
+      <Seccion
+        titulo="Cursos y diplomados vendidos"
+        explica="Inscripciones ganadas en el período, por fecha de cierre, separadas por el tipo de programa que se vendió, y cuántas de cada tipo vendió cada asesora. «Otros»: certificaciones, workshops y ganados sin programa elegido."
+      >
+        <VendidosDelPeriodo v={r.vendidos} antes={r.vendidosAntes} contra={contra} />
       </Seccion>
 
       <Seccion titulo="Lo más importante" explica="Lo que dicen los números, en palabras.">
