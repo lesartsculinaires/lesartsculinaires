@@ -6,7 +6,7 @@
  * con eso; este módulo no toca la base ni el DOM.
  */
 
-import { buscarDuplicados, type ContactoConocido } from "@/lib/duplicados";
+import { buscarDuplicados, telefonoDeLaCelda, type ContactoConocido } from "@/lib/duplicados";
 import { acomodarNombre } from "@/lib/texto";
 import { ROTULO_VALOR_OPORTUNIDAD, ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Catalogo, CatalogItem } from "@/lib/types";
@@ -507,7 +507,9 @@ export function construirFilas({
     const fechaCierre = parseFecha(crudaCierre);
     if (crudaCierre && !fechaCierre) avisos.push(`Fecha de cierre «${crudaCierre}» no se entiende`);
 
-    const telefono = valor(fila, "telefono");
+    // Lo que no es un número no se guarda como teléfono: ver `esTelefono`.
+    const { telefono, aviso: avisoTelefono } = telefonoDeLaCelda(valor(fila, "telefono"));
+    if (avisoTelefono) avisos.push(avisoTelefono);
     const correo = valor(fila, "correo");
 
     const crudoNacimiento = valor(fila, "fecha_nacimiento");

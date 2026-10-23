@@ -18,6 +18,7 @@
  */
 
 import {
+  esTelefono,
   normalizarCorreo,
   normalizarTelefono,
   normalizarTexto,
@@ -278,7 +279,12 @@ export function agrupar({ filas, existentes }: OpcionesAgrupar): Agrupacion {
       nombre: elegido,
       // El primer dato no vacío del grupo. Completar huecos con lo que traiga
       // otra fila es justamente para lo que sirve unir.
-      telefono: miembros.map((i) => nodos[i].telefono).find(Boolean) ?? null,
+      // Un número antes que algo que no lo es: el CRM tiene fichas con el
+      // código del grupo guardado como teléfono (base del 24/08/2026).
+      telefono:
+        miembros.map((i) => nodos[i].telefono).find((t) => esTelefono(t)) ??
+        miembros.map((i) => nodos[i].telefono).find(Boolean) ??
+        null,
       correo: miembros.map((i) => nodos[i].correo).find(Boolean) ?? null,
       filas: delArchivo.map((i) => nodos[i].fila as number).sort((a, b) => a - b),
       certeza: miembros.length > 1 && discrepa ? "revisar" : "alta",

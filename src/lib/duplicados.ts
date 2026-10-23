@@ -18,6 +18,38 @@ export const normalizarTexto = (s: string): string =>
     .trim();
 
 /**
+ * ¿Esto es un número de teléfono?
+ *
+ * El 24/08/2026 una base cargó el código del grupo («DSBA-1-2026», «DSMG-
+ * grupo 2-fase 2-2026-activo») en la columna del teléfono, y 282 contactos
+ * quedaron sin un número al que mandarles nada: el 23/10 un masivo de
+ * egresados dejó 83 afuera «sin teléfono». Un teléfono no tiene letras y
+ * tiene al menos 7 dígitos.
+ */
+export function esTelefono(s: string | null | undefined): boolean {
+  const t = String(s ?? "").trim();
+  if (!t || /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(t)) return false;
+  return t.replace(/\D/g, "").length >= 7;
+}
+
+/**
+ * El teléfono de una celda de planilla: el primero si trae dos («7030-2571 /
+ * 7906-9197»), y nulo si no es un teléfono. Con el motivo, para avisarlo.
+ */
+export function telefonoDeLaCelda(crudo: string | null | undefined): {
+  telefono: string | null;
+  aviso: string | null;
+} {
+  const t = String(crudo ?? "").trim();
+  if (!t) return { telefono: null, aviso: null };
+  const primero = t.split(/\s*[\/;,|]\s*|\s+y\s+/)[0].trim();
+  if (esTelefono(primero)) {
+    return { telefono: primero, aviso: primero !== t ? `Traía dos teléfonos («${t}»); se usa el primero` : null };
+  }
+  return { telefono: null, aviso: `Teléfono «${t}» no es un número; se deja vacío` };
+}
+
+/**
  * Deja sólo los dígitos y descarta el código de país.
  *
  * En la base conviven "7100-0001", "7100 0001" y "+503 7100 0001" para el

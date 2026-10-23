@@ -7,7 +7,7 @@
  * huecos se llenan; los choques se muestran y los decide una persona.
  */
 
-import { normalizarCorreo, normalizarTelefono, normalizarTexto } from "@/lib/duplicados";
+import { esTelefono, normalizarCorreo, normalizarTelefono, normalizarTexto } from "@/lib/duplicados";
 
 /**
  * Lo que se guarda de un cliente y puede fusionarse.
@@ -179,6 +179,14 @@ export function planificarFusion(
     const a = String(actual);
     const b = String(nuevo);
     if (equivalentes(campo, a, b)) continue;
+
+    // Un «teléfono» que no es un número (el código de un grupo, por ejemplo)
+    // se reemplaza por el número que llega: no hay nada que perder.
+    if (campo === "telefono" && !esTelefono(a) && esTelefono(b)) {
+      parche.telefono = b;
+      completados.push("telefono");
+      continue;
+    }
 
     // El mismo nombre, mejor escrito: ver `nombreMasCompleto`.
     if (campo === "nombre" && nombreMasCompleto(a, b)) {

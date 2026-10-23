@@ -220,5 +220,13 @@ console.log("\n── el mismo nombre, mejor escrito (base de egresados, 22/10/2
   }
 }
 
+console.log("\n── un código de grupo guardado como teléfono (24/08/2026) ──");
+{
+  const p = planificarFusion({ telefono: "DSBA-1-2026", telefono_secundario: null }, { telefono: "7088-0001" });
+  es("el número que llega reemplaza al código", [p.parche.telefono, p.parche.telefono_secundario, p.choques.length], ["7088-0001", undefined, 0]);
+  const q = planificarFusion({ telefono: "7088-0001" }, { telefono: "DSBA-1-2026" });
+  es("y un código que llega no pisa un número", q.parche.telefono, undefined);
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);

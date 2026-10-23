@@ -80,12 +80,15 @@ sql(`
   select 'EGR-' || row_number() over (order by c.id), c.id, b.id, current_date from c, b;
 `);
 
+// Como el 24/08/2026: el código del grupo guardado como teléfono.
+sql("update public.clientes set telefono = 'DSBA-1-2026' where correo = 'dos@egresado.test';");
+
 const csv = [
   "nombre,telefono,correo",
   "Egresada Uno,,uno@egresado.test",
-  "Egresado Dos,,dos@egresado.test",
+  "Egresado Dos,7088-0002,dos@egresado.test",
   "Egresada Tres,,tres@egresado.test",
-  "Egresado Cuatro Núñez,,cuatro@egresado.test",
+  "Egresado Cuatro Núñez,DSCI-1-2026,cuatro@egresado.test",
   "Egresada Cinco,,cinco@egresado.test",
   // La misma persona otra vez (otro programa, mismo correo): se unifica, pero
   // la fila tiene que verse en la base.
@@ -149,6 +152,10 @@ try {
   es("las tres de antes siguen también en la anterior", enLaBase(ORIGEN), "3");
   es("el nombre que dejó WhatsApp se completó con el del archivo",
     sql("select nombre from public.clientes where correo = 'uno@egresado.test';"), "Egresada Uno");
+  es("el código de grupo que estaba como teléfono se reemplazó por el número del archivo",
+    sql("select telefono from public.clientes where correo = 'dos@egresado.test';"), "7088-0002");
+  es("y un código que llega como teléfono no se guarda",
+    sql("select coalesce(telefono, '(vacío)') from public.clientes where correo = 'cuatro@egresado.test';"), "(vacío)");
   es("y las tildes del CSV de Excel entran bien",
     sql("select nombre from public.clientes where correo = 'cuatro@egresado.test';"), "Egresado Cuatro Núñez");
   es("la base nueva sólo CREÓ las dos nuevas (borrarla no se lleva a las de antes)",
