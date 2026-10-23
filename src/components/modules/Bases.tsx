@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { BorrarBases } from "@/components/modules/BorrarBases";
+import { FilasDeLaBase } from "@/components/modules/FilasDeLaBase";
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
 import { agruparBases, buscarBases, repetidas, resumirBase } from "@/lib/bases";
 import { fechaCorta, horaDe, money } from "@/lib/format";
@@ -514,48 +515,14 @@ export function Bases({
                     {puedeAbrir && expandida && (
                       <tr key={`${b.clave}-detalle`}>
                         <td colSpan={(puedeAbrir ? 7 : 4) + (esAdmin ? 1 : 0)} style={{ padding: 0, background: T.paper }}>
-                          {b.oportunidades.length === 0 ? (
-                            <p style={{ margin: 0, padding: "18px 20px", fontSize: 12.5, color: T.faint }}>
-                              Esta base no tiene registros vivos. Se subió, pero sus
-                              clientes fueron eliminados después.
-                            </p>
+                          {b.importacionId != null ? (
+                            <FilasDeLaBase
+                              importacionId={b.importacionId}
+                              onAbrir={onAbrir}
+                              antes={<LeadsDeLaBase oportunidades={b.oportunidades} onAbrir={onAbrir} />}
+                            />
                           ) : (
-                            <div style={{ maxHeight: 380, overflowY: "auto" }}>
-                              {b.oportunidades.slice(0, 200).map((o, j) => (
-                                <div
-                                  key={o.id}
-                                  className="row"
-                                  onClick={() => onAbrir(o.id)}
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "90px minmax(0, 1fr) minmax(0, 1fr) 90px",
-                                    alignItems: "center",
-                                    gap: 12,
-                                    padding: "9px 20px",
-                                    cursor: "pointer",
-                                    fontSize: 12.5,
-                                    borderTop: j ? `1px solid ${T.border}` : "none",
-                                  }}
-                                >
-                                  <span className="mono" style={{ color: T.muted }}>{o.codigo}</span>
-                                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {o.cliente}
-                                  </span>
-                                  <span style={{ color: T.muted, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {o.producto}
-                                  </span>
-                                  <span className="mono" style={{ textAlign: "right" }}>
-                                    {money(o.valor)}
-                                  </span>
-                                </div>
-                              ))}
-                              {b.oportunidades.length > 200 && (
-                                <p style={{ margin: 0, padding: "10px 20px", fontSize: 12, color: T.faint }}>
-                                  Mostrando 200 de {b.oportunidades.length}. Usá Clientes
-                                  para ver la lista completa.
-                                </p>
-                              )}
-                            </div>
+                            <LeadsDeLaBase oportunidades={b.oportunidades} onAbrir={onAbrir} />
                           )}
                         </td>
                       </tr>
@@ -583,5 +550,60 @@ export function Bases({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Los leads de una base, para las que no guardaron sus filas del archivo. */
+function LeadsDeLaBase({
+  oportunidades,
+  onAbrir,
+}: {
+  oportunidades: readonly Oportunidad[];
+  onAbrir: (id: number) => void;
+}) {
+  return (
+    oportunidades.length === 0 ? (
+      <p style={{ margin: 0, padding: "18px 20px", fontSize: 12.5, color: T.faint }}>
+        Esta base no tiene registros vivos. Se subió, pero sus
+        clientes fueron eliminados después.
+      </p>
+    ) : (
+      <div style={{ maxHeight: 380, overflowY: "auto" }}>
+        {oportunidades.slice(0, 2000).map((o, j) => (
+          <div
+            key={o.id}
+            className="row"
+            onClick={() => onAbrir(o.id)}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "90px minmax(0, 1fr) minmax(0, 1fr) 90px",
+              alignItems: "center",
+              gap: 12,
+              padding: "9px 20px",
+              cursor: "pointer",
+              fontSize: 12.5,
+              borderTop: j ? `1px solid ${T.border}` : "none",
+            }}
+          >
+            <span className="mono" style={{ color: T.muted }}>{o.codigo}</span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {o.cliente}
+            </span>
+            <span style={{ color: T.muted, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {o.producto}
+            </span>
+            <span className="mono" style={{ textAlign: "right" }}>
+              {money(o.valor)}
+            </span>
+          </div>
+        ))}
+        {oportunidades.length > 2000 && (
+          <p style={{ margin: 0, padding: "10px 20px", fontSize: 12, color: T.faint }}>
+            Mostrando 2000 de {oportunidades.length}. Usá Clientes
+            para ver la lista completa.
+          </p>
+        )}
+      </div>
+    )
   );
 }

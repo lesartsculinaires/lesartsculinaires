@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 
+import { anotarFilasSinImportar } from "@/app/bases-actions";
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
 import { RevisarBase } from "@/components/modules/RevisarBase";
 import {
@@ -278,6 +279,8 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
     const cargaDe = (d: (typeof aImportar)[number]): FilaParaImportar => ({
       unificar_con: d.unificarCon,
       grupo: d.grupo,
+      linea: d.fila.linea,
+      nombre_archivo: d.fila.nombre,
       nombre: d.nombre,
       telefono: d.telefono,
       correo: d.correo,
@@ -331,6 +334,28 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
       ultimo = r.hasta ?? ultimo;
       base = base ?? r.importacionId ?? null;
       setProgreso({ hechas: creados, total: aImportar.length });
+    }
+
+    /*
+     * Las filas que no entraron también quedan en la base, con el motivo: así
+     * al desplegarla se ven todas las del archivo y no hay que adivinar por
+     * qué faltan. Si esto falla, la importación ya está hecha igual.
+     */
+    if (base != null) {
+      const entraron = new Set(aImportar.map((d) => d.fila.linea));
+      const quedaron = filas
+        .filter((f) => !entraron.has(f.linea))
+        .map((f) => ({
+          linea: f.linea,
+          nombre: f.nombre || null,
+          telefono: f.telefono,
+          correo: f.correo,
+          motivo:
+            f.errores.length > 0
+              ? f.errores.join("; ")
+              : "Ya estaba en el CRM (se eligió omitir lo repetido)",
+        }));
+      await anotarFilasSinImportar(base, quedaron).catch(() => null);
     }
 
     setRevisando(false);

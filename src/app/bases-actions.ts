@@ -353,3 +353,109 @@ export async function crearBaseConLeads(
     movidos: sinTabla ? movidos : 0,
   };
 }
+
+// ------------------------------------------------- las filas del archivo
+
+export interface FilaSinImportar {
+  linea: number;
+  nombre: string | null;
+  telefono: string | null;
+  correo: string | null;
+  motivo: string;
+}
+
+/**
+ * Las filas del archivo que no entraron, para que la base las muestre igual.
+ *
+ * Las importadas las anota `importarClientes`; éstas —sin nombre, omitidas
+ * por ya estar en el CRM— las manda la pantalla al terminar, con el motivo.
+ * Si falla no pasa nada grave: la importación ya está hecha.
+ */
+export async function anotarFilasSinImportar(
+  importacionId: number,
+  filas: readonly FilaSinImportar[],
+): Promise<{ ok: boolean; error: string | null }> {
+  if (filas.length === 0) return { ok: true, error: null };
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { error } = await supabase.from("base_filas").upsert(
+    filas.slice(0, 5000).map((f) => ({
+      importacion_id: importacionId,
+      linea: f.linea,
+      nombre: f.nombre?.trim() || null,
+      telefono: f.telefono,
+      correo: f.correo,
+      motivo: f.motivo,
+    })),
+    { onConflict: "importacion_id,linea", ignoreDuplicates: true },
+  );
+  return { ok: !error, error: error?.message ?? null };
+}
+
+export interface FilaDeLaBase {
+  linea: number;
+  /** El nombre tal como venía en el archivo. */
+  nombre: string | null;
+  telefono: string | null;
+  correo: string | null;
+  /** Por qué no se importó; nulo si se importó. */
+  motivo: string | null;
+  /** El lead en que quedó, si se importó y sigue existiendo. */
+  oportunidadId: number | null;
+  codigo: string | null;
+  /** El nombre con que quedó la ficha en el CRM. */
+  cliente: string | null;
+}
+
+/**
+ * Cada fila del archivo de una base, en orden, con el lead en que quedó.
+ *
+ * Vacío para las bases subidas antes del 23/10/2026, que no las guardaban: la
+ * pantalla muestra entonces los leads, como antes.
+ */
+export async function filasDeLaBase(
+  importacionId: number,
+): Promise<{ ok: boolean; error: string | null; filas: FilaDeLaBase[] }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión.", filas: [] };
+
+  const todas: FilaDeLaBase[] = [];
+  // De a mil, que es lo que devuelve Supabase por consulta.
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data, error } = await supabase
+      .from("base_filas")
+      .select("linea, nombre, telefono, correo, motivo, oportunidad_id, oportunidades(codigo, clientes(nombre))")
+      .eq("importacion_id", importacionId)
+      .order("linea")
+      .range(desde, desde + 999);
+
+    if (error) {
+      // PGRST205: la tabla no existe todavía (falta la migración).
+      if (error.code === "PGRST205") return { ok: true, error: null, filas: [] };
+      return { ok: false, error: error.message, filas: [] };
+    }
+    for (const r of (data ?? []) as unknown as {
+      linea: number;
+      nombre: string | null;
+      telefono: string | null;
+      correo: string | null;
+      motivo: string | null;
+      oportunidad_id: number | null;
+      oportunidades: { codigo: string | null; clientes: { nombre: string | null } | null } | null;
+    }[]) {
+      todas.push({
+        linea: r.linea,
+        nombre: r.nombre,
+        telefono: r.telefono,
+        correo: r.correo,
+        motivo: r.motivo,
+        oportunidadId: r.oportunidad_id,
+        codigo: r.oportunidades?.codigo ?? null,
+        cliente: r.oportunidades?.clientes?.nombre ?? null,
+      });
+    }
+    if ((data ?? []).length < 1000) break;
+  }
+  return { ok: true, error: null, filas: todas };
+}

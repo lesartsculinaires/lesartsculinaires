@@ -842,6 +842,12 @@ export interface FilaParaImportar {
    * Vacío o ausente: la fila es su propia persona.
    */
   grupo?: string | null;
+  /**
+   * La fila del archivo, para guardarla en su base (`base_filas`): el número
+   * de línea y el nombre tal como venía, antes de unificarlo.
+   */
+  linea?: number | null;
+  nombre_archivo?: string | null;
   nombre: string;
   telefono: string | null;
   correo: string | null;
@@ -1455,6 +1461,26 @@ export async function importarClientes(
         { onConflict: "importacion_id,oportunidad_id", ignoreDuplicates: true },
       );
     if (errMiembros) console.warn("[importar] no se anotaron todos en la base:", errMiembros.message);
+
+    // Y cada fila del archivo, con el nombre que traía y el lead en que quedó:
+    // es lo que la base muestra al desplegarla (las 285, no los 232 leads).
+    const conLinea = filas
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f.linea != null);
+    if (conLinea.length > 0) {
+      const { error: errFilas } = await supabase.from("base_filas").upsert(
+        conLinea.map(({ f, i }) => ({
+          importacion_id: baseId,
+          linea: f.linea,
+          nombre: (f.nombre_archivo ?? f.nombre).trim() || null,
+          telefono: f.telefono,
+          correo: f.correo,
+          oportunidad_id: porFila.get(i) ?? null,
+        })),
+        { onConflict: "importacion_id,linea", ignoreDuplicates: true },
+      );
+      if (errFilas) console.warn("[importar] no se guardaron las filas del archivo:", errFilas.message);
+    }
   }
 
   /*

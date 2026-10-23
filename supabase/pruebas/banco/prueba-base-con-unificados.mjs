@@ -87,6 +87,11 @@ const csv = [
   "Egresada Tres,,tres@egresado.test",
   "Egresado Cuatro Núñez,,cuatro@egresado.test",
   "Egresada Cinco,,cinco@egresado.test",
+  // La misma persona otra vez (otro programa, mismo correo): se unifica, pero
+  // la fila tiene que verse en la base.
+  "Egresada Cinco Ruiz,,cinco@egresado.test",
+  // Sin nombre: no se importa, pero queda en la base con el motivo.
+  ",,seis@egresado.test",
 ].join("\n");
 const RUTA = path.join(os.tmpdir(), ARCHIVO);
 // Como lo guarda Excel en Windows: Windows-1252, no UTF-8.
@@ -157,6 +162,20 @@ try {
   const fila = (await p.locator("main tr", { hasText: ARCHIVO }).first().innerText()).replace(/\s+/g, " ");
   es("la fila de la base dice 5 registros, sin «de N»", /\b5\b/.test(fila) && !/ de \d/.test(fila), true);
   await foto("2-bases");
+
+  console.log("\n── 3b. AL DESPLEGARLA SE VEN TODAS LAS FILAS DEL ARCHIVO ──");
+  es("la base guardó las 7 filas del archivo",
+    sql(`select count(*) from public.base_filas f join public.importaciones i on i.id = f.importacion_id where i.archivo = '${ARCHIVO}';`), "7");
+  await p.locator("main tr", { hasText: ARCHIVO }).first().click();
+  await p.locator("[data-filas-de-la-base]").waitFor({ timeout: 15000 });
+  es("se ven las 7 filas", await p.locator("[data-fila-base]").count(), 7);
+  const resumen = (await p.locator("[data-filas-de-la-base] > p").first().innerText()).replace(/\s+/g, " ");
+  es("el resumen dice 7 filas y 5 personas", /7 filas en el archivo · 5 personas en el CRM/.test(resumen), true);
+  const repetida = (await p.locator('[data-fila-base="7"]').innerText()).replace(/\s+/g, " ");
+  es("la fila repetida se ve con su nombre y dice con quién se unificó", /Egresada Cinco Ruiz/.test(repetida) && /misma persona que la fila 6/.test(repetida), true);
+  const sinNombre = (await p.locator('[data-fila-base="8"]').innerText()).replace(/\s+/g, " ");
+  es("la fila sin nombre dice por qué no entró", /No se importó: Sin nombre de cliente/.test(sinNombre), true);
+  await foto("2b-filas");
 
   console.log("\n── 4. EL FILTRO «BASE» DE CLIENTES ──");
   // La misma función que usa la pantalla de Clientes, sobre los datos que
