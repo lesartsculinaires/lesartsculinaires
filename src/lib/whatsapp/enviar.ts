@@ -570,18 +570,28 @@ function explicar(
   }
 
   /*
-   * 130472 y 131049: Meta frenó el mensaje a propósito.
+   * 131049: Meta frenó el mensaje a propósito.
    *
    * No es un error de la escuela. Meta limita cuántos mensajes de promoción
-   * recibe una persona por día, y a los que pasan del tope no los entrega. En
-   * un envío masivo aparece en algunos y no en otros, y la única lectura útil
-   * es que a esa persona hay que escribirle otro día.
+   * recibe una persona, sumando los de todas las empresas, y a los que pasan
+   * del tope no los entrega. En un envío masivo aparece en algunos y no en
+   * otros, y la única lectura útil es que a esa persona hay que escribirle
+   * otro día.
    */
-  if (codigo === 130472 || codigo === 131049) {
+  if (codigo === 131049) {
     return (
       "Meta no entregó este mensaje para no saturar a esta persona: recibió demasiados " +
       "mensajes de promoción en poco tiempo. No es un error de la escuela; a esta persona " +
       "conviene escribirle otro día."
+    );
+  }
+
+  // 130472: el número está en una prueba de Meta que no entrega marketing por
+  // un tiempo. Separado del de arriba (27/10/2026): la causa es otra.
+  if (codigo === 130472) {
+    return (
+      "Meta tiene este número dentro de una prueba suya en la que no le entrega mensajes de " +
+      "promoción por un tiempo. No es un error de la escuela y no se puede hacer nada desde acá."
     );
   }
 

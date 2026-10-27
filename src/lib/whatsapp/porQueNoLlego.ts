@@ -75,6 +75,36 @@ export function porQueNoLlego(loQueDijoMeta: string | null | undefined): string 
     );
   }
 
+  /*
+   * «This message was not delivered to maintain healthy ecosystem engagement»
+   * (131049). Meta limita cuántos mensajes de marketing recibe cada persona,
+   * sumando los de todas las empresas que le escriben; si ya recibió muchos o
+   * no suele contestarlos, frena éste. Visto en el masivo del 23/10/2026.
+   * Reenviarlo enseguida no sirve: Meta lo vuelve a frenar.
+   */
+  if (/healthy ecosystem engagement/i.test(dice)) {
+    return (
+      "Meta no lo entregó para no saturar a esta persona: ya recibió muchos mensajes de " +
+      "promoción (de todas las empresas que le escriben) o no suele contestarlos. No es un " +
+      "error de la cuenta ni de la plantilla. Conviene intentarlo en unos días, o esperar a " +
+      "que escriba: durante 24 horas se le puede contestar por el chat sin plantilla."
+    );
+  }
+
+  /*
+   * «User's number is part of an experiment» (130472). Meta elige al azar a
+   * algunos usuarios y durante un tiempo no les entrega mensajes de marketing
+   * de ninguna empresa. No hay nada que hacer de este lado.
+   */
+  if (/part of an experiment/i.test(dice)) {
+    return (
+      "Meta tiene este número dentro de una prueba suya en la que no le entrega mensajes de " +
+      "promoción de ninguna empresa por un tiempo. No es un error de la cuenta ni de la " +
+      "plantilla y no se puede hacer nada desde acá; cuando Meta termine la prueba vuelve a " +
+      "recibir normal."
+    );
+  }
+
   if (/media download error/i.test(dice)) {
     return "Meta no pudo bajar el archivo de este mensaje. Probá mandarlo de nuevo subiéndolo desde el CRM.";
   }

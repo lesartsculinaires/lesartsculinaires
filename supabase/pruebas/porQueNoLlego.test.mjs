@@ -66,3 +66,14 @@ test("── LA VENTANA VENCIDA, QUE ES OTRO ARREGLO ──", () => {
   assert.match(dicho ?? "", /24 horas/);
   assert.match(dicho ?? "", /plantilla/i);
 });
+
+test("── LOS DOS QUE META FRENA A PROPÓSITO (masivo del 23/10/2026) ──", () => {
+  const saturada = porQueNoLlego("This message was not delivered to maintain healthy ecosystem engagement.");
+  assert.match(saturada ?? "", /no saturar/);
+  assert.match(saturada ?? "", /No es un error de la cuenta/);
+  assert.doesNotMatch(saturada ?? "", /ecosystem/);
+
+  const prueba = porQueNoLlego("User's number is part of an experiment");
+  assert.match(prueba ?? "", /prueba/);
+  assert.doesNotMatch(prueba ?? "", /experiment/);
+});
