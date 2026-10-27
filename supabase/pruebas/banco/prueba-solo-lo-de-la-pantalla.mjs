@@ -204,8 +204,10 @@ console.log("\n── 3. al abrir la bandeja, llega lo suyo y se ve ──");
   es("AHORA SÍ pide los mensajes", tablas.has("mensajes"), true);
   es("y las etiquetas", tablas.has("etiquetas"), true);
   es("y las plantillas", tablas.has("plantillas"), true);
-  // Pero sigue sin pedir lo de las otras pantallas.
-  es("y sigue sin pedir los envíos", tablas.has("envios"), false);
+  // Pero sigue sin pedir lo de las otras pantallas. Los envíos SÍ se nombran
+  // desde el 27/10/2026 —el filtro «Envío masivo» lista sus nombres, una
+  // consulta chica—, pero sus destinatarios, que es lo pesado de Envíos, no.
+  es("y sigue sin pedir los destinatarios de los envíos", tablas.has("envio_destinatarios"), false);
   es("ni los formularios", tablas.has("formularios"), false);
 
   // Lo que importa de verdad: que el hilo se vea.
