@@ -16,7 +16,7 @@ interface Props {
   canalesConectados: Record<string, boolean>;
   puedeResponder: boolean;
   accent: string;
-  onRefrescar: () => void;
+  onRefrescar: (hilo?: number) => void;
   onLlamar: ((conversacionId: number) => void) | null;
   /** Mientras la bandeja no llegó: se dice, no se deja el panel en blanco. */
   cargando: boolean;

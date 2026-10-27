@@ -143,6 +143,22 @@ const VIGILADAS = [
          " 'valor_oportunidad', o.valor_oportunidad, 'venta_cerrada', o.venta_cerrada," +
          " 'fecha_cierre', o.fecha_cierre)",
     desde: "public.oportunidades o", donde: "" },
+  /*
+   * Los mensajes y los chats, para el Inbox: desde el 27/10/2026 la pestaña ya
+   * no recarga la pantalla entera con cada aviso sino que pide sólo el hilo que
+   * cambió —y para saber cuál, lee `conversacion_id` (o el `id` del chat) de la
+   * fila del aviso—. Sin vigía, un mensaje que entra por el webhook no avisaba
+   * nada y eso no se podía probar.
+   */
+  { tabla: "mensajes",
+    que: "json_build_object('id', m.id, 'conversacion_id', m.conversacion_id, 'direccion', m.direccion," +
+         " 'estado', m.estado)",
+    desde: "public.mensajes m", donde: "where m.creado_en > now() - interval '1 hour'" },
+  { tabla: "conversaciones",
+    que: "json_build_object('id', c.id, 'ultimo_mensaje_en', c.ultimo_mensaje_en, 'sin_leer', c.sin_leer," +
+         " 'archivada', c.archivada, 'estado', c.estado, 'vendedor_id', c.vendedor_id," +
+         " 'no_leida', c.no_leida, 'fijada', c.fijada)",
+    desde: "public.conversaciones c", donde: "" },
 ];
 
 const visto = new Map();

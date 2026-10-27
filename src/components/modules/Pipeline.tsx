@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { FilterMenu } from "@/components/ui/FilterMenu";
 import { useCatalogo } from "@/lib/catalog";
@@ -113,10 +113,16 @@ export function Pipeline({
    * La medición mes a mes es el Dashboard, que sí abre en el mes en curso.
    */
   const meses = useMemo(() => mesesComoOpciones(oportunidades), [oportunidades]);
-  const defs = definirFiltros(cat, importaciones, ["etapa", "vendedor"], meses);
+  const defs = useMemo(
+    () => definirFiltros(cat, importaciones, ["etapa", "vendedor"], meses),
+    [cat, importaciones, meses],
+  );
   const puestos = cuantosPuestos(defs, filtros);
 
-  const filtradas = puestos === 0 ? oportunidades : oportunidades.filter((o) => pasa(o, defs, filtros));
+  const filtradas = useMemo(
+    () => (puestos === 0 ? oportunidades : oportunidades.filter((o) => pasa(o, defs, filtros))),
+    [oportunidades, defs, filtros, puestos],
+  );
 
   /**
    * El tablero de una sola persona.
@@ -125,11 +131,48 @@ export function Pipeline({
    * ahí a propósito —el reparto se hace desde este tablero— y sin poder
    * aislarlas habría que buscarlas de a una entre las de todos.
    */
-  const enTablero = !puedeElegirAsesor || vendedorId == null
-    ? filtradas
-    : filtradas.filter((o) =>
-        vendedorId === SIN_DUENO ? o.vendedorId == null : o.vendedorId === vendedorId,
-      );
+  const enTablero = useMemo(
+    () =>
+      !puedeElegirAsesor || vendedorId == null
+        ? filtradas
+        : filtradas.filter((o) =>
+            vendedorId === SIN_DUENO ? o.vendedorId == null : o.vendedorId === vendedorId,
+          ),
+    [filtradas, puedeElegirAsesor, vendedorId],
+  );
+
+  /*
+   * Las fichas de cada columna, repartidas de una pasada.
+   *
+   * Se calcula una vez por cambio de datos y no en cada dibujado: arrastrar una
+   * tarjeta redibuja el tablero varias veces —al levantarla, al pasar por cada
+   * columna, al soltarla— y con tres mil fichas repartirlas de nuevo cada vez
+   * era parte de lo que hacía que el arrastre se sintiera pesado.
+   */
+  const porEtapa = useMemo(() => {
+    const m = new Map<number | null, Oportunidad[]>();
+    for (const o of enTablero) {
+      const lista = m.get(o.etapaId);
+      if (lista) lista.push(o);
+      else m.set(o.etapaId, [o]);
+    }
+    return m;
+  }, [enTablero]);
+
+  /*
+   * Lo que las tarjetas llaman, siempre con la misma identidad.
+   *
+   * Las tarjetas están memorizadas (ver `TarjetaDelTablero`): si el manejador
+   * cambiara en cada dibujado, se volverían a dibujar las tres mil igual.
+   */
+  const llamadas = useRef({ onOpen, onSetDrag, onSetOver });
+  llamadas.current = { onOpen, onSetDrag, onSetOver };
+  const abrirTarjeta = useCallback((id: number) => llamadas.current.onOpen(id), []);
+  const levantarTarjeta = useCallback((id: number) => llamadas.current.onSetDrag(id), []);
+  const soltarTarjeta = useCallback(() => {
+    llamadas.current.onSetDrag(null);
+    llamadas.current.onSetOver(null);
+  }, []);
 
   /**
    * Cuántas tiene cada quien, contadas sobre lo filtrado.
@@ -139,12 +182,16 @@ export function Pipeline({
    * mirando. Contarlas sobre todo daría un número que no se corresponde con
    * ninguna pantalla.
    */
+  const porVendedor = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const o of filtradas) {
+      const k = o.vendedorId ?? SIN_DUENO;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [filtradas]);
   const cuantas = (id: number | null) =>
-    id == null
-      ? filtradas.length
-      : filtradas.filter((o) =>
-          id === SIN_DUENO ? o.vendedorId == null : o.vendedorId === id,
-        ).length;
+    id == null ? filtradas.length : (porVendedor.get(id) ?? 0);
 
   /**
    * Un botón por persona, en fila.
@@ -358,7 +405,7 @@ export function Pipeline({
         }}
       >
       {etapas.map((etapa) => {
-        const enEtapa = enTablero.filter((o) => o.etapaId === etapa.id);
+        const enEtapa = porEtapa.get(etapa.id) ?? SIN_FICHAS;
         const isOver = over === etapa.id;
         /*
          * El color de la columna.
@@ -474,62 +521,13 @@ export function Pipeline({
                 outline: isOver ? `1px dashed ${accent}` : "1px dashed transparent",
               }}
             >
-              {enEtapa.map((o) => (
-                <div
-                  key={o.id}
-                  className="card"
-                  data-ficha={o.codigo}
-                  draggable
-                  onClick={() => onOpen(o.id)}
-                  onDragStart={(e) => {
-                    // `dataTransfer` está siempre en un arrastre de verdad,
-                    // pero no en un `dragstart` disparado por código —una
-                    // extensión, una prueba—, y ahí esto tiraba una excepción
-                    // que se llevaba puesta la pantalla entera.
-                    if (e.dataTransfer) {
-                      e.dataTransfer.effectAllowed = "move";
-                      try {
-                        e.dataTransfer.setData("text/plain", String(o.id));
-                      } catch {
-                        // Algunos navegadores no dejan `setData` fuera de un
-                        // gesto del usuario; el id que queda en el estado
-                        // cubre ese caso.
-                      }
-                    }
-                    onSetDrag(o.id);
-                  }}
-                  onDragEnd={() => {
-                    onSetDrag(null);
-                    onSetOver(null);
-                  }}
-                  style={{
-                    background: T.surface,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 8,
-                    padding: 11,
-                    marginBottom: 8,
-                    cursor: "grab",
-                    opacity: drag === o.id ? 0.4 : 1,
-                  }}
-                >
-                  <p style={{ margin: "0 0 3px", fontSize: 12.5 }}>{o.cliente}</p>
-                  <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>{o.producto}</p>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                      gap: 8,
-                      marginTop: 6,
-                    }}
-                  >
-                    <span className="mono" style={{ fontSize: 10.5, color: T.faint }}>
-                      {o.vendedor}
-                    </span>
-                    <span className="mono" style={{ fontSize: 12 }}>{money(o.valor)}</span>
-                  </div>
-                </div>
-              ))}
+              <TarjetasDeLaEtapa
+                leads={enEtapa}
+                arrastrada={drag}
+                onAbrir={abrirTarjeta}
+                onLevantar={levantarTarjeta}
+                onSoltar={soltarTarjeta}
+              />
 
               {enEtapa.length === 0 && (
                 <p
@@ -552,3 +550,142 @@ export function Pipeline({
     </>
   );
 }
+
+const SIN_FICHAS: Oportunidad[] = [];
+
+/**
+ * Cuántas tarjetas se dibujan de entrada en cada columna, y cuántas más al
+ * bajar.
+ *
+ * Una columna como «Nuevo» llega a tener miles de fichas, y se ven unas diez a
+ * la vez: el resto queda dentro de la columna, más abajo. Dibujarlas todas era
+ * lo que trababa el tablero al entrar. Las que siguen aparecen solas al bajar
+ * por la columna, antes de llegar al final. El número y la plata de arriba de
+ * la columna cuentan todas, dibujadas o no, y soltar una tarjeta en la columna
+ * funciona igual.
+ */
+const TANDA_DE_TARJETAS = 60;
+
+function TarjetasDeLaEtapa({
+  leads,
+  arrastrada,
+  onAbrir,
+  onLevantar,
+  onSoltar,
+}: {
+  leads: Oportunidad[];
+  arrastrada: number | null;
+  onAbrir: (id: number) => void;
+  onLevantar: (id: number) => void;
+  onSoltar: () => void;
+}) {
+  const [cuantas, setCuantas] = useState(TANDA_DE_TARJETAS);
+  const hayMas = cuantas < leads.length;
+  const fin = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = fin.current;
+    if (!el || !hayMas) return;
+    // La columna tiene su propio desplazamiento: se mira contra ella y no
+    // contra la ventana, con un margen para que las tarjetas ya estén al
+    // llegar.
+    const vigia = new IntersectionObserver(
+      (vistos) => {
+        if (vistos.some((v) => v.isIntersecting)) setCuantas((n) => n + TANDA_DE_TARJETAS);
+      },
+      { root: el.parentElement, rootMargin: "0px 0px 600px 0px" },
+    );
+    vigia.observe(el);
+    return () => vigia.disconnect();
+  }, [hayMas, cuantas]);
+
+  return (
+    <>
+      {leads.slice(0, cuantas).map((o) => (
+        <TarjetaDelTablero
+          key={o.id}
+          o={o}
+          levantada={arrastrada === o.id}
+          onAbrir={onAbrir}
+          onLevantar={onLevantar}
+          onSoltar={onSoltar}
+        />
+      ))}
+      {hayMas && (
+        <div
+          ref={fin}
+          aria-hidden
+          style={{ padding: "10px 8px", textAlign: "center", fontSize: 11.5, color: T.faint }}
+        >
+          {leads.length - cuantas} más…
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Una tarjeta. Memorizada: arrastrar otra no la vuelve a dibujar. */
+const TarjetaDelTablero = memo(function TarjetaDelTablero({
+  o,
+  levantada,
+  onAbrir,
+  onLevantar,
+  onSoltar,
+}: {
+  o: Oportunidad;
+  levantada: boolean;
+  onAbrir: (id: number) => void;
+  onLevantar: (id: number) => void;
+  onSoltar: () => void;
+}) {
+  return (
+    <div
+      className="card"
+      data-ficha={o.codigo}
+      draggable
+      onClick={() => onAbrir(o.id)}
+      onDragStart={(e) => {
+        // `dataTransfer` está siempre en un arrastre de verdad, pero no en un
+        // `dragstart` disparado por código —una extensión, una prueba—, y ahí
+        // esto tiraba una excepción que se llevaba puesta la pantalla entera.
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          try {
+            e.dataTransfer.setData("text/plain", String(o.id));
+          } catch {
+            // Algunos navegadores no dejan `setData` fuera de un gesto del
+            // usuario; el id que queda en el estado cubre ese caso.
+          }
+        }
+        onLevantar(o.id);
+      }}
+      onDragEnd={onSoltar}
+      style={{
+        background: T.surface,
+        border: `1px solid ${T.border}`,
+        borderRadius: 8,
+        padding: 11,
+        marginBottom: 8,
+        cursor: "grab",
+        opacity: levantada ? 0.4 : 1,
+      }}
+    >
+      <p style={{ margin: "0 0 3px", fontSize: 12.5 }}>{o.cliente}</p>
+      <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>{o.producto}</p>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: 8,
+          marginTop: 6,
+        }}
+      >
+        <span className="mono" style={{ fontSize: 10.5, color: T.faint }}>
+          {o.vendedor}
+        </span>
+        <span className="mono" style={{ fontSize: 12 }}>{money(o.valor)}</span>
+      </div>
+    </div>
+  );
+});

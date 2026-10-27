@@ -7,9 +7,10 @@ import { abrirOportunidad, altaLead } from "@/lib/crm/altaLead";
 import type { Coincidencia } from "@/lib/duplicados";
 import { anotarSeguimientoDeNota } from "@/lib/crm/notaConSeguimiento";
 import { getServerClient, getUser } from "@/lib/supabase/server";
-import { comoLosLee } from "@/lib/supabase/inbox";
+import { comoLosLee, contarSinLeer, fetchInbox } from "@/lib/supabase/inbox";
+import { MAX_HILOS_POR_PEDIDO } from "@/lib/parcheBandeja";
 import { leerContactos, type ContactoCompartido } from "@/lib/whatsapp/contactos";
-import type { Mensaje, ResultadoRespuesta } from "@/lib/types";
+import type { Conversacion, Mensaje, ResultadoRespuesta } from "@/lib/types";
 import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
@@ -586,7 +587,8 @@ export async function reaccionar(
     if (errAlta) return { ok: false, error: porQueNoSeGuardo(errAlta) };
   }
 
-  revalidatePath("/");
+  // Sin `revalidatePath("/")` (27/10/2026): devolvía la pantalla entera con la
+  // respuesta, y la bandeja igual pide después sólo este hilo.
   return { ok: true, error: null };
 }
 
@@ -1708,7 +1710,8 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
     })
     .eq("id", datos.conversacionId);
 
-  revalidatePath("/");
+  // Sin `revalidatePath("/")` (27/10/2026): mandar un PDF devolvía además la
+  // pantalla entera —3,8 MB— antes de contestar. La bandeja pide sólo el hilo.
   return { ok: true, error: null };
 }
 
@@ -1858,4 +1861,44 @@ export async function historialDeConversacion(
   if (error) return { ok: false, mensajes: [], error: error.message };
 
   return { ok: true, mensajes: comoLosLee(data ?? []), error: null };
+}
+
+/**
+ * Los hilos que cambiaron, con sus mensajes más recientes y el número rojo.
+ *
+ * Lo pide la bandeja cuando llega un aviso en vivo de un mensaje o de una
+ * conversación, y después de mandar algo: unos KB en vez de la pantalla
+ * entera. Corre como quien la pide, así que cada persona recibe sólo lo que
+ * ya podía ver. Ver `parcheBandeja.ts`.
+ */
+export async function hilosDeLaBandeja(ids: readonly number[]): Promise<{
+  ok: boolean;
+  error: string | null;
+  conversaciones: Conversacion[];
+  mensajes: Mensaje[];
+  sinLeer: number | null;
+}> {
+  const vacio = { conversaciones: [], mensajes: [], sinLeer: null };
+  const user = await getUser();
+  if (!user) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión.", ...vacio };
+
+  const pedidos = [...new Set(ids.map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  // Más que eso es una ráfaga —un masivo con sus tildes—, y para eso está el
+  // refresco entero. Recortar en silencio sería peor: la bandeja tomaría los
+  // hilos que no volvieron como «ya no los ve» y los sacaría de la lista.
+  if (pedidos.length > MAX_HILOS_POR_PEDIDO) {
+    return { ok: false, error: "Demasiados hilos de una vez.", ...vacio };
+  }
+  const [bandeja, sinLeer] = await Promise.all([
+    pedidos.length ? fetchInbox(pedidos) : Promise.resolve(null),
+    contarSinLeer(),
+  ]);
+  if (bandeja?.error) return { ok: false, error: bandeja.error, ...vacio, sinLeer };
+  return {
+    ok: true,
+    error: null,
+    conversaciones: bandeja?.conversaciones ?? [],
+    mensajes: bandeja?.mensajes ?? [],
+    sinLeer,
+  };
 }

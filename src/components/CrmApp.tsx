@@ -45,6 +45,14 @@ import { useLlamadaEnVivo } from "@/hooks/useLlamadaEnVivo";
 import { avisosDeLaBarra } from "@/lib/avisos";
 import { queSuena } from "@/lib/aviso";
 import { pideRefresco } from "@/lib/refrescoEnVivo";
+import {
+  MAX_HILOS_POR_PEDIDO,
+  conParche,
+  hiloDelAviso,
+  sumarParches,
+  type ParcheBandeja,
+} from "@/lib/parcheBandeja";
+import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import { friosDe } from "@/lib/frios";
@@ -69,7 +77,7 @@ import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
 import { SIN_DUENO, activos } from "@/lib/types";
-import type { Accesos, Catalogo, Evento, Oportunidad } from "@/lib/types";
+import type { Accesos, Catalogo, Etiqueta, Evento, Importacion, Oportunidad } from "@/lib/types";
 
 /**
  * Plantillas mientras todavía no llegaron.
@@ -79,6 +87,16 @@ import type { Accesos, Catalogo, Evento, Oportunidad } from "@/lib/types";
  * qué hay del otro lado, ofrecer el botón de sincronizar sería ofrecer algo
  * que puede no existir.
  */
+/*
+ * Vacíos con identidad fija, para las listas que todavía no llegaron.
+ *
+ * Un `?? []` crea una lista nueva en cada dibujado, y para Clientes y Pipeline
+ * eso es «cambiaron las bases»: volvían a armar los filtros y a filtrar tres
+ * mil fichas cada vez, aunque no hubiera cambiado nada.
+ */
+const SIN_BASES: Importacion[] = [];
+const SIN_ETIQUETAS: Etiqueta[] = [];
+
 const SIN_PLANTILLAS: EstadoPlantillas = {
   plantillas: [],
   intentadoEn: null,
@@ -272,12 +290,89 @@ export default function CrmApp({
    * las listas en blanco. Los valores vacíos están para que nada reviente en
    * ese instante, no para que nadie los lea.
    */
-  const conversaciones = perez.bandeja?.conversaciones ?? [];
-  const mensajes = perez.bandeja?.mensajes ?? [];
+  /*
+   * ==========================================================================
+   * LA BANDEJA, CON LOS HILOS QUE CAMBIARON PUESTOS ENCIMA
+   * ==========================================================================
+   *
+   * Medido en el banco el 27/10/2026 con el volumen de producción: cada
+   * mensaje que entraba —y cada tilde de entregado o leído— hacía que cada
+   * Inbox abierto volviera a pedir la pantalla entera, 3,8 MB, y abrir un chat
+   * sin leer bajaba 15 MB. Ahora, para lo que sólo toca un chat, se pide ese
+   * chat y se acomoda acá. Lo demás —un lead que se mueve, una nota— sigue
+   * refrescando como siempre. Ver `parcheBandeja.ts`.
+   */
+  const [parche, setParche] = useState<ParcheBandeja | null>(null);
+  /** El número rojo al día, para las pantallas que no tienen la bandeja. */
+  const [sinLeerAlDia, setSinLeerAlDia] = useState<number | null>(null);
+  const bandejaDelServidor = perez.bandeja;
+  // Cuando el servidor vuelve a dibujar, lo suyo ya trae todo: el parche sobra.
+  useEffect(() => setParche(null), [bandejaDelServidor]);
+  useEffect(() => setSinLeerAlDia(null), [initial]);
+  const { conversaciones, mensajes } = useMemo(
+    () =>
+      bandejaDelServidor
+        ? conParche(bandejaDelServidor.conversaciones, bandejaDelServidor.mensajes, parche)
+        : { conversaciones: [], mensajes: [] },
+    [bandejaDelServidor, parche],
+  );
+
+  const hilosPorPedir = useRef<Set<number>>(new Set());
+  const relojDeHilos = useRef<number | null>(null);
+  /**
+   * Pide estos hilos (y el número rojo) y los acomoda en la bandeja.
+   *
+   * Junta lo que llegue en un cuarto de segundo en un solo pedido: un masivo
+   * manda cientos de tildes seguidos, y cada uno no vale un viaje. Si el
+   * pedido falla, se cae al refresco de siempre: nunca queda la pantalla vieja.
+   */
+  const sincronizarHilos = useCallback(
+    (ids: readonly number[]) => {
+      for (const id of ids) hilosPorPedir.current.add(id);
+      if (relojDeHilos.current != null) return;
+      relojDeHilos.current = window.setTimeout(async () => {
+        relojDeHilos.current = null;
+        const lote = [...hilosPorPedir.current];
+        hilosPorPedir.current.clear();
+        // Una ráfaga de muchos hilos —un masivo saliendo— se trae entera.
+        if (lote.length > MAX_HILOS_POR_PEDIDO) {
+          router.refresh();
+          return;
+        }
+        try {
+          const r = await hilosDeLaBandeja(lote);
+          if (!r.ok) {
+            router.refresh();
+            return;
+          }
+          if (lote.length) {
+            setParche((p) =>
+              sumarParches(p, { ids: lote, conversaciones: r.conversaciones, mensajes: r.mensajes }),
+            );
+          }
+          if (r.sinLeer != null) setSinLeerAlDia(r.sinLeer);
+        } catch {
+          router.refresh();
+        }
+      }, 250);
+    },
+    [router],
+  );
+  const hayBandeja = bandejaDelServidor != null;
+  const hayBandejaRef = useRef(hayBandeja);
+  hayBandejaRef.current = hayBandeja;
+  /** Para la bandeja: con un hilo, sólo ese hilo; sin él, la pantalla entera. */
+  const refrescarBandeja = useCallback(
+    (hilo?: number) => {
+      if (typeof hilo === "number" && hayBandejaRef.current) sincronizarHilos([hilo]);
+      else router.refresh();
+    },
+    [router, sincronizarHilos],
+  );
   const faltaMigracionInbox = perez.bandeja?.faltaMigracion ?? false;
-  const etiquetas = perez.etiquetas?.etiquetas ?? [];
+  const etiquetas = perez.etiquetas?.etiquetas ?? SIN_ETIQUETAS;
   const plantillas = perez.plantillas ?? SIN_PLANTILLAS;
-  const importaciones = perez.bases?.data ?? [];
+  const importaciones = perez.bases?.data ?? SIN_BASES;
   const faltaMigracionBases = perez.bases?.faltaMigracion ?? false;
   const formularios = perez.formularios?.data ?? [];
   const faltaMigracionFormularios = perez.formularios?.faltaMigracion ?? false;
@@ -305,9 +400,24 @@ export default function CrmApp({
   const yo = accesos.yo?.id ?? null;
   const enVivo = useEnVivo(
     (c) => campanita.avisar(queSuena(c, yo)),
-    // Los tildes de un mensaje no le cambian nada a quien está en el Pipeline:
-    // ver `pideRefresco`.
-    (c) => pideRefresco(c, state.mod),
+    /*
+     * Un mensaje o un chat que cambió no vale la pantalla entera (27/10/2026).
+     *
+     * Con la bandeja a la vista se pide ese hilo, unos KB. Sin ella, un
+     * mensaje nuevo sólo mueve el número rojo de la barra, y eso es lo único
+     * que se pide. Envíos sigue como antes: cuenta tildes de toda la campaña.
+     * Lo demás —leads, notas, citas— refresca como siempre: ver `pideRefresco`.
+     */
+    (c) => {
+      const hilo =
+        state.mod !== "Envíos" && (c.tabla === "mensajes" || c.tabla === "conversaciones")
+          ? hiloDelAviso(c.tabla, c.fila)
+          : null;
+      if (hilo == null) return pideRefresco(c, state.mod);
+      if (hayBandejaRef.current) sincronizarHilos([hilo]);
+      else if (c.tabla === "mensajes" && c.evento === "INSERT") sincronizarHilos([]);
+      return false;
+    },
   );
 
   /*
@@ -637,7 +747,7 @@ export default function CrmApp({
     ? conversaciones
         .filter((c) => !c.archivada && !c.silenciada)
         .reduce((s, c) => s + (c.sinLeer ?? 0), 0)
-    : mensajesSinLeer;
+    : (sinLeerAlDia ?? mensajesSinLeer);
 
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
 
@@ -966,7 +1076,7 @@ export default function CrmApp({
                   : null
               }
               accent={accent}
-              onRefrescar={() => router.refresh()}
+              onRefrescar={refrescarBandeja}
               /*
                * La ficha se abre encima de la bandeja, sin irse a Clientes.
                *
@@ -1211,7 +1321,7 @@ export default function CrmApp({
                     canalesConectados={canalesConectados}
                     puedeResponder={puedeResponderWhatsapp}
                     accent={accent}
-                    onRefrescar={() => router.refresh()}
+                    onRefrescar={refrescarBandeja}
                     onLlamar={
                       puedeLlamarPorWhatsapp
                         ? (conversacionId) => {

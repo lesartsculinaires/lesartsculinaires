@@ -121,7 +121,7 @@ try {
 
   console.log("\n── y las marcas nuevas dicen qué falta ──");
   {
-    await p.getByRole("button", { name: /^Más acciones de / }).first().click();
+    await p.getByRole("button", { name: /^Más acciones: / }).first().click();
     await p.waitForTimeout(500);
     await p.getByRole("menuitem", { name: "📌 Fijar arriba" }).click();
     await p.waitForTimeout(2000);

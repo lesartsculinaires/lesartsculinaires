@@ -93,7 +93,11 @@ interface Props {
   plantillas: Plantilla[];
   /** Qué canales tienen sus credenciales puestas en el servidor. */
   canalesConectados: Record<string, boolean>;
-  onRefrescar: () => void;
+  /**
+   * Volver a pedir los datos. Con el id de un hilo, sólo ese hilo —unos KB—;
+   * sin id, la pantalla entera. Ver `parcheBandeja.ts`.
+   */
+  onRefrescar: (hilo?: number) => void;
   /**
    * Abre la ficha de un lead encima de la bandeja.
    *
@@ -848,12 +852,22 @@ export function Inbox({
     finRef.current?.scrollIntoView({ block: "end" });
   }, [abierta, delHilo.length]);
 
-  // Abrirla es haberla leído.
+  /*
+   * Abrirla es haberla leído.
+   *
+   * Depende del id y del número, no del objeto ni de `onRefrescar`: los dos
+   * se rearman en cada dibujado, y con ellos esto se disparaba dos veces por
+   * hilo —medido el 27/10/2026: abrir un chat sin leer bajaba 15 MB—.
+   */
+  const refrescarRef = useRef(onRefrescar);
+  refrescarRef.current = onRefrescar;
+  const idActual = actual?.id ?? null;
+  const sinLeerActual = actual?.sinLeer ?? 0;
   useEffect(() => {
-    if (actual && actual.sinLeer > 0) {
-      void marcarLeida(actual.id).then(onRefrescar);
+    if (idActual != null && sinLeerActual > 0) {
+      void marcarLeida(idActual).then(() => refrescarRef.current(idActual));
     }
-  }, [actual, onRefrescar]);
+  }, [idActual, sinLeerActual]);
 
   /*
    * Al cambiar de conversación se limpia el aviso y la nota interna.
@@ -938,7 +952,7 @@ export function Inbox({
         ? "Se le mandó la solicitud. Cuando la acepte vas a poder llamarlo."
         : (r.error ?? "No se pudo mandar la solicitud."),
     );
-    onRefrescar();
+    onRefrescar(conversacionId);
   };
 
   /**
@@ -1167,7 +1181,7 @@ export function Inbox({
         setTexto((t) => (t === pie ? "" : t));
         if (envio.oculto) setAviso(`«${archivo.name}» se envió.`);
         else cerrarVisor();
-        onRefrescar();
+        onRefrescar(actual.id);
       } else {
         // El servidor no lo mandó: ahí sí se puede volver a intentar.
         mandadosHace.current.delete(huella);
@@ -1399,7 +1413,7 @@ export function Inbox({
               m.id !== temporal ? [m] : r.mensaje ? [{ ...r.mensaje, despuesDe }] : [],
             ),
           );
-          onRefrescar();
+          onRefrescar(hilo);
           return;
         }
 
@@ -1410,7 +1424,7 @@ export function Inbox({
          * el cliente ya lo tiene: es fabricar el doble que se está curando.
          */
         deshacer(!r.yaSalio, r.error);
-        if (r.yaSalio) onRefrescar();
+        if (r.yaSalio) onRefrescar(hilo);
       } catch (e) {
         /*
          * Una llamada que no contesta NO puede dejar el botón en «Enviando…».
@@ -1430,7 +1444,7 @@ export function Inbox({
          * adivine. El texto vuelve al recuadro —si no salió, no se pierde— y el
          * aviso dice que se mire el hilo antes de mandarlo de nuevo.
          */
-        onRefrescar();
+        onRefrescar(hilo);
         const falla = porQueFalloElServidor(e);
         deshacer(
           true,
@@ -1690,7 +1704,7 @@ export function Inbox({
               conversacion={c}
               accent={accent}
               abierta={activa}
-              onCambio={onRefrescar}
+              onCambio={() => onRefrescar(c.id)}
               onCerrar={() => setAbierta(null)}
               /* Nulo cuando esa persona no tiene lead: el menú no ofrece
                  una ficha que no existe. Abrirlo se hace desde el hilo,
@@ -2409,7 +2423,7 @@ export function Inbox({
                     </button>
                     <button
                       type="button"
-                      onClick={() => void archivar(actual.id, !actual.archivada).then(onRefrescar)}
+                      onClick={() => void archivar(actual.id, !actual.archivada).then(() => onRefrescar(actual.id))}
                       style={boton(T.muted)}
                     >
                       {actual.archivada ? t("Desarchivar") : t("Archivar")}
@@ -2672,7 +2686,7 @@ export function Inbox({
                           mio={mio}
                           accent={accent}
                           ventanaAbierta={!ventanaCerrada}
-                          onCambio={onRefrescar}
+                          onCambio={() => onRefrescar(actual.id)}
                         />
                       )}
                     </div>
@@ -2761,7 +2775,7 @@ export function Inbox({
                     conversacionId={actual.id}
                     plantillas={plantillas}
                     accent={accent}
-                    onEnviado={onRefrescar}
+                    onEnviado={() => onRefrescar(actual.id)}
                   />
                 )}
               </div>
@@ -2820,7 +2834,7 @@ export function Inbox({
                       accent={accent}
                       onEnviado={() => {
                         setPlantillaAMano(false);
-                        onRefrescar();
+                        onRefrescar(actual.id);
                       }}
                     />
                   </div>
@@ -2998,7 +3012,7 @@ export function Inbox({
                           ? t("WhatsApp no está conectado")
                           : null
                   }
-                  onEnviado={onRefrescar}
+                  onEnviado={() => onRefrescar(actual.id)}
                   onOcupado={setGrabando}
                 />
               )}

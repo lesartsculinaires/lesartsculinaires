@@ -97,12 +97,13 @@ export async function marcarLeida(conversacionId: number): Promise<ActionResult>
         .update({ sin_leer: 0 })
         .eq("id", conversacionId);
       if (e2) return { ok: false, error: e2.message };
-      revalidatePath("/");
       return { ok: true, error: null };
     }
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  // Sin `revalidatePath("/")` (27/10/2026): devolvía la pantalla entera
+  // —3,8 MB con mil chats— cada vez que se abría un hilo sin leer, y la
+  // bandeja igual pide después sólo ese hilo. Ver `parcheBandeja.ts`.
   return { ok: true, error: null };
 }
 
@@ -175,7 +176,7 @@ export async function marcar(
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/");
+  // Sin `revalidatePath`: la bandeja pide sólo este hilo. Ver `marcarLeida`.
   return { ok: true, error: null };
 }
 
@@ -192,7 +193,7 @@ export async function archivar(
     .eq("id", conversacionId);
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/");
+  // Sin `revalidatePath`: la bandeja pide sólo este hilo. Ver `marcarLeida`.
   return { ok: true, error: null };
 }
 

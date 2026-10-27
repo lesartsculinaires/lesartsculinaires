@@ -30,9 +30,20 @@ const VACIO: ResultadoInbox = {
  * decenas de miles— una sola consulta pesa menos que una por hilo, y permite
  * cambiar de conversación sin esperar.
  */
-export async function fetchInbox(): Promise<ResultadoInbox> {
+export async function fetchInbox(
+  /**
+   * Sólo estos hilos, con sus mensajes más recientes.
+   *
+   * Para el aviso en vivo (27/10/2026): cuando entra o cambia un mensaje, la
+   * pestaña pide el hilo que cambió —unos KB— en vez de la bandeja entera
+   * —2,9 MB con mil chats, en cada mensaje y en cada tilde—. Sin esto, todo
+   * lo de abajo trae la bandeja completa como siempre.
+   */
+  soloIds?: readonly number[],
+): Promise<ResultadoInbox> {
   const supabase = await getServerClient();
   if (!supabase) return VACIO;
+  if (soloIds && soloIds.length === 0) return VACIO;
 
   /**
    * Las conversaciones, con las marcas de la bandeja si ya están.
@@ -84,9 +95,9 @@ export async function fetchInbox(): Promise<ResultadoInbox> {
    * de verdad se comprueba qué vino.
    */
   const traerConvs = (extras: string) =>
-    supabase
-      .from("conversaciones")
-      .select(COLUMNAS + extras)
+    (soloIds
+      ? supabase.from("conversaciones").select(COLUMNAS + extras).in("id", [...soloIds])
+      : supabase.from("conversaciones").select(COLUMNAS + extras))
       .order("ultimo_mensaje_en", { ascending: false })
       .order("id", { ascending: false }) as unknown as {
       range(desde: number, hasta: number): PromiseLike<{

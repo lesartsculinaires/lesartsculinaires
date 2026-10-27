@@ -1,6 +1,16 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 
 import { completarFichasDePauta } from "@/app/formularios-viejos-actions";
 import { ImportarClientes } from "@/components/modules/ImportarClientes";
@@ -36,6 +46,21 @@ import {
 } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos, programasElegibles } from "@/lib/types";
 import type { Etiqueta, Importacion, Oportunidad, Plantilla } from "@/lib/types";
+
+/**
+ * Cuántas filas se dibujan de entrada, y cuántas más al acercarse al final.
+ *
+ * Medido en el banco el 27/10/2026 con 3.000 leads: dibujar la tabla entera
+ * dejaba el navegador trabado casi cuatro segundos al entrar a Clientes, y otra
+ * vez con cada tecla del buscador. Nadie lee tres mil filas de una: se filtra,
+ * se busca, o se baja con la rueda. Las que siguen se agregan solas un poco
+ * antes de llegar al final, así que bajar se ve igual que antes.
+ *
+ * Lo que NO cambia: los números de arriba, el «Mostrando N de M» y la casilla
+ * de marcar todas cuentan la lista entera, dibujada o no. Filtrar por una base
+ * y marcar todas para un masivo sigue alcanzando a toda la base.
+ */
+const TANDA_DE_FILAS = 200;
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -155,7 +180,14 @@ export function Clientes({
   const [foco, setFoco] = useState<number | null>(null);
   const [ancla, setAncla] = useState<number | null>(null);
   const soft = softer(accent);
-  const q = query.trim().toLowerCase();
+  /*
+   * La búsqueda se aplica «cuando se pueda», no en cada tecla.
+   *
+   * El cuadro muestra lo escrito al instante; la lista se filtra un momento
+   * después, sin frenar el teclado. Con tres mil leads, filtrar y redibujar en
+   * cada letra era lo que hacía que escribir un nombre se sintiera trabado.
+   */
+  const q = useDeferredValue(query).trim().toLowerCase();
 
   /*
    * Los meses salen de las oportunidades que se están listando, no de un
@@ -163,37 +195,42 @@ export function Clientes({
    * doce opciones de las que ocho no tienen ni un lead.
    */
   const meses = useMemo(() => mesesComoOpciones(oportunidades), [oportunidades]);
-  const filtros_def = definirFiltros(
-    cat,
-    importaciones,
-    [],
-    meses,
-    // Sólo las que siguen en uso: filtrar por una etiqueta dada de baja
-    // devolvería lo que quedó con ella puesto de antes, que no es lo que
-    // alguien está buscando cuando la elige de una lista.
-    etiquetas.filter((e) => e.activa).map((e) => ({ id: e.id, nombre: e.nombre })),
+  // Sólo las que siguen en uso: filtrar por una etiqueta dada de baja
+  // devolvería lo que quedó con ella puesto de antes, que no es lo que
+  // alguien está buscando cuando la elige de una lista.
+  const etiquetasEnUso = useMemo(
+    () => etiquetas.filter((e) => e.activa).map((e) => ({ id: e.id, nombre: e.nombre })),
+    [etiquetas],
+  );
+  const filtros_def = useMemo(
+    () => definirFiltros(cat, importaciones, [], meses, etiquetasEnUso),
+    [cat, importaciones, meses, etiquetasEnUso],
   );
 
-  const filtradas = oportunidades.filter(
-    (o) =>
-      pasa(o, filtros_def, filtros) &&
-      (!q ||
-        // El correlativo de la escuela entra en la búsqueda igual que el código
-        // del CRM: es el número con el que académica archiva, así que «buscá el
-        // 2026-114» tiene que encontrar la ficha. La empresa también: los
-        // cursos que se venden a empresas se revisan por empresa, no por
-        // alumno.
-        [
-          o.cliente,
-          o.codigo,
-          o.correlativo ?? "",
-          o.telefono ?? "",
-          o.correo ?? "",
-          o.empresa ?? "",
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(q)),
+  const filtradas = useMemo(
+    () =>
+      oportunidades.filter(
+        (o) =>
+          pasa(o, filtros_def, filtros) &&
+          (!q ||
+            // El correlativo de la escuela entra en la búsqueda igual que el
+            // código del CRM: es el número con el que académica archiva, así
+            // que «buscá el 2026-114» tiene que encontrar la ficha. La empresa
+            // también: los cursos que se venden a empresas se revisan por
+            // empresa, no por alumno.
+            [
+              o.cliente,
+              o.codigo,
+              o.correlativo ?? "",
+              o.telefono ?? "",
+              o.correo ?? "",
+              o.empresa ?? "",
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(q)),
+      ),
+    [oportunidades, filtros_def, filtros, q],
   );
 
 
@@ -216,6 +253,44 @@ export function Clientes({
    */
   const leadsPorCliente = useMemo(() => cuantosPorCliente(oportunidades), [oportunidades]);
   const posicionDelLead = useMemo(() => posicionEntreLosSuyos(oportunidades), [oportunidades]);
+
+  /*
+   * Las marcadas como conjunto, para preguntar «¿está?» sin recorrer la lista.
+   *
+   * Con `marcadas.includes` en cada celda, marcar todas las de una base de dos
+   * mil eran millones de comparaciones por dibujado: la pantalla se congelaba
+   * justo al ir a mandar el masivo.
+   */
+  const marcadasSet = useMemo(() => new Set(marcadas), [marcadas]);
+
+  /*
+   * Hasta qué fila se dibuja. Ver `TANDA_DE_FILAS`.
+   *
+   * Vuelve a la primera tanda sólo cuando cambia QUÉ se mira —un filtro, la
+   * búsqueda, el orden—. No cuando llega un lead nuevo de otra persona: eso
+   * dejaría a quien estaba en la fila seiscientos sin filas debajo del cursor.
+   */
+  const [cuantasFilas, setCuantasFilas] = useState(TANDA_DE_FILAS);
+  useEffect(() => setCuantasFilas(TANDA_DE_FILAS), [filtros, q, orden]);
+  const hayMasFilas = cuantasFilas < list.length;
+  const finDeLaTabla = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    const fin = finDeLaTabla.current;
+    if (!fin || !hayMasFilas) return;
+    // Un buen trecho antes del final, para que al bajar con la rueda las filas
+    // ya estén cuando se llega.
+    const vigia = new IntersectionObserver(
+      (vistos) => {
+        if (vistos.some((v) => v.isIntersecting)) setCuantasFilas((n) => n + TANDA_DE_FILAS);
+      },
+      { rootMargin: "1200px 0px" },
+    );
+    vigia.observe(fin);
+    return () => vigia.disconnect();
+  }, [hayMasFilas, cuantasFilas]);
+
+  const programasDelLote = useMemo(() => programasElegibles(cat.productos), [cat.productos]);
+  const vendedoresDelLote = useMemo(() => soloActivos(cat.vendedores), [cat.vendedores]);
 
   const cambiarOrden = (columna: Columna) => {
     setOrden((antes) => siguienteOrden(antes, columna));
@@ -257,6 +332,9 @@ export function Clientes({
       const desde = foco ?? (abajo ? -1 : list.length);
       const nuevo = Math.max(0, Math.min(list.length - 1, desde + (abajo ? 1 : -1)));
       setFoco(nuevo);
+      // Bajando con la flecha más allá de lo dibujado, se dibuja la tanda que
+      // sigue: el cursor nunca queda en una fila que no está.
+      if (nuevo >= cuantasFilas - 1) setCuantasFilas(nuevo + TANDA_DE_FILAS);
 
       if (e.shiftKey) {
         const base = ancla ?? desde;
@@ -352,27 +430,30 @@ export function Clientes({
     onRefresh();
   };
 
-  const algunaMarcada = list.some((o) => marcadas.includes(o.id));
-  const todasMarcadas = list.length > 0 && list.every((o) => marcadas.includes(o.id));
+  const algunaMarcada = marcadas.length > 0 && list.some((o) => marcadasSet.has(o.id));
+  const todasMarcadas = list.length > 0 && list.every((o) => marcadasSet.has(o.id));
 
-  const resumen = [
-    { label: "Oportunidades", value: String(list.length) },
-    { label: "Valor en pipeline", value: money(valorPipeline(list) || null) },
-    { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(list) || null) },
-    {
-      label: "Ticket promedio",
-      value: (() => {
-        const conValor = list.filter((o) => o.valor != null);
-        return conValor.length
-          ? money(
-              Math.round(
-                conValor.reduce((a, o) => a + (o.valor ?? 0), 0) / conValor.length,
-              ),
-            )
-          : "—";
-      })(),
-    },
-  ];
+  const resumen = useMemo(
+    () => [
+      { label: "Oportunidades", value: String(list.length) },
+      { label: "Valor en pipeline", value: money(valorPipeline(list) || null) },
+      { label: ROTULO_VENTA_CERRADA, value: money(totalCerrado(list) || null) },
+      {
+        label: "Ticket promedio",
+        value: (() => {
+          const conValor = list.filter((o) => o.valor != null);
+          return conValor.length
+            ? money(
+                Math.round(
+                  conValor.reduce((a, o) => a + (o.valor ?? 0), 0) / conValor.length,
+                ),
+              )
+            : "—";
+        })(),
+      },
+    ],
+    [list],
+  );
 
   const th: CSSProperties = {
     textAlign: "left",
@@ -383,11 +464,55 @@ export function Clientes({
     whiteSpace: "nowrap",
     borderBottom: `1px solid ${T.border}`,
   };
-  const td: CSSProperties = {
-    padding: "11px 14px",
-    whiteSpace: "nowrap",
-    color: T.muted,
-  };
+
+  /*
+   * Lo que las filas necesitan saber del momento, sin que cambie su identidad.
+   *
+   * Las filas están memorizadas: una que no cambió no se vuelve a dibujar. Para
+   * eso los manejadores de clic tienen que ser siempre los mismos, y leen el
+   * ancla, la lista y lo demás de acá en el momento del clic.
+   */
+  const alMomento = useRef({ ancla, list, onSelect, aplicarALasMarcadas });
+  alMomento.current = { ancla, list, onSelect, aplicarALasMarcadas };
+
+  const alClicDeFila = useCallback((e: MouseEvent, i: number, id: number) => {
+    const { ancla: desde, list: lista, onSelect: abrir } = alMomento.current;
+    // Shift+clic marca un tramo, como en cualquier lista. No abre la ficha:
+    // quien lo hace está eligiendo, no yendo a mirar a alguien.
+    if (e.shiftKey && desde != null) {
+      e.preventDefault();
+      setFoco(i);
+      setMarcadas(lista.slice(Math.min(desde, i), Math.max(desde, i) + 1).map((o) => o.id));
+      return;
+    }
+    setFoco(i);
+    setAncla(i);
+    abrir(id);
+  }, []);
+
+  const alClicDeCasilla = useCallback((e: MouseEvent, i: number, id: number) => {
+    const { ancla: desde, list: lista } = alMomento.current;
+    setFoco(i);
+
+    // Shift marca desde la última casilla tocada hasta ésta. Va acá y no en la
+    // fila porque el clic en la fila abre la ficha: para elegir un tramo con el
+    // mouse habría que abrirla primero.
+    if (e.shiftKey && desde != null) {
+      setMarcadas(lista.slice(Math.min(desde, i), Math.max(desde, i) + 1).map((o) => o.id));
+      return;
+    }
+
+    setAncla(i);
+    setMarcadas((antes) =>
+      antes.includes(id) ? antes.filter((x) => x !== id) : [...antes, id],
+    );
+  }, []);
+
+  const alElegirEnLote = useCallback<AplicarEnLote>(
+    (campo, valorId, etiqueta, nombre) =>
+      void alMomento.current.aplicarALasMarcadas(campo, valorId, etiqueta, nombre),
+    [],
+  );
 
   if (verDuplicados) {
     return (
@@ -496,7 +621,7 @@ export function Clientes({
             onNuevaBase={puedeSubirBases ? () => setArmandoBase(true) : null}
             onAplicar={aplicarALasMarcadas}
             onBorrar={() =>
-              setPorBorrar(oportunidades.filter((o) => marcadas.includes(o.id)))
+              setPorBorrar(oportunidades.filter((o) => marcadasSet.has(o.id)))
             }
             onLimpiar={() => {
               setMarcadas([]);
@@ -587,7 +712,7 @@ export function Clientes({
             );
           })}
 
-          {(activos > 0 || q) && (
+          {(activos > 0 || query.trim()) && (
             <button
               type="button"
               onClick={onLimpiar}
@@ -722,11 +847,14 @@ export function Clientes({
                       if (el) el.indeterminate = algunaMarcada && !todasMarcadas;
                     }}
                     onChange={(e) => {
+                      // Toda la lista filtrada, dibujada o no: es la que dicen
+                      // los números de arriba.
                       const visibles = list.map((o) => o.id);
+                      const deLaLista = new Set(visibles);
                       setMarcadas((antes) =>
                         e.target.checked
                           ? [...new Set([...antes, ...visibles])]
-                          : antes.filter((id) => !visibles.includes(id)),
+                          : antes.filter((id) => !deLaLista.has(id)),
                       );
                     }}
                     onClick={(e) => e.stopPropagation()}
@@ -745,241 +873,42 @@ export function Clientes({
               </tr>
             </thead>
             <tbody>
-              {list.map((o, i) => {
-                const [fg, bg] = estadoTone(o.estado, accent);
-                const enFoco = foco === i;
+              {list.slice(0, cuantasFilas).map((o, i) => {
+                const marcada = marcadasSet.has(o.id);
                 return (
-                  <tr
+                  <FilaCliente
                     key={o.id}
-                    className="row"
-                    onClick={(e) => {
-                      // Shift+clic marca un tramo, como en cualquier lista.
-                      // No abre la ficha: quien lo hace está eligiendo, no
-                      // yendo a mirar a alguien.
-                      if (e.shiftKey && ancla != null) {
-                        e.preventDefault();
-                        setFoco(i);
-                        setMarcadas(tramo(ancla, i));
-                        return;
-                      }
-                      setFoco(i);
-                      setAncla(i);
-                      onSelect(o.id);
-                    }}
-                    style={{
-                      borderTop: `1px solid ${T.border}`,
-                      cursor: "pointer",
-                      background: marcadas.includes(o.id)
-                        ? soft
-                        : selected === o.id
-                          ? T.paper
-                          : "transparent",
-                      // El cursor se ve: sin esto, mover con las flechas no
-                      // muestra dónde se está parado y Shift+↓ es a ciegas.
-                      boxShadow: enFoco ? `inset 3px 0 0 ${accent}` : "none",
-                    }}
-                  >
-                    <td
-                      style={{ ...td, width: 30, paddingRight: 0 }}
-                      // El clic en la casilla no tiene que abrir la ficha: son
-                      // dos intenciones distintas sobre la misma fila.
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        aria-label={`Marcar ${o.cliente}`}
-                        checked={marcadas.includes(o.id)}
-                        /*
-                         * Todo se resuelve en el clic, y `onChange` queda vacío
-                         * a propósito.
-                         *
-                         * React emula el `change` de una casilla a partir del
-                         * mismo clic, así que teniendo los dos manejadores se
-                         * ejecutaban ambos: el clic marcaba el tramo y el
-                         * cambio le sacaba enseguida el último, porque su
-                         * `checked` todavía decía que no. Con un solo lugar no
-                         * hay dos versiones de la misma decisión.
-                         */
-                        onChange={() => {}}
-                        onClick={(e) => {
-                          setFoco(i);
-
-                          // Shift marca desde la última casilla tocada hasta
-                          // ésta. Va acá y no en la fila porque el clic en la
-                          // fila abre la ficha: para elegir un tramo con el
-                          // mouse habría que abrirla primero.
-                          if (e.shiftKey && ancla != null) {
-                            setMarcadas(tramo(ancla, i));
-                            return;
-                          }
-
-                          setAncla(i);
-                          setMarcadas((antes) =>
-                            antes.includes(o.id)
-                              ? antes.filter((id) => id !== o.id)
-                              : [...antes, o.id],
-                          );
-                        }}
-                      />
-                    </td>
-                    <td className="mono" style={td}>
-                      {o.codigo}
-                      {/*
-                        «1 de 2» debajo del código.
-
-                        Esta tabla lista leads, no personas, así que alguien que
-                        preguntó por dos programas ocupa dos filas y se lee como
-                        un repetido. Casi nunca lo es —son dos tratos, con dos
-                        montos— pero no había nada en la pantalla que lo dijera.
-
-                        Con la posición, las dos filas se leen como una persona
-                        con dos consultas. Sólo con «2 leads» en las dos se
-                        seguiría leyendo como un duplicado.
-                      */}
-                      {(() => {
-                        const cuantos = leadsPorCliente.get(o.clienteId) ?? 1;
-                        if (cuantos < 2) return null;
-                        return (
-                          <span
-                            title={`${o.cliente} tiene ${cuantos} leads: son programas distintos, no un duplicado.`}
-                            style={{
-                              display: "block",
-                              marginTop: 2,
-                              fontSize: 10,
-                              fontWeight: 700,
-                              color: T.faint,
-                            }}
-                          >
-                            {posicionDelLead.get(o.id) ?? 1} de {cuantos}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="mono" style={td}>{fechaCorta(o.fechaRegistro)}</td>
-                    <td style={{ ...td, padding: "9px 14px", color: T.ink }}>
-                      <span style={{ display: "block", fontSize: 13 }}>{o.cliente}</span>
-                      <span style={{ display: "block", marginTop: 2, fontSize: 11, color: T.faint }}>
-                        {o.correo ?? o.telefono ?? "—"}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      {marcadas.includes(o.id) ? (
-                        <CeldaEnLote
-                          valorActual={o.producto}
-                          items={programasElegibles(cat.productos)}
-                          cuantas={marcadas.length}
-                          campo="el programa"
-                          ocupado={cambiando === "producto_id"}
-                          onElegir={(id) =>
-                            void aplicarALasMarcadas(
-                              "producto_id",
-                              id,
-                              "Cambiar programa",
-                              cat.productos.find((x) => x.id === id)?.nombre ?? "",
-                            )
-                          }
-                        />
-                      ) : (
-                        o.producto
-                      )}
-                    </td>
-                    <td style={td}>
-                      {marcadas.includes(o.id) ? (
-                        <CeldaEnLote
-                          valorActual={o.vendedor}
-                          items={soloActivos(cat.vendedores)}
-                          cuantas={marcadas.length}
-                          campo="el vendedor"
-                          ocupado={cambiando === "vendedor_id"}
-                          onElegir={(id) =>
-                            void aplicarALasMarcadas(
-                              "vendedor_id",
-                              id,
-                              "Asignar vendedor",
-                              cat.vendedores.find((x) => x.id === id)?.nombre ?? "",
-                            )
-                          }
-                        />
-                      ) : (
-                        o.vendedor
-                      )}
-                    </td>
-                    <td style={{ ...td, padding: "9px 14px" }}>
-                      {marcadas.includes(o.id) ? (
-                        <CeldaEnLote
-                          valorActual={o.etapa}
-                          items={cat.etapas}
-                          cuantas={marcadas.length}
-                          campo="la etapa"
-                          ocupado={cambiando === "etapa_id"}
-                          onElegir={(id) =>
-                            void aplicarALasMarcadas(
-                              "etapa_id",
-                              id,
-                              "Cambiar etapa",
-                              cat.etapas.find((x) => x.id === id)?.nombre ?? "",
-                            )
-                          }
-                        />
-                      ) : (
-                        <span className="pill"
-                          style={{
-                            display: "inline-block",
-                            fontSize: 12,
-                            padding: "3px 10px",
-                            borderRadius: 20,
-                            background: soft,
-                            color: accent,
-                          }}
-                        >
-                          {o.etapa}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ ...td, padding: "9px 14px" }}>
-                      {marcadas.includes(o.id) ? (
-                        <CeldaEnLote
-                          valorActual={o.estado}
-                          items={cat.estados}
-                          cuantas={marcadas.length}
-                          campo="el estado"
-                          ocupado={cambiando === "estado_id"}
-                          onElegir={(id) =>
-                            void aplicarALasMarcadas(
-                              "estado_id",
-                              id,
-                              "Cambiar estado",
-                              cat.estados.find((x) => x.id === id)?.nombre ?? "",
-                            )
-                          }
-                        />
-                      ) : (
-                        <span className="pill"
-                          style={{
-                            display: "inline-block",
-                            fontSize: 12,
-                            padding: "3px 10px",
-                            borderRadius: 20,
-                            background: bg,
-                            color: fg,
-                          }}
-                        >
-                          {o.estado}
-                        </span>
-                      )}
-                    </td>
-                    <td className="mono" style={{ ...td, textAlign: "right" }}>
-                      {money(o.valor)}
-                    </td>
-                    <td className="mono" style={{ ...td, textAlign: "right" }}>
-                      {money(o.cerrada)}
-                    </td>
-                    <td style={{ padding: "10px 14px 10px 0", textAlign: "right", color: T.borderStrong }}>
-                      ›
-                    </td>
-                  </tr>
+                    o={o}
+                    i={i}
+                    accent={accent}
+                    soft={soft}
+                    marcada={marcada}
+                    seleccionada={selected === o.id}
+                    enFoco={foco === i}
+                    cuantosLeads={leadsPorCliente.get(o.clienteId) ?? 1}
+                    posicion={posicionDelLead.get(o.id) ?? 1}
+                    // Sólo las marcadas muestran los menús del lote, y sólo a
+                    // ellas les importa cuántas hay: las demás no se redibujan
+                    // al marcar otra.
+                    cuantasMarcadas={marcada ? marcadas.length : 0}
+                    cambiando={marcada ? cambiando : null}
+                    programas={programasDelLote}
+                    vendedores={vendedoresDelLote}
+                    etapas={cat.etapas}
+                    estados={cat.estados}
+                    onClicFila={alClicDeFila}
+                    onClicCasilla={alClicDeCasilla}
+                    onElegirEnLote={alElegirEnLote}
+                  />
                 );
               })}
+              {hayMasFilas && (
+                <tr ref={finDeLaTabla} aria-hidden>
+                  <td colSpan={11} style={{ padding: "14px", textAlign: "center", fontSize: 12, color: T.faint }}>
+                    Cargando más fichas…
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -1035,6 +964,253 @@ export function Clientes({
     </div>
   );
 }
+
+type CampoEnLote = "vendedor_id" | "etapa_id" | "producto_id" | "estado_id";
+type AplicarEnLote = (campo: CampoEnLote, valorId: number, etiqueta: string, nombre: string) => void;
+type Elegible = readonly { id: number; nombre: string }[];
+
+const TD: CSSProperties = {
+  padding: "11px 14px",
+  whiteSpace: "nowrap",
+  color: T.muted,
+};
+
+/**
+ * Una fila de la tabla. Memorizada: sólo se vuelve a dibujar si cambió algo
+ * suyo —la ficha, la marca, el cursor—. Antes, marcar una casilla redibujaba
+ * las tres mil.
+ */
+const FilaCliente = memo(function FilaCliente({
+  o,
+  i,
+  accent,
+  soft,
+  marcada,
+  seleccionada,
+  enFoco,
+  cuantosLeads,
+  posicion,
+  cuantasMarcadas,
+  cambiando,
+  programas,
+  vendedores,
+  etapas,
+  estados,
+  onClicFila,
+  onClicCasilla,
+  onElegirEnLote,
+}: {
+  o: Oportunidad;
+  i: number;
+  accent: string;
+  soft: string;
+  marcada: boolean;
+  seleccionada: boolean;
+  enFoco: boolean;
+  cuantosLeads: number;
+  posicion: number;
+  cuantasMarcadas: number;
+  cambiando: string | null;
+  programas: Elegible;
+  vendedores: Elegible;
+  etapas: Elegible;
+  estados: Elegible;
+  onClicFila: (e: MouseEvent, i: number, id: number) => void;
+  onClicCasilla: (e: MouseEvent, i: number, id: number) => void;
+  onElegirEnLote: AplicarEnLote;
+}) {
+  const td = TD;
+  const [fg, bg] = estadoTone(o.estado, accent);
+  return (
+    <tr
+      className="row"
+      onClick={(e) => onClicFila(e, i, o.id)}
+      style={{
+        borderTop: `1px solid ${T.border}`,
+        cursor: "pointer",
+        background: marcada ? soft : seleccionada ? T.paper : "transparent",
+        // El cursor se ve: sin esto, mover con las flechas no muestra dónde se
+        // está parado y Shift+↓ es a ciegas.
+        boxShadow: enFoco ? `inset 3px 0 0 ${accent}` : "none",
+      }}
+    >
+      <td
+        style={{ ...td, width: 30, paddingRight: 0 }}
+        // El clic en la casilla no tiene que abrir la ficha: son dos
+        // intenciones distintas sobre la misma fila.
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          aria-label={`Marcar ${o.cliente}`}
+          checked={marcada}
+          /*
+           * Todo se resuelve en el clic, y `onChange` queda vacío a propósito.
+           *
+           * React emula el `change` de una casilla a partir del mismo clic, así
+           * que teniendo los dos manejadores se ejecutaban ambos: el clic
+           * marcaba el tramo y el cambio le sacaba enseguida el último, porque
+           * su `checked` todavía decía que no. Con un solo lugar no hay dos
+           * versiones de la misma decisión.
+           */
+          onChange={() => {}}
+          onClick={(e) => onClicCasilla(e, i, o.id)}
+        />
+      </td>
+      <td className="mono" style={td}>
+        {o.codigo}
+        {/*
+          «1 de 2» debajo del código.
+
+          Esta tabla lista leads, no personas, así que alguien que preguntó por
+          dos programas ocupa dos filas y se lee como un repetido. Casi nunca lo
+          es —son dos tratos, con dos montos— pero no había nada en la pantalla
+          que lo dijera.
+
+          Con la posición, las dos filas se leen como una persona con dos
+          consultas. Sólo con «2 leads» en las dos se seguiría leyendo como un
+          duplicado.
+        */}
+        {cuantosLeads >= 2 && (
+          <span
+            title={`${o.cliente} tiene ${cuantosLeads} leads: son programas distintos, no un duplicado.`}
+            style={{
+              display: "block",
+              marginTop: 2,
+              fontSize: 10,
+              fontWeight: 700,
+              color: T.faint,
+            }}
+          >
+            {posicion} de {cuantosLeads}
+          </span>
+        )}
+      </td>
+      <td className="mono" style={td}>{fechaCorta(o.fechaRegistro)}</td>
+      <td style={{ ...td, padding: "9px 14px", color: T.ink }}>
+        <span style={{ display: "block", fontSize: 13 }}>{o.cliente}</span>
+        <span style={{ display: "block", marginTop: 2, fontSize: 11, color: T.faint }}>
+          {o.correo ?? o.telefono ?? "—"}
+        </span>
+      </td>
+      <td style={td}>
+        {marcada ? (
+          <CeldaEnLote
+            valorActual={o.producto}
+            items={programas}
+            cuantas={cuantasMarcadas}
+            campo="el programa"
+            ocupado={cambiando === "producto_id"}
+            onElegir={(id) =>
+              onElegirEnLote(
+                "producto_id",
+                id,
+                "Cambiar programa",
+                programas.find((x) => x.id === id)?.nombre ?? "",
+              )
+            }
+          />
+        ) : (
+          o.producto
+        )}
+      </td>
+      <td style={td}>
+        {marcada ? (
+          <CeldaEnLote
+            valorActual={o.vendedor}
+            items={vendedores}
+            cuantas={cuantasMarcadas}
+            campo="el vendedor"
+            ocupado={cambiando === "vendedor_id"}
+            onElegir={(id) =>
+              onElegirEnLote(
+                "vendedor_id",
+                id,
+                "Asignar vendedor",
+                vendedores.find((x) => x.id === id)?.nombre ?? "",
+              )
+            }
+          />
+        ) : (
+          o.vendedor
+        )}
+      </td>
+      <td style={{ ...td, padding: "9px 14px" }}>
+        {marcada ? (
+          <CeldaEnLote
+            valorActual={o.etapa}
+            items={etapas}
+            cuantas={cuantasMarcadas}
+            campo="la etapa"
+            ocupado={cambiando === "etapa_id"}
+            onElegir={(id) =>
+              onElegirEnLote(
+                "etapa_id",
+                id,
+                "Cambiar etapa",
+                etapas.find((x) => x.id === id)?.nombre ?? "",
+              )
+            }
+          />
+        ) : (
+          <span className="pill"
+            style={{
+              display: "inline-block",
+              fontSize: 12,
+              padding: "3px 10px",
+              borderRadius: 20,
+              background: soft,
+              color: accent,
+            }}
+          >
+            {o.etapa}
+          </span>
+        )}
+      </td>
+      <td style={{ ...td, padding: "9px 14px" }}>
+        {marcada ? (
+          <CeldaEnLote
+            valorActual={o.estado}
+            items={estados}
+            cuantas={cuantasMarcadas}
+            campo="el estado"
+            ocupado={cambiando === "estado_id"}
+            onElegir={(id) =>
+              onElegirEnLote(
+                "estado_id",
+                id,
+                "Cambiar estado",
+                estados.find((x) => x.id === id)?.nombre ?? "",
+              )
+            }
+          />
+        ) : (
+          <span className="pill"
+            style={{
+              display: "inline-block",
+              fontSize: 12,
+              padding: "3px 10px",
+              borderRadius: 20,
+              background: bg,
+              color: fg,
+            }}
+          >
+            {o.estado}
+          </span>
+        )}
+      </td>
+      <td className="mono" style={{ ...td, textAlign: "right" }}>
+        {money(o.valor)}
+      </td>
+      <td className="mono" style={{ ...td, textAlign: "right" }}>
+        {money(o.cerrada)}
+      </td>
+      <td style={{ padding: "10px 14px 10px 0", textAlign: "right", color: T.borderStrong }}>
+        ›
+      </td>
+    </tr>
+  );
+});
 
 /**
  * Un encabezado por el que se puede ordenar.
