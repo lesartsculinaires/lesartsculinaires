@@ -288,6 +288,13 @@ try {
     await p.waitForTimeout(2500);
 
     const enLaBase = Number(sql(`select count(*) from public.conversaciones;`));
+    // Desde el 27/10/2026 la lista se dibuja de a 250 (escribir con mil chats
+    // tardaba): las demás están detrás de «Mostrar más», y tienen que estar.
+    es("se dibujan de a 250", await p.locator("button.row").count(), Math.min(250, enLaBase));
+    while (await p.getByRole("button", { name: /^Mostrar más/ }).count()) {
+      await p.getByRole("button", { name: /^Mostrar más/ }).click();
+      await p.waitForTimeout(800);
+    }
     const enLaLista = await p.locator("button.row").count();
     await foto("2-lista-entera");
 

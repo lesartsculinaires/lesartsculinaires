@@ -146,7 +146,7 @@ const fila = (nombre) =>
 
 /** Abre el «⋮» de ese hilo. */
 const menuDe = async (nombre) => {
-  await p.getByRole("button", { name: `Más acciones de ${nombre}` }).click();
+  await p.getByRole("button", { name: `Más acciones: ${nombre}` }).click();
   await p.waitForTimeout(500);
 };
 
@@ -169,7 +169,7 @@ console.log("── el «⋮» está en cada fila y responde ──");
   await foto("1-lista");
   es(
     "hay un menú por hilo",
-    await p.getByRole("button", { name: /^Más acciones de Marca/ }).count(),
+    await p.getByRole("button", { name: /^Más acciones: Marca/ }).count(),
     3,
   );
 

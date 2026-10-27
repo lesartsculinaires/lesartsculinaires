@@ -76,6 +76,9 @@ type EnviadoAca = Mensaje & { despuesDe?: number };
 /** Dónde queda el borrador del chat mientras se recarga la pestaña. */
 const CLAVE_BORRADOR = "lac.inbox.borrador";
 
+/** Cuántos chats se dibujan de una vez en la lista. Ver `filasDeLaLista`. */
+const POR_PAGINA_DE_CHATS = 250;
+
 interface Props {
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
@@ -1479,6 +1482,231 @@ export function Inbox({
     borderBottom: `1px solid ${T.border}`,
   };
 
+
+  /*
+   * Las filas de la lista, armadas una vez y guardadas.
+   *
+   * El texto del recuadro vive en este mismo componente, así que cada tecla lo
+   * vuelve a dibujar entero. Con la lista adentro eran ~1.000 filas por tecla
+   * —Alexandra tiene 995 chats desde el 27/10/2026— y eso es lo que el equipo
+   * sentía como «escribo y tarda en aparecer». Ahora las filas sólo se vuelven
+   * a armar cuando cambian los chats, el abierto o los filtros.
+   *
+   * Y se dibujan de a 250: más abajo hay un botón para ver las siguientes. El
+   * buscador sigue buscando en todos.
+   */
+  const [tope, setTope] = useState(POR_PAGINA_DE_CHATS);
+  const filasDeLaLista = useMemo(
+    () =>
+      lista.slice(0, tope).map((c) => {
+        const activa = c.id === abierta;
+        const lead = leadDe(c.clienteId);
+        return (
+          /*
+           * Un `div` con dos botones adentro, y no un botón con otro.
+           *
+           * La fila entera era un `<button>`. Meter el «⋮» adentro sería
+           * un botón dentro de un botón: HTML inválido, y el navegador
+           * reacomoda el árbol por su cuenta —saca el de adentro— así que
+           * React deja de reconocer lo que dibujó y el menú queda pintado
+           * pero muerto. Es exactamente el error que ya pasó con el aviso
+           * de las 24 horas, y está documentado más abajo.
+           */
+          <div
+            key={c.id}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 2,
+              padding: "0 8px 0 0",
+              borderBottom: `1px solid ${T.border}`,
+              background: activa ? soft : "transparent",
+            }}
+          >
+          <button
+            type="button"
+            onClick={() => setAbierta(c.id)}
+            className="row"
+            style={{
+              display: "block",
+              flex: 1,
+              minWidth: 0,
+              textAlign: "left",
+              padding: "10px 6px 10px 14px",
+              background: "transparent",
+            }}
+          >
+            <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minWidth: 0,
+                  // Negrita también con la marca puesta a mano: para quien
+                  // recorre la lista, «pendiente» y «sin abrir» son lo
+                  // mismo —algo que todavía debe atenderse— y distinguirlos
+                  // con dos pesos de letra distintos no ayudaría a nadie.
+                  fontSize: 13,
+                  fontWeight: estaPendiente(c) ? 600 : 400,
+                  color: T.ink,
+                }}
+              >
+                {c.fijada && (
+                  <span title={t("Fijada arriba")} style={{ fontSize: 10, flexShrink: 0 }}>
+                    📌
+                  </span>
+                )}
+                {/*
+                  La red, sólo cuando hay más de una.
+
+                  Hoy todo es WhatsApp: poner el mismo icono verde en las
+                  cuarenta filas no distinguiría nada y sería ruido. En
+                  cuanto entre la primera conversación de Instagram, la
+                  marca aparece sola en todas.
+                */}
+                {variasRedes && (
+                  <span
+                    /*
+                      El nombre de la red va en el `title` del envoltorio y
+                      no en el dibujo.
+
+                      El icono es decorativo —`aria-hidden`— porque al lado
+                      está el nombre de quien escribió, no el de la red. El
+                      `title` acá es para el mouse: pasar por encima y que
+                      diga «Instagram» es la única forma de saber de qué red
+                      es esa marca la primera vez que se la ve.
+                    */
+                    title={canalDe(c.canal).nombre}
+                    style={{ display: "flex", flexShrink: 0 }}
+                  >
+                  <IconoDeCanal
+                    canal={c.canal}
+                    tamano={11}
+                    /*
+                      En un solo tono a propósito.
+
+                      Cuarenta filas con cuatro logotipos de color compiten
+                      con lo único que importa acá, que es el nombre de
+                      quien escribió y si tiene algo sin leer. El color de
+                      marca va donde sí ayuda a reconocer: el encabezado de
+                      cada sección.
+                    */
+                    mono
+                    style={{ opacity: 0.55 }}
+                  />
+                  </span>
+                )}
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tituloDeHilo(c)}
+                </span>
+                {c.silenciada && (
+                  <span title={t("Silenciada: no cuenta para el número rojo")} style={{ fontSize: 10, flexShrink: 0 }}>
+                    🔕
+                  </span>
+                )}
+              </span>
+              <span className="mono" style={{ fontSize: 10.5, color: T.faint, flexShrink: 0 }}>
+                {dia(c.ultimoMensajeEn)}
+              </span>
+            </span>
+
+            <span
+              style={{
+                display: "block",
+                marginTop: 3,
+                fontSize: 11.5,
+                color: T.muted,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {/*
+                Sin las marcas, y sólo donde son marcas.
+
+                La fila es una línea recortada: ahí un `*Hola*` gasta dos
+                caracteres del poco lugar que hay en decorar algo que no se
+                puede decorar. Se quitan según el canal del hilo, porque en
+                Instagram esos asteriscos son asteriscos de verdad y
+                borrarlos sería cambiar lo que dijo la persona.
+              */}
+              {c.ultimoTexto == null
+                ? "—"
+                : canalDe(c.canal).puede.formato === "si"
+                  ? textoPlano(c.ultimoTexto)
+                  : c.ultimoTexto}
+            </span>
+
+            <span style={{ display: "flex", gap: 4, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
+              {/* Las etiquetas van primero: es lo que se busca de un
+                  vistazo cuando se recorre la lista. */}
+              {c.etiquetaIds.map((id) => {
+                const e = etiquetas.find((x) => x.id === id);
+                if (!e) return null;
+                return (
+                  <span key={id} className="pill" style={chip("#fff", e.color)}>
+                    {e.nombre}
+                  </span>
+                );
+              })}
+              {c.vendedorId == null ? (
+                <span className="pill" style={chip("#8A5200", "#FFF6D6")}>{t("sin asignar")}</span>
+              ) : (
+                <span className="pill" style={chip(T.muted, T.paper)}>
+                  {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? t("asignada")}
+                </span>
+              )}
+              {/* Con la marca puesta a mano se dice con todas las letras.
+                  El número solo —«1»— se leería como un mensaje sin abrir,
+                  que es lo contrario de lo que pasó: alguien lo leyó y
+                  decidió dejarlo pendiente. */}
+              {c.noLeida ? (
+                <span className="pill" style={chip("#fff", accent)}>{t("pendiente")}</span>
+              ) : (
+                c.sinLeer > 0 && (
+                  <span
+                    className="pill"
+                    style={chip("#fff", c.silenciada ? T.faint : accent)}
+                  >
+                    {c.sinLeer}
+                  </span>
+                )
+              )}
+            </span>
+          </button>
+
+          {/* A la altura del nombre, que es el primer renglón de la fila:
+              el «⋮» centrado sobre tres renglones quedaría apuntando al
+              texto de la vista previa, que no es lo que se acciona. */}
+          <div style={{ marginTop: 9 }}>
+            <AccionesDelHilo
+              conversacion={c}
+              accent={accent}
+              abierta={activa}
+              onCambio={onRefrescar}
+              onCerrar={() => setAbierta(null)}
+              /* Nulo cuando esa persona no tiene lead: el menú no ofrece
+                 una ficha que no existe. Abrirlo se hace desde el hilo,
+                 que es donde se ve de quién se trata. */
+              onVerFicha={
+                lead ? () => onVerFicha(lead.id) : null
+              }
+            />
+          </div>
+          </div>
+        );
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lista, tope, abierta, leadDe, variasRedes, etiquetas, cat.vendedores, accent, soft, onRefrescar, onVerFicha, t],
+  );
+
   return (
     <div
       style={{
@@ -1992,211 +2220,26 @@ export function Inbox({
             </p>
           )}
 
-          {lista.map((c) => {
-            const activa = c.id === abierta;
-            const lead = leadDe(c.clienteId);
-            return (
-              /*
-               * Un `div` con dos botones adentro, y no un botón con otro.
-               *
-               * La fila entera era un `<button>`. Meter el «⋮» adentro sería
-               * un botón dentro de un botón: HTML inválido, y el navegador
-               * reacomoda el árbol por su cuenta —saca el de adentro— así que
-               * React deja de reconocer lo que dibujó y el menú queda pintado
-               * pero muerto. Es exactamente el error que ya pasó con el aviso
-               * de las 24 horas, y está documentado más abajo.
-               */
-              <div
-                key={c.id}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 2,
-                  padding: "0 8px 0 0",
-                  borderBottom: `1px solid ${T.border}`,
-                  background: activa ? soft : "transparent",
-                }}
-              >
-              <button
-                type="button"
-                onClick={() => setAbierta(c.id)}
-                className="row"
-                style={{
-                  display: "block",
-                  flex: 1,
-                  minWidth: 0,
-                  textAlign: "left",
-                  padding: "10px 6px 10px 14px",
-                  background: "transparent",
-                }}
-              >
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      minWidth: 0,
-                      // Negrita también con la marca puesta a mano: para quien
-                      // recorre la lista, «pendiente» y «sin abrir» son lo
-                      // mismo —algo que todavía debe atenderse— y distinguirlos
-                      // con dos pesos de letra distintos no ayudaría a nadie.
-                      fontSize: 13,
-                      fontWeight: estaPendiente(c) ? 600 : 400,
-                      color: T.ink,
-                    }}
-                  >
-                    {c.fijada && (
-                      <span title={t("Fijada arriba")} style={{ fontSize: 10, flexShrink: 0 }}>
-                        📌
-                      </span>
-                    )}
-                    {/*
-                      La red, sólo cuando hay más de una.
-
-                      Hoy todo es WhatsApp: poner el mismo icono verde en las
-                      cuarenta filas no distinguiría nada y sería ruido. En
-                      cuanto entre la primera conversación de Instagram, la
-                      marca aparece sola en todas.
-                    */}
-                    {variasRedes && (
-                      <span
-                        /*
-                          El nombre de la red va en el `title` del envoltorio y
-                          no en el dibujo.
-
-                          El icono es decorativo —`aria-hidden`— porque al lado
-                          está el nombre de quien escribió, no el de la red. El
-                          `title` acá es para el mouse: pasar por encima y que
-                          diga «Instagram» es la única forma de saber de qué red
-                          es esa marca la primera vez que se la ve.
-                        */
-                        title={canalDe(c.canal).nombre}
-                        style={{ display: "flex", flexShrink: 0 }}
-                      >
-                      <IconoDeCanal
-                        canal={c.canal}
-                        tamano={11}
-                        /*
-                          En un solo tono a propósito.
-
-                          Cuarenta filas con cuatro logotipos de color compiten
-                          con lo único que importa acá, que es el nombre de
-                          quien escribió y si tiene algo sin leer. El color de
-                          marca va donde sí ayuda a reconocer: el encabezado de
-                          cada sección.
-                        */
-                        mono
-                        style={{ opacity: 0.55 }}
-                      />
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {tituloDeHilo(c)}
-                    </span>
-                    {c.silenciada && (
-                      <span title={t("Silenciada: no cuenta para el número rojo")} style={{ fontSize: 10, flexShrink: 0 }}>
-                        🔕
-                      </span>
-                    )}
-                  </span>
-                  <span className="mono" style={{ fontSize: 10.5, color: T.faint, flexShrink: 0 }}>
-                    {dia(c.ultimoMensajeEn)}
-                  </span>
-                </span>
-
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 3,
-                    fontSize: 11.5,
-                    color: T.muted,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {/*
-                    Sin las marcas, y sólo donde son marcas.
-
-                    La fila es una línea recortada: ahí un `*Hola*` gasta dos
-                    caracteres del poco lugar que hay en decorar algo que no se
-                    puede decorar. Se quitan según el canal del hilo, porque en
-                    Instagram esos asteriscos son asteriscos de verdad y
-                    borrarlos sería cambiar lo que dijo la persona.
-                  */}
-                  {c.ultimoTexto == null
-                    ? "—"
-                    : canalDe(c.canal).puede.formato === "si"
-                      ? textoPlano(c.ultimoTexto)
-                      : c.ultimoTexto}
-                </span>
-
-                <span style={{ display: "flex", gap: 4, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
-                  {/* Las etiquetas van primero: es lo que se busca de un
-                      vistazo cuando se recorre la lista. */}
-                  {c.etiquetaIds.map((id) => {
-                    const e = etiquetas.find((x) => x.id === id);
-                    if (!e) return null;
-                    return (
-                      <span key={id} className="pill" style={chip("#fff", e.color)}>
-                        {e.nombre}
-                      </span>
-                    );
-                  })}
-                  {c.vendedorId == null ? (
-                    <span className="pill" style={chip("#8A5200", "#FFF6D6")}>{t("sin asignar")}</span>
-                  ) : (
-                    <span className="pill" style={chip(T.muted, T.paper)}>
-                      {cat.vendedores.find((v) => v.id === c.vendedorId)?.nombre ?? t("asignada")}
-                    </span>
-                  )}
-                  {/* Con la marca puesta a mano se dice con todas las letras.
-                      El número solo —«1»— se leería como un mensaje sin abrir,
-                      que es lo contrario de lo que pasó: alguien lo leyó y
-                      decidió dejarlo pendiente. */}
-                  {c.noLeida ? (
-                    <span className="pill" style={chip("#fff", accent)}>{t("pendiente")}</span>
-                  ) : (
-                    c.sinLeer > 0 && (
-                      <span
-                        className="pill"
-                        style={chip("#fff", c.silenciada ? T.faint : accent)}
-                      >
-                        {c.sinLeer}
-                      </span>
-                    )
-                  )}
-                </span>
-              </button>
-
-              {/* A la altura del nombre, que es el primer renglón de la fila:
-                  el «⋮» centrado sobre tres renglones quedaría apuntando al
-                  texto de la vista previa, que no es lo que se acciona. */}
-              <div style={{ marginTop: 9 }}>
-                <AccionesDelHilo
-                  conversacion={c}
-                  accent={accent}
-                  abierta={activa}
-                  onCambio={onRefrescar}
-                  onCerrar={() => setAbierta(null)}
-                  /* Nulo cuando esa persona no tiene lead: el menú no ofrece
-                     una ficha que no existe. Abrirlo se hace desde el hilo,
-                     que es donde se ve de quién se trata. */
-                  onVerFicha={
-                    lead ? () => onVerFicha(lead.id) : null
-                  }
-                />
-              </div>
-              </div>
-            );
-          })}
+          {filasDeLaLista}
+          {lista.length > tope && (
+            <button
+              type="button"
+              onClick={() => setTope((n) => n + POR_PAGINA_DE_CHATS)}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "12px 14px",
+                fontSize: 12.5,
+                color: accent,
+                background: "transparent",
+                border: "none",
+                borderBottom: `1px solid ${T.border}`,
+                cursor: "pointer",
+              }}
+            >
+              {t("Mostrar más")} ({lista.length - tope})
+            </button>
+          )}
         </div>
       </div>
       )}
@@ -2946,6 +2989,15 @@ export function Inbox({
                   conversacionId={actual.id}
                   accent={accent}
                   disabled={!puedeResponder || nota || ventanaCerrada}
+                  motivo={
+                    nota
+                      ? t("Una nota interna no lleva audio")
+                      : ventanaCerrada
+                        ? t("Pasaron 24 horas desde el último mensaje del cliente: hasta que vuelva a escribir, WhatsApp sólo deja mandar una plantilla")
+                        : !puedeResponder
+                          ? t("WhatsApp no está conectado")
+                          : null
+                  }
                   onEnviado={onRefrescar}
                   onOcupado={setGrabando}
                 />

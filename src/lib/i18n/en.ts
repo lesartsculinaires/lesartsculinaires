@@ -90,6 +90,11 @@ export const EN: Record<string, string> = {
   "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá.":
     "Nobody has written yet. When the first message arrives, it will show up here.",
   "Fijada arriba": "Pinned to top",
+  "Mostrar más": "Show more",
+  "Una nota interna no lleva audio": "An internal note can't carry audio",
+  "Pasaron 24 horas desde el último mensaje del cliente: hasta que vuelva a escribir, WhatsApp sólo deja mandar una plantilla":
+    "24 hours have passed since the customer's last message: until they write again, WhatsApp only allows a template",
+  "WhatsApp no está conectado": "WhatsApp is not connected",
   "Silenciada: no cuenta para el número rojo": "Muted: not counted in the red number",
   "sin asignar": "unassigned",
   asignada: "assigned",

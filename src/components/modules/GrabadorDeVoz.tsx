@@ -67,6 +67,7 @@ export function GrabadorDeVoz({
   conversacionId,
   accent,
   disabled,
+  motivo,
   onEnviado,
   onOcupado,
 }: {
@@ -74,6 +75,11 @@ export function GrabadorDeVoz({
   accent: string;
   /** Verdadero sin token de WhatsApp o con la ventana de 24 horas cerrada. */
   disabled: boolean;
+  /**
+   * Por qué está apagado, dicho como corresponde (27/10/2026): antes decía
+   * siempre «pasadas las 24 horas», aunque fuera por estar en nota interna.
+   */
+  motivo?: string | null;
   onEnviado: () => void;
   /**
    * Avisa cuando el grabador ocupa la fila entera.
@@ -295,7 +301,7 @@ export function GrabadorDeVoz({
           disabled={disabled}
           title={
             disabled
-              ? t("Pasadas las 24 horas sólo se puede mandar una plantilla")
+              ? (motivo ?? t("Pasadas las 24 horas sólo se puede mandar una plantilla"))
               : t("Grabar una nota de voz")
           }
           aria-label={t("Grabar una nota de voz")}
