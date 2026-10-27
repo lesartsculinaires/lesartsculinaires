@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { anotarFilasSinImportar } from "@/app/bases-actions";
+import { anotarFilasSinImportar, quienesYaEstan } from "@/app/bases-actions";
 import { importarClientes, type FilaParaImportar } from "@/app/actions";
 import { RevisarBase } from "@/components/modules/RevisarBase";
+import { YaEstanEnElCrm } from "@/components/modules/YaEstanEnElCrm";
 import {
   claveDePersona,
   construirPlan,
@@ -29,6 +30,7 @@ import { seAcomoda } from "@/lib/texto";
 import { T, softer } from "@/lib/theme";
 import { CORTO_VALOR_OPORTUNIDAD } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
+import type { YaEnElCrm } from "@/lib/yaEnElCrm";
 
 interface Props {
   accent: string;
@@ -158,6 +160,58 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
   );
 
   const aImportar = plan.destinos;
+
+  /*
+   * Quiénes de la base ya están en el CRM, con su vendedor, el canal por el que
+   * entraron y su último mensaje (pedido del 27/10/2026). Se pregunta al
+   * servidor porque la pantalla sólo tiene los leads que esta persona ve, y el
+   * último mensaje vive en el Inbox. Ver `@/lib/yaEnElCrm`.
+   *
+   * Va con el contacto que el plan ya eligió para cada fila, así la lista dice
+   * exactamente a quiénes se va a sumar la base. Medio segundo de espera: al
+   * acomodar las columnas una por una no hace falta preguntar en cada cambio.
+   */
+  const consultaYaEstan = useMemo(() => {
+    const elegido = new Map<number, number>();
+    for (const d of plan.destinos) if (d.unificarCon != null) elegido.set(d.fila.linea, d.unificarCon);
+    return filas
+      .filter((f) => f.errores.length === 0 && (f.telefono || f.correo || elegido.has(f.linea)))
+      .map((f) => ({
+        linea: f.linea,
+        clienteId: elegido.get(f.linea) ?? null,
+        telefono: f.telefono,
+        correo: f.correo,
+      }));
+  }, [filas, plan]);
+  const claveYaEstan = useMemo(() => JSON.stringify(consultaYaEstan), [consultaYaEstan]);
+  const [yaEstan, setYaEstan] = useState<{
+    clave: string;
+    encontrados: YaEnElCrm[];
+    error: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (consultaYaEstan.length === 0) return;
+    let vigente = true;
+    const reloj = window.setTimeout(() => {
+      quienesYaEstan(consultaYaEstan)
+        .then((r) => {
+          if (vigente) setYaEstan({ clave: claveYaEstan, encontrados: r.encontrados, error: r.ok ? null : r.error });
+        })
+        .catch(() => {
+          if (vigente) setYaEstan({ clave: claveYaEstan, encontrados: [], error: "sin conexión con el servidor" });
+        });
+    }, 500);
+    return () => {
+      vigente = false;
+      window.clearTimeout(reloj);
+    };
+    // La clave resume la consulta: con la misma, no se vuelve a preguntar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveYaEstan]);
+  const nombresDelArchivo = useMemo(
+    () => new Map(filas.map((f) => [f.linea, f.nombre ?? ""])),
+    [filas],
+  );
   const seUnifican = plan.resumen.seUnenAlCrm + plan.resumen.seJuntanEntreSi;
   const hayNombre = Object.values(mapeo).includes("nombre");
 
@@ -760,6 +814,16 @@ export function ImportarClientes({ accent, oportunidades, onCerrar, onImportado 
                     </p>
                   )}
                 </div>
+              )}
+
+              {consultaYaEstan.length > 0 && (
+                <YaEstanEnElCrm
+                  encontrados={yaEstan?.encontrados ?? null}
+                  cargando={yaEstan?.clave !== claveYaEstan}
+                  error={yaEstan?.clave === claveYaEstan ? yaEstan.error : null}
+                  nombresDelArchivo={nombresDelArchivo}
+                  accent={accent}
+                />
               )}
 
               <p

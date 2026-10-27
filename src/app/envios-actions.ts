@@ -86,6 +86,11 @@ export interface Preparado extends ActionResult {
   fuera: { porque: Descarte; cuantos: number; ejemplos: string[] }[];
   /** Cuántos destinatarios únicos salieron en las últimas 24 horas. */
   mandadosHoy: number;
+  /**
+   * Quien manda tiene ficha de vendedor/a, así que puede quedarse con las
+   * respuestas. Ver `quedarmeConLasRespuestas`.
+   */
+  puedeAtender: boolean;
 }
 
 const NADA: Preparado = {
@@ -95,6 +100,7 @@ const NADA: Preparado = {
   van: 0,
   fuera: [],
   mandadosHoy: 0,
+  puedeAtender: false,
 };
 
 /**
@@ -210,7 +216,10 @@ export async function prepararEnvio(
     return { ...NADA, ok: false, error: errDest.message };
   }
 
-  const { data: hoy } = await supabase.rpc("enviados_hoy");
+  const [{ data: hoy }, miFicha] = await Promise.all([
+    supabase.rpc("enviados_hoy"),
+    miVendedor(supabase, user.id),
+  ]);
 
   revalidatePath("/");
   return {
@@ -220,7 +229,146 @@ export async function prepararEnvio(
     van: reparto.van.length,
     fuera: agrupar(reparto.fuera),
     mandadosHoy: Number(hoy ?? 0),
+    puedeAtender: miFicha != null,
   };
+}
+
+/** La ficha de vendedor/a de quien está usando el CRM, si tiene una activa. */
+async function miVendedor(supabase: Cliente, usuarioId: string): Promise<number | null> {
+  const { data } = await supabase
+    .from("vendedores")
+    .select("id, activo")
+    .eq("usuario_id", usuarioId)
+    .eq("activo", true)
+    .limit(1)
+    .maybeSingle();
+  return data?.id == null ? null : Number(data.id);
+}
+
+// ------------------------------------------------------ quién atiende
+
+export interface Atencion extends ActionResult {
+  /** Personas sin asesora activa: lo que no tenía dueña quedó a nombre de quien manda. */
+  conmigo: number;
+  /** Personas con un lead abierto de una asesora: siguen con ella. */
+  conSuAsesora: number;
+}
+
+/**
+ * «Las respuestas las atiendo yo»: lo que no tiene dueña queda a nombre de
+ * quien manda el envío.
+ *
+ * ============================================================================
+ * POR QUÉ
+ * ============================================================================
+ *
+ * Pedido el 27/10/2026 para el área académica. Sussy sube una base de
+ * egresados, le manda un masivo, y las respuestas caían en «sin asignar»: en
+ * el de egresados del 23/10, 112 de 149. Se mezclaban con el trabajo diario de
+ * ventas y nadie sabía de quién eran.
+ *
+ * ============================================================================
+ * LO QUE HACE, Y LO QUE NO
+ * ============================================================================
+ *
+ *   SIN ASESORA ACTIVA   Ningún lead abierto con una asesora. El lead del envío
+ *                        y los chats de esa persona que no tienen dueña quedan
+ *                        a nombre de quien manda. Cuando conteste, la respuesta
+ *                        le llega a ella y no a «sin asignar».
+ *
+ *   CON ASESORA          Tiene un lead abierto con alguien de ventas: NO se
+ *                        toca. Es su cliente, y un número de WhatsApp es un
+ *                        solo chat. Quien mandó el masivo lo ve igual con el
+ *                        filtro «Envío masivo» del Inbox.
+ *
+ *   NADA SE PISA         Sólo se llenan huecos: un lead o un chat que ya tiene
+ *                        dueña lo sigue teniendo.
+ *
+ * Se llama al apretar «Mandar», antes de la primera tanda: así el hilo que abre
+ * el envío ya nace a nombre de quien lo atiende (ver `hiloDeEsteNumero`).
+ */
+export async function quedarmeConLasRespuestas(envioId: number): Promise<Atencion> {
+  const vacio = { conmigo: 0, conSuAsesora: 0 };
+  const supabase = await getServerClient();
+  const user = await getUser();
+  if (!supabase || !user) return { ...SIN_SESION, ...vacio };
+
+  const yo = await miVendedor(supabase, user.id);
+  if (yo == null) {
+    return {
+      ok: false,
+      error:
+        "Para quedarte con las respuestas, tu usuario necesita una ficha de vendedor/a activa " +
+        "(se crea en Equipos). Mientras tanto, elegí que las atienda la asesora de cada lead.",
+      ...vacio,
+    };
+  }
+
+  // Los destinatarios: a quiénes y con qué lead.
+  const destinos: { cliente_id: number; oportunidad_id: number | null }[] = [];
+  for (let desde = 0; desde < 50000; desde += 1000) {
+    const { data, error } = await supabase
+      .from("envio_destinatarios")
+      .select("cliente_id, oportunidad_id")
+      .eq("envio_id", envioId)
+      .neq("estado", "omitido")
+      .order("id")
+      .range(desde, desde + 999);
+    if (error) return { ok: false, error: error.message, ...vacio };
+    destinos.push(...((data ?? []) as { cliente_id: number; oportunidad_id: number | null }[]));
+    if ((data ?? []).length < 1000) break;
+  }
+  const clientes = [...new Set(destinos.map((d) => Number(d.cliente_id)))];
+  if (clientes.length === 0) return { ok: true, error: null, ...vacio };
+
+  // Qué estados cierran un lead: con uno de ésos, la asesora ya no está activa.
+  const { data: estados } = await supabase.from("estados").select("id, es_final");
+  const finales = new Set(
+    ((estados ?? []) as { id: number; es_final: boolean }[]).filter((e) => e.es_final).map((e) => Number(e.id)),
+  );
+
+  const conAsesora = new Set<number>();
+  for (let i = 0; i < clientes.length; i += 200) {
+    const { data, error } = await supabase
+      .from("oportunidades")
+      .select("cliente_id, vendedor_id, estado_id")
+      .in("cliente_id", clientes.slice(i, i + 200))
+      .not("vendedor_id", "is", null);
+    if (error) return { ok: false, error: error.message, ...vacio };
+    for (const l of (data ?? []) as { cliente_id: number; vendedor_id: number; estado_id: number | null }[]) {
+      const abierto = l.estado_id == null || !finales.has(Number(l.estado_id));
+      // Los propios no cuentan como «de otra asesora».
+      if (abierto && Number(l.vendedor_id) !== yo) conAsesora.add(Number(l.cliente_id));
+    }
+  }
+
+  const libres = clientes.filter((c) => !conAsesora.has(c));
+  const leadsLibres = [
+    ...new Set(
+      destinos
+        .filter((d) => d.oportunidad_id != null && !conAsesora.has(Number(d.cliente_id)))
+        .map((d) => Number(d.oportunidad_id)),
+    ),
+  ];
+
+  for (let i = 0; i < leadsLibres.length; i += 200) {
+    const { error } = await supabase
+      .from("oportunidades")
+      .update({ vendedor_id: yo })
+      .in("id", leadsLibres.slice(i, i + 200))
+      .is("vendedor_id", null);
+    if (error) return { ok: false, error: error.message, ...vacio };
+  }
+  for (let i = 0; i < libres.length; i += 200) {
+    const { error } = await supabase
+      .from("conversaciones")
+      .update({ vendedor_id: yo })
+      .in("cliente_id", libres.slice(i, i + 200))
+      .is("vendedor_id", null);
+    if (error) return { ok: false, error: error.message, ...vacio };
+  }
+
+  return { ok: true, error: null, conmigo: libres.length, conSuAsesora: conAsesora.size };
 }
 
 /** Junta los descartes por razón, con algunos nombres para poder revisarlos. */

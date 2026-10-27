@@ -2,7 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
+import { colgarDeLosQueYaEstan } from "@/lib/crm/lotesImportacion";
+import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
+import {
+  armarYaEnElCrm,
+  type ChatCrudo,
+  type LeadCrudo,
+  type YaEnElCrm,
+} from "@/lib/yaEnElCrm";
 
 /**
  * Borrar una base subida por error, con las fichas que trajo.
@@ -458,4 +466,100 @@ export async function filasDeLaBase(
     if ((data ?? []).length < 1000) break;
   }
   return { ok: true, error: null, filas: todas };
+}
+
+/**
+ * De las filas de una base que se está por subir, las que ya están en el CRM:
+ * con qué leads, de qué asesora, por qué canal entraron y cuál fue su último
+ * mensaje. Ver `@/lib/yaEnElCrm`.
+ *
+ * Se reconoce a la persona igual que al importar —por teléfono o correo, contra
+ * la tabla de clientes entera— y además por el contacto que la pantalla ya
+ * eligió para unificar (`clienteId`), que puede venir de un nombre que alguien
+ * confirmó. Así la lista dice exactamente a quiénes se va a sumar la base.
+ *
+ * Los leads y los chats se leen con los permisos de quien pregunta: no se
+ * muestra nada que esa persona no pudiera ver en Clientes o en el Inbox.
+ */
+export async function quienesYaEstan(
+  filas: readonly {
+    linea: number;
+    clienteId: number | null;
+    telefono: string | null;
+    correo: string | null;
+  }[],
+): Promise<{ ok: boolean; error: string | null; encontrados: YaEnElCrm[] }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión.", encontrados: [] };
+
+  const pedidas = filas.slice(0, 5000).map((f) => ({
+    linea: Number(f.linea),
+    unificar_con: f.clienteId != null && Number(f.clienteId) > 0 ? Number(f.clienteId) : null,
+    grupo: null,
+    telefono: f.telefono?.trim() || null,
+    correo: f.correo?.trim() || null,
+  }));
+  if (pedidas.length === 0) return { ok: true, error: null, encontrados: [] };
+
+  const contactos = await traerTodo<{
+    id: number;
+    nombre: string | null;
+    telefono: string | null;
+    correo: string | null;
+  }>(() => supabase.from("clientes").select("id, nombre, telefono, correo").order("id"));
+  if (contactos.error) return { ok: false, error: contactos.error, encontrados: [] };
+
+  const lineas = new Map<number, number>();
+  for (const f of colgarDeLosQueYaEstan(
+    pedidas,
+    contactos.data.map((c) => ({
+      clienteId: Number(c.id),
+      nombre: String(c.nombre ?? ""),
+      telefono: c.telefono,
+      correo: c.correo,
+    })),
+  )) {
+    if (f.unificar_con != null) lineas.set(f.linea, f.unificar_con);
+  }
+  if (lineas.size === 0) return { ok: true, error: null, encontrados: [] };
+
+  const ids = [...new Set(lineas.values())];
+  const leads: LeadCrudo[] = [];
+  const chats: ChatCrudo[] = [];
+  // De a doscientos: la lista de ids viaja en la dirección de la consulta.
+  for (let i = 0; i < ids.length; i += 200) {
+    const tramo = ids.slice(i, i + 200);
+    const [l, c] = await Promise.all([
+      supabase
+        .from("oportunidades")
+        .select("cliente_id, codigo, producto_id, vendedor_id, canal_id, etapa_id, estado_id, fecha_registro")
+        .in("cliente_id", tramo),
+      supabase
+        .from("conversaciones")
+        .select("cliente_id, canal, ultimo_mensaje_en, ultimo_texto")
+        .in("cliente_id", tramo)
+        .not("ultimo_mensaje_en", "is", null),
+    ]);
+    if (l.error) return { ok: false, error: l.error.message, encontrados: [] };
+    leads.push(...((l.data ?? []) as LeadCrudo[]));
+    // Sin chats no se pierde nada de lo demás: la lista sale igual, sin el
+    // último mensaje.
+    if (!c.error) chats.push(...((c.data ?? []) as ChatCrudo[]));
+  }
+
+  // Si su rol ve a todo el equipo, un contacto sin leads a la vista es eso, un
+  // contacto sin leads; si no, es gente de otra asesora.
+  const { data: veTodo, error: errVeTodo } = await supabase.rpc("ve_todo");
+
+  return {
+    ok: true,
+    error: null,
+    encontrados: armarYaEnElCrm({
+      lineas,
+      nombres: new Map(contactos.data.map((c) => [Number(c.id), String(c.nombre ?? "")])),
+      leads,
+      chats,
+      veTodo: errVeTodo ? null : veTodo === true,
+    }),
+  };
 }

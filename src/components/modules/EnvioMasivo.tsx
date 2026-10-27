@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { mandarTanda, prepararEnvio, type Preparado } from "@/app/envios-actions";
+import {
+  mandarTanda,
+  prepararEnvio,
+  quedarmeConLasRespuestas,
+  type Preparado,
+} from "@/app/envios-actions";
 import { ImagenDeEncabezado } from "@/components/ui/ImagenDeEncabezado";
 import { aprobadas } from "@/components/ui/SelectorPlantilla";
 import { MARGEN, POR_QUE, TOPE_DIARIO, cuantosQuedan, type Valor } from "@/lib/envios";
@@ -78,6 +83,13 @@ export function EnvioMasivo({
    */
   const [resumen, setResumen] = useState<string | null>(null);
   const corriendo = useRef(false);
+  /**
+   * Quién atiende las respuestas. Por omisión, como siempre: la asesora de cada
+   * lead. «Yo» es para el área académica —ver `quedarmeConLasRespuestas`—.
+   */
+  const [atiendo, setAtiendo] = useState<"asesora" | "yo">("asesora");
+  /** Cómo quedó el reparto de «Las atiendo yo», para decirlo mientras sale. */
+  const [atendidas, setAtendidas] = useState<string | null>(null);
 
   const listas = aprobadas(plantillas);
   const plantilla = listas.find((p) => p.id === elegida) ?? null;
@@ -181,6 +193,35 @@ export function EnvioMasivo({
     /** Se cortó la comunicación con el servidor, no el envío. */
     let seCorto = false;
 
+    /*
+     * «Las atiendo yo» se resuelve ANTES de mandar nada: así el hilo que abre
+     * el envío ya nace a nombre de quien lo atiende, y si algo falla no salió
+     * ningún mensaje y se puede volver a elegir.
+     */
+    let atencion = "";
+    if (atiendo === "yo") {
+      try {
+        const a = await quedarmeConLasRespuestas(prep.envioId);
+        if (!a.ok) {
+          setError(a.error);
+          setPaso("revisar");
+          corriendo.current = false;
+          return;
+        }
+        atencion =
+          ` ${a.conmigo} ${a.conmigo === 1 ? "persona quedó" : "personas quedaron"} a tu nombre` +
+          (a.conSuAsesora > 0
+            ? `; ${a.conSuAsesora} ${a.conSuAsesora === 1 ? "sigue" : "siguen"} con su asesora.`
+            : ".");
+        setAtendidas(atencion.trim());
+      } catch {
+        setError("No se pudo dejar las respuestas a tu nombre. No salió ningún mensaje; probá de nuevo.");
+        setPaso("revisar");
+        corriendo.current = false;
+        return;
+      }
+    }
+
     try {
       // Un tope de vueltas por si algo devolviera siempre lo mismo: sin esto,
       // un error que no avanza dejaría la pantalla girando para siempre.
@@ -245,7 +286,8 @@ export function EnvioMasivo({
         (seCorto
           ? " El resto quedó pendiente: en Envíos, abrí esta campaña y apretá" +
             " «Seguir mandando»."
-          : ""),
+          : "") +
+        atencion,
     );
   };
 
@@ -516,6 +558,40 @@ export function EnvioMasivo({
               </>
             )}
 
+            {prep.van > 0 && prep.puedeAtender && (
+              <fieldset data-quien-atiende style={{ ...caja, margin: "0 0 14px" }}>
+                <legend style={{ ...etiqueta, padding: 0 }}>¿Quién atiende las respuestas?</legend>
+                {([
+                  [
+                    "asesora",
+                    "La asesora de cada lead",
+                    "Como siempre: el chat queda con la asesora del lead, y los que no tienen quedan sin asignar.",
+                  ],
+                  [
+                    "yo",
+                    "Las atiendo yo",
+                    "Quienes no tienen asesora activa quedan a tu nombre, el lead y el chat. Los que ya tienen un lead abierto con una asesora siguen con ella; los ves con el filtro «Envío masivo» del Inbox.",
+                  ],
+                ] as const).map(([valor, titulo, detalle]) => (
+                  <label
+                    key={valor}
+                    style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 6, cursor: "pointer" }}
+                  >
+                    <input
+                      type="radio"
+                      name="quien-atiende"
+                      checked={atiendo === valor}
+                      onChange={() => setAtiendo(valor)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span style={{ fontSize: 12.5, lineHeight: 1.45, color: T.ink }}>
+                      <strong>{titulo}.</strong> <span style={{ color: T.muted }}>{detalle}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+
             {error && <p style={malo}>{error}</p>}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -564,6 +640,11 @@ export function EnvioMasivo({
               {avance.hechos} enviados
               {avance.fallidos > 0 && `, ${avance.fallidos} no llegaron`}
             </p>
+            {atendidas && (
+              <p data-atendidas style={{ margin: "6px 0 0", fontSize: 12, color: T.muted }}>
+                Respuestas: {atendidas}
+              </p>
+            )}
             <p style={{ margin: "10px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.55 }}>
               No cierres esta ventana. Si se corta, lo que salió no se vuelve a mandar: el
               envío se puede reanudar desde donde quedó.

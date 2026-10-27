@@ -62,6 +62,11 @@ import { activosCon } from "@/lib/types";
 import { hoyEnElSalvador } from "@/lib/reporte";
 import type { Conversacion, Etiqueta, Mensaje, Oportunidad, Plantilla } from "@/lib/types";
 import { useT } from "@/lib/i18n/idioma";
+import {
+  clientesDelEnvio,
+  listasParaFiltrarLaBandeja,
+  type OpcionDeFiltro,
+} from "@/app/filtros-bandeja-actions";
 
 /**
  * Un mensaje mandado desde esta pantalla, todavía provisorio o ya confirmado.
@@ -320,6 +325,79 @@ export function Inbox({
   const [porVendedor, setPorVendedor] = useState<number | null>(null);
 
   /*
+   * Los chats de la gente de una base, o de quienes recibieron un envío masivo.
+   *
+   * Lo pidió la escuela el 27/10/2026 para el área académica: quien sube una
+   * base y le manda un masivo tiene que poder ver juntas las respuestas, sin
+   * que se le mezclen con el trabajo diario de ventas. No se esconde nada a
+   * nadie: es un recorte de la lista de quien lo pone. Ver
+   * `filtros-bandeja-actions.ts`.
+   */
+  const [listasDeFiltro, setListasDeFiltro] = useState<{
+    bases: OpcionDeFiltro[];
+    envios: OpcionDeFiltro[];
+  } | null>(null);
+  useEffect(() => {
+    if (soloHilo) return;
+    let vivo = true;
+    listasParaFiltrarLaBandeja()
+      .then((r) => vivo && setListasDeFiltro(r))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [soloHilo]);
+  const [porBase, setPorBase] = useState<number | null>(null);
+
+  /*
+   * Los filtros plegados, para ver más chats.
+   *
+   * Pedido el 27/10/2026: con la asesora, el día, las redes y las etiquetas a
+   * la vista, en una laptop la lista arrancaba por la mitad de la columna y se
+   * veían seis nombres. Plegados queda la búsqueda y las pestañas de arriba;
+   * lo que esté puesto se sigue aplicando y se dice en una línea.
+   *
+   * Se recuerda en este navegador: es una preferencia de cada persona, no un
+   * dato del CRM. Si el navegador no deja guardar, arranca desplegado.
+   */
+  const [filtrosPlegados, setFiltrosPlegados] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("lac.inbox.filtrosPlegados") === "1") setFiltrosPlegados(true);
+    } catch {}
+  }, []);
+  const plegarFiltros = (plegar: boolean) => {
+    setFiltrosPlegados(plegar);
+    try {
+      localStorage.setItem("lac.inbox.filtrosPlegados", plegar ? "1" : "0");
+    } catch {}
+  };
+  const [porEnvio, setPorEnvio] = useState<number | null>(null);
+  /** Las personas de la base: la que las creó y las que las sumó al unificar. */
+  const clientesDeLaBase = useMemo(() => {
+    if (porBase == null) return null;
+    return new Set(
+      oportunidades
+        .filter((o) => o.importacionId === porBase || (o.bases ?? []).includes(porBase))
+        .map((o) => o.clienteId),
+    );
+  }, [porBase, oportunidades]);
+  const [delEnvio, setDelEnvio] = useState<{ id: number; ids: ReadonlySet<number>; error: string | null } | null>(null);
+  useEffect(() => {
+    if (porEnvio == null) return;
+    let vivo = true;
+    clientesDelEnvio(porEnvio)
+      .then((r) => vivo && setDelEnvio({ id: porEnvio, ids: new Set(r.clienteIds), error: r.ok ? null : r.error }))
+      .catch(() => vivo && setDelEnvio({ id: porEnvio, ids: new Set(), error: "No se pudo consultar el envío." }));
+    return () => {
+      vivo = false;
+    };
+  }, [porEnvio]);
+  /** Null = sin filtro. Vacío mientras se consulta: mejor nada que la lista de otro envío. */
+  const clientesDelEnvioPuesto: ReadonlySet<number> | null =
+    porEnvio == null ? null : delEnvio?.id === porEnvio ? delEnvio.ids : new Set<number>();
+
+  /*
    * «Contestadas el día»: las conversaciones que recibieron respuesta en una
    * fecha. Lo pidió la escuela el 14/10/2026 para que ventas vea qué contestó
    * cada una un día dado. Con una asesora elegida arriba, son las que contestó
@@ -362,6 +440,16 @@ export function Inbox({
         .map((f) => f.conversacionId),
     );
   }, [diaContestadas, contestadas, porVendedor]);
+
+  /** Lo que está filtrando la lista, dicho en palabras. Ver `filtrosPlegados`. */
+  const filtrosPuestos = [
+    ...[...abiertos].map((k) => canalDe(k).nombre),
+    ...(porVendedor != null ? [cat.vendedores.find((v) => v.id === porVendedor)?.nombre ?? "una asesora"] : []),
+    ...(porEtiqueta != null ? [etiquetas.find((e) => e.id === porEtiqueta)?.nombre ?? "una etiqueta"] : []),
+    ...(porBase != null ? [`base «${listasDeFiltro?.bases.find((b) => b.id === porBase)?.nombre ?? porBase}»`] : []),
+    ...(porEnvio != null ? [`envío «${listasDeFiltro?.envios.find((e) => e.id === porEnvio)?.nombre ?? porEnvio}»`] : []),
+    ...(diaContestadas ? [`contestadas el ${diaContestadas.split("-").reverse().join("/")}`] : []),
+  ];
   const [nuevoChat, setNuevoChat] = useState(false);
   const fotoRef = useRef<HTMLInputElement | null>(null);
   const [mandandoFoto, setMandandoFoto] = useState(false);
@@ -604,7 +692,10 @@ export function Inbox({
                   (!soloPendientes || estaPendiente(c)) &&
                   (porVendedor == null || c.vendedorId === porVendedor)) &&
                 (abiertos.size === 0 || abiertos.has(c.canal)) &&
-                (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)))) &&
+                (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)) &&
+                (clientesDeLaBase == null || (c.clienteId != null && clientesDeLaBase.has(c.clienteId))) &&
+                (clientesDelEnvioPuesto == null ||
+                  (c.clienteId != null && clientesDelEnvioPuesto.has(c.clienteId))))) &&
             (!buscando || coincideHilo(c, busqueda, nombreEnElCrm(c.clienteId))),
         )
         /*
@@ -620,7 +711,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -1972,7 +2063,8 @@ export function Inbox({
           deja claro que manda ella.
         */}
         <div style={{ padding: "9px 12px 8px", borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
             <span
               aria-hidden
               style={{
@@ -2027,6 +2119,56 @@ export function Inbox({
               </button>
             )}
           </div>
+            {!soloHilo && (
+              <button
+                type="button"
+                data-plegar-filtros
+                onClick={() => plegarFiltros(!filtrosPlegados)}
+                aria-expanded={!filtrosPlegados}
+                title={filtrosPlegados ? t("Mostrar los filtros") : t("Ocultar los filtros para ver más chats")}
+                style={{
+                  flexShrink: 0,
+                  height: 32,
+                  padding: "0 9px",
+                  fontSize: 12,
+                  borderRadius: 7,
+                  border: `1px solid ${filtrosPlegados && filtrosPuestos.length > 0 ? accent : T.border}`,
+                  background: filtrosPlegados && filtrosPuestos.length > 0 ? softer(accent) : T.surface,
+                  color: T.ink,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t("Filtros")}
+                {filtrosPlegados && filtrosPuestos.length > 0 ? ` ${filtrosPuestos.length}` : ""}{" "}
+                {filtrosPlegados ? "▾" : "▴"}
+              </button>
+            )}
+          </div>
+
+          {/*
+            Plegados, lo que está puesto se dice en una línea: un filtro que no
+            se ve y sigue mandando es la forma más rápida de creer que faltan
+            chats.
+          */}
+          {filtrosPlegados && filtrosPuestos.length > 0 && !buscando && (
+            <p data-filtros-puestos style={{ margin: "6px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.45 }}>
+              {t("Filtrando:")} {filtrosPuestos.join(" · ")}.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setPorVendedor(null);
+                  setPorBase(null);
+                  setPorEnvio(null);
+                  setDiaContestadas(null);
+                  setPorEtiqueta(null);
+                  alternarCanal(null);
+                }}
+                style={{ fontSize: 11.5, color: accent, padding: 0 }}
+              >
+                {t("Quitar todos")}
+              </button>
+            </p>
+          )}
 
           {/*
             Decir que se está buscando en todo.
@@ -2043,6 +2185,8 @@ export function Inbox({
             </p>
           )}
 
+          {!filtrosPlegados && (
+          <>
           {/*
             De quién son los hilos.
 
@@ -2084,6 +2228,88 @@ export function Inbox({
                 <option key={v.id} value={v.id}>{v.nombre}</option>
               ))}
             </select>
+          )}
+
+          {listasDeFiltro && (listasDeFiltro.bases.length > 0 || listasDeFiltro.envios.length > 0) && (
+            <div data-filtros-de-base style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 7 }}>
+              {listasDeFiltro.bases.length > 0 && (
+                <select
+                  value={porBase ?? ""}
+                  onChange={(e) => setPorBase(e.target.value === "" ? null : Number(e.target.value))}
+                  aria-label={t("Filtrar por base")}
+                  title={t("Ver sólo los chats de la gente de una base subida")}
+                  style={{
+                    minWidth: 0,
+                    height: 30,
+                    boxSizing: "border-box",
+                    padding: "0 8px",
+                    fontSize: 12.5,
+                    borderRadius: 7,
+                    border: `1px solid ${porBase == null ? T.border : accent}`,
+                    background: porBase == null ? T.surface : softer(accent),
+                    color: T.ink,
+                  }}
+                >
+                  <option value="">{t("Todas las bases")}</option>
+                  {listasDeFiltro.bases.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nombre} · {dia(b.creadoEn)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {listasDeFiltro.envios.length > 0 && (
+                <select
+                  value={porEnvio ?? ""}
+                  onChange={(e) => setPorEnvio(e.target.value === "" ? null : Number(e.target.value))}
+                  aria-label={t("Filtrar por envío masivo")}
+                  title={t("Ver sólo los chats de quienes recibieron un envío masivo")}
+                  style={{
+                    minWidth: 0,
+                    height: 30,
+                    boxSizing: "border-box",
+                    padding: "0 8px",
+                    fontSize: 12.5,
+                    borderRadius: 7,
+                    border: `1px solid ${porEnvio == null ? T.border : accent}`,
+                    background: porEnvio == null ? T.surface : softer(accent),
+                    color: T.ink,
+                  }}
+                >
+                  <option value="">{t("Todos los envíos")}</option>
+                  {listasDeFiltro.envios.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nombre} · {dia(e.creadoEn)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+          {(porBase != null || porEnvio != null) && !buscando && (
+            <p data-resumen-filtro-base style={{ margin: "6px 0 0", fontSize: 12, color: delEnvio?.error && porEnvio != null ? "#9E2F29" : T.muted, lineHeight: 1.45 }}>
+              {porEnvio != null && delEnvio?.id !== porEnvio
+                ? t("Buscando…")
+                : porEnvio != null && delEnvio?.error
+                  ? delEnvio.error
+                  : `${lista.length} ${lista.length === 1 ? "chat" : "chats"} ${
+                      porBase != null && porEnvio != null
+                        ? "de esa base que recibieron ese envío"
+                        : porBase != null
+                          ? "de gente de esa base"
+                          : "de quienes recibieron ese envío"
+                    }.`}{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setPorBase(null);
+                  setPorEnvio(null);
+                }}
+                style={{ fontSize: 12, color: accent, padding: 0 }}
+              >
+                {t("Quitar")}
+              </button>
+            </p>
           )}
 
           <div data-contestadas style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
@@ -2139,6 +2365,8 @@ export function Inbox({
                     })()}
             </p>
           )}
+          </>
+          )}
         </div>
 
         {/*
@@ -2150,18 +2378,20 @@ export function Inbox({
           porque además de filtrar dice qué redes están previstas y qué le
           falta a cada una.
         */}
-        <CanalesDeLaBandeja
-          cuantos={porRed}
-          sinLeer={sinLeerPorRed}
-          abiertos={abiertos}
-          conectados={canalesConectados}
-          accent={accent}
-          onAlternar={alternarCanal}
-        />
+        {!filtrosPlegados && (
+          <CanalesDeLaBandeja
+            cuantos={porRed}
+            sinLeer={sinLeerPorRed}
+            abiertos={abiertos}
+            conectados={canalesConectados}
+            accent={accent}
+            onAlternar={alternarCanal}
+          />
+        )}
 
         {/* Filtro por etiqueta. Sólo aparece si hay etiquetas creadas: una fila
             de controles vacía en una bandeja recién estrenada es ruido. */}
-        {etiquetas.some((e) => e.activa) && (
+        {!filtrosPlegados && etiquetas.some((e) => e.activa) && (
           <div
             style={{
               display: "flex",
