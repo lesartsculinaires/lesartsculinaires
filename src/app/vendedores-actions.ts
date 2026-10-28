@@ -310,7 +310,14 @@ async function tieneCuentaCrm(
  */
 export async function editarVendedor(
   id: number,
-  v: { nombre: string; correo: string | null; telefono: string | null; forzar?: boolean },
+  v: {
+    nombre: string;
+    correo: string | null;
+    telefono: string | null;
+    /** Área académica: sus chats van a la sección «Académico» del Inbox. */
+    academico?: boolean;
+    forzar?: boolean;
+  },
 ): Promise<ResultadoVendedor> {
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
@@ -363,7 +370,9 @@ export async function editarVendedor(
 
   const { error } = await supabase
     .from("vendedores")
-    .update({ nombre, correo, telefono })
+    // `academico` sólo viaja si vino: sin la migración, nombrarla haría
+    // fallar el guardado entero.
+    .update({ nombre, correo, telefono, ...(v.academico === undefined ? {} : { academico: v.academico }) })
     .eq("id", id);
 
   if (error) {

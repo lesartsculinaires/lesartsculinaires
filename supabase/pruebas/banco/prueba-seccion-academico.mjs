@@ -65,6 +65,30 @@ try {
   await p.waitForTimeout(500);
   es("al tocarla otra vez, vuelve a Todos", await nuestras(), ["Acad Sussy Uno", "Acad Ventas Dos"]);
 
+  // La casilla de Equipos, sobre la primera ficha de la lista: se marca y se
+  // desmarca desde «Editar perfil», y queda guardada.
+  await p.locator('aside button[data-mod="Equipos"]').click();
+  const boton = p.getByRole("button", { name: "Editar perfil" }).first();
+  await boton.waitFor({ timeout: 15000 });
+  const abrir = async () => {
+    await boton.click();
+    await p.locator("[data-casilla-academico]").waitFor({ timeout: 5000 });
+    return (await p.locator("[role=dialog]").last().getAttribute("aria-label")).replace("Editar a ", "");
+  };
+  const quien = await abrir();
+  const id = sql(`select id from vendedores where nombre = '${quien}'`);
+  const antes = sql(`select academico from vendedores where id = ${id}`);
+  es(`la casilla de ${quien} dice lo que hay en la base`, await p.locator("[data-casilla-academico] input").isChecked(), antes === "t");
+  await p.locator("[data-casilla-academico] input").setChecked(antes !== "t");
+  await p.getByRole("button", { name: "Guardar cambios" }).click();
+  await p.waitForTimeout(1500);
+  es("cambiarla se guarda", sql(`select academico from vendedores where id = ${id}`), antes === "t" ? "f" : "t");
+  await abrir();
+  await p.locator("[data-casilla-academico] input").setChecked(antes === "t");
+  await p.getByRole("button", { name: "Guardar cambios" }).click();
+  await p.waitForTimeout(1500);
+  es("y volverla a como estaba, también", sql(`select academico from vendedores where id = ${id}`), antes);
+
   es("sin errores en la página", errores, []);
 } catch (e) {
   f++;
