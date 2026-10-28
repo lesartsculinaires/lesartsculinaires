@@ -262,6 +262,41 @@ console.log("\n── lo que choca no se pisa, pero tampoco se pierde ──");
   es("QUEDÓ ANOTADO EN LA BITÁCORA", enLaBitacora, "1");
 }
 
+console.log("\n── LA MISMA VENTA GANADA, CARGADA OTRA VEZ Y CON DOBLE CLIC (27/10/2026) ──");
+{
+  /*
+   * Diego Mauricio: cuatro leads Ganado del mismo diplomado, el mismo día.
+   * Como el lead que ya estaba era Ganado —cerrado—, cada carga abría otro, y
+   * un doble clic en «Unificar» abría dos.
+   */
+  await p.getByRole("button", { name: "Entendido, cerrar" }).click();
+  await p.waitForTimeout(1500);
+
+  const programa = sql("select nombre from public.productos order by id limit 1;");
+  sql(`
+    update public.oportunidades o
+       set producto_id = (select id from public.productos where nombre = '${programa}'),
+           estado_id = (select id from public.estados where nombre = 'Ganado')
+      from public.clientes c
+     where c.id = o.cliente_id and c.correo = '${CORREO}';
+  `);
+
+  await cargarDeNuevo({ programa });
+  await p.getByRole("button", { name: /Unificar con este contacto/ }).first().dblclick();
+  await p.waitForTimeout(3500);
+
+  es("SIGUE SIENDO UNA SOLA VENTA", cuantosLeads(), 1);
+  const t = await texto();
+  es("y la pantalla lo dice", /Quedó un solo lead/.test(t), true);
+  es("sin tocarle el estado", sql(`select e.nombre from public.oportunidades o join public.estados e on e.id = o.estado_id join public.clientes c on c.id = o.cliente_id where c.correo = '${CORREO}'`), "Ganado");
+
+  // Se deja como estaba para lo que sigue: abierto y sin estado.
+  sql(`
+    update public.oportunidades o set estado_id = null
+      from public.clientes c where c.id = o.cliente_id and c.correo = '${CORREO}';
+  `);
+}
+
 console.log("\n── PERO OTRO PROGRAMA SÍ ES OTRO TRATO ──");
 {
   /*
@@ -282,7 +317,8 @@ console.log("\n── PERO OTRO PROGRAMA SÍ ES OTRO TRATO ──");
   `);
 
   await cargarDeNuevo({ programa: programas[1] });
-  await p.getByRole("button", { name: /Unificar con este contacto/ }).first().click();
+  // Con doble clic: aunque sea otro trato, se abre UNO, no dos.
+  await p.getByRole("button", { name: /Unificar con este contacto/ }).first().dblclick();
   await p.waitForTimeout(3000);
   await foto("5-otro-programa");
 

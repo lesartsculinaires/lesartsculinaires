@@ -192,6 +192,35 @@ export const estaCerrada = (
 /** Por qué un lead no se pudo juntar con ninguno de los que ya estaban. */
 export type PorQueNoSeJunta = "todas_cerradas" | "otro_programa";
 
+/**
+ * Hasta cuántos días después, el mismo programa ya GANADO es la misma venta.
+ *
+ * ============================================================================
+ * EL AGUJERO QUE ESTO TAPA
+ * ============================================================================
+ *
+ * «Una cerrada no se toca» tiene una consecuencia que se vio el 27/10/2026:
+ * Diego Mauricio Hernández Orellana quedó con CUATRO leads del Diplomado de
+ * Pastelería, los cuatro Ganado, el mismo día y de la misma asesora. Cada
+ * vez que se volvió a cargar la venta, el lead que ya estaba era Ganado —o
+ * sea cerrado— y se abría otro. El tablero contaba cuatro ventas.
+ *
+ * Así que una entrada del MISMO programa que un lead ya ganado hace poco no
+ * abre otro: cae sobre ése. Sólo completa huecos, como siempre —no le cambia
+ * la etapa, el estado ni la plata—, así que lo que ya pasó no se mueve.
+ *
+ * Con un plazo, porque pasado un tiempo sí puede ser otra venta: alguien que
+ * vuelve a tomar el mismo curso al año siguiente. Un mes cubre de sobra el
+ * «se cargó dos veces» sin tragarse una compra de verdad.
+ *
+ * Perdido no entra en esta regla: quien perdimos y vuelve a preguntar es un
+ * trato nuevo, y está bien que se abra.
+ */
+export const DIAS_DE_LA_MISMA_VENTA = 30;
+
+const diasEntre = (a: string, b: string): number =>
+  Math.abs(Date.parse(a.slice(0, 10)) - Date.parse(b.slice(0, 10))) / 86_400_000;
+
 export interface Absorbente {
   /** El lead que se queda con todo. Null si hay que crear uno nuevo. */
   lead: LeadExistente | null;
@@ -211,11 +240,13 @@ export function cualAbsorbe(
   existentes: readonly LeadExistente[],
   entrante: LeadEntrante,
   estadosFinales: ReadonlySet<number>,
+  /**
+   * Los estados que son una venta ganada. Sin ellos, sólo cuenta como ganado
+   * el lead con `venta_cerrada`. Ver `DIAS_DE_LA_MISMA_VENTA`.
+   */
+  estadosGanados: ReadonlySet<number> = new Set(),
 ): Absorbente {
   if (existentes.length === 0) return { lead: null, porQueNo: null };
-
-  const abiertas = existentes.filter((l) => !estaCerrada(l, estadosFinales));
-  if (abiertas.length === 0) return { lead: null, porQueNo: "todas_cerradas" };
 
   /*
    * Todos los programas por los que preguntó ese lead, no sólo el que se le
@@ -231,6 +262,25 @@ export function cualAbsorbe(
   const preguntoPor = (l: LeadExistente): (number | null)[] =>
     l.programas && l.programas.length > 0 ? [...l.programas] : [l.producto_id];
 
+  /** La venta de este mismo programa, ganada hace poco. Ver `DIAS_DE_LA_MISMA_VENTA`. */
+  const laMismaVenta = (): LeadExistente | null => {
+    const programa = entrante.producto_id;
+    if (programa == null) return null;
+    const ganadas = existentes.filter(
+      (l) =>
+        ((l.estado_id != null && estadosGanados.has(l.estado_id)) || (l.venta_cerrada ?? 0) > 0) &&
+        preguntoPor(l).includes(programa) &&
+        diasEntre(l.fecha_registro, entrante.fecha_registro) <= DIAS_DE_LA_MISMA_VENTA,
+    );
+    return [...ganadas].sort((a, b) => b.id - a.id)[0] ?? null;
+  };
+
+  const abiertas = existentes.filter((l) => !estaCerrada(l, estadosFinales));
+  if (abiertas.length === 0) {
+    const ganada = laMismaVenta();
+    return ganada ? { lead: ganada, porQueNo: null } : { lead: null, porQueNo: "todas_cerradas" };
+  }
+
   /*
    * Un lead sin programa no contradice a ninguno: se suma al que haya. Es el
    * caso más común de todos —los formularios de Meta no preguntan el programa—
@@ -243,7 +293,10 @@ export function cualAbsorbe(
           preguntoPor(l).some((p) => p == null || p === entrante.producto_id),
         );
 
-  if (compatibles.length === 0) return { lead: null, porQueNo: "otro_programa" };
+  if (compatibles.length === 0) {
+    const ganada = laMismaVenta();
+    return ganada ? { lead: ganada, porQueNo: null } : { lead: null, porQueNo: "otro_programa" };
+  }
 
   /*
    * El que coincide exactamente de programa gana sobre el que no tiene
