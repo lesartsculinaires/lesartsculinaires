@@ -519,7 +519,9 @@ async function leerCatalogo(supabase: SupabaseClient): Promise<LoadResult<Catalo
     // desplegables usan `activos()`; los que sólo tienen que poner un nombre a
     // algo que ya pasó —un evento del calendario, una ficha vieja— necesitan
     // también a los dados de baja, o mostrarían un hueco donde hay un dato.
-    supabase.from("vendedores").select("id, nombre, activo, correo, telefono").order("nombre"),
+    // Con `*` por lo mismo que los productos: `academico` llega con una
+    // migración, y nombrarla antes de correrla tumbaría el catálogo.
+    supabase.from("vendedores").select("*").order("nombre"),
     // Con `*` y no con la lista de columnas: el horario del programa se agrega
     // en una migración, y nombrarlo acá tumbaría el catálogo entero —y con él
     // el CRM— en el rato que va entre el despliegue del código y la corrida
@@ -552,6 +554,7 @@ async function leerCatalogo(supabase: SupabaseClient): Promise<LoadResult<Catalo
       activo: r.activo !== false,
       correo: r.correo ? str(r.correo) : null,
       telefono: r.telefono ? str(r.telefono) : null,
+      academico: r.academico === true,
     })),
     productos: rows(prod).map(
       (r): Producto => ({

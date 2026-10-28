@@ -42,6 +42,11 @@ export interface Vendedor extends CatalogItem {
    */
   correo: string | null;
   telefono: string | null;
+  /**
+   * Del área académica: sus chats se ven en la sección «Académico» del Inbox.
+   * Opcional porque la columna llega con una migración.
+   */
+  academico?: boolean;
 }
 
 /** Los que todavía atienden: es lo que va en cualquier desplegable. */

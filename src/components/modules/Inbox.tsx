@@ -42,7 +42,7 @@ import {
 } from "@/lib/permisoDeLlamada";
 import { coincideHilo, hayBusqueda } from "@/lib/buscarEnBandeja";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
-import { CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
+import { CLAVE_ACADEMICO, CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
 import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
@@ -443,7 +443,7 @@ export function Inbox({
 
   /** Lo que está filtrando la lista, dicho en palabras. Ver `filtrosPlegados`. */
   const filtrosPuestos = [
-    ...[...abiertos].map((k) => canalDe(k).nombre),
+    ...[...abiertos].map((k) => (k === CLAVE_ACADEMICO ? "Académico" : canalDe(k).nombre)),
     ...(porVendedor != null ? [cat.vendedores.find((v) => v.id === porVendedor)?.nombre ?? "una asesora"] : []),
     ...(porEtiqueta != null ? [etiquetas.find((e) => e.id === porEtiqueta)?.nombre ?? "una etiqueta"] : []),
     ...(porBase != null ? [`base «${listasDeFiltro?.bases.find((b) => b.id === porBase)?.nombre ?? porBase}»`] : []),
@@ -661,6 +661,12 @@ export function Inbox({
 
   const buscando = hayBusqueda(busqueda);
 
+  /** Las fichas del área académica. Ver la sección «Académico». */
+  const academicos = useMemo(
+    () => new Set(cat.vendedores.filter((v) => v.academico).map((v) => v.id)),
+    [cat.vendedores],
+  );
+
   const lista = useMemo(
     () =>
       conversaciones
@@ -691,7 +697,10 @@ export function Inbox({
                   (!soloSinAsignar || c.vendedorId == null) &&
                   (!soloPendientes || estaPendiente(c)) &&
                   (porVendedor == null || c.vendedorId === porVendedor)) &&
-                (abiertos.size === 0 || abiertos.has(c.canal)) &&
+                (abiertos.size === 0 ||
+                  (abiertos.has(CLAVE_ACADEMICO)
+                    ? c.vendedorId != null && academicos.has(c.vendedorId)
+                    : abiertos.has(c.canal))) &&
                 (porEtiqueta == null || c.etiquetaIds.includes(porEtiqueta)) &&
                 (clientesDeLaBase == null || (c.clienteId != null && clientesDeLaBase.has(c.clienteId))) &&
                 (clientesDelEnvioPuesto == null ||
@@ -711,10 +720,26 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto, academicos],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
+  /*
+   * La sección «Académico»: los chats asignados a una ficha académica (hoy,
+   * Sussy). Pedido el 28/10/2026. Ver `CanalesDeLaBandeja`.
+   */
+  const deAcademico = useMemo(() => {
+    if (academicos.size === 0) return null;
+    let total = 0;
+    let sinLeer = 0;
+    for (const c of conversaciones) {
+      if (c.archivada || c.vendedorId == null || !academicos.has(c.vendedorId)) continue;
+      total += 1;
+      if (estaPendiente(c)) sinLeer += 1;
+    }
+    return { total, sinLeer };
+  }, [conversaciones, academicos]);
+
   const porRed = useMemo(() => {
     const m: Record<string, number> = {};
     for (const c of conversaciones) {
@@ -2386,6 +2411,7 @@ export function Inbox({
             conectados={canalesConectados}
             accent={accent}
             onAlternar={alternarCanal}
+            academico={deAcademico}
           />
         )}
 
@@ -2453,6 +2479,8 @@ export function Inbox({
                   t("No queda nada pendiente: todos los hilos están leídos y contestados.")
                 : verArchivadas
                 ? t("No hay conversaciones archivadas.")
+                : abiertos.has(CLAVE_ACADEMICO)
+                ? t("Todavía no hay chats asignados al área académica.")
                 : abiertos.size === 0
                   ? t("Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá.")
                   : abiertos.size === 1
