@@ -31,6 +31,7 @@ export function EditarVendedor({
   const [nombre, setNombre] = useState(vendedor.nombre);
   const [correo, setCorreo] = useState(vendedor.correo ?? "");
   const [telefono, setTelefono] = useState(vendedor.telefono ?? "");
+  const [academico, setAcademico] = useState(vendedor.academico === true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parecidos, setParecidos] = useState<string[] | null>(null);
@@ -43,6 +44,7 @@ export function EditarVendedor({
       nombre,
       correo: correo.trim() || null,
       telefono: telefono.trim() || null,
+      academico,
       forzar,
     });
 
@@ -64,7 +66,8 @@ export function EditarVendedor({
   const cambio =
     nombre !== vendedor.nombre ||
     correo !== (vendedor.correo ?? "") ||
-    telefono !== (vendedor.telefono ?? "");
+    telefono !== (vendedor.telefono ?? "") ||
+    academico !== (vendedor.academico === true);
 
   return (
     <div
@@ -146,6 +149,32 @@ export function EditarVendedor({
           />
           <span style={{ fontSize: 10.5, color: T.faint, lineHeight: 1.4 }}>
             Con código de país y sólo dígitos.
+          </span>
+        </label>
+
+        {/*
+          El área académica (28/10/2026). Marcada, sus chats se ven en la
+          sección «🎓 Académico» del Inbox, junto a los canales. No cambia lo
+          que puede hacer ni a quién ve: eso lo decide su rol.
+        */}
+        <label
+          data-casilla-academico
+          style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 12, cursor: "pointer" }}
+        >
+          <input
+            type="checkbox"
+            checked={academico}
+            onChange={(e) => {
+              setAcademico(e.target.checked);
+              setError(null);
+            }}
+            style={{ marginTop: 2 }}
+          />
+          <span style={{ fontSize: 12.5, color: T.ink, lineHeight: 1.45 }}>
+            Área académica
+            <span style={{ display: "block", fontSize: 11, color: T.faint }}>
+              Sus chats aparecen en la sección «🎓 Académico» del Inbox.
+            </span>
           </span>
         </label>
 
