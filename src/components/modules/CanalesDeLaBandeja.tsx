@@ -8,6 +8,9 @@ import { CANALES, CAPACIDADES, COMO_SE_DICE, canalDe, type Canal } from "@/lib/c
 import { T } from "@/lib/theme";
 import { useT } from "@/lib/i18n/idioma";
 
+/** La clave de la sección «Académico» entre las de los canales. */
+export const CLAVE_ACADEMICO = "academico";
+
 /**
  * La fila para cambiar de red social, arriba de los hilos.
  *
@@ -67,6 +70,7 @@ export function CanalesDeLaBandeja({
   conectados,
   accent,
   onAlternar,
+  academico = null,
 }: {
   cuantos: Record<string, number>;
   sinLeer: Record<string, number>;
@@ -101,6 +105,11 @@ export function CanalesDeLaBandeja({
   accent: string;
   /** Despliega o repliega una sección. `null` = la de «Todos». */
   onAlternar: (clave: string | null) => void;
+  /**
+   * La sección «Académico»: los chats de las fichas marcadas como académicas
+   * (28/10/2026). Null cuando no hay ninguna, y entonces no aparece.
+   */
+  academico?: { total: number; sinLeer: number } | null;
 }) {
   /** Cuál se está mirando en la ficha de abajo. Null = ninguna abierta. */
   const [mirando, setMirando] = useState<string | null>(null);
@@ -173,6 +182,24 @@ export function CanalesDeLaBandeja({
             />
           );
         })}
+
+        {/*
+          No es un canal: es el área académica, la de Sussy. Va acá porque es
+          donde la escuela la pidió —«un filtro en los canales»— y porque se usa
+          igual: se toca y la lista muestra sólo eso; se vuelve a tocar y vuelve
+          a «Todos». Lo que la define es a quién está asignado el chat.
+        */}
+        {academico && (
+          <Seccion
+            nombre="🎓 Académico"
+            clave={CLAVE_ACADEMICO}
+            total={academico.total}
+            sinLeer={academico.sinLeer}
+            abierta={abiertos.has(CLAVE_ACADEMICO)}
+            accent={accent}
+            onAlternar={() => onAlternar(CLAVE_ACADEMICO)}
+          />
+        )}
       </div>
 
       {mirando && (
