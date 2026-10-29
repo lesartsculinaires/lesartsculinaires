@@ -55,6 +55,7 @@ export function EnvioMasivo({
   accent,
   onCerrar,
   onListo,
+  atiendoPorOmision = "asesora",
 }: {
   /** Los leads marcados en la tabla. */
   oportunidadIds: number[];
@@ -63,6 +64,8 @@ export function EnvioMasivo({
   onCerrar: () => void;
   /** Terminó: hay que releer los datos. */
   onListo: (resumen: string) => void;
+  /** Con qué opción abre «¿Quién atiende las respuestas?». Académico: «yo». */
+  atiendoPorOmision?: "asesora" | "yo";
 }) {
   const [nombre, setNombre] = useState(
     `Envío del ${new Date().toLocaleDateString("es-SV", { day: "2-digit", month: "long" })}`,
@@ -88,7 +91,7 @@ export function EnvioMasivo({
    * Quién atiende las respuestas. Por omisión, como siempre: la asesora de cada
    * lead. «Yo» es para el área académica —ver `quedarmeConLasRespuestas`—.
    */
-  const [atiendo, setAtiendo] = useState<"asesora" | "yo">("asesora");
+  const [atiendo, setAtiendo] = useState<"asesora" | "yo">(atiendoPorOmision);
   /** Cómo quedó el reparto de «Las atiendo yo», para decirlo mientras sale. */
   const [atendidas, setAtendidas] = useState<string | null>(null);
 

@@ -76,6 +76,7 @@ import {
 import { ACCENT, T } from "@/lib/theme";
 import { recordarModulo } from "@/lib/ultimoModulo";
 import type { EstadoPlantillas } from "@/app/plantillas-actions";
+import { areaDe, esDelArea, fichasAcademicas, sinLeerDelArea, type SinLeerPorFicha } from "@/lib/areas";
 import { SIN_DUENO, activos } from "@/lib/types";
 import type { Accesos, Catalogo, Etiqueta, Evento, Importacion, Oportunidad } from "@/lib/types";
 
@@ -162,9 +163,10 @@ interface Props {
    * Mensajes sin leer, contados por el servidor.
    *
    * Se usa cuando la bandeja no está cargada, que es en catorce de las quince
-   * pantallas. Ver `sinLeer` más abajo.
+   * pantallas. Ver `sinLeer` más abajo. Viene por ficha para contar sólo lo
+   * del área de quien entró: ver `@/lib/areas`.
    */
-  mensajesSinLeer: number;
+  mensajesSinLeer: SinLeerPorFicha;
   /**
    * Módulo con el que abrir. Lo decide el servidor: la última pantalla donde
    * estuvo esta persona, o el modo elegido en el login la primera vez.
@@ -306,7 +308,7 @@ export default function CrmApp({
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [parche, setParche] = useState<ParcheBandeja | null>(null);
   /** El número rojo al día, para las pantallas que no tienen la bandeja. */
-  const [sinLeerAlDia, setSinLeerAlDia] = useState<number | null>(null);
+  const [sinLeerAlDia, setSinLeerAlDia] = useState<SinLeerPorFicha | null>(null);
   const bandejaDelServidor = perez.bandeja;
   // Cuando el servidor vuelve a dibujar, lo suyo ya trae todo: el parche sobra.
   useEffect(() => setParche(null), [bandejaDelServidor]);
@@ -592,6 +594,14 @@ export default function CrmApp({
   const veTodoElEquipo = accesos.esAdmin || rolActual?.veTodo === true;
 
   /**
+   * El área de la bandeja de quien entró: ventas, académico, o las dos
+   * (administración). Decide qué chats ve y qué cuenta su número rojo. Ver
+   * `@/lib/areas`.
+   */
+  const area = areaDe(accesos.esAdmin, accesos.yo?.vendedorId ?? null, catalogo.vendedores);
+  const academicas = useMemo(() => fichasAcademicas(catalogo.vendedores), [catalogo.vendedores]);
+
+  /**
    * Las oportunidades que se muestran en los tableros.
    *
    * Casi siempre son todas las que llegaron, porque la base ya devolvió las
@@ -747,9 +757,9 @@ export default function CrmApp({
    */
   const sinLeer = perez.bandeja
     ? conversaciones
-        .filter((c) => !c.archivada && !c.silenciada)
+        .filter((c) => !c.archivada && !c.silenciada && esDelArea(area, c.vendedorId, academicas))
         .reduce((s, c) => s + (c.sinLeer ?? 0), 0)
-    : (sinLeerAlDia ?? mensajesSinLeer);
+    : sinLeerDelArea(sinLeerAlDia ?? mensajesSinLeer, area, academicas);
 
   const pendientes = pendientesDe(seguimientos, hoyEnSalvador(hoy));
 
@@ -1094,6 +1104,7 @@ export default function CrmApp({
               importaciones={importaciones}
               etiquetas={etiquetas}
               esAdmin={accesos.esAdmin}
+              area={area}
               puedeCompletarPauta={casillas.clientes.editar}
               puedeSubirBases={casillas.bases.crear}
               accent={accent}
@@ -1123,6 +1134,7 @@ export default function CrmApp({
           {mod === "Inbox" && (
             <Inbox
               conversaciones={conversaciones}
+              area={area}
               mensajes={mensajes}
               oportunidades={oportunidades}
               etiquetas={etiquetas}
