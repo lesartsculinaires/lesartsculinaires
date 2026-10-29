@@ -107,9 +107,11 @@ console.log("\n── sin teléfono no hay a dónde mandar ──");
 
 console.log("\n── a quien ya le mandamos hace poco ──");
 {
+  // Desde el 29/10/2026 le llega igual: sólo se avisa.
   const r = repartir([quien(1), quien(2), quien(3)], new Set([2]));
-  es("se lo saltea", van(r), [1, 3]);
-  es("diciendo que fue reciente", fuera(r), [[2, "reciente"]]);
+  es("le llega igual", van(r), [1, 2, 3]);
+  es("nadie queda afuera por eso", fuera(r), []);
+  es("pero se avisa quién ya recibió", r.yaRecibieron.map((c) => c.clienteId), [2]);
 }
 
 console.log("\n── el teléfono, como lo quiere Meta ──");

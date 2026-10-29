@@ -91,6 +91,11 @@ export interface Preparado extends ActionResult {
    * respuestas. Ver `quedarmeConLasRespuestas`.
    */
   puedeAtender: boolean;
+  /**
+   * De los que van, cuántos ya recibieron otro envío en los últimos siete
+   * días, con algunos nombres. Se les manda igual; la pantalla lo avisa.
+   */
+  yaRecibieron: { cuantos: number; ejemplos: string[] };
 }
 
 const NADA: Preparado = {
@@ -101,6 +106,7 @@ const NADA: Preparado = {
   fuera: [],
   mandadosHoy: 0,
   puedeAtender: false,
+  yaRecibieron: { cuantos: 0, ejemplos: [] },
 };
 
 /**
@@ -230,6 +236,10 @@ export async function prepararEnvio(
     fuera: agrupar(reparto.fuera),
     mandadosHoy: Number(hoy ?? 0),
     puedeAtender: miFicha != null,
+    yaRecibieron: {
+      cuantos: reparto.yaRecibieron.length,
+      ejemplos: reparto.yaRecibieron.slice(0, 3).map((c) => c.nombre ?? c.telefono ?? "sin nombre"),
+    },
   };
 }
 

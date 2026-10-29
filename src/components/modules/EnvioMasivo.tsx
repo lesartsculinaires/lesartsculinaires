@@ -403,6 +403,23 @@ export function EnvioMasivo({
               )}
             </div>
 
+            {/*
+              Aviso, no descarte (29/10/2026): a quien ya recibió otro envío
+              hace poco se le manda igual, venga de la base que venga.
+            */}
+            {prep.yaRecibieron.cuantos > 0 && (
+              <div data-ya-recibieron style={{ ...caja, background: T.paper }}>
+                <p style={{ margin: 0, fontSize: 12, lineHeight: 1.55, color: T.muted }}>
+                  <strong style={{ color: T.ink }}>{prep.yaRecibieron.cuantos}</strong>{" "}
+                  {prep.yaRecibieron.cuantos === 1 ? "ya recibió" : "ya recibieron"} otro envío en
+                  los últimos 7 días ({prep.yaRecibieron.ejemplos.join(", ")}
+                  {prep.yaRecibieron.cuantos > 3 ? "…" : ""}) y les llega igual. Meta limita
+                  cuántas promociones recibe cada persona: si frena alguno, el resultado del
+                  envío lo dice.
+                </p>
+              </div>
+            )}
+
             {prep.fuera.length > 0 && (
               <div style={{ ...caja, background: "#FFF6D6", border: "1px solid #F0CE55" }}>
                 <p style={{ margin: "0 0 6px", fontSize: 12.5, fontWeight: 600, color: "#6B5200" }}>

@@ -60,14 +60,12 @@ export interface Candidato {
 export type Descarte =
   | "sin_telefono"
   | "no_molestar"
-  | "repetido"
-  | "reciente";
+  | "repetido";
 
 export const POR_QUE: Record<Descarte, string> = {
   sin_telefono: "sin teléfono",
   no_molestar: "pidió que no le escriban",
   repetido: "estaba dos veces en la selección",
-  reciente: "ya recibió un envío hace poco",
 };
 
 export interface Reparto {
@@ -75,6 +73,11 @@ export interface Reparto {
   van: Candidato[];
   /** Quiénes quedan afuera y por qué. */
   fuera: { candidato: Candidato; porque: Descarte }[];
+  /**
+   * De los que van, los que ya recibieron otro envío hace poco. Se les manda
+   * igual: sólo se avisa. Ver `repartir`.
+   */
+  yaRecibieron: Candidato[];
 }
 
 /**
@@ -104,6 +107,7 @@ export function repartir(
 ): Reparto {
   const van: Candidato[] = [];
   const fuera: { candidato: Candidato; porque: Descarte }[] = [];
+  const yaRecibieron: Candidato[] = [];
   const vistos = new Set<number>();
 
   for (const c of candidatos) {
@@ -122,17 +126,23 @@ export function repartir(
       fuera.push({ candidato: c, porque: "sin_telefono" });
       continue;
     }
-    if (recientes.has(c.clienteId)) {
-      vistos.add(c.clienteId);
-      fuera.push({ candidato: c, porque: "reciente" });
-      continue;
-    }
+    /*
+     * Quien ya recibió otro envío hace poco VA igual (29/10/2026).
+     *
+     * Antes quedaba afuera siete días, sin importar de qué base ni de qué
+     * campaña: Sussy armó un envío de 117 a su base académica y 44 se cayeron
+     * porque ventas les había escrito por otra base. La escuela pidió que eso
+     * no frene ningún masivo. Se sigue diciendo cuántos son, porque Meta
+     * limita cuántas promociones recibe cada persona y puede no entregarle
+     * algunos —y entonces el resultado del envío dice por qué—.
+     */
+    if (recientes.has(c.clienteId)) yaRecibieron.push(c);
 
     vistos.add(c.clienteId);
     van.push(c);
   }
 
-  return { van, fuera };
+  return { van, fuera, yaRecibieron };
 }
 
 /**
