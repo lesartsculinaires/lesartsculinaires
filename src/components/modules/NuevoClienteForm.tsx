@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { crearCliente, unificarCliente, type NuevoCliente } from "@/app/actions";
 import { CampoTexto } from "@/components/ui/CampoTexto";
@@ -260,26 +260,10 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
     setD((prev) => ({ ...prev, [k]: v }));
   };
 
-  /*
-   * Un guardado a la vez, y esto es lo que de verdad lo impide.
-   *
-   * Apagar el botón con `busy` no alcanza: entre el clic y el repintado hay un
-   * instante, y un segundo clic que caiga ahí entra igual —con la red lenta,
-   * o en una tablet, pasa—. El 27/10/2026 así quedó una venta cargada cuatro
-   * veces —CRM-4685 a CRM-4687 y uno más—, la misma persona y el mismo
-   * diplomado. Un `ref` se pone en el mismo instante del primer clic. Mismo
-   * arreglo que el de subir bases (`ImportarClientes`).
-   */
-  const guardando = useRef(false);
-
   const unificar = async (clienteId: number) => {
-    if (guardando.current) return;
-    guardando.current = true;
     setBusy(true);
     setError(null);
-    const r = await unificarCliente(clienteId, d).finally(() => {
-      guardando.current = false;
-    });
+    const r = await unificarCliente(clienteId, d);
     setBusy(false);
 
     if (!r.ok) {
@@ -338,13 +322,9 @@ export function NuevoClienteForm({ accent, oportunidades, onCerrar, onCreado }: 
       return;
     }
 
-    if (guardando.current) return;
-    guardando.current = true;
     setBusy(true);
     setError(null);
-    const r = await crearCliente(d, forzar).finally(() => {
-      guardando.current = false;
-    });
+    const r = await crearCliente(d, forzar);
     setBusy(false);
 
     if (!r.ok) {

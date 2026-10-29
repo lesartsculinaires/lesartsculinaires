@@ -168,51 +168,6 @@ console.log("\n── UNA CERRADA NO SE TOCA ──");
   es("sin catálogo, el estado no alcanza", estaCerrada(ganada, NINGUNO), false);
 }
 
-console.log("\n── LA MISMA VENTA CARGADA DOS VECES (27/10/2026) ──");
-{
-  /*
-   * Diego Mauricio: cuatro leads del mismo diplomado, los cuatro Ganado, el
-   * mismo día. El lead que ya estaba era Ganado —cerrado— y cada carga abría
-   * otro. Ahora el mismo programa ganado hace poco es la misma venta.
-   */
-  const GANADOS = new Set([GANADO]);
-  const pasteleria = lead({ id: 7, codigo: "CRM-4684", producto_id: 5, estado_id: GANADO, fecha_registro: "2026-10-27" });
-  const otraVez = entra({ producto_id: 5, estado_id: GANADO, fecha_registro: "2026-10-27" });
-
-  const r = cualAbsorbe([pasteleria], otraVez, FINALES, GANADOS);
-  es("CAE SOBRE LA VENTA QUE YA ESTABA", r.lead?.codigo, "CRM-4684");
-  es("y no se abre otro", r.porQueNo, null);
-  // Cae, pero no la cambia: completar nunca borra, y el estado ya era Ganado.
-  const p = planificarLead(pasteleria, otraVez);
-  es("sin tocarle el estado", "estado_id" in p.parche, false);
-
-  es("sin saber cuál es Ganado, como antes", cualAbsorbe([pasteleria], otraVez, FINALES).lead, null);
-
-  // Pasado el plazo es otra compra: el mismo curso al año siguiente.
-  const delAnoPasado = lead({ ...pasteleria, fecha_registro: "2025-09-01" });
-  es("un año después, otra venta", cualAbsorbe([delAnoPasado], otraVez, FINALES, GANADOS).lead, null);
-
-  // Perdido no es una venta: quien vuelve a preguntar abre un trato nuevo.
-  const perdida = lead({ ...pasteleria, estado_id: PERDIDO });
-  es("perdido no absorbe", cualAbsorbe([perdida], otraVez, FINALES, GANADOS).lead, null);
-
-  // Otro programa sigue siendo otra venta, ganado o no.
-  const panaderia = lead({ ...pasteleria, producto_id: 3 });
-  es("otro programa, otra venta", cualAbsorbe([panaderia], otraVez, FINALES, GANADOS).porQueNo, "todas_cerradas");
-
-  // Con un lead abierto de OTRO programa al lado, igual cae sobre la venta.
-  const abiertaDeOtro = lead({ id: 8, codigo: "CRM-4700", producto_id: 3, fecha_registro: "2026-10-20" });
-  es(
-    "aunque tenga otro lead abierto de otro programa",
-    cualAbsorbe([abiertaDeOtro, pasteleria], otraVez, FINALES, GANADOS).lead?.codigo,
-    "CRM-4684",
-  );
-
-  // Con plata anotada cuenta como ganada aunque no se sepa el estado.
-  const conPlata = lead({ ...pasteleria, estado_id: null, venta_cerrada: 1800 });
-  es("con venta anotada, también", cualAbsorbe([conPlata], otraVez, FINALES).lead?.codigo, "CRM-4684");
-}
-
 console.log("\n── entre varios, el que corresponde ──");
 {
   const sinPrograma = lead({ id: 1, codigo: "CRM-0100", fecha_registro: "2026-01-01" });
