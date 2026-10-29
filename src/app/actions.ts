@@ -1273,7 +1273,7 @@ export async function importarClientes(
         );
 
   const comoSeLee = await comoSeLeeUnLead(supabase);
-  const [finales, ganados] = await Promise.all([estadosFinales(supabase), estadosGanados(supabase)]);
+  const finales = await estadosFinales(supabase);
 
   /** Los leads que ya tienen los contactos a los que se une este lote. */
   const yaTenian = new Map<number, LeadExistente[]>();
@@ -1329,7 +1329,6 @@ export async function importarClientes(
       yaTenian.get(l.clienteId) ?? [],
       fundido.valores,
       finales,
-      ganados,
     );
     return { ...l, ...fundido, absorbe };
   });
@@ -1612,19 +1611,6 @@ async function conSusProgramas(
   return leads.map((l) => ({ ...l, programas: porLead.get(l.id) ?? [] }));
 }
 
-/**
- * Los estados que son una venta ganada: «Ganado», como lo lee el tablero
- * (`esGanada`). Ver `DIAS_DE_LA_MISMA_VENTA` en `@/lib/leadRepetido`.
- */
-async function estadosGanados(supabase: SupabaseClient): Promise<Set<number>> {
-  const { data } = await supabase.from("estados").select("id, nombre");
-  return new Set(
-    ((data ?? []) as { id: number; nombre: string | null }[])
-      .filter((e) => (e.nombre ?? "").trim().toLowerCase() === "ganado")
-      .map((e) => e.id),
-  );
-}
-
 async function estadosFinales(supabase: SupabaseClient): Promise<Set<number>> {
   const { data } = await supabase.from("estados").select("id, es_final");
   return new Set(
@@ -1875,7 +1861,6 @@ export async function unificarCliente(
     await conSusProgramas(supabase, (suyas ?? []) as unknown as LeadExistente[]),
     entrante,
     await estadosFinales(supabase),
-    await estadosGanados(supabase),
   );
 
   if (lead) {
