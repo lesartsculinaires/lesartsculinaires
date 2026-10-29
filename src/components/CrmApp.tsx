@@ -302,6 +302,8 @@ export default function CrmApp({
    * chat y se acomoda acá. Lo demás —un lead que se mueve, una nota— sigue
    * refrescando como siempre. Ver `parcheBandeja.ts`.
    */
+  /** El menú de módulos en el teléfono. Ver «TELÉFONO» en globals.css. */
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const [parche, setParche] = useState<ParcheBandeja | null>(null);
   /** El número rojo al día, para las pantallas que no tienen la bandeja. */
   const [sinLeerAlDia, setSinLeerAlDia] = useState<number | null>(null);
@@ -854,18 +856,36 @@ export default function CrmApp({
         className="lac"
         style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
       >
-        <Sidebar
-          accent={accent}
-          mod={mod}
-          userEmail={userEmail}
-          rol={rol}
-          nombre={accesos.yo?.nombre ?? null}
-          modulos={permitidos}
-          avisos={avisos}
-          onSelect={actions.setMod}
-        />
+        {/*
+          En el teléfono la barra lateral es un menú que se despliega con ☰
+          (29/10/2026). Muestra los mismos módulos que en la computadora —los
+          que permite el rol— y se cierra sola al elegir uno. Ver «TELÉFONO»
+          en globals.css.
+        */}
+        {menuAbierto && (
+          <div
+            className="solo-telefono velo-del-menu"
+            onClick={() => setMenuAbierto(false)}
+            aria-hidden
+          />
+        )}
+        <div className="barra-lateral" data-abierta={menuAbierto ? "si" : "no"}>
+          <Sidebar
+            accent={accent}
+            mod={mod}
+            userEmail={userEmail}
+            rol={rol}
+            nombre={accesos.yo?.nombre ?? null}
+            modulos={permitidos}
+            avisos={avisos}
+            onSelect={(m) => {
+              setMenuAbierto(false);
+              actions.setMod(m);
+            }}
+          />
+        </div>
 
-        <main style={{ flex: 1, minWidth: 0, padding: "24px 28px" }}>
+        <main className="principal" style={{ flex: 1, minWidth: 0, padding: "24px 28px" }}>
           {process.env.NEXT_PUBLIC_ENTORNO === "pruebas" && (
             <p
               style={{
@@ -883,6 +903,7 @@ export default function CrmApp({
           )}
 
           <header
+            className="encabezado"
             style={{
               display: "flex",
               justifyContent: "space-between",
@@ -892,9 +913,47 @@ export default function CrmApp({
               gap: 12,
             }}
           >
-            <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                type="button"
+                className="solo-telefono boton-del-menu"
+                onClick={() => setMenuAbierto(true)}
+                aria-label={t("Abrir el menú")}
+                aria-expanded={menuAbierto}
+                style={{
+                  width: 40,
+                  height: 40,
+                  flexShrink: 0,
+                  borderRadius: 9,
+                  border: `1px solid ${T.border}`,
+                  background: T.surface,
+                  color: accent,
+                  fontSize: 20,
+                  lineHeight: 1,
+                  position: "relative",
+                }}
+              >
+                ☰
+                {/* El punto rojo es el de mensajes sin leer: es lo que hace
+                    falta saber desde el teléfono sin abrir el menú. */}
+                {(avisos["Inbox"] ?? 0) > 0 && (
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 6,
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      background: "#C0392B",
+                    }}
+                  />
+                )}
+              </button>
+              <div>
               <p
-                className="mono"
+                className="mono solo-escritorio"
                 style={{
                   margin: "0 0 4px",
                   fontSize: 11,
@@ -905,9 +964,10 @@ export default function CrmApp({
               >
                 {rol ? t(rol) : t("Sesión activa")}
               </p>
-              <h1 className="dsp" style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>
+              <h1 className="dsp titulo-del-modulo" style={{ margin: 0, fontSize: 26, fontWeight: 700 }}>
                 {t(mod)}
               </h1>
+              </div>
             </div>
             <div
               style={{
@@ -918,19 +978,23 @@ export default function CrmApp({
                 justifyContent: "flex-end",
               }}
             >
-              <p className="mono" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
+              <p className="mono solo-escritorio" style={{ margin: 0, fontSize: 11.5, color: T.faint }}>
                 {/* Los dados de baja no se cuentan: el pie dice con qué se está
                     trabajando ahora, no cuánta gente pasó por acá. */}
                 {oportunidades.length} {t("oportunidades")} ·{" "}
                 {activos(catalogo.vendedores).length}{" "}
                 {t("vendedores")} · {catalogo.productos.length} {t("programas")}
               </p>
+              {/* En el teléfono se recarga deslizando hacia abajo: el botón
+                  ocupa el lugar de los íconos que sí hacen falta. */}
+              <span className="solo-escritorio">
               <Actualizado
                 en={refrescado}
                 accent={accent}
                 enVivo={enVivo}
                 onRefrescar={() => router.refresh()}
               />
+              </span>
               <Sonido
                 encendido={campanita.encendido}
                 bloqueado={campanita.bloqueado}
