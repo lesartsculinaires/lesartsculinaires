@@ -363,7 +363,12 @@ export function Inbox({
   const [filtrosPlegados, setFiltrosPlegados] = useState(false);
   useEffect(() => {
     try {
-      if (localStorage.getItem("lac.inbox.filtrosPlegados") === "1") setFiltrosPlegados(true);
+      const guardado = localStorage.getItem("lac.inbox.filtrosPlegados");
+      // En el teléfono arrancan plegados si la persona no eligió otra cosa:
+      // ahí la lista entra en media pantalla.
+      if (guardado === "1" || (guardado == null && window.matchMedia("(max-width: 760px)").matches)) {
+        setFiltrosPlegados(true);
+      }
     } catch {}
   }, []);
   const plegarFiltros = (plegar: boolean) => {
@@ -780,6 +785,14 @@ export function Inbox({
     () => conversaciones.find((c) => c.id === abierta) ?? null,
     [conversaciones, abierta],
   );
+
+  /*
+   * En el teléfono, lo de arriba del chat —asesora, llamar, abrir lead, el
+   * estado del lead, las etiquetas— se pliega detrás de «⋯» para que la
+   * conversación tenga la pantalla, como en WhatsApp. Cada chat abre plegado.
+   */
+  const [detallesEnTelefono, setDetallesEnTelefono] = useState(false);
+  useEffect(() => setDetallesEnTelefono(false), [abierta]);
 
   /*
    * El historial de un hilo que quedó fuera de la ventana de la bandeja.
@@ -1838,7 +1851,15 @@ export function Inbox({
   );
 
   return (
+    /*
+     * En el teléfono se ve una columna a la vez, como en WhatsApp: la lista, o
+     * el chat abierto con una flecha para volver (29/10/2026). Lo decide
+     * `data-hilo-abierto` desde el CSS —ver «TELÉFONO» en globals.css—, así
+     * en la computadora no cambia nada.
+     */
     <div
+      className={soloHilo ? undefined : "bandeja"}
+      data-hilo-abierto={actual ? "si" : "no"}
       style={{
         display: "grid",
         gridTemplateColumns: soloHilo ? "1fr" : "minmax(240px, 320px) 1fr",
@@ -1850,6 +1871,7 @@ export function Inbox({
       {/* ------------------------------------------------------- los hilos */}
       {!soloHilo && (
       <div
+        className="bandeja-lista"
         style={{
           background: T.surface,
           border: `1px solid ${T.border}`,
@@ -2518,6 +2540,8 @@ export function Inbox({
 
       {/* --------------------------------------------------- la conversación */}
       <div
+        className="bandeja-hilo"
+        data-detalles={detallesEnTelefono ? "si" : "no"}
         style={{
           background: T.surface,
           border: `1px solid ${T.border}`,
@@ -2535,8 +2559,29 @@ export function Inbox({
           </p>
         ) : (
           <>
-            <div style={{ ...th, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <span>
+            <div className="encabezado-del-hilo" style={{ ...th, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {/* Sólo en el teléfono: volver a la lista, como en WhatsApp. */}
+                {!soloHilo && (
+                  <button
+                    type="button"
+                    className="solo-telefono"
+                    onClick={() => setAbierta(null)}
+                    aria-label={t("Volver a los chats")}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      flexShrink: 0,
+                      fontSize: 22,
+                      lineHeight: 1,
+                      color: accent,
+                      background: "transparent",
+                    }}
+                  >
+                    ‹
+                  </button>
+                )}
+              <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>
                   {tituloDeHilo(actual)}
                 </span>
@@ -2578,8 +2623,32 @@ export function Inbox({
                   ) : null}
                 </span>
               </span>
+              </span>
 
-              <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              {!soloHilo && (
+                <button
+                  type="button"
+                  className="solo-telefono"
+                  onClick={() => setDetallesEnTelefono((v) => !v)}
+                  aria-expanded={detallesEnTelefono}
+                  aria-label={detallesEnTelefono ? t("Ocultar las opciones del chat") : t("Opciones del chat")}
+                  style={{
+                    width: 38,
+                    height: 34,
+                    flexShrink: 0,
+                    fontSize: 20,
+                    lineHeight: 1,
+                    borderRadius: 8,
+                    border: `1px solid ${detallesEnTelefono ? accent : T.border}`,
+                    background: detallesEnTelefono ? softer(accent) : T.surface,
+                    color: accent,
+                  }}
+                >
+                  ⋯
+                </button>
+              )}
+
+              <span className="acciones-del-hilo" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 <select
                   value={actual.vendedorId ?? ""}
                   onChange={(e) =>
@@ -2696,6 +2765,7 @@ export function Inbox({
                 verdad —la misma fila que ve la ficha— y lo de abajo es lo que
                 el pipeline no dice. */}
             <div
+              className="detalles-del-hilo"
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -3158,14 +3228,18 @@ export function Inbox({
               Mientras se graba no va: la fila entera es del grabador y una
               nota de voz no lleva texto.
             */}
+            {/* En el teléfono no va: el teclado del celular ya ofrece el
+                formato, y la barra le quita lugar a la conversación. */}
             {canal.puede.formato === "si" && !grabando && (
-              <BarraDeFormato
-                onMarca={ponerFormato}
-                disabled={!nota && !puedeResponder}
-              />
+              <div className="solo-escritorio">
+                <BarraDeFormato
+                  onMarca={ponerFormato}
+                  disabled={!nota && !puedeResponder}
+                />
+              </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
+            <div className="fila-de-escribir" style={{ display: "flex", gap: 8, padding: 12, borderTop: "none" }}>
               {/* El clip: fotos y documentos —PDF, Word, Excel, PowerPoint—,
                   que es lo que Meta deja mandar. La lista sale de la misma
                   constante que comprueba el servidor, así que el selector no

@@ -181,3 +181,168 @@ body {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   TELÉFONO (29/10/2026)
+
+   Pedido de la escuela: poder contestar el Inbox desde el celular, con una
+   pantalla parecida a WhatsApp, y un menú desplegable con los módulos que
+   permite el rol de cada persona.
+
+   Todo pasa por debajo de 760 px de ancho, así que en la computadora no cambia
+   nada. Se usa `!important` porque los componentes ponen sus medidas en línea:
+   acá sólo se las cambia para el teléfono.
+   ========================================================================== */
+
+.solo-telefono {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .solo-telefono {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  .solo-escritorio {
+    display: none !important;
+  }
+
+  /* El menú: la barra lateral sale desde la izquierda, encima de todo. */
+  .barra-lateral {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 120;
+    transform: translateX(-100%);
+    transition: transform 180ms ease;
+    box-shadow: 0 0 40px rgba(3, 27, 79, 0.25);
+  }
+  .barra-lateral[data-abierta="si"] {
+    transform: translateX(0);
+  }
+  .barra-lateral aside {
+    width: min(280px, 82vw) !important;
+    height: 100dvh !important;
+  }
+  .velo-del-menu {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    background: rgba(3, 27, 79, 0.35);
+  }
+
+  /* Menos margen alrededor: en un teléfono cada píxel es lista. */
+  .principal {
+    padding: 10px 10px 0 !important;
+  }
+  .encabezado {
+    margin-bottom: 10px !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+  }
+  .encabezado > div:last-child {
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+  }
+  .titulo-del-modulo {
+    font-size: 20px !important;
+  }
+
+  /* Las tablas anchas se desplazan de costado en vez de romper la pantalla. */
+  .principal table {
+    min-width: 640px;
+  }
+
+  /* --------------------------------------------------------------- INBOX */
+  .bandeja {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+    height: calc(100dvh - 70px) !important;
+    min-height: 0 !important;
+  }
+  .bandeja[data-hilo-abierto="si"] .bandeja-lista,
+  .bandeja[data-hilo-abierto="no"] .bandeja-hilo {
+    display: none !important;
+  }
+  .bandeja .bandeja-lista,
+  .bandeja .bandeja-hilo {
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+
+  /* Con un chat abierto, el chat ocupa la pantalla entera, como WhatsApp: el
+     encabezado del CRM se esconde y vuelve con la flecha «‹». */
+  .lac:has(.bandeja[data-hilo-abierto="si"]) .encabezado {
+    display: none !important;
+  }
+  .lac:has(.bandeja[data-hilo-abierto="si"]) .principal {
+    padding: 0 !important;
+  }
+  .lac:has(.bandeja[data-hilo-abierto="si"]) .bandeja {
+    height: 100dvh !important;
+  }
+  .encabezado-del-hilo {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 8px 10px !important;
+  }
+  .acciones-del-hilo {
+    width: 100%;
+  }
+
+  /* 16 px en lo que se escribe: con menos, el iPhone agranda la pantalla al
+     tocar el cuadro de texto y hay que volver a achicarla con los dedos. */
+  .bandeja textarea,
+  .bandeja input,
+  .bandeja select {
+    font-size: 16px !important;
+  }
+  .bandeja button {
+    min-height: 34px;
+  }
+}
+
+@media (max-width: 760px) {
+  /* El chat abierto, como WhatsApp: lo de arriba se pliega detrás de «⋯». */
+  .bandeja-hilo[data-detalles="no"] .acciones-del-hilo,
+  .bandeja-hilo[data-detalles="no"] .detalles-del-hilo {
+    display: none !important;
+  }
+  .encabezado-del-hilo {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+  }
+  .bandeja-hilo[data-detalles="si"] .encabezado-del-hilo {
+    flex-wrap: wrap !important;
+  }
+
+  /* La fila de escribir: el cuadro de texto se lleva el ancho. */
+  .fila-de-escribir {
+    padding: 8px !important;
+    gap: 6px !important;
+    align-items: flex-end !important;
+  }
+  /* Los íconos (clip, emoji, micrófono) cuadrados y chicos; «Enviar», que es
+     el último, conserva su ancho para que se lea entero. */
+  .fila-de-escribir > button:not(:last-child) {
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+  }
+  .fila-de-escribir > button:last-child {
+    flex-shrink: 0 !important;
+    padding: 0 12px !important;
+    height: 40px !important;
+  }
+  .fila-de-escribir textarea {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+}
