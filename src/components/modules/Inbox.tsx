@@ -43,6 +43,7 @@ import {
 import { coincideHilo, hayBusqueda } from "@/lib/buscarEnBandeja";
 import { AccionesDelHilo } from "@/components/modules/AccionesDelHilo";
 import { CLAVE_ACADEMICO, CanalesDeLaBandeja } from "@/components/modules/CanalesDeLaBandeja";
+import { esDelArea, type Area } from "@/lib/areas";
 import { GrabadorDeVoz } from "@/components/modules/GrabadorDeVoz";
 import { ReaccionesDelMensaje } from "@/components/modules/ReaccionesDelMensaje";
 import { SelectorEmoji } from "@/components/ui/SelectorEmoji";
@@ -147,6 +148,11 @@ interface Props {
    * es de la bandeja de verdad y no tiene que pisarlo.
    */
   soloHilo?: boolean;
+  /**
+   * El área de quien mira: sólo ve y cuenta los chats de su área. Null = las
+   * dos, como la ve administración. Ver `@/lib/areas`.
+   */
+  area?: Area | null;
 }
 
 /** Etiqueta legible de un mensaje sin texto. */
@@ -250,6 +256,7 @@ export function Inbox({
   onLlamar,
   abrirHilo,
   soloHilo = false,
+  area = null,
 }: Props) {
   const t = useT();
   const cat = useCatalogo();
@@ -672,6 +679,16 @@ export function Inbox({
     [cat.vendedores],
   );
 
+  /*
+   * Los chats del área de quien mira. Los contadores salen de acá, y la lista
+   * también, salvo al buscar: un nombre se encuentra aunque sea de la otra
+   * área, para no decirle a un cliente «no estás». Ver `@/lib/areas`.
+   */
+  const delArea = useMemo(
+    () => (area == null ? conversaciones : conversaciones.filter((c) => esDelArea(area, c.vendedorId, academicos))),
+    [conversaciones, area, academicos],
+  );
+
   const lista = useMemo(
     () =>
       conversaciones
@@ -696,7 +713,8 @@ export function Inbox({
               // Con un día elegido manda el día: una conversación contestada
               // ese día cuenta aunque después se haya archivado, y la asesora
               // elegida es quien contestó, no a quién está asignada.
-              ((contestadasIds != null
+              (esDelArea(area, c.vendedorId, academicos) &&
+              (contestadasIds != null
                 ? contestadasIds.has(c.id)
                 : (verTodas || c.archivada === verArchivadas) &&
                   (!soloSinAsignar || c.vendedorId == null) &&
@@ -725,7 +743,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto, academicos],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto, academicos, area],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -734,7 +752,9 @@ export function Inbox({
    * Sussy). Pedido el 28/10/2026. Ver `CanalesDeLaBandeja`.
    */
   const deAcademico = useMemo(() => {
-    if (academicos.size === 0) return null;
+    // Con un área puesta no hace falta: ventas no ve lo académico, y para
+    // académico la bandeja entera ya es esa sección.
+    if (academicos.size === 0 || area != null) return null;
     let total = 0;
     let sinLeer = 0;
     for (const c of conversaciones) {
@@ -743,16 +763,16 @@ export function Inbox({
       if (estaPendiente(c)) sinLeer += 1;
     }
     return { total, sinLeer };
-  }, [conversaciones, academicos]);
+  }, [conversaciones, academicos, area]);
 
   const porRed = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const c of conversaciones) {
+    for (const c of delArea) {
       if (c.archivada) continue;
       m[c.canal] = (m[c.canal] ?? 0) + 1;
     }
     return m;
-  }, [conversaciones]);
+  }, [delArea]);
 
   /**
    * Cuántos hilos tienen algo sin ver, por red.
@@ -763,23 +783,23 @@ export function Inbox({
    */
   const sinLeerPorRed = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const c of conversaciones) {
+    for (const c of delArea) {
       if (c.archivada) continue;
       if (estaPendiente(c)) m[c.canal] = (m[c.canal] ?? 0) + 1;
     }
     return m;
-  }, [conversaciones]);
+  }, [delArea]);
 
   /** Hay conversaciones de más de una red: recién ahí sirve marcarlas. */
   const variasRedes = Object.keys(porRed).length > 1;
 
   const sinAsignar = useMemo(
-    () => conversaciones.filter((c) => !c.archivada && c.vendedorId == null).length,
-    [conversaciones],
+    () => delArea.filter((c) => !c.archivada && c.vendedorId == null).length,
+    [delArea],
   );
 
   /** Cuántos hilos activos esperan algo. Es el número de la pestaña. */
-  const pendientes = useMemo(() => cuantosPendientes(conversaciones), [conversaciones]);
+  const pendientes = useMemo(() => cuantosPendientes(delArea), [delArea]);
 
   const actual = useMemo(
     () => conversaciones.find((c) => c.id === abierta) ?? null,
@@ -1939,6 +1959,9 @@ export function Inbox({
               </span>
             )}
           </button>
+          {/* Académico no tiene «Sin asignar»: lo que entra sin dueño es de
+              ventas. Ver `@/lib/areas`. */}
+          {area !== "academico" && (
           <button
             type="button"
             onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
@@ -1966,6 +1989,7 @@ export function Inbox({
               </span>
             )}
           </button>
+          )}
           <button
             type="button"
             onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
@@ -2425,7 +2449,31 @@ export function Inbox({
           porque además de filtrar dice qué redes están previstas y qué le
           falta a cada una.
         */}
-        {!filtrosPlegados && (
+        {/*
+          El área académica no ve la lista de canales: su bandeja entera es
+          lo suyo, y en su lugar dice de qué área es. Pedido el 29/10/2026.
+        */}
+        {area === "academico" && (
+          <div
+            data-area-de-la-bandeja="academico"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "baseline",
+              columnGap: 8,
+              rowGap: 2,
+              padding: "9px 12px",
+              borderBottom: `1px solid ${T.border}`,
+              fontSize: 12.5,
+            }}
+          >
+            <strong style={{ color: accent, whiteSpace: "nowrap" }}>{t("🎓 Área académica")}</strong>
+            <span style={{ color: T.muted, fontSize: 11.5 }}>
+              {t("Tus chats y las respuestas de tus masivos")}
+            </span>
+          </div>
+        )}
+        {!filtrosPlegados && area !== "academico" && (
           <CanalesDeLaBandeja
             cuantos={porRed}
             sinLeer={sinLeerPorRed}
@@ -2501,7 +2549,7 @@ export function Inbox({
                   t("No queda nada pendiente: todos los hilos están leídos y contestados.")
                 : verArchivadas
                 ? t("No hay conversaciones archivadas.")
-                : abiertos.has(CLAVE_ACADEMICO)
+                : abiertos.has(CLAVE_ACADEMICO) || area === "academico"
                 ? t("Todavía no hay chats asignados al área académica.")
                 : abiertos.size === 0
                   ? t("Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá.")

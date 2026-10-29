@@ -46,6 +46,7 @@ import {
 } from "@/lib/filtros";
 import { SIN_ASIGNAR, SIN_DUENO, activos as soloActivos, programasElegibles } from "@/lib/types";
 import type { Etiqueta, Importacion, Oportunidad, Plantilla } from "@/lib/types";
+import type { Area } from "@/lib/areas";
 
 /**
  * Cuántas filas se dibujan de entrada, y cuántas más al acercarse al final.
@@ -114,6 +115,8 @@ interface Props {
    * menos.
    */
   plantillas: Plantilla[];
+  /** El área de quien mira: en académico, el masivo sale con «Las atiendo yo». */
+  area?: Area | null;
 }
 
 export function Clientes({
@@ -135,6 +138,7 @@ export function Clientes({
   onLimpiar,
   onRefresh,
   plantillas,
+  area = null,
 }: Props) {
   const cat = useCatalogo();
   const [alta, setAlta] = useState(false);
@@ -595,6 +599,7 @@ export function Clientes({
         <EnvioMasivo
           oportunidadIds={marcadas}
           plantillas={plantillas}
+          atiendoPorOmision={area === "academico" ? "yo" : "asesora"}
           accent={accent}
           onCerrar={() => setEnviando(false)}
           onListo={(resumen) => {

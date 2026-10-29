@@ -11,6 +11,7 @@ import { comoLosLee, contarSinLeer, fetchInbox } from "@/lib/supabase/inbox";
 import { MAX_HILOS_POR_PEDIDO } from "@/lib/parcheBandeja";
 import { leerContactos, type ContactoCompartido } from "@/lib/whatsapp/contactos";
 import type { Conversacion, Mensaje, ResultadoRespuesta } from "@/lib/types";
+import type { SinLeerPorFicha } from "@/lib/areas";
 import {
   BALDE_WHATSAPP,
   CARPETA_SALIENTE,
@@ -1876,7 +1877,7 @@ export async function hilosDeLaBandeja(ids: readonly number[]): Promise<{
   error: string | null;
   conversaciones: Conversacion[];
   mensajes: Mensaje[];
-  sinLeer: number | null;
+  sinLeer: SinLeerPorFicha | null;
 }> {
   const vacio = { conversaciones: [], mensajes: [], sinLeer: null };
   const user = await getUser();

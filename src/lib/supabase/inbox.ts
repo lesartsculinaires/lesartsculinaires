@@ -3,6 +3,7 @@ import "server-only";
 import { POR_TANDA, traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Conversacion, Mensaje } from "@/lib/types";
+import type { SinLeerPorFicha } from "@/lib/areas";
 
 /** El `select` se arma como texto, así que las filas llegan sin tipar. */
 type Fila = Record<string, unknown>;
@@ -430,14 +431,14 @@ export function comoLosLee(filas: unknown[]): Mensaje[] {
  * un nulo acá quiere decir «no está archivada»: con `eq(false)` los hilos sin
  * la marca puesta quedarían fuera de la cuenta.
  */
-export async function contarSinLeer(): Promise<number> {
+export async function contarSinLeer(): Promise<SinLeerPorFicha> {
   const supabase = await getServerClient();
-  if (!supabase) return 0;
+  if (!supabase) return [];
 
   const pedir = (conSilenciadas: boolean) => {
     let q = supabase
       .from("conversaciones")
-      .select("sin_leer")
+      .select("sin_leer, vendedor_id")
       .gt("sin_leer", 0)
       .not("archivada", "is", true);
     // `silenciada` llega con `20261011120000_bandeja_marcas.sql`. Sin esa
@@ -452,7 +453,16 @@ export async function contarSinLeer(): Promise<number> {
 
   // Un número que no se pudo calcular es un cero, no una pantalla rota: el
   // globito se apaga y la bandeja sigue mostrando lo suyo al abrirla.
-  if (error || !data) return 0;
+  if (error || !data) return [];
 
-  return (data as Fila[]).reduce((s, c) => s + Number(c.sin_leer ?? 0), 0);
+  /*
+   * Por ficha y no un total: el número rojo de Sussy cuenta sólo lo del área
+   * académica, y el de ventas, lo demás. Ver `@/lib/areas`.
+   */
+  const porFicha = new Map<number | null, number>();
+  for (const c of data as Fila[]) {
+    const v = c.vendedor_id == null ? null : Number(c.vendedor_id);
+    porFicha.set(v, (porFicha.get(v) ?? 0) + Number(c.sin_leer ?? 0));
+  }
+  return [...porFicha].map(([vendedorId, sinLeer]) => ({ vendedorId, sinLeer }));
 }
