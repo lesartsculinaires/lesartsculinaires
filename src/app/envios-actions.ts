@@ -184,6 +184,15 @@ export async function prepararEnvio(
     };
   }
 
+  /*
+   * Los borradores que esta persona dejó abandonados —una pestaña cerrada,
+   * una recarga en medio de la revisión— se tiran antes de armar el nuevo.
+   * Sin esto, cada vez que se abría y cerraba la ventana quedaba un «sin
+   * mandar» más en Envíos (29/10/2026). Si la función todavía no existe, se
+   * sigue igual.
+   */
+  await supabase.rpc("descartar_borradores", { p_envio: null });
+
   const { data: envio, error: errEnvio } = await supabase
     .from("envios")
     .insert({ nombre: nombre.trim() || "Envío sin nombre", creado_por: user.id })
@@ -398,6 +407,18 @@ function agrupar(
     // entera sería una pantalla de nombres que nadie lee.
     ejemplos: gente.slice(0, 3).map((c) => c.nombre ?? c.telefono ?? "sin nombre"),
   }));
+}
+
+/**
+ * Tira el borrador de una ventana que se cerró sin mandar.
+ *
+ * Sólo si nunca salió nada: la función de la base lo comprueba, y si el envío
+ * ya empezó no lo toca. Ver `20261124120000_descartar_borradores.sql`.
+ */
+export async function descartarBorrador(envioId: number): Promise<void> {
+  const supabase = await getServerClient();
+  if (!supabase) return;
+  await supabase.rpc("descartar_borradores", { p_envio: envioId });
 }
 
 // ------------------------------------------------------------------ mandar

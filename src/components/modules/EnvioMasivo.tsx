@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
+  descartarBorrador,
   mandarTanda,
   prepararEnvio,
   quedarmeConLasRespuestas,
@@ -90,6 +91,19 @@ export function EnvioMasivo({
   const [atiendo, setAtiendo] = useState<"asesora" | "yo">("asesora");
   /** Cómo quedó el reparto de «Las atiendo yo», para decirlo mientras sale. */
   const [atendidas, setAtendidas] = useState<string | null>(null);
+
+  /*
+   * Cerrar sin mandar tira el borrador (29/10/2026).
+   *
+   * «Ver a quiénes les llega» ya dejó el envío armado en la base. Si la
+   * ventana se cierra antes de mandar, ese borrador no sirve y quedaba en
+   * Envíos como «sin mandar». Una vez que empezó a salir no se toca: ahí es
+   * un envío de verdad, aunque quede a medias.
+   */
+  const cerrar = () => {
+    if (prep?.envioId && paso === "revisar") void descartarBorrador(prep.envioId).catch(() => {});
+    onCerrar();
+  };
 
   const listas = aprobadas(plantillas);
   const plantilla = listas.find((p) => p.id === elegida) ?? null;
@@ -294,7 +308,7 @@ export function EnvioMasivo({
   return (
     <>
       <div
-        onClick={paso === "mandando" ? undefined : onCerrar}
+        onClick={paso === "mandando" ? undefined : cerrar}
         style={{ position: "fixed", inset: 0, background: "rgba(31,29,26,0.35)", zIndex: 90 }}
       />
       <div
@@ -343,7 +357,7 @@ export function EnvioMasivo({
             </label>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" onClick={onCerrar} style={secundario}>
+              <button type="button" onClick={cerrar} style={secundario}>
                 Cancelar
               </button>
               <button
@@ -612,7 +626,7 @@ export function EnvioMasivo({
             {error && <p style={malo}>{error}</p>}
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" onClick={onCerrar} style={secundario}>
+              <button type="button" onClick={cerrar} style={secundario}>
                 Cancelar
               </button>
               <button
