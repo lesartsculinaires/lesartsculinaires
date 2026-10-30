@@ -33,6 +33,7 @@ import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
 import { insertarEnCursor } from "@/lib/texto";
 import { alternarMarca, textoPlano, type Marca } from "@/lib/formatoDeWhatsapp";
+import { enSalvador } from "@/lib/format";
 import { pedirPermisoDeLlamada } from "@/app/llamadas-actions";
 import { canalDe, tituloDeHilo } from "@/lib/canales";
 import {
@@ -198,11 +199,9 @@ const contenido = (m: Mensaje): string => {
   return ETIQUETA[m.tipo] ?? `Mensaje de tipo «${m.tipo}»`;
 };
 
-const hora = (iso: string) =>
-  new Date(iso).toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit" });
+const hora = (iso: string) => enSalvador(new Date(iso), { hour: "2-digit", minute: "2-digit" });
 
-const dia = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-SV", { day: "2-digit", month: "short" });
+const dia = (iso: string) => enSalvador(new Date(iso), { day: "2-digit", month: "short" });
 
 /** Horas desde el último mensaje entrante: define la ventana de WhatsApp. */
 function horasDesdeEntrante(msgs: Mensaje[]): number | null {
