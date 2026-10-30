@@ -638,13 +638,19 @@ const COMO_SE_DICE: Record<string, string> = {
   cancelado: "frenado",
 };
 
+// El servidor y el navegador tienen que escribir lo mismo, o React se queja
+// (#418): Netlify está en UTC, y Node pone un espacio duro antes de «p. m.»
+// donde Chromium pone uno común.
 const cuando = (iso: string) =>
-  new Date(iso).toLocaleDateString("es-SV", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  new Date(iso)
+    .toLocaleDateString("es-SV", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/El_Salvador",
+    })
+    .replace(/\s/g, " ");
 
 const pastilla = (estado: string, accent: string): CSSProperties => ({
   fontSize: 10.5,

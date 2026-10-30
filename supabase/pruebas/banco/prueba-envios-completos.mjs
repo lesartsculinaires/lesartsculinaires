@@ -52,7 +52,9 @@ sql(`insert into envio_destinatarios (envio_id, cliente_id, telefono, nombre, es
 const jwt = fs.readFileSync(`${BANCO}/jwt-jefa.txt`, "utf8").trim();
 const galleta = "base64-" + Buffer.from(JSON.stringify({ access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: Math.floor(Date.now() / 1000) + 86400, refresh_token: "x", user: { id: "cccccccc-0000-0000-0000-000000000003", email: "jefa@lac.test" } })).toString("base64");
 const nav = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome" });
-const ctx = await nav.newContext({ viewport: { width: 1500, height: 1000 } });
+// El navegador en El Salvador y el servidor en UTC, como Netlify: así se ve
+// si la hora de las tarjetas sale igual en los dos lados.
+const ctx = await nav.newContext({ viewport: { width: 1500, height: 1000 }, timezoneId: "America/El_Salvador" });
 await ctx.addCookies([{ name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" }, { name: "lac.mod", value: encodeURIComponent("Envíos"), domain: "127.0.0.1", path: "/" }]);
 await ctx.addInitScript((h) => { try { localStorage.setItem("lac.reservas.visto", h); } catch {} }, new Date().toLocaleDateString("en-CA", { timeZone: "America/El_Salvador" }));
 const p = await ctx.newPage();
@@ -88,9 +90,9 @@ try {
   es("ninguna pastilla sin letras ni número", pastillas.filter((x) => !/[\p{L}\d]/u.test(x)), []);
   if (process.env.CAPTURAS) await p.screenshot({ path: `${process.env.CAPTURAS}/envios-completos.png` });
 
-  // El #418 (un texto que no coincide entre servidor y navegador al abrir
-  // directo en Envíos) ya estaba en main antes de este arreglo: no es de acá.
-  es("sin errores en la página", errores.filter((e) => !/#418/.test(e)), []);
+  // Incluye el #418: la hora de la tarjeta escrita distinto en el servidor y
+  // en el navegador.
+  es("sin errores en la página", errores, []);
 } catch (e) {
   f++;
   console.log("✗ se cortó:", e.message);
