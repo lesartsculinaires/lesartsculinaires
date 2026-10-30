@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { lineaDeTiempo, type Interaccion } from "@/app/linea-actions";
 import { canalDe } from "@/lib/canales";
 import { T } from "@/lib/theme";
+import { enSalvador } from "@/lib/format";
 
 /**
  * Toda la conversación de esta persona, cruzando canales.
@@ -260,11 +261,11 @@ function sinTexto(tipo: string): string {
 const soloFecha = (iso: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-SV", { day: "2-digit", month: "short", year: "numeric" });
+  return enSalvador(d, { day: "2-digit", month: "short", year: "numeric" });
 };
 
 const soloHora = (iso: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("es-SV", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return enSalvador(d, { hour: "2-digit", minute: "2-digit", hour12: false });
 };

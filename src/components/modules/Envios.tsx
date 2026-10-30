@@ -8,6 +8,7 @@ import { comoSeLlama } from "@/lib/envios";
 import { conValores } from "@/lib/whatsapp/huecos";
 import { repartirValores } from "@/lib/whatsapp/piezas";
 import type { Envio } from "@/lib/supabase/envios";
+import { enSalvador } from "@/lib/format";
 
 /**
  * Los envíos masivos y cómo les fue.
@@ -638,19 +639,8 @@ const COMO_SE_DICE: Record<string, string> = {
   cancelado: "frenado",
 };
 
-// El servidor y el navegador tienen que escribir lo mismo, o React se queja
-// (#418): Netlify está en UTC, y Node pone un espacio duro antes de «p. m.»
-// donde Chromium pone uno común.
 const cuando = (iso: string) =>
-  new Date(iso)
-    .toLocaleDateString("es-SV", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "America/El_Salvador",
-    })
-    .replace(/\s/g, " ");
+  enSalvador(new Date(iso), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 const pastilla = (estado: string, accent: string): CSSProperties => ({
   fontSize: 10.5,

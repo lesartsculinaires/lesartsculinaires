@@ -91,6 +91,17 @@ export const horaDe = (iso: string): string => {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
+/**
+ * Una fecha u hora en hora de El Salvador, escrita igual en el servidor y en
+ * el navegador.
+ *
+ * Si no salen iguales, React se queja (#418) y la hora se ve cambiar al
+ * cargar: Netlify está en UTC, y Node pone un espacio duro antes de «p. m.»
+ * donde Chromium pone uno común.
+ */
+export const enSalvador = (d: Date, opciones: Intl.DateTimeFormatOptions): string =>
+  d.toLocaleString("es-SV", { ...opciones, timeZone: "America/El_Salvador" }).replace(/\s/g, " ");
+
 /** "1 lead" / "4 leads". */
 export const leadCount = (n: number): string =>
   n === 1 ? "1 lead" : `${n} leads`;
