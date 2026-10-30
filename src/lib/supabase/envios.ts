@@ -1,5 +1,6 @@
 import "server-only";
 
+import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Valor } from "@/lib/envios";
 import { NADA_MAS, quePide, type QuePide } from "@/lib/whatsapp/piezas";
@@ -139,13 +140,50 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
     }
   }
 
-  const { data: dest, error: errDest } = await supabase
-    .from("envio_destinatarios")
-    .select("envio_id, estado, motivo, nombre, telefono, wa_id")
-    .in("envio_id", ids)
-    .limit(50000);
+  /*
+   * Los destinatarios, en tandas.
+   *
+   * Era una sola consulta con `.limit(50000)`, pero el servidor corta cada
+   * respuesta en mil filas digan lo que digan. Con cien envíos de cien
+   * personas, los que pasaban de la fila mil quedaban afuera: el 30/10/2026 el
+   * masivo «Le Petit» decía 6 destinatarios y tenía 59, y la lista de quiénes
+   * contestaron salía corta.
+   */
+  const { data: dest, error: errDest } = await traerTodo<Fila>((conTotal) =>
+    supabase
+      .from("envio_destinatarios")
+      .select("id, envio_id, estado, motivo, nombre, telefono, wa_id, cliente_id", conTotal ? { count: "exact" } : undefined)
+      .in("envio_id", ids)
+      .order("id"),
+  );
 
-  if (errDest) return { ...VACIO, error: errDest.message };
+  if (errDest) return { ...VACIO, error: errDest };
+
+  /*
+   * El nombre de quien contestó, como está en el CRM.
+   *
+   * El destinatario guarda el nombre de perfil de WhatsApp, que es lo que
+   * cada uno se puso: «.», «🙏🏻», «FV». En la lista de quiénes contestaron
+   * eso no dice a quién llamar; el nombre de la ficha sí.
+   */
+  const nombreEnElCrm = new Map<number, string>();
+  {
+    const suyos = [
+      ...new Set(
+        ((dest ?? []) as unknown as Fila[])
+          .filter((d) => String(d.estado) === "respondio" && d.cliente_id != null)
+          .map((d) => Number(d.cliente_id)),
+      ),
+    ];
+    for (let i = 0; i < suyos.length; i += 500) {
+      const { data } = await supabase.from("clientes").select("id, nombre").in("id", suyos.slice(i, i + 500));
+      for (const c of (data ?? []) as unknown as Fila[]) {
+        const n = c.nombre == null ? "" : String(c.nombre).trim();
+        // Una ficha que se llama «.» tampoco dice a quién llamar.
+        if (/\p{L}/u.test(n)) nombreEnElCrm.set(Number(c.id), n);
+      }
+    }
+  }
 
   /*
    * Los motivos que se perdieron, rescatados del hilo.
@@ -235,8 +273,11 @@ export async function fetchEnvios(): Promise<ResultadoEnvios> {
 
     if (estado === "respondio") {
       const lista = quienes.get(id) ?? [];
+      const deLaFicha = d.cliente_id == null ? undefined : nombreEnElCrm.get(Number(d.cliente_id));
+      const deWhatsapp = d.nombre == null ? "" : String(d.nombre).trim();
       lista.push({
-        nombre: d.nombre == null ? null : String(d.nombre),
+        // Un perfil sin letras —«.», «🙏🏻»— no es un nombre: mejor el número.
+        nombre: deLaFicha ?? (/\p{L}/u.test(deWhatsapp) ? deWhatsapp : null),
         telefono: String(d.telefono ?? ""),
       });
       quienes.set(id, lista);

@@ -586,7 +586,7 @@ function Barra({ envio: e, accent }: { envio: Envio; accent: string }) {
         llamar mañana, que es para lo que se hizo la campaña.
       */}
       {e.contestaron.length > 0 && (
-        <div style={{ marginTop: 10 }}>
+        <div data-contestaron style={{ marginTop: 10 }}>
           <p style={{ margin: "0 0 5px", fontSize: 11, color: T.faint, textTransform: "uppercase", letterSpacing: ".05em" }}>
             Contestaron
           </p>
