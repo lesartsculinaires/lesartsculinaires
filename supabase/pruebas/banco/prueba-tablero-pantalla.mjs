@@ -25,6 +25,16 @@ const HURI = "44444444-0000-0000-0000-000000000004";
 const SEMANA = "2026-11-02";
 const MES = "2026-11-01";
 
+// Lo que cambia de una empresa a otra: lo que trae cargado la plantilla.
+const PLANTILLA = {
+  empresa: "LAC",
+  metaVentaNueva: 38200,
+  grupos: 16,
+  /** Un grupo para escribirle reservas, y cómo quedaba antes de la prueba. */
+  grupo: "DSCI-2-2027",
+  grupoAntes: "reservas = null, inscritos = null",
+};
+
 const sql = (q) =>
   execFileSync("su", ["postgres", "-c", "psql -h /tmp -p 5511 -d crm -A -t -q -F'|' -v ON_ERROR_STOP=1 -f -"], {
     input: q,
@@ -64,8 +74,8 @@ const limpiar = () =>
     delete from public.tablero_comentarios where mes = '${MES}';
     delete from public.tablero_acciones where accion like 'Prueba:%';
     delete from public.tablero_metas where mes = '${MES}' and clave in ('leads', 'presupuesto_pauta');
-    update public.tablero_metas set valor = 38200 where mes = '${MES}' and clave = 'venta_nueva';
-    update public.tablero_grupos set reservas = null, inscritos = null where grupo = 'DSCI-2-2027';
+    update public.tablero_metas set valor = ${PLANTILLA.metaVentaNueva} where mes = '${MES}' and clave = 'venta_nueva';
+    update public.tablero_grupos set ${PLANTILLA.grupoAntes} where grupo = '${PLANTILLA.grupo}';
   `);
 
 limpiar();
@@ -128,7 +138,7 @@ try {
   console.log("\n── 2. Metas ──");
   await hoja(page, "Metas");
   es("la meta de venta nueva de la plantilla ya está cargada",
-    await page.getByLabel("META DE VENTA NUEVA $ (la define Dirección), noviembre 2026", { exact: true }).inputValue(), "38200");
+    await page.getByLabel("META DE VENTA NUEVA $ (la define Dirección), noviembre 2026", { exact: true }).inputValue(), String(PLANTILLA.metaVentaNueva));
   es("y las metas fijas (conversión 10%)", await page.getByLabel("Conversión lead → inscrito (mín.)", { exact: true }).inputValue(), "10%");
   await llenar(page, "Meta de leads, noviembre 2026", 120);
   await llenar(page, "Presupuesto de pauta $, noviembre 2026", 1500);
@@ -180,11 +190,11 @@ try {
 
   console.log("\n── 5. Grupos en venta ──");
   await hoja(page, "Grupos en venta");
-  es("los 16 grupos de LAC de la plantilla", await page.locator("tr[data-grupo]").count(), 16);
-  await llenar(page, "Reservas con precio de preventa (#), DSCI-2-2027", 6);
-  await llenar(page, "Inscritos a precio regular (#), DSCI-2-2027", 2);
-  es("reservas e inscritos en la base", enBase("tablero_grupos", "grupo = 'DSCI-2-2027'", "reservas || '/' || inscritos"), "6/2");
-  es("la alerta se recalcula", await page.locator('tr[data-grupo="DSCI-2-2027"] [data-alerta]').getAttribute("data-alerta"), "En venta");
+  es(`los ${PLANTILLA.grupos} grupos de ${PLANTILLA.empresa} de la plantilla`, await page.locator("tr[data-grupo]").count(), PLANTILLA.grupos);
+  await llenar(page, `Reservas con precio de preventa (#), ${PLANTILLA.grupo}`, 6);
+  await llenar(page, `Inscritos a precio regular (#), ${PLANTILLA.grupo}`, 2);
+  es("reservas e inscritos en la base", enBase("tablero_grupos", `grupo = '${PLANTILLA.grupo}'`, "reservas || '/' || inscritos"), "6/2");
+  es("la alerta se recalcula", await page.locator(`tr[data-grupo="${PLANTILLA.grupo}"] [data-alerta]`).getAttribute("data-alerta"), "En venta");
   await foto(page, "05-grupos");
 
   console.log("\n── 6. Plan de acciones ──");
