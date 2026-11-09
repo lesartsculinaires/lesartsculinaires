@@ -27,10 +27,12 @@
  *   Marketing   una semana está cargada cuando el Director escribió algo de
  *               ella. Como en el Excel.
  *
- *   Ventas      una semana está cargada cuando ya terminó, aunque la Gerente
- *               no haya escrito nada: los contactados, los inscritos y las
- *               citas los pone el CRM solo. Antes de terminar, cuenta si la
- *               Gerente ya cargó algo.
+ *   Ventas      una semana está cargada cuando ya terminó y el CRM tiene
+ *               datos de ella, aunque la Gerente no haya escrito nada: los
+ *               contactados, los inscritos y las citas los pone el CRM solo.
+ *               Antes de terminar, cuenta si la Gerente ya cargó algo. Lo que
+ *               se escribe a mano (montos, contratos, descuentos) cuenta sólo
+ *               en los meses en que la Gerente escribió algo.
  */
 
 import {
@@ -115,9 +117,14 @@ const conCero = (v: number | null): number => v ?? 0;
 export const semanaCargadaMk = (s: SemanaDeDatos): boolean =>
   CAMPOS_MK.some((c) => esNumero(s.manual[c.clave]));
 
-/** ¿Cuenta como cargada para Ventas? Ver arriba. */
+/**
+ * ¿Cuenta como cargada para Ventas? Ver arriba. Que el CRM la cubra quiere
+ * decir que tiene algo de esa semana: una semana de antes de que existiera el
+ * CRM no tiene nada, y no por eso vendió cero.
+ */
 export const semanaCargadaVentas = (s: SemanaDeDatos, hoy: string): boolean =>
-  semanaTerminada(s.lunes, hoy) || CAMPOS_VENTAS.some((c) => esNumero(s.manual[c.clave]));
+  (semanaTerminada(s.lunes, hoy) && Object.values(s.crm).some(esNumero)) ||
+  CAMPOS_VENTAS.some((c) => esNumero(s.manual[c.clave]));
 
 // ------------------------------------------------------------- resumen del mes
 
@@ -197,8 +204,8 @@ export function resumenDelMes(
   const lunesDelMes = semanasDelMes(mes);
   const delMes = semanas.filter((s) => mesDeLaSemana(s.lunes) === mes);
   const cargadasMk = delMes.filter(semanaCargadaMk);
-  // Una semana que ya terminó cuenta para Ventas aunque no tenga fila: el CRM
-  // la cubre. Por eso se cuentan los lunes del mes y no las filas.
+  // Una semana que ya terminó cuenta para Ventas aunque la Gerente no haya
+  // escrito nada, si el CRM tiene datos de ella: el CRM la cubre.
   const cargadasVentas = lunesDelMes.filter((lunes) => {
     const s = delMes.find((x) => x.lunes === lunes) ?? { lunes, manual: {}, crm: {} };
     return semanaCargadaVentas(s, hoy);
@@ -206,10 +213,16 @@ export function resumenDelMes(
 
   const hayMk = cargadasMk.length > 0;
   const hayVentas = cargadasVentas.length > 0;
+  // Lo que se escribe a mano (montos, contratos, descuentos) cuenta sólo si
+  // la Gerente cargó algo ese mes. Sin esto, un mes de antes de que existiera
+  // el Tablero —con semanas terminadas que el CRM sí cubre— mostraría esos
+  // datos en cero y en rojo, cuando en realidad nadie los cargó.
+  const hayVentasEscrito = delMes.some((s) => CAMPOS_VENTAS.some((c) => esNumero(s.manual[c.clave])));
   const total = (clave: string, sobre: readonly SemanaDeDatos[] = delMes) =>
     sumar(sobre.map((s) => valorDe(s, clave)));
   const deMk = (clave: string) => (hayMk ? conCero(total(clave)) : null);
-  const deVentas = (clave: string) => (hayVentas ? conCero(total(clave)) : null);
+  const deVentas = (clave: string) =>
+    (POR_CLAVE.get(clave)?.origen === "crm" ? hayVentas : hayVentas && hayVentasEscrito) ? conCero(total(clave)) : null;
 
   const leadsPorCanal = Object.fromEntries(
     CANALES_TABLERO.map((c) => [c.clave, total(`mk.leads_${c.clave}`)]),
@@ -239,8 +252,13 @@ export function resumenDelMes(
   // ------------------------------------------------------------- la actividad
   const actividadDelMes = actividad.filter((f) => mesDeLaSemana(f.lunes) === mes);
   const filas = actividadDelMes.length;
+  // Igual que arriba: lo que el CRM cuenta solo (mensajes, citas, cierres)
+  // vale con cualquier fila; lo que se anota a mano, sólo si alguien anotó.
+  const hayActividadEscrita = actividadDelMes.some((f) => CAMPOS_ACTIVIDAD.some((c) => esNumero(f.manual[c.clave])));
   const deActividad = (clave: string) =>
-    filas ? conCero(sumar(actividadDelMes.map((f) => valorDe(f, clave)))) : null;
+    filas && (POR_CLAVE.get(clave)?.origen === "crm" || hayActividadEscrita)
+      ? conCero(sumar(actividadDelMes.map((f) => valorDe(f, clave))))
+      : null;
 
   return {
     mes,
@@ -274,7 +292,7 @@ export function resumenDelMes(
     cobradoNuevos,
     cursosCortosMonto,
     corporativoMonto,
-    ventaNueva: hayVentas ? conCero(cobradoNuevos) + conCero(cursosCortosMonto) + conCero(corporativoMonto) : null,
+    ventaNueva: hayVentas && hayVentasEscrito ? conCero(cobradoNuevos) + conCero(cursosCortosMonto) + conCero(corporativoMonto) : null,
     descuentos: deVentas("ventas.descuentos"),
 
     acciones: {

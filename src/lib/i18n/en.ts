@@ -13,6 +13,7 @@ export const EN: Record<string, string> = {
   "Módulos": "Modules",
   "Cerrar sesión": "Sign out",
   Dashboard: "Dashboard",
+  "Tablero Comercial": "Sales Scorecard",
   Inbox: "Inbox",
   "Envíos": "Broadcasts",
   Clientes: "Clients",

@@ -145,7 +145,40 @@ test("lo del CRM entra solo, y lo que escribe el área manda", () => {
 
 test("los montos de «referencia» no toman el número del CRM", () => {
   const r = resumenDelMes(MES, [{ lunes: "2026-11-02", manual: {}, crm: { "ventas.cobrado_nuevos": 5000 } }], [], [], HOY);
-  assert.equal(r.cobradoNuevos, 0, "la semana cuenta como cargada, pero el monto lo escribe Ventas");
+  assert.equal(r.cobradoNuevos, null, "el monto lo escribe Ventas: sin escribirlo, no hay dato");
+  const conAlgo = resumenDelMes(
+    MES, [{ lunes: "2026-11-02", manual: { "ventas.descuentos": 100 }, crm: { "ventas.cobrado_nuevos": 5000 } }], [], [], HOY,
+  );
+  assert.equal(conAlgo.cobradoNuevos, 0, "con la semana cargada a mano, el monto no escrito es cero");
+});
+
+test("un mes de antes del Tablero: lo del CRM cuenta, lo manual queda vacío (no en cero)", () => {
+  // Noviembre de 2025: semanas terminadas, el CRM con datos, nadie escribió nada.
+  const semanas = [
+    { lunes: "2025-11-03", manual: {}, crm: { "ventas.inscritos_meta": 2, "ventas.cursos_cortos": 3, "mk.leads_meta": 20 } },
+    ...["2025-11-10", "2025-11-17", "2025-11-24"].map((lunes) => ({ lunes, manual: {}, crm: { "mk.leads_meta": 5 } })),
+  ];
+  const actividad = [{ lunes: "2025-11-03", vendedorId: 1, manual: {}, crm: { mensajes: 40, ventas_cerradas: 2 } }];
+  const r = resumenDelMes("2025-11-01", semanas, [], actividad, HOY);
+  assert.equal(r.inscritos, 2);
+  assert.equal(r.cursosCortos, 3);
+  assert.equal(r.contratosCorp, null, "los contratos se escriben a mano");
+  assert.equal(r.ventaNueva, null);
+  assert.equal(r.descuentos, null);
+  assert.equal(r.actividad.mensajes, 40);
+  assert.equal(r.actividad.salidasCampo, null, "las salidas de campo se anotan a mano");
+  const k = kpisDelMes(r, { delMes: {}, fijas: { contratos_corp: 2, salidas_campo: 8, cursos_cortos: 10 } });
+  const estado = (c) => k.find((x) => x.kpi.clave === c).estado;
+  assert.equal(estado("contratos_corp"), null, "sin dato no se pinta de rojo");
+  assert.equal(estado("salidas_campo"), null);
+  assert.equal(estado("cursos_cortos"), "No cumple", "lo que el CRM sí sabe se evalúa");
+});
+
+test("una semana de antes del CRM no cuenta como cargada: no vendió cero, no hay datos", () => {
+  const r = resumenDelMes("2025-11-01", [], [], [], HOY);
+  assert.equal(r.semanasVentas, 0);
+  assert.equal(r.cursosCortos, null);
+  assert.equal(r.inscritos, null);
 });
 
 test("una semana que no terminó no cuenta para Ventas si nadie cargó nada", () => {

@@ -33,6 +33,9 @@ const TRAZOS: Record<string, string> = {
   // Cuatro paneles: el resumen de todo.
   Dashboard: "M4 4h6.5v6.5H4zM13.5 4H20v4.5h-6.5zM4 13.5h6.5V20H4zM13.5 11.5H20V20h-6.5z",
 
+  // Tres barras que suben sobre una base: el avance del mes contra la meta.
+  "Tablero Comercial": "M4 20h16M6.5 16.5V12M11 16.5V8M15.5 16.5V10.5M19.5 4.5l-4 3.5-4.5-2.5-5 4",
+
   // Una bandeja con la boca abierta.
   Inbox: "M3.5 13.5h4l1.5 2.5h6l1.5-2.5h4M3.5 13.5 6 5.5h12l2.5 8v4a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z",
 

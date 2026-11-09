@@ -24,6 +24,7 @@ import { Notificaciones } from "@/components/Notificaciones";
 import { Recordatorios as RelojRecordatorios } from "@/components/Recordatorios";
 import { Recordatorios } from "@/components/modules/Recordatorios";
 import { Frios } from "@/components/modules/Frios";
+import { TableroComercial } from "@/components/modules/tablero/TableroComercial";
 import { SinCopiar } from "@/components/SinCopiar";
 import { Sonido } from "@/components/Sonido";
 import { Plantillas } from "@/components/modules/Plantillas";
@@ -691,6 +692,17 @@ export default function CrmApp({
        */
       programas: de(MOD_PROGRAMAS),
       clientes: de(MOD_CLIENTES),
+      /*
+       * Las partes del Tablero Comercial que cada rol puede llenar. Sólo
+       * esconden los lápices: la base vuelve a decidir con
+       * `puede_llenar_tablero()` en cada guardado.
+       */
+      tablero: {
+        mk: de("tablero.mk").editar,
+        ventas: de("tablero.ventas").editar,
+        actividad: de("tablero.actividad").editar,
+        metas: de("tablero.metas").editar,
+      },
     };
   }, [accesos]);
 
@@ -1096,6 +1108,15 @@ export default function CrmApp({
           <>
           {mod === "Dashboard" && (
             <Dashboard oportunidades={delTablero} accent={accent} />
+          )}
+
+          {mod === "Tablero Comercial" && (
+            <TableroComercial
+              accent={accent}
+              empresa="Les Arts Culinaires"
+              permisos={casillas.tablero}
+              miFicha={accesos.yo?.vendedorId ?? null}
+            />
           )}
 
           {mod === "Clientes" && (

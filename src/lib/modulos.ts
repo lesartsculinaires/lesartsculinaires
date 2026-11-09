@@ -10,6 +10,9 @@
  */
 export const MODULOS = [
   "Dashboard",
+  // La plantilla de la Dirección (MK + Ventas), con lo del CRM ya puesto. Va
+  // pegada al Dashboard porque es la otra pantalla de «cómo vamos».
+  "Tablero Comercial",
   "Inbox",
   "Envíos",
   "Clientes",
