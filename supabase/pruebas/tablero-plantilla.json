@@ -1,0 +1,164 @@
+{
+  "_origen": "Plantilla «Tablero Comercial Institutos» de la Dirección, llenada con el caso de tablero.test.mjs y recalculada con LibreOffice el 9/11/2026 (hoy = 2026-11-09). Son los números que el Excel da para LAC en noviembre 2026.",
+  "kpis": {
+    "Venta nueva $": {
+      "real": 2500,
+      "meta": 9550,
+      "estado": "No cumple",
+      "pct": 0.261780104712042
+    },
+    "Cursos cortos vendidos": {
+      "real": 3,
+      "meta": 2.5,
+      "estado": "Cumple",
+      "pct": 1.2
+    },
+    "Contratos corporativos": {
+      "real": 0,
+      "meta": 0.5,
+      "estado": "No cumple",
+      "pct": 0
+    },
+    "Acciones de Ventas hechas a tiempo (% del plan)": {
+      "real": null,
+      "meta": 0.9,
+      "estado": null,
+      "pct": null
+    },
+    "Citas / visitas realizadas": {
+      "real": 6,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Salidas de campo": {
+      "real": 2,
+      "meta": 2,
+      "estado": "Cumple",
+      "pct": 1
+    },
+    "Llamadas y seguimientos": {
+      "real": 110,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Leads contactados en < 24 h": {
+      "real": 0.78125,
+      "meta": 0.9,
+      "estado": "No cumple",
+      "pct": 0.868055555555556
+    },
+    "Descuentos (% de lo vendido)": {
+      "real": 0.0909090909090909,
+      "meta": 0.2,
+      "estado": "Cumple",
+      "pct": 1.5
+    },
+    "Acciones de MK hechas a tiempo (% del plan)": {
+      "real": 0.5,
+      "meta": 0.9,
+      "estado": "No cumple",
+      "pct": 0.555555555555556
+    },
+    "Acciones de MK sin pauta planificadas": {
+      "real": 1,
+      "meta": 4,
+      "estado": "No cumple",
+      "pct": 0.25
+    },
+    "Leads generados": {
+      "real": 64,
+      "meta": 75,
+      "estado": "No cumple",
+      "pct": 0.853333333333333
+    },
+    "Leads de canales sin pauta (% del total)": {
+      "real": 0.453125,
+      "meta": 0.4,
+      "estado": "Cumple",
+      "pct": 1.1328125
+    },
+    "Costo por lead $": {
+      "real": 5.78125,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Inversión en pauta vs presupuesto $": {
+      "real": 370,
+      "meta": 375,
+      "estado": "Cumple",
+      "pct": 1.01351351351351
+    },
+    "Seguidores nuevos": {
+      "real": 80,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Publicaciones": {
+      "real": 4,
+      "meta": 3,
+      "estado": "Cumple",
+      "pct": 1.33333333333333
+    },
+    "Reseñas nuevas en Google": {
+      "real": 3,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Calificación en Google": {
+      "real": 4.6,
+      "meta": 4.5,
+      "estado": "Cumple",
+      "pct": 1.02222222222222
+    },
+    "Conversión lead → inscrito": {
+      "real": 0.09375,
+      "meta": 0.1,
+      "estado": "Cerca",
+      "pct": 0.9375
+    },
+    "Costo de pauta por inscrito $": {
+      "real": 61.6666666666667,
+      "meta": null,
+      "estado": "Sin meta",
+      "pct": null
+    },
+    "Retorno de la pauta": {
+      "real": 6.75675675675676,
+      "meta": 5,
+      "estado": "Cumple",
+      "pct": 1.35135135135135
+    },
+    "Retorno de las acciones del plan": {
+      "real": 20,
+      "meta": 5,
+      "estado": "Cumple",
+      "pct": 1.5
+    }
+  },
+  "indice": {
+    "LAC": 0.5625,
+    "mk": 0.571428571428571,
+    "ventas": 0.5,
+    "compartido": 0.666666666666667
+  },
+  "faltaVender": {
+    "meta": 38200,
+    "lograda": 2500,
+    "falta": 35700,
+    "porcentaje": 0.0654450261780105,
+    "semanasQuedan": 3,
+    "porSemana": 11900
+  },
+  "cuadre": {
+    "leads": 64,
+    "contactados": 60,
+    "citas": 9,
+    "inscritos": 6,
+    "lectura": "4 leads sin contactar: se pierde la inversión de MK"
+  }
+}
