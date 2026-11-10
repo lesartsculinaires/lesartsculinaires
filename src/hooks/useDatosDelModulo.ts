@@ -83,6 +83,29 @@ export function useDatosDelModulo(
 
   /** El último dibujado del servidor que vimos, para saber qué quedó viejo. */
   const selloVisto = useRef(sello);
+
+  /*
+   * ==========================================================================
+   * LO QUE SE ESTABA MOSTRANDO, MIENTRAS LLEGA LO NUEVO (10/11/2026)
+   * ==========================================================================
+   *
+   * El video del 9/11: grabando una nota de voz en el Inbox, la pantalla quedó
+   * en blanco unos segundos y volvió con la nota perdida. Pasa cuando el
+   * servidor vuelve a dibujar SIN los datos de la pantalla abierta, que es lo
+   * que ocurre si hay otra pestaña del CRM en otro módulo: la galleta del
+   * último módulo es una para todo el navegador, y el servidor manda los datos
+   * de la otra pestaña. Antes de esto, lo que se tenía se tiraba, la pantalla
+   * se cambiaba por «Cargando…» mientras se volvía a pedir, y al cambiarla se
+   * desmontaba entera: la grabación, el borrador y el hilo abierto se perdían.
+   *
+   * Ahora, en cada dibujado nuevo, se guarda lo que la pantalla abierta estaba
+   * mostrando y se sigue mostrando hasta que llega lo fresco. Se vuelve a
+   * pedir igual —nada queda viejo—, pero sin «Cargando…»: la pantalla no se
+   * desmonta. Sólo se guarda lo de la pantalla abierta; al cambiar a otra, lo
+   * que falta se pide y se espera como siempre.
+   */
+  const ultimo = useRef<DatosPerezosos>({});
+  const mientras = useRef<DatosPerezosos>({});
   /** Lo que se está pidiendo ahora, para no pedir dos veces lo mismo. */
   const enVuelo = useRef<string | null>(null);
 
@@ -120,12 +143,35 @@ export function useDatosDelModulo(
   const clave = necesarios.join(",");
   const servidosClave = servidos.join(",");
 
+  /*
+   * Un dibujado nuevo del servidor se atiende ACÁ, mientras se dibuja, y no en
+   * el efecto de abajo. En el efecto llegaba tarde: el primer dibujado con lo
+   * nuevo ya había salido sin la bandeja, el Inbox se pintaba sin el hilo
+   * abierto y el grabador se desmontaba igual.
+   */
+  if (selloVisto.current !== sello) {
+    selloVisto.current = sello;
+    // Lo que la pantalla abierta estaba mostrando, para no quitárselo.
+    const guardado: DatosPerezosos = {};
+    for (const c of (clave ? clave.split(",") : []) as Conjunto[]) {
+      if (ultimo.current[c] !== undefined) {
+        (guardado as Record<string, unknown>)[c] = ultimo.current[c];
+      }
+    }
+    mientras.current = guardado;
+    traidos.current = {};
+    // Un dibujado nuevo —también el de «Actualizar»— merece intentos nuevos.
+    fallas.current = 0;
+  }
+
   useEffect(() => {
-    if (selloVisto.current !== sello) {
-      selloVisto.current = sello;
-      traidos.current = {};
-      // Un dibujado nuevo —también el de «Actualizar»— merece intentos nuevos.
-      fallas.current = 0;
+    // Lo guardado de una pantalla que ya no está abierta se olvida: al volver a
+    // ella se pide y se espera, como siempre, en vez de mostrar algo viejo.
+    {
+      const abiertos = new Set(clave ? clave.split(",") : []);
+      for (const c of Object.keys(mientras.current)) {
+        if (!abiertos.has(c)) delete (mientras.current as Record<string, unknown>)[c];
+      }
     }
 
     const yaEstan = [
@@ -145,7 +191,8 @@ export function useDatosDelModulo(
     if (enVuelo.current === pedido) return;
     enVuelo.current = pedido;
 
-    setCargando(falta);
+    // «Cargando» es sólo lo que no hay con qué mostrar mientras tanto.
+    setCargando(falta.filter((c) => mientras.current[c] === undefined));
 
     void (async () => {
       let r: Awaited<ReturnType<typeof cargarConjuntos>>;
@@ -201,5 +248,7 @@ export function useDatosDelModulo(
    * Cuando los dos tienen el mismo conjunto es porque el servidor acaba de
    * dibujar con él: lo suyo es más nuevo por definición.
    */
-  return { datos: { ...traidos.current, ...delServidor }, cargando, error };
+  const datos = { ...mientras.current, ...traidos.current, ...delServidor };
+  ultimo.current = datos;
+  return { datos, cargando, error };
 }
