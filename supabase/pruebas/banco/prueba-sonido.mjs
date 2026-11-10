@@ -24,7 +24,7 @@ const g = "base64-"+Buffer.from(JSON.stringify({access_token:jwt,token_type:"bea
   user:{id:"cccccccc-0000-0000-0000-000000000003",email:"jefa@lac.test"}})).toString("base64");
 
 const nav = await chromium.launch({
-  executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath:"/opt/pw-browsers/chromium",
   // Sin esto el navegador no deja sonar nada y el contexto de audio nunca
   // arranca, así que no habría osciladores que contar.
   args: ["--autoplay-policy=no-user-gesture-required"],

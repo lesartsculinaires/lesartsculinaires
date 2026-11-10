@@ -28,7 +28,7 @@ sql("insert into mensajes (conversacion_id, direccion, tipo, texto, creado_en) s
 const jwt = fs.readFileSync(`${BANCO}/jwt-jefa.txt`, "utf8").trim();
 const galleta = "base64-" + Buffer.from(JSON.stringify({ access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: Math.floor(Date.now() / 1000) + 86400, refresh_token: "x", user: { id: "cccccccc-0000-0000-0000-000000000003", email: "jefa@lac.test" } })).toString("base64");
 
-const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const ctx = await nav.newContext({ viewport: { width: 1500, height: 1000 } });
 await ctx.addCookies([{ name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" }, { name: "lac.mod", value: "Inbox", domain: "127.0.0.1", path: "/" }]);
 await ctx.addInitScript((h) => { try { localStorage.setItem("lac.reservas.visto", h); } catch {} }, new Date().toLocaleDateString("en-CA", { timeZone: "America/El_Salvador" }));

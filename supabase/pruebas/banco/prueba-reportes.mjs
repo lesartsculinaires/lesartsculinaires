@@ -91,7 +91,7 @@ const galleta = "base64-" + Buffer.from(JSON.stringify({
   user: { id: "cccccccc-0000-0000-0000-000000000003", email: "jefa@lac.test" },
 })).toString("base64");
 
-const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const errores = [];
 async function pagina(mod) {
   const ctx = await nav.newContext({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });

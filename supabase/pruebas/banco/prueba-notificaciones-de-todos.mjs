@@ -138,7 +138,7 @@ const galletaDe = (archivo, sub, correo) => {
 };
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
 });
 
 /** Abre el CRM como una persona y devuelve su página. */

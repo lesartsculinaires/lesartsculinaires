@@ -82,7 +82,7 @@ if (process.env.PREPARAR) {
   process.exit(0);
 }
 
-const nav = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome" });
+const nav = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium" });
 const errores = [];
 
 const entrar = async (quien, modulo, viewport = { width: 1440, height: 900 }) => {

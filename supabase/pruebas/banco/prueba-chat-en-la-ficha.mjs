@@ -54,7 +54,7 @@ const galleta = "base64-" + Buffer.from(JSON.stringify({
 })).toString("base64");
 
 const HOY = new Date().toLocaleDateString("en-CA", { timeZone: "America/El_Salvador" });
-const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const ctx = await nav.newContext({ viewport: { width: 1600, height: 950 } });
 await ctx.addCookies([
   { name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" },

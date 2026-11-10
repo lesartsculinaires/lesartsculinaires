@@ -102,7 +102,7 @@ const antes = tablaDeErrores ? Number(sql("select count(*) from errores_cliente"
 const lead = sql("select id from oportunidades order by id limit 1");
 const etapa = sql(`select etapa_id from oportunidades where id = ${lead}`);
 
-const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 const ctx = await nav.newContext({ viewport: { width: 1400, height: 900 } });
 await ctx.addCookies([
   { name: "sb-127-auth-token", value: galleta, domain: "127.0.0.1", path: "/" },

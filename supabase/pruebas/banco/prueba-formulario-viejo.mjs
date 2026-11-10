@@ -196,7 +196,7 @@ const galletaDe = (archivo, correo) => {
 };
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
 });
 
 /** Abre el módulo de Clientes con la sesión que se le diga. */

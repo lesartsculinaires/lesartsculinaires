@@ -52,7 +52,7 @@ const galleta =
     user: { id: "cccccccc-0000-0000-0000-000000000003", email: "jefa@lac.test" },
   })).toString("base64");
 
-const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+const nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
 try {
   const ctx = await nav.newContext({ viewport: { width: 1600, height: 1100 } });
   await ctx.addCookies([

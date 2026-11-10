@@ -211,7 +211,7 @@ async function metaResponde(callId) {
 }
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
   args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
 });
 const ctx = await nav.newContext({

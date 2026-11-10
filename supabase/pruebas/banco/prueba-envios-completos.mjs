@@ -51,7 +51,7 @@ sql(`insert into envio_destinatarios (envio_id, cliente_id, telefono, nombre, es
 
 const jwt = fs.readFileSync(`${BANCO}/jwt-jefa.txt`, "utf8").trim();
 const galleta = "base64-" + Buffer.from(JSON.stringify({ access_token: jwt, token_type: "bearer", expires_in: 86400, expires_at: Math.floor(Date.now() / 1000) + 86400, refresh_token: "x", user: { id: "cccccccc-0000-0000-0000-000000000003", email: "jefa@lac.test" } })).toString("base64");
-const nav = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1243/chrome-linux64/chrome" });
+const nav = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium" });
 // El navegador en El Salvador y el servidor en UTC, como Netlify: así se ve
 // si la hora de las tarjetas sale igual en los dos lados.
 const ctx = await nav.newContext({ viewport: { width: 1500, height: 1000 }, timezoneId: "America/El_Salvador" });

@@ -161,7 +161,7 @@ const galleta =
   ).toString("base64");
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
 });
 const ctx = await nav.newContext({ viewport: { width: 1400, height: 900 } });
 await ctx.addCookies([

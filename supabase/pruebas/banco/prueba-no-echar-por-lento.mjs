@@ -127,7 +127,7 @@ const galleta =
 sembrar();
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
 });
 
 /** Abre la portada y dice DÓNDE terminó. */

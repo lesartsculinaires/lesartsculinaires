@@ -65,7 +65,7 @@ const servidor = http.createServer((_, res) => {
 await new Promise((r) => servidor.listen(3198, "127.0.0.1", r));
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
   args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
 });
 const ctx = await nav.newContext({ permissions: ["microphone"] });

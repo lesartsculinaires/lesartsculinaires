@@ -145,7 +145,7 @@ const galleta =
   ).toString("base64");
 
 const nav = await chromium.launch({
-  executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  executablePath: "/opt/pw-browsers/chromium",
   // Sin esto, pedir el micrófono abre un cartel que nadie puede contestar.
   args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
 });
