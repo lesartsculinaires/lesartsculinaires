@@ -1,53 +1,57 @@
--- El sitio de Dirección lee el Tablero de HC con la llave de servicio (10/11/2026).
+-- El sitio de Dirección lee el Tablero de HC con una llave propia (10/11/2026).
 --
 -- El sitio aparte (repositorio `tablero-comercial`) junta LAC y HC para la
--- Dirección. Se entra con la cuenta de LAC, así que en HC no hay sesión: lo de
--- HC se lee desde el servidor del sitio con la llave de servicio, después de
--- comprobar en LAC que quien entra tiene permiso.
+-- Dirección. Se entra con la cuenta de LAC, así que en HC no hay sesión.
 --
--- La llave de servicio ya pasa por encima de las políticas de las tablas, pero
--- las tres funciones que cuentan lo del CRM preguntan `puede('tablero','ver')`,
--- y eso mira el rol del usuario: con la llave de servicio no hay usuario y
--- contestaba que no. Acá la pregunta pasa a `puede_ver_tablero()`, que dice
--- que sí a quien tenga el Tablero (como antes) o a la llave de servicio.
+-- ============================================================================
+-- POR QUÉ UNA LLAVE PROPIA Y NO LA LLAVE DE SERVICIO
+-- ============================================================================
 --
--- Nada más cambia: lo que cuentan y cómo lo cuentan es lo mismo que en
--- `20261126120000_tablero_datos_del_crm.sql`. Va igual en los dos CRM para
--- que sigan siendo el mismo código; en LAC no lo usa nadie todavía.
+-- La llave de servicio abre la base entera: clientes, chats, todo. El sitio
+-- sólo necesita leer el Tablero. Con una llave propia, si el sitio quedara
+-- expuesto, lo único que se podría leer son los números del Tablero.
+--
+-- La llave la genera quien instala el sitio, va como variable secreta en
+-- Netlify (HC_TABLERO_LLAVE) y acá se guarda sólo su huella (SHA-256): ni
+-- quien lea esta base puede sacar la llave de acá. Para cambiarla, se agrega
+-- la huella nueva y se apaga la vieja (`activa = false`).
+--
+-- `tablero_del_sitio()` la comprueba y devuelve, en un solo JSON, lo mismo que
+-- lee el módulo del CRM. Las tres funciones que cuentan lo del CRM se separan
+-- en el cálculo (sin pregunta, cerrado para todos) y la función de siempre
+-- (que pregunta el permiso y llama al cálculo): lo que cuentan no cambia.
+--
+-- Va igual en los dos CRM para que sigan siendo el mismo código. En LAC no
+-- hay ninguna huella cargada, así que ahí `tablero_del_sitio()` no abre nada.
 
 begin;
 
--- ¿Puede ver el Tablero quien pide? Un usuario con el permiso, o la llave de
--- servicio (que sólo vive en servidores: el del CRM y el del sitio).
-create or replace function public.puede_ver_tablero()
-returns boolean
+-- ------------------------------------------------------- las huellas de las llaves
+create table if not exists public.tablero_llaves_del_sitio (
+  id        bigint      generated always as identity primary key,
+  huella    text        not null unique check (huella ~ '^[0-9a-f]{64}$'),
+  nota      text,
+  activa    boolean     not null default true,
+  creada_en timestamptz not null default now()
+);
+
+comment on table public.tablero_llaves_del_sitio is
+  'Huella SHA-256 (hex) de cada llave con la que el sitio de Dirección lee el Tablero. Nunca la llave.';
+
+-- Sin políticas: nadie la lee ni la escribe por la API.
+alter table public.tablero_llaves_del_sitio enable row level security;
+revoke all on table public.tablero_llaves_del_sitio from anon, authenticated;
+
+-- ------------------------------------------- el cálculo, separado del permiso
+-- tablero_crm_semanal: el cálculo, sin la pregunta de permiso. Sólo lo llaman la
+-- función pública (que pregunta) y `tablero_del_sitio` (que pide la llave).
+create or replace function public.tablero_crm_semanal_calculo(p_desde date, p_hasta date)
+returns table (semana date, campo text, valor numeric)
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select public.puede('tablero', 'ver')
-      or coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '') = 'service_role';
-$$;
-
-revoke execute on function public.puede_ver_tablero() from public, anon;
-grant  execute on function public.puede_ver_tablero() to authenticated, service_role;
-
--- ------------------------------------------------------ los datos de la semana
-
-create or replace function public.tablero_crm_semanal(p_desde date, p_hasta date)
-returns table (semana date, campo text, valor numeric)
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-begin
-  if not public.puede_ver_tablero() then
-    raise exception 'Sin permiso para ver el Tablero Comercial.' using errcode = '42501';
-  end if;
-
-  return query
   with
   leads as (
     select o.id, o.cliente_id, o.created_at,
@@ -127,27 +131,33 @@ begin
   union all
   select g.lunes, 'ventas.cursos_cortos_monto', sum(g.monto) from ganados g
    where g.categoria = 'Curso corto' group by 1;
-end $$;
+$$;
 
-revoke execute on function public.tablero_crm_semanal(date, date) from public, anon;
-grant  execute on function public.tablero_crm_semanal(date, date) to authenticated;
-grant  execute on function public.tablero_crm_semanal(date, date) to service_role;
+revoke execute on function public.tablero_crm_semanal_calculo(date, date) from public, anon, authenticated;
 
--- ---------------------------------------------- la actividad de cada persona
-
-create or replace function public.tablero_crm_actividad(p_desde date, p_hasta date)
-returns table (semana date, vendedor_id bigint, campo text, valor numeric)
+create or replace function public.tablero_crm_semanal(p_desde date, p_hasta date)
+returns table (semana date, campo text, valor numeric)
 language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
 begin
-  if not public.puede_ver_tablero() then
+  if not public.puede('tablero', 'ver') then
     raise exception 'Sin permiso para ver el Tablero Comercial.' using errcode = '42501';
   end if;
+  return query select * from public.tablero_crm_semanal_calculo(p_desde, p_hasta);
+end $$;
 
-  return query
+-- tablero_crm_actividad: el cálculo, sin la pregunta de permiso. Sólo lo llaman la
+-- función pública (que pregunta) y `tablero_del_sitio` (que pide la llave).
+create or replace function public.tablero_crm_actividad_calculo(p_desde date, p_hasta date)
+returns table (semana date, vendedor_id bigint, campo text, valor numeric)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
   -- Mensajes escritos por la persona. Los de un envío masivo no son seguimiento.
   select date_trunc('week', (m.creado_en at time zone 'America/El_Salvador')::date)::date,
          v.id, 'mensajes'::text, count(*)::numeric
@@ -185,27 +195,33 @@ begin
    where es.nombre ilike 'ganad%' and o.vendedor_id is not null
      and o.fecha_cierre between p_desde and p_hasta
    group by 1, 2;
-end $$;
+$$;
 
-revoke execute on function public.tablero_crm_actividad(date, date) from public, anon;
-grant  execute on function public.tablero_crm_actividad(date, date) to authenticated;
-grant  execute on function public.tablero_crm_actividad(date, date) to service_role;
+revoke execute on function public.tablero_crm_actividad_calculo(date, date) from public, anon, authenticated;
 
--- ------------------------------------------- lo vendido por persona en el mes
-
-create or replace function public.tablero_crm_ventas_persona(p_mes date)
-returns table (vendedor_id bigint, campo text, valor numeric)
+create or replace function public.tablero_crm_actividad(p_desde date, p_hasta date)
+returns table (semana date, vendedor_id bigint, campo text, valor numeric)
 language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
 begin
-  if not public.puede_ver_tablero() then
+  if not public.puede('tablero', 'ver') then
     raise exception 'Sin permiso para ver el Tablero Comercial.' using errcode = '42501';
   end if;
+  return query select * from public.tablero_crm_actividad_calculo(p_desde, p_hasta);
+end $$;
 
-  return query
+-- tablero_crm_ventas_persona: el cálculo, sin la pregunta de permiso. Sólo lo llaman la
+-- función pública (que pregunta) y `tablero_del_sitio` (que pide la llave).
+create or replace function public.tablero_crm_ventas_persona_calculo(p_mes date)
+returns table (vendedor_id bigint, campo text, valor numeric)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
   select o.vendedor_id,
          case p.categoria when 'Diplomado' then 'diplomados' else 'cursos_cortos' end,
          count(*)::numeric
@@ -217,10 +233,92 @@ begin
      and o.fecha_cierre >= date_trunc('month', p_mes)::date
      and o.fecha_cierre <  (date_trunc('month', p_mes) + interval '1 month')::date
    group by 1, 2;
+$$;
+
+revoke execute on function public.tablero_crm_ventas_persona_calculo(date) from public, anon, authenticated;
+
+create or replace function public.tablero_crm_ventas_persona(p_mes date)
+returns table (vendedor_id bigint, campo text, valor numeric)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.puede('tablero', 'ver') then
+    raise exception 'Sin permiso para ver el Tablero Comercial.' using errcode = '42501';
+  end if;
+  return query select * from public.tablero_crm_ventas_persona_calculo(p_mes);
 end $$;
 
-revoke execute on function public.tablero_crm_ventas_persona(date) from public, anon;
-grant  execute on function public.tablero_crm_ventas_persona(date) to authenticated;
-grant  execute on function public.tablero_crm_ventas_persona(date) to service_role;
+-- ----------------------------------------------- lo que lee el sitio de Dirección
+create or replace function public.tablero_del_sitio(p_llave text, p_desde date, p_hasta date, p_mes date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if p_llave is null or length(p_llave) < 40 or not exists (
+       select 1 from public.tablero_llaves_del_sitio l
+        where l.activa and l.huella = encode(sha256(convert_to(p_llave, 'UTF8')), 'hex')) then
+    raise exception 'Llave del sitio no válida.' using errcode = '42501';
+  end if;
+  if p_desde is null or p_hasta is null or p_mes is null or p_hasta < p_desde or p_hasta - p_desde > 450 then
+    raise exception 'Rango de fechas no válido.' using errcode = '22023';
+  end if;
+
+  return jsonb_build_object(
+    'semanal', coalesce((
+      select jsonb_agg(jsonb_build_object('semana', s.semana, 'campo', s.campo, 'valor', s.valor) order by s.semana, s.campo)
+        from public.tablero_semanal s where s.semana between p_desde and p_hasta), '[]'::jsonb),
+    'crm_semanal', coalesce((
+      select jsonb_agg(to_jsonb(c)) from public.tablero_crm_semanal_calculo(p_desde, p_hasta) c), '[]'::jsonb),
+    'metas', coalesce((
+      select jsonb_agg(jsonb_build_object('mes', m.mes, 'clave', m.clave, 'valor', m.valor))
+        from public.tablero_metas m), '[]'::jsonb),
+    'grupos', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', g.id, 'programa', g.programa, 'grupo', g.grupo, 'dias', g.dias, 'horario', g.horario,
+               'duracion_meses', g.duracion_meses, 'inicio', g.inicio, 'matricula_1', g.matricula_1,
+               'matricula_2', g.matricula_2, 'mensualidad', g.mensualidad, 'graduacion', g.graduacion,
+               'mensualidad_preventa', g.mensualidad_preventa, 'cupo', g.cupo, 'reservas', g.reservas,
+               'inscritos', g.inscritos) order by g.inicio, g.grupo)
+        from public.tablero_grupos g where g.activo), '[]'::jsonb),
+    'acciones', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', a.id, 'tipo', a.tipo, 'accion', a.accion, 'responsable', a.responsable, 'persona', a.persona,
+               'fecha', a.fecha, 'estado', a.estado, 'costo', a.costo, 'leads_esperados', a.leads_esperados,
+               'leads_obtenidos', a.leads_obtenidos, 'inscritos', a.inscritos, 'venta', a.venta) order by a.fecha, a.id)
+        from public.tablero_acciones a where a.fecha is null or a.fecha >= p_desde), '[]'::jsonb),
+    'actividad', coalesce((
+      select jsonb_agg(jsonb_build_object('semana', x.semana, 'vendedor_id', x.vendedor_id, 'campo', x.campo, 'valor', x.valor))
+        from public.tablero_actividad x where x.semana between p_desde and p_hasta), '[]'::jsonb),
+    'crm_actividad', coalesce((
+      select jsonb_agg(to_jsonb(c)) from public.tablero_crm_actividad_calculo(p_desde, p_hasta) c), '[]'::jsonb),
+    'ventas_persona', coalesce((
+      select jsonb_agg(jsonb_build_object('vendedor_id', v.vendedor_id, 'campo', v.campo, 'valor', v.valor))
+        from public.tablero_ventas_persona v where v.mes = p_mes), '[]'::jsonb),
+    'crm_ventas_persona', coalesce((
+      select jsonb_agg(to_jsonb(c)) from public.tablero_crm_ventas_persona_calculo(p_mes) c), '[]'::jsonb),
+    'comentarios', coalesce((
+      select jsonb_agg(jsonb_build_object('hoja', k.hoja, 'texto', k.texto, 'actualizado_en', k.actualizado_en))
+        from public.tablero_comentarios k where k.mes = p_mes), '[]'::jsonb),
+    'vendedores', coalesce((
+      select jsonb_agg(jsonb_build_object('id', v.id, 'nombre', v.nombre, 'activo', v.activo) order by v.nombre)
+        from public.vendedores v), '[]'::jsonb)
+  );
+end $$;
+
+comment on function public.tablero_del_sitio(text, date, date, date) is
+  'Lo que lee el sitio de Dirección: el Tablero completo, sólo con una llave cuya huella esté en tablero_llaves_del_sitio.';
+
+revoke execute on function public.tablero_del_sitio(text, date, date, date) from public;
+grant  execute on function public.tablero_del_sitio(text, date, date, date) to anon, authenticated;
+
+-- Una versión anterior de este archivo (nunca aplicada en producción) dejaba
+-- pasar la llave de servicio con esta función. Ya no hace falta.
+drop function if exists public.puede_ver_tablero();
 
 commit;
