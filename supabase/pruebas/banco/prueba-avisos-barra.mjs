@@ -59,10 +59,20 @@ const subDe = (archivo) => {
 };
 const JEFA = subDe("jwt-jefa.txt");
 
+/*
+ * Hasta cuándo pospone la prueba, y la marca para encontrar su fila al
+ * limpiar. Posponer desde el CRM acota a treinta días, así que ninguna fila de
+ * verdad lleva esta fecha: se puede borrar sin mirar quién la puso, incluso si
+ * una corrida anterior se cortó a la mitad.
+ */
+const HASTA_DE_PRUEBA = "2999-12-31T00:00:00Z";
+
 const limpiar = () => {
   sql(`
     delete from public.autorizaciones where descripcion like 'AVISO %';
     delete from public.seguimientos where detalle like 'AVISO %';
+    delete from public.recordatorios_pospuestos
+     where usuario_id = '${JEFA}' and hasta = '${HASTA_DE_PRUEBA}';
   `);
 };
 limpiar();
@@ -85,7 +95,7 @@ const abrir = async () => {
     ).toString("base64");
 
   const nav = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: "/opt/pw-browsers/chromium",
   });
   const ctx = await nav.newContext({ viewport: { width: 1500, height: 1050 } });
   await ctx.addCookies([
@@ -144,14 +154,29 @@ console.log("── 1. lo que hay antes de tocar nada ──");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 2. con cosas de hoy y atrasadas, sí ──");
+console.log("\n── 2. todo lo que entra en Recordatorios sube el número ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   const op = sql("select id from public.oportunidades order by id limit 1;");
 
   /*
    * Tres seguimientos: uno vencido, uno de hoy y uno de la semana que viene.
-   * El tercero es el que importa: no tiene que contarse.
+   *
+   * ------------------------------------------------------------------------
+   * LOS TRES CUENTAN, Y EL DE LA SEMANA QUE VIENE ES EL QUE IMPORTA
+   * ------------------------------------------------------------------------
+   *
+   * Esta prueba se escribió cuando el globito contaba sólo lo vencido y lo de
+   * hoy, y exigía que subiera dos. El 4 de septiembre de 2026 la escuela pidió
+   * que contara todo lo que hay en el módulo —la historia está en
+   * `src/lib/avisos.ts`—, y se cambiaron la regla y `avisos.test.mjs`, pero
+   * ésta no: fallaba con «dio 11, esperaba 10» sin que nada estuviera roto.
+   *
+   * Las fechas se dejan distintas a propósito. Con la regla de hoy dan igual,
+   * y por eso tampoco importa que `current_date` sea el día UTC de la base y
+   * no el de El Salvador. Pero si alguien vuelve a filtrar por fecha sin que
+   * la escuela lo haya pedido, el de la semana que viene deja de contar y esto
+   * falla.
    */
   sql(`
     insert into public.seguimientos (oportunidad_id, tipo, detalle, proxima)
@@ -171,13 +196,13 @@ console.log("\n── 2. con cosas de hoy y atrasadas, sí ──");
   const { nav, p } = await abrir();
 
   /*
-   * Se agregaron tres seguimientos y sólo dos apremian, así que el número
-   * tiene que subir exactamente dos. Si el de la semana que viene contara,
-   * subiría tres.
+   * Se agregaron tres seguimientos y los tres se ven al abrir el módulo, así
+   * que el número tiene que subir exactamente tres. Si subiera dos, alguien
+   * volvió a dejar afuera lo que no vence hoy.
    */
   const ahora = Number(await globito(p, "Recordatorios"));
-  es("RECORDATORIOS SUBIÓ POR LO VENCIDO Y LO DE HOY", ahora, ANTES_RECORDATORIOS + 2);
-  es("y NO contó lo de la semana que viene", ahora === ANTES_RECORDATORIOS + 3, false);
+  es("RECORDATORIOS SUBIÓ POR LOS TRES SEGUIMIENTOS", ahora, ANTES_RECORDATORIOS + 3);
+  es("incluido el de la semana que viene", ahora === ANTES_RECORDATORIOS + 2, false);
   es("AUTORIZACIONES CUENTA LOS PENDIENTES", await globito(p, "Autorizaciones"), "2");
 
   await p.screenshot({ path: (process.env.SP ?? os.tmpdir()) + "/avisos-2-con-numeros.png" });
@@ -185,15 +210,51 @@ console.log("\n── 2. con cosas de hoy y atrasadas, sí ──");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-console.log("\n── 3. al resolverlos, el número baja ──");
+console.log("\n── 3. al resolverlos o posponerlos, el número baja ──");
 // ══════════════════════════════════════════════════════════════════════════
 {
   sql(`
     update public.autorizaciones set estado = 'autorizada'
      where descripcion = 'AVISO pendiente uno';
   `);
+
+  /*
+   * Lo único que Recordatorios todavía deja afuera: lo que esta persona
+   * pospuso. Se elige una reserva que esté en el módulo —con anticipo, sin
+   * venta anotada y no perdida, igual que `necesitaRecordatorio`— y se la
+   * pospone a nombre de la jefa, que es quien mira.
+   *
+   * Si la elegida no estuviera en el módulo el número no bajaría, y la prueba
+   * fallaría en vez de pasar por casualidad.
+   */
+  const reserva = sql(`
+    select o.id
+      from public.oportunidades o
+      left join public.estados e on e.id = o.estado_id
+     where coalesce(o.reserva, 0) > 0
+       and coalesce(o.venta_cerrada, 0) <= 0
+       and coalesce(e.nombre, '') <> 'Perdido'
+       and not exists (select 1 from public.recordatorios_pospuestos r
+                        where r.oportunidad_id = o.id and r.usuario_id = '${JEFA}')
+     order by o.id
+     limit 1;
+  `);
+  if (!reserva) {
+    console.error("\nEl banco no tiene ninguna reserva para posponer: revisá `datos.sql`.\n");
+    process.exit(1);
+  }
+  sql(`
+    insert into public.recordatorios_pospuestos (oportunidad_id, usuario_id, hasta)
+    values (${reserva}, '${JEFA}', '${HASTA_DE_PRUEBA}');
+  `);
+
   const { nav, p } = await abrir();
   es("queda uno solo", await globito(p, "Autorizaciones"), "1");
+  es(
+    "y la reserva pospuesta deja de contar en Recordatorios",
+    Number(await globito(p, "Recordatorios")),
+    ANTES_RECORDATORIOS + 2,
+  );
   await nav.close();
 }
 
@@ -212,7 +273,12 @@ limpiar();
 
 es(
   "no quedó basura de la prueba",
-  sql("select count(*) from public.autorizaciones where descripcion like 'AVISO %';"),
+  sql(`
+    select (select count(*) from public.autorizaciones where descripcion like 'AVISO %')
+         + (select count(*) from public.seguimientos where detalle like 'AVISO %')
+         + (select count(*) from public.recordatorios_pospuestos
+             where usuario_id = '${JEFA}' and hasta = '${HASTA_DE_PRUEBA}');
+  `),
   "0",
 );
 

@@ -101,9 +101,31 @@ export function avisosDeLaBarra(datos: ParaAvisar): Record<string, number> {
    * mismo: cosas que hay que hacer y todavía no se hicieron. Dos números
    * separados obligarían a sumarlos de cabeza para saber cuánto falta.
    *
-   * El número es exactamente lo que se ve al abrir el módulo. Que no lo fuera
-   * —que dijera 3 y adentro hubiera 11— es peor que no tener número: enseña a
-   * no creerle.
+   * LA REGLA, ENTERA
+   *
+   *   Cuenta    cada reserva con plazo corriendo y cada seguimiento sin hacer,
+   *             VENZA CUANDO VENZA: lo vencido, lo de hoy, lo de mañana y lo de
+   *             dentro de un mes.
+   *   Descuenta las reservas que ESTA persona pospuso. Siguen en la pantalla,
+   *             atenuadas, pero no suman.
+   *
+   * O sea: el número es lo que se ve al abrir el módulo, menos lo pospuesto.
+   * Que no lo fuera —que dijera 3 y adentro hubiera 11— es peor que no tener
+   * número: enseña a no creerle.
+   *
+   * NO es «lo vencido y lo de hoy». Ésa fue la regla hasta el 4 de septiembre
+   * de 2026, y la escuela pidió cambiarla (ver la cabecera). La que se quedó
+   * con lo vencido y lo de hoy es la ventana emergente. Volver a la regla
+   * vieja es una decisión de la escuela, no un arreglo: si se toma, el filtro
+   * va acá y hay que cambiar también `supabase/pruebas/avisos.test.mjs` y
+   * `supabase/pruebas/banco/prueba-avisos-barra.mjs`, que hoy exigen que un
+   * seguimiento de la semana que viene cuente.
+   *
+   * Por eso este número no depende del día. No hay que preguntarse si «hoy» es
+   * el de El Salvador o el UTC del servidor: la fecha no lo mueve. Donde el
+   * día de El Salvador sí importa es en la ventana emergente y en cómo se lee
+   * cada tarjeta («Es hoy», «Era ayer»), y eso lo resuelve `hoyEnSalvador` en
+   * `CrmApp`.
    *
    * Lo pospuesto no cuenta. Alguien apretó «recordar más adelante», que es
    * decir «esto no es para hoy»; volver a contarlo sería no haberle hecho caso

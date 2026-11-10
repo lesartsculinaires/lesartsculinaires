@@ -779,8 +779,9 @@ export default function CrmApp({
    * Los números rojos de la barra, todos juntos.
    *
    * Qué se cuenta y por qué está en `@/lib/avisos`, aparte de esta pantalla:
-   * es una regla —«lo que está sin atender y vence hoy o ya venció»— y las
-   * reglas se prueban mejor solas que a través de un navegador.
+   * es una regla —en Recordatorios, todo lo que hay en el módulo menos lo
+   * pospuesto, venza cuando venza— y las reglas se prueban mejor solas que a
+   * través de un navegador.
    */
   const avisos = avisosDeLaBarra({
     mensajesSinLeer: sinLeer,
