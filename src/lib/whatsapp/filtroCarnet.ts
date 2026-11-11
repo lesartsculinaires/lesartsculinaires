@@ -45,26 +45,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 const VENTANA_MINUTOS = 15;
 
-/** Lo que despierta al bot. Es `PALABRAS_BOT` del nodo `Decidir accion`. */
-const PALABRAS_BOT = [
-  "VER CARNET",
-  "VERCARNET",
-  "VER MI CARNET",
-  "CARNET",
-  "CARNE",
-  "MI CARNET",
-  // El id del botón que manda el propio bot, que no es algo que alguien escriba.
-  "BTN_CARNET",
-];
-
 /**
- * El código de estudiante, cuando llega solo y sin que nadie haya dicho
- * «Ver Carnet» antes.
+ * Lo que despierta al bot: «Ver Carnet» y nada más (11/11/2026).
  *
- * Va anclado —el mensaje ENTERO tiene que ser el código— porque así lo evalúa
- * el workflow. «Mi código es LAC3013-2026» no entra: allá tampoco entraría.
+ * Antes también despertaban «carnet», «carne», «mi carnet» y el código de
+ * estudiante enviado solo, y cada uno era una ejecución de n8n aunque la
+ * persona estuviera hablando de otra cosa con ventas. Se pidió que sólo la
+ * frase exacta abra la conversación con el bot; el código y el DUI se aceptan
+ * después, dentro de la ventana de 15 minutos que abre esa frase.
+ *
+ * El botón `BTN_CARNET` sigue: es el que manda el propio bot, y tocarlo es lo
+ * mismo que escribir «Ver Carnet».
  */
-const RE_CODIGO = /^LAC\s?\d+[-\s]?\d{4}$/i;
+const PALABRAS_BOT = ["VER CARNET", "BTN_CARNET"];
 
 /**
  * Las palabras con las que el estudiante pide una persona.
@@ -84,7 +77,8 @@ function comoLoLeeN8n(texto: unknown): string {
 export function esMensajeDeCarnet(texto: unknown): boolean {
   const t = comoLoLeeN8n(texto);
   if (!t) return false;
-  return PALABRAS_BOT.includes(t.toUpperCase()) || RE_CODIGO.test(t);
+  // Los espacios de más entre palabras no cuentan: «Ver  carnet» es lo mismo.
+  return PALABRAS_BOT.includes(t.toUpperCase().replace(/\s+/g, " "));
 }
 
 export function pideUnaPersona(texto: unknown): boolean {
