@@ -261,7 +261,7 @@ export function ClienteDrawer({
      * lo busca al abrir la ficha, no después de leer los montos.
      *
      * No es `codigo`. Ése lo pone la base sola —CRM-0001— y sirve para que dos
-     * personas hablen del mismo lead. Éste sale de la numeración de la escuela,
+     * personas hablen del mismo lead. Éste sale de la numeración del instituto,
      * la que usan para cobrar y archivar, y lo escribe quien cierra. Los dos
      * conviven y ninguno reemplaza al otro.
      *
@@ -273,7 +273,7 @@ export function ClienteDrawer({
       value: o.correlativo ?? "",
       tipo: "texto" as const,
       requerido: false,
-      placeholder: "El número de la escuela, si ya lo tiene",
+      placeholder: "El número del instituto, si ya lo tiene",
       guardar: (v: string) =>
         onEditar(o.id, { correlativo: oNull(v) }, { correlativo: oNull(v) }),
     },

@@ -138,8 +138,8 @@ export const EN: Record<string, string> = {
   "Todavía no tiene una oportunidad abierta, así que no hay etapa ni estado que mostrar. Con «Abrir lead», acá arriba, entra al Pipeline y al tablero.":
     "There is no open opportunity yet, so there is no stage or status to show. Use “Open lead”, above, to add it to the Pipeline and the board.",
   "NOTA INTERNA": "INTERNAL NOTE",
-  "Esta persona todavía no le escribió al": "This person has not written to the school's",
-  "de la escuela.": ".",
+  "Esta persona todavía no le escribió al": "This person has not written to the institute's",
+  "del instituto.": ".",
   "Hasta que lo haga, sólo deja llegarle con una plantilla aprobada.": "Until they do, you can only reach them with an approved template.",
   "Se pasó la ventana para contestarle por": "The reply window has closed for",
   "Usar una plantilla": "Use a template",
@@ -264,11 +264,11 @@ export const EN: Record<string, string> = {
 
   // ── Canales ───────────────────────────────────────────────────────────────
   "Leyendo las conexiones…": "Reading the connections…",
-  "Con qué cuentas habla el CRM. La cuenta de la escuela viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación de Meta—.":
-    "Which accounts the CRM talks through. The school's account comes from the server variables; from here other accounts can be connected — for example, the one used by the Meta app reviewer.",
+  "Con qué cuentas habla el CRM. La cuenta del instituto viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación de Meta—.":
+    "Which accounts the CRM talks through. The institute's account comes from the server variables; from here other accounts can be connected — for example, the one used by the Meta app reviewer.",
   conectado: "connected",
   "sin conectar": "not connected",
-  "La cuenta de la escuela, configurada en el servidor.": "The school's account, configured on the server.",
+  "La cuenta del instituto, configurada en el servidor.": "The institute's account, configured on the server.",
   "No hay cuenta configurada en el servidor.": "No account is configured on the server.",
   "Página sin nombre": "Unnamed Page",
   Desconectar: "Disconnect",
@@ -313,7 +313,7 @@ export const EN: Record<string, string> = {
   programas: "programs",
 
   // ── Encabezado, sonido y recordatorios ────────────────────────────────────
-  "Con qué cuentas habla el CRM. La cuenta de la escuela viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación en Meta— sin tocar nada del servidor.": "Which accounts the CRM talks through. The school's account comes from the server variables; from here other accounts can be connected — for example, the one used by the Meta app reviewer.",
+  "Con qué cuentas habla el CRM. La cuenta del instituto viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación en Meta— sin tocar nada del servidor.": "Which accounts the CRM talks through. The institute's account comes from the server variables; from here other accounts can be connected — for example, the one used by the Meta app reviewer.",
   "/api/": "/api/",
   "/webhook": "/webhook",
   "Messenger sí tiene API de llamadas, y no es sólo el botón de llamar —tampoco se pueden": "Messenger does have a calls API, and it is not only the call button — incoming calls cannot be",

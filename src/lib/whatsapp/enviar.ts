@@ -14,7 +14,7 @@ import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
  *
  * El token vive sólo acá, en el servidor, y sin el prefijo `NEXT_PUBLIC_`: si
  * llegara al navegador, cualquiera que abriera el inspector podría mandar
- * mensajes desde el número de la escuela.
+ * mensajes desde el número del instituto.
  */
 
 const VERSION = "v21.0";
@@ -42,7 +42,7 @@ const VERSION = "v21.0";
  * POR QUÉ SÓLO SE ACEPTA UNA DIRECCIÓN LOCAL
  * ============================================================================
  *
- * Porque acá viaja el token de WhatsApp de la escuela. Una variable que
+ * Porque acá viaja el token de WhatsApp del instituto. Una variable que
  * redirija a dónde se manda es una variable que, mal puesta —o puesta por
  * alguien que no debía—, le entrega esa credencial a otro servidor.
  *
@@ -504,7 +504,7 @@ function explicar(
    */
   if (codigo === 133010 || codigo === 131031) {
     return (
-      "Meta tiene restringida la cuenta o el número de la escuela, así que no deja " +
+      "Meta tiene restringida la cuenta o el número del instituto, así que no deja " +
       "mandar. Se ve el motivo en WhatsApp Manager → Información general; suele ser la " +
       "calificación de calidad del número o una verificación pendiente del negocio."
     );
@@ -528,7 +528,7 @@ function explicar(
   /*
    * 131008: a la plantilla le falta una pieza.
    *
-   * Es el que tumbó la primera campaña de la escuela, y el más engañoso de
+   * Es el que tumbó la primera campaña del instituto, y el más engañoso de
    * todos: Meta dice «falta un parámetro» y no dice CUÁL. Cinco de cinco
    * rechazados, sin una sola pista.
    *
@@ -572,7 +572,7 @@ function explicar(
   /*
    * 131049: Meta frenó el mensaje a propósito.
    *
-   * No es un error de la escuela. Meta limita cuántos mensajes de promoción
+   * No es un error del instituto. Meta limita cuántos mensajes de promoción
    * recibe una persona, sumando los de todas las empresas, y a los que pasan
    * del tope no los entrega. En un envío masivo aparece en algunos y no en
    * otros, y la única lectura útil es que a esa persona hay que escribirle
@@ -581,7 +581,7 @@ function explicar(
   if (codigo === 131049) {
     return (
       "Meta no entregó este mensaje para no saturar a esta persona: recibió demasiados " +
-      "mensajes de promoción en poco tiempo. No es un error de la escuela; a esta persona " +
+      "mensajes de promoción en poco tiempo. No es un error del instituto; a esta persona " +
       "conviene escribirle otro día."
     );
   }
@@ -591,7 +591,7 @@ function explicar(
   if (codigo === 130472) {
     return (
       "Meta tiene este número dentro de una prueba suya en la que no le entrega mensajes de " +
-      "promoción por un tiempo. No es un error de la escuela y no se puede hacer nada desde acá."
+      "promoción por un tiempo. No es un error del instituto y no se puede hacer nada desde acá."
     );
   }
 

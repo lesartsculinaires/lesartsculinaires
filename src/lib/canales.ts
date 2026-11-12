@@ -57,7 +57,7 @@ export type ClaveCanal = "whatsapp" | "instagram" | "messenger" | "tiktok";
  *
  * Tres valores y no dos, porque «no lo sabemos» es un estado real y distinto
  * de «no se puede»: en varias de estas cosas la documentación de Meta no
- * alcanza y hay que probarlo con la cuenta de la escuela. Marcarlo como «sí»
+ * alcanza y hay que probarlo con la cuenta del instituto. Marcarlo como «sí»
  * por las dudas haría que la pantalla ofrezca un botón que falla.
  */
 /**
@@ -120,7 +120,7 @@ export interface Canal {
      *
      * WhatsApp anda y está en producción. Messenger es el caso interesante: la
      * API existe —`POST /{page-id}/calls` acepta ACCEPT, CONNECT, MEDIA_UPDATE,
-     * REJECT y TERMINATE— pero contra la página de la escuela las CINCO
+     * REJECT y TERMINATE— pero contra la página del instituto las CINCO
      * acciones devuelven lo mismo:
      *
      *     (#-1, subcódigo 2018389) Page is not allowlisted to access this feature
@@ -213,7 +213,7 @@ export const CANALES: readonly Canal[] = [
     laVentana:
       "Se puede escribir libremente durante 24 horas desde el último mensaje de la " +
       "persona. Después, sólo con una plantilla aprobada por Meta.",
-    porDondeLlega: "al número de WhatsApp de la escuela",
+    porDondeLlega: "al número de WhatsApp del instituto",
   },
   {
     clave: "instagram",
@@ -279,7 +279,7 @@ export const CANALES: readonly Canal[] = [
       "llegar a siete días Meta pide el permiso «Human Agent», que la aplicación " +
       "todavía no tiene aprobado. Pasada la ventana hay que esperar a que vuelva " +
       "a escribir: Instagram no tiene plantillas.",
-    porDondeLlega: "a la cuenta de Instagram de la escuela",
+    porDondeLlega: "a la cuenta de Instagram del instituto",
   },
   {
     clave: "messenger",
@@ -338,7 +338,7 @@ export const CANALES: readonly Canal[] = [
       "Hay 24 horas para contestar desde el último mensaje. Los siete días necesitan " +
       "el permiso «Human Agent» de Meta, que la aplicación todavía no tiene " +
       "aprobado. Messenger tampoco tiene plantillas para reabrir la conversación.",
-    porDondeLlega: "a la página de Facebook de la escuela",
+    porDondeLlega: "a la página de Facebook del instituto",
   },
   {
     clave: "tiktok",
@@ -371,7 +371,7 @@ export const CANALES: readonly Canal[] = [
     },
     ventanaHoras: 24 * 7,
     laVentana: "Todavía no se sabe: depende de las reglas que ponga TikTok al aprobar.",
-    porDondeLlega: "a la cuenta de TikTok de la escuela",
+    porDondeLlega: "a la cuenta de TikTok del instituto",
   },
 ];
 

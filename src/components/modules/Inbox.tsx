@@ -2538,7 +2538,7 @@ export function Inbox({
               {/*
                 El aviso habla del canal que se está mirando.
                 ----------------------------------------------------------------
-                Decía siempre «al número de WhatsApp de la escuela». Con el
+                Decía siempre «al número de WhatsApp del instituto». Con el
                 filtro puesto en Instagram eso es directamente falso, y manda a
                 revisar la integración equivocada: se lee que se espera un
                 mensaje de WhatsApp en una pestaña que dice Instagram.
@@ -3158,7 +3158,7 @@ export function Inbox({
                      * realidad nunca empezó a correr.
                      */
                     <>
-                      {t("Esta persona todavía no le escribió al")} {canal.nombre} {t("de la escuela.")}{" "}
+                      {t("Esta persona todavía no le escribió al")} {canal.nombre} {t("del instituto.")}{" "}
                       {canal.puede.plantillas === "si"
                         ? t("Hasta que lo haga, sólo deja llegarle con una plantilla aprobada.")
                         : `Hasta que lo haga no hay forma de escribirle: ${canal.nombre} no deja escribir primero.`}

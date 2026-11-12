@@ -330,8 +330,8 @@ export async function eliminarDatosDeInstagram(
       estado: "parcial",
       notas:
         `${base} Queda ${porDecidir.length} ficha(s) (${porDecidir.join(", ")}) que NO se borró ` +
-        "porque tiene rastro comercial —un cobro, un curso cursado o una venta cerrada— y eso la " +
-        "escuela lo conserva por contabilidad. Hay que resolverla a mano.",
+        "porque tiene rastro comercial —un cobro, un curso cursado o una venta cerrada— y eso el " +
+        "instituto lo conserva por contabilidad. Hay que resolverla a mano.",
       detalle,
     };
   }

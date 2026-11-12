@@ -28,7 +28,7 @@ import { useT } from "@/lib/i18n/idioma";
  * LAS VARIABLES NO DESAPARECEN
  * ============================================================================
  *
- * La cuenta de la escuela sigue viniendo de las variables del servidor y cada
+ * La cuenta del instituto sigue viniendo de las variables del servidor y cada
  * tarjeta lo dice. Conectar desde acá AGREGA cuentas; no reemplaza la que ya
  * funciona, y por eso desconectar lo que se conectó desde acá nunca deja al
  * CRM sin poder contestarle a nadie.
@@ -128,7 +128,7 @@ export function Canales({ accent }: { accent: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 760 }}>
       <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: T.muted }}>
-        {t("Con qué cuentas habla el CRM. La cuenta de la escuela viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación en Meta— sin tocar nada del servidor.")}
+        {t("Con qué cuentas habla el CRM. La cuenta del instituto viene de las variables del servidor; desde acá se pueden conectar otras —por ejemplo, la de quien revisa la aplicación en Meta— sin tocar nada del servidor.")}
       </p>
 
       {vuelta && (
@@ -184,7 +184,7 @@ export function Canales({ accent }: { accent: string }) {
 
           <p style={{ margin: "7px 0 0", fontSize: 12.5, color: T.muted }}>
             {c.porVariables
-              ? t("La cuenta de la escuela, configurada en el servidor.")
+              ? t("La cuenta del instituto, configurada en el servidor.")
               : t("No hay cuenta configurada en el servidor.")}
           </p>
 

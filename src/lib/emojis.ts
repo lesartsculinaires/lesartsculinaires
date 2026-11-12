@@ -319,7 +319,7 @@ export const GRUPOS: Grupo[] = [
     ["💡", "idea"],
     ["🔗", "enlace link"],
     ["📍", "ubicacion lugar direccion"],
-    ["🏫", "escuela academia"],
+    ["🏫", "escuela academia instituto"],
     ["🎓", "graduacion diploma titulo"],
     ["📚", "libros estudio"],
     ["📝", "nota apuntes"],
