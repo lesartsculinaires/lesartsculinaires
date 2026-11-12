@@ -1200,6 +1200,7 @@ export default function CrmApp({
               canalesConectados={canalesConectados}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
+              soloNotas={!accesos.esAdmin && rolActual?.soloSusEnvios === true}
               abrirHilo={hiloAAbrir}
               onLlamar={
                 puedeLlamarPorWhatsapp
@@ -1461,6 +1462,7 @@ export default function CrmApp({
                     plantillas={plantillas.plantillas}
                     canalesConectados={canalesConectados}
                     puedeResponder={puedeResponderWhatsapp}
+              soloNotas={!accesos.esAdmin && rolActual?.soloSusEnvios === true}
                     accent={accent}
                     onRefrescar={refrescarBandeja}
                     onLlamar={

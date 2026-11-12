@@ -1,6 +1,7 @@
 "use server";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { NO_CONTESTA, puedeContestar } from "@/lib/supabase/puedeContestar";
 import { revalidatePath } from "next/cache";
 
 import { abrirOportunidad, altaLead } from "@/lib/crm/altaLead";
@@ -306,6 +307,7 @@ export async function responderConversacion(
   // buscar la conversación entera porque no necesita el teléfono ni que
   // WhatsApp esté configurado.
   if (privado) return await guardarNotaInterna(supabase, conversacionId, cuerpo, user.id);
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const { conv, error } = await aQuienLeEscribimos(supabase, conversacionId);
 
@@ -500,6 +502,7 @@ export async function reaccionar(
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return SIN_SESION;
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   if (!hayWhatsapp()) {
     return { ok: false, error: "WhatsApp no está configurado en el servidor." };
@@ -1072,6 +1075,7 @@ export async function abrirChat(
 ): Promise<ResultadoChat> {
   const supabase = await getServerClient();
   if (!supabase) return SIN_SESION;
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const r = await hiloPara(supabase, clienteId, telefono);
   if (r.ok) revalidatePath("/");
@@ -1230,6 +1234,7 @@ export async function altaYChat(
 ): Promise<ResultadoChat> {
   const supabase = await getServerClient();
   if (!supabase) return SIN_SESION;
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const numero = datos.telefono.replace(/\D/g, "");
   if (numero.length < 8 || numero.length > 15) {
@@ -1532,6 +1537,7 @@ export async function enviarArchivo(datos: ArchivoSubido): Promise<ActionResult>
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return SIN_SESION;
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const limpiar = async () => {
     await supabase.storage.from(BALDE_WHATSAPP).remove([datos.ruta]);

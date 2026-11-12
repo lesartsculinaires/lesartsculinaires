@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { NO_CONTESTA, puedeContestar } from "@/lib/supabase/puedeContestar";
 
 import { marcaDelPedido } from "@/lib/marca/servidor";
 import { MARCAS } from "@/lib/marcas";
@@ -194,6 +195,7 @@ export async function enviarPlantillaAConversacion(
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const [{ data: plantilla }, { data: conv }] = await Promise.all([
     supabase

@@ -271,6 +271,18 @@ export function UsuariosRoles({
     }
   };
 
+  const cambiarSoloSusEnvios = async (id: number, si: boolean) => {
+    setBusy(true);
+    // Con la casilla no se «ve todo»: la regla es lo suyo, lo sin asignar y sus envíos.
+    const r = await actualizarRol(id, si ? { solo_sus_envios: true, ve_todo: false } : { solo_sus_envios: false });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
+  };
+
   const cambiarVeTodo = async (id: number, veTodo: boolean) => {
     setBusy(true);
     const r = await actualizarRol(id, { ve_todo: veTodo });
@@ -1141,6 +1153,29 @@ export function UsuariosRoles({
                         Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica en crm-peñagroup
                       </span>
                     </div>
+                  )}
+                  {/* «Solo sus envíos» (12/11/2026): arma masivos, no contesta chats. */}
+                  {r.soloSusEnvios !== undefined && !r.esAdmin && (
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: 8, display: "flex", alignItems: "flex-start", gap: 7, fontSize: 12, color: T.ink, cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        data-solo-sus-envios={r.id}
+                        checked={r.soloSusEnvios}
+                        disabled={busy}
+                        onChange={(e) => void cambiarSoloSusEnvios(r.id, e.target.checked)}
+                        style={{ marginTop: 2 }}
+                      />
+                      <span>
+                        Solo sus envíos masivos, sin contestar chats
+                        <span style={{ display: "block", color: T.faint, fontSize: 11, lineHeight: 1.45 }}>
+                          Ve lo asignado a su ficha, los leads sin asignar (para armar envíos) y los clientes a los que
+                          les mandó un envío. En la bandeja sólo deja notas internas: contestan las asesoras.
+                        </span>
+                      </span>
+                    </label>
                   )}
 
                 </div>

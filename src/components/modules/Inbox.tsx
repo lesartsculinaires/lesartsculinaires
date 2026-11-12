@@ -94,6 +94,12 @@ interface Props {
   faltaMigracion: boolean;
   /** False cuando el servidor no tiene token de WhatsApp: no se puede responder. */
   puedeResponder: boolean;
+  /**
+   * Rol de «solo sus envíos» (12/11/2026): no le escribe al cliente. La caja
+   * queda en nota interna, sin plantillas ni «Nuevo chat». El servidor lo
+   * frena igual (`puedeContestar`); esto es para que no lo intente.
+   */
+  soloNotas?: boolean;
   accent: string;
   /** Para mostrar la etapa y el estado reales del lead de cada conversación. */
   oportunidades: Oportunidad[];
@@ -252,6 +258,7 @@ export function Inbox({
   mensajes,
   faltaMigracion,
   puedeResponder,
+  soloNotas = false,
   accent,
   oportunidades,
   etiquetas,
@@ -488,7 +495,8 @@ export function Inbox({
    * y eso no se puede deshacer: del otro lado ya la vio.
    */
   const [porEnviar, setPorEnviar] = useState<{ archivo: File; url: string } | null>(null);
-  const [nota, setNota] = useState(false);
+  const [notaElegida, setNota] = useState(false);
+  const nota = soloNotas || notaElegida;
   /**
    * El selector de plantillas, abierto a mano con la ventana todavía ABIERTA.
    *
@@ -2016,6 +2024,7 @@ export function Inbox({
 
           {reglas?.ver && <BotonReglas accent={accent} />}
 
+          {!soloNotas && (
           <button
             type="button"
             onClick={() => setNuevoChat(true)}
@@ -2033,6 +2042,7 @@ export function Inbox({
           >
             {t("+ Nuevo chat")}
           </button>
+          )}
         </div>
 
         {nuevoChat && (
@@ -3120,7 +3130,7 @@ export function Inbox({
               </p>
             )}
 
-            {ventanaCerrada && (
+            {ventanaCerrada && !soloNotas && (
               /*
                * Un `div`, no un `p`.
                *
@@ -3197,7 +3207,7 @@ export function Inbox({
               los chats, para algo que se usa de vez en cuando— y por eso el
               cuadro de escribir sigue estando arriba de todo.
             */}
-            {!ventanaCerrada && canal.puede.plantillas === "si" && (
+            {!ventanaCerrada && !soloNotas && canal.puede.plantillas === "si" && (
               <div style={{ padding: "8px 12px 0" }}>
                 {plantillaAMano ? (
                   <div
@@ -3280,6 +3290,14 @@ export function Inbox({
               </div>
             )}
 
+            {soloNotas && (
+              <p
+                data-solo-notas
+                style={{ margin: "8px 12px 0", padding: "7px 10px", borderRadius: 7, background: "#FFF4E0", color: "#7A4B00", fontSize: 12, lineHeight: 1.45 }}
+              >
+                {t("Tu rol no contesta chats: los atienden las asesoras de ventas. Puedes dejar una nota interna para el equipo.")}
+              </p>
+            )}
             <label
               style={{
                 display: "flex",
@@ -3291,7 +3309,7 @@ export function Inbox({
                 cursor: "pointer",
               }}
             >
-              <input type="checkbox" checked={nota} onChange={(e) => setNota(e.target.checked)} />
+              <input type="checkbox" checked={nota} disabled={soloNotas} onChange={(e) => setNota(e.target.checked)} />
               {t("Nota interna — la ve el equipo, no el cliente")}
             </label>
 

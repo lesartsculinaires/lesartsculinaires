@@ -510,6 +510,7 @@ export async function actualizarRol(
     disp_computadora?: number;
     disp_celular?: number;
     disp_tablet?: number;
+    solo_sus_envios?: boolean;
   },
 ): Promise<ActionResult> {
   const supabase = await getServerClient();

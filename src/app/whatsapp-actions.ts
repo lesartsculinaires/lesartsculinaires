@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { NO_CONTESTA, puedeContestar } from "@/lib/supabase/puedeContestar";
 
 import { getServerClient } from "@/lib/supabase/server";
 import { getUser } from "@/lib/supabase/server";
@@ -29,6 +30,7 @@ export async function responder(
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return SIN_SESION;
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const { data: conv, error: errConv } = await supabase
     .from("conversaciones")
