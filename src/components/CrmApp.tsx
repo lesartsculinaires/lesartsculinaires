@@ -56,6 +56,7 @@ import {
 import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
+import { ManualCrm } from "@/components/modules/ManualCrm";
 import { horarioDelEvento } from "@/lib/calendario";
 import { friosDe } from "@/lib/frios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
@@ -1409,6 +1410,11 @@ export default function CrmApp({
               esAdmin={accesos.esAdmin}
               onAbrirFicha={abrirFicha}
             />
+          )}
+
+          {/* El manual: lo ven todos, y cada uno sólo los capítulos de lo que puede ver. */}
+          {mod === "Manual CRM" && (
+            <ManualCrm accent={accent} permitidos={permitidos} onIrA={(m) => actions.setMod(m)} />
           )}
           </>
           )}

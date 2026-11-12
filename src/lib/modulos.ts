@@ -30,6 +30,9 @@ export const MODULOS = [
   "Fríos",
   "Notificaciones",
   "Autorizaciones",
+  // Cómo se usa todo lo de arriba. Al final, como la ayuda de cualquier
+  // programa. No tiene casilla en el catálogo: lo ve todo el mundo.
+  "Manual CRM",
 ] as const;
 
 /**

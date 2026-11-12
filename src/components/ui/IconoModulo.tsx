@@ -78,6 +78,9 @@ const TRAZOS: Record<string, string> = {
   // Una hoja con el visto: lo que dirección aprobó.
   Autorizaciones: "M6 3.5h7.5L18 8v12.5H6zM13.5 3.5V8H18M9 13.5l2 2 4-4",
 
+  // Un libro abierto: el manual.
+  "Manual CRM": "M12 6.5c-1.8-1.3-4.3-2-7.5-2v13c3.2 0 5.7.7 7.5 2 1.8-1.3 4.3-2 7.5-2v-13c-3.2 0-5.7.7-7.5 2ZM12 6.5v13",
+
   // Un escudo: quién puede qué.
   [MOD_USUARIOS]: "M12 3.5 5 6.2v5.4c0 4.2 2.9 7.6 7 8.9 4.1-1.3 7-4.7 7-8.9V6.2L12 3.5ZM9.2 12l2 2 3.6-4",
 };
