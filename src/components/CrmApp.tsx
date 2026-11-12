@@ -56,6 +56,7 @@ import {
 import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
+import { horarioDelEvento } from "@/lib/calendario";
 import { friosDe } from "@/lib/frios";
 import { paraInterrumpir, recordatoriosDe } from "@/lib/recordatorios";
 import {
@@ -827,6 +828,17 @@ export default function CrmApp({
     },
   );
 
+  // Cuando salta una alerta de la agenda nueva, suena el timbre del CRM (si
+  // está prendido): la ventana emergente se ve, pero si la persona está en
+  // otra pestaña hace falta oírla.
+  const alertasAntes = useRef(0);
+  const sonarCampanita = campanita.avisar;
+  useEffect(() => {
+    const ahora = agenda.pendientes.length;
+    if (ahora > alertasAntes.current) sonarCampanita("mensaje");
+    alertasAntes.current = ahora;
+  }, [agenda.pendientes.length, sonarCampanita]);
+
   // La ventana emergente: sólo por lo de hoy y lo vencido, y una vez por día.
   const aviso = useAvisoDiario(
     "lac.reservas.visto",
@@ -1263,6 +1275,8 @@ export default function CrmApp({
               oportunidades={oportunidades}
               accent={accent}
               onRefresh={() => router.refresh()}
+              onAbrirFicha={abrirFicha}
+              miVendedorId={accesos.yo?.vendedorId ?? null}
             />
           )}
 
@@ -1478,6 +1492,8 @@ export default function CrmApp({
                 titulo: `${tipo?.nombre ?? "Evento"} con ${o?.cliente ?? "un cliente"}`,
                 detalle:
                   [o?.producto, asesora?.nombre].filter(Boolean).join(" · ") || null,
+                horario: horarioDelEvento(a.evento.iniciaEn, a.evento.duracionMin),
+                color: tipo?.color ?? null,
               };
             }}
             onAbrirFicha={(id) => abrirFicha(id)}
