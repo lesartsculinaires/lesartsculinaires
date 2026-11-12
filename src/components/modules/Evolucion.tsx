@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { fechasParaRevisar, repartirMeses } from "@/lib/selectorDeMeses";
 
 import { DiaADia } from "@/components/modules/DiaADia";
 import { leadCount, money, moneyShort } from "@/lib/format";
@@ -24,7 +25,7 @@ type Vista = "mes" | "comparativa" | "anual";
 
 const VISTAS: readonly { id: Vista; label: string; hint: string }[] = [
   { id: "mes", label: "Por mes", hint: "detalle día a día de un mes" },
-  { id: "comparativa", label: "Comparativa", hint: "todos los meses, uno al lado del otro" },
+  { id: "comparativa", label: "Comparativa", hint: "los últimos 12 meses, uno al lado del otro" },
   { id: "anual", label: "Anual", hint: "totales por año y su composición mensual" },
 ];
 
@@ -58,6 +59,11 @@ export function Evolucion({ oportunidades, accent }: Props) {
 
   const meses = useMemo(() => porMes(oportunidades), [oportunidades]);
   const anios = useMemo(() => porAnio(oportunidades), [oportunidades]);
+  // Fechas que no pueden ser (una de nacimiento como fecha de registro…).
+  const raras = useMemo(
+    () => fechasParaRevisar(oportunidades, new Date().toISOString().slice(0, 10)),
+    [oportunidades],
+  );
 
   const [vista, setVista] = useState<Vista>("mes");
   // Defaults to the most recent month with data.
@@ -145,6 +151,25 @@ export function Evolucion({ oportunidades, accent }: Props) {
         </div>
       </div>
 
+      {raras.length > 0 && (
+        <p
+          role="note"
+          data-fechas-raras={raras.length}
+          style={{ margin: "0 0 14px", padding: "9px 12px", borderRadius: 8, background: "#FFF4E0", color: "#7A4B00", fontSize: 12.5, lineHeight: 1.5 }}
+        >
+          <strong>
+            {raras.length === 1 ? "Hay 1 lead con una fecha imposible" : `Hay ${raras.length} leads con fechas imposibles`}
+          </strong>{" "}
+          (probablemente una fecha de nacimiento o un año mal escrito al importar). Corrígela en la ficha para que cuente en
+          su mes:{" "}
+          {raras
+            .slice(0, 4)
+            .map((x) => `${x.cliente} (${x.cual === "registro" ? "registro" : "cierre"} ${x.fecha.split("-").reverse().join("/")})`)
+            .join(" · ")}
+          {raras.length > 4 ? ` · y ${raras.length - 4} más` : ""}.
+        </p>
+      )}
+
       {vista === "mes" && mes && (
         <VistaMes
           mes={mes}
@@ -157,7 +182,7 @@ export function Evolucion({ oportunidades, accent }: Props) {
       )}
 
       {vista === "comparativa" && (
-        <VistaComparativa meses={meses} accent={accent} open={open} />
+        <VistaComparativa meses={meses.slice(-12)} accent={accent} open={open} />
       )}
 
       {vista === "anual" && <VistaAnual anios={anios} meses={meses} accent={accent} open={open} />}
@@ -189,10 +214,45 @@ function VistaMes({
     { label: "Pipeline abierto", valor: money(mes.pipeline || null), pct: previo ? variacion(mes.pipeline, previo.pipeline) : null },
   ];
 
+  /*
+   * Los últimos 12 meses como botones y los anteriores (sólo los que tuvieron
+   * algo) en una lista por año: una fecha rara ya no llena la pantalla de
+   * botones. Ver `repartirMeses`.
+   */
+  const { recientes, anteriores } = repartirMeses(meses, 12);
+  const elegidoEsViejo = !recientes.some((m) => m.clave === mes.clave);
+
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
-        {meses.map((m) => (
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        {anteriores.length > 0 && (
+          <select
+            aria-label="Meses anteriores"
+            data-meses-anteriores
+            value={elegidoEsViejo ? mes.clave : ""}
+            onChange={(e) => e.target.value && onSelect(e.target.value)}
+            style={{
+              padding: "5px 8px",
+              fontSize: 12,
+              borderRadius: 6,
+              border: `1px solid ${elegidoEsViejo ? accent : T.border}`,
+              background: elegidoEsViejo ? softer(accent) : T.surface,
+              color: elegidoEsViejo ? accent : T.muted,
+            }}
+          >
+            <option value="">Meses anteriores…</option>
+            {anteriores.map((g) => (
+              <optgroup key={g.anio} label={g.anio}>
+                {g.meses.map((m) => (
+                  <option key={m.clave} value={m.clave}>
+                    {m.etiquetaLarga} · {m.leads} {m.leads === 1 ? "lead" : "leads"}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        )}
+        {recientes.map((m) => (
           <button
             key={m.clave}
             type="button"
