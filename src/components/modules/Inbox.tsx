@@ -2716,7 +2716,7 @@ export function Inbox({
                     padding: "0 8px",
                     fontSize: 12.5,
                     borderRadius: 6,
-                    border: `1px solid ${actual.vendedorId == null ? "#FFCE00" : T.border}`,
+                    border: `1px solid ${actual.vendedorId == null ? "var(--crm-resalte)" : T.border}`,
                     background: actual.vendedorId == null ? "#FFF6D6" : T.surface,
                     color: T.ink,
                   }}

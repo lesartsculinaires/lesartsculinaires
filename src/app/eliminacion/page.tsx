@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 import { buscarSolicitud } from "@/lib/meta/estadoDeEliminacion";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -101,7 +103,7 @@ export default async function PaginaEliminacion({
       }}
     >
       <p style={{ margin: 0, fontSize: 12, letterSpacing: 1.5, color: "#8A8378" }}>
-        LES ARTS CULINAIRES
+        {MARCAS[marcaDelPedido()].rotulo}
       </p>
       <h1 style={{ margin: "6px 0 24px", fontSize: 24, fontWeight: 700 }}>
         Eliminación de datos
@@ -145,8 +147,8 @@ export default async function PaginaEliminacion({
 
       <p style={{ marginTop: 32, fontSize: 13, color: "#8A8378" }}>
         ¿Dudas? Escribinos a{" "}
-        <a href="mailto:sistemas@lesarts.com" style={{ color: "#5C564D" }}>
-          sistemas@lesarts.com
+        <a href={`mailto:${MARCAS[marcaDelPedido()].correoDatos}`} style={{ color: "#5C564D" }}>
+          {MARCAS[marcaDelPedido()].correoDatos}
         </a>
         .
       </p>

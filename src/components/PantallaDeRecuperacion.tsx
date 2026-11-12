@@ -178,13 +178,13 @@ function Recuperacion({
         placeItems: "center",
         padding: 24,
         fontFamily: "system-ui, sans-serif",
-        color: "#031B4F",
-        background: "#F4F6FB",
+        color: "var(--crm-ink)",
+        background: "var(--crm-paper)",
       }}
     >
       <div style={{ maxWidth: 440, textAlign: "center", lineHeight: 1.55 }}>
         <h1 style={{ fontSize: 20, marginBottom: 10 }}>Se cortó la conexión con el CRM</h1>
-        <p style={{ fontSize: 14, color: "#4C5A7A", marginBottom: 18 }}>
+        <p style={{ fontSize: 14, color: "var(--crm-muted)", marginBottom: 18 }}>
           {sinRed
             ? "Esta computadora se quedó sin internet. En cuanto vuelva, el CRM se vuelve a cargar solo."
             : plan != null
@@ -199,7 +199,7 @@ function Recuperacion({
               padding: "9px 18px",
               borderRadius: 6,
               border: "none",
-              background: "#031B4F",
+              background: "var(--crm-ink)",
               color: "#fff",
               fontSize: 14,
               cursor: "pointer",
@@ -213,9 +213,9 @@ function Recuperacion({
             style={{
               padding: "9px 18px",
               borderRadius: 6,
-              border: "1px solid #031B4F",
+              border: "1px solid var(--crm-ink)",
               background: "transparent",
-              color: "#031B4F",
+              color: "var(--crm-ink)",
               fontSize: 14,
               cursor: "pointer",
             }}

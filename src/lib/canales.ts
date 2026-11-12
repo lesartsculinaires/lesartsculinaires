@@ -49,6 +49,9 @@
  * La pantalla no hay que tocarla: lee de este archivo.
  */
 
+import { marcaEnElNavegador } from "@/lib/marca/navegador";
+import { MODO_UNIFICADO } from "@/lib/marcas";
+
 /** Cómo se guarda el canal en `conversaciones.canal`. */
 export type ClaveCanal = "whatsapp" | "instagram" | "messenger" | "tiktok";
 
@@ -189,6 +192,34 @@ export interface Canal {
   porDondeLlega: string;
 }
 
+/**
+ * ¿Meta ya aprobó «Human Agent»? Lo dice `NEXT_PUBLIC_HUMAN_AGENT=si` en Netlify
+ * (en el CRM unificado, `NEXT_PUBLIC_LAC_HUMAN_AGENT` o `NEXT_PUBLIC_HC_HUMAN_AGENT`,
+ * porque cada marca tiene su propia aplicación de Meta).
+ *
+ * Con el permiso, Instagram y Messenger dejan contestar hasta siete días desde
+ * el último mensaje de la persona; sin él, 24 horas. El envío ya pone la
+ * etiqueta sola pasadas las 24 horas (`@/lib/meta/ventana`): lo único que
+ * cambia es hasta cuándo la bandeja deja escribir.
+ *
+ * Es una variable y no un `24 * 7` escrito acá porque se prende en dos
+ * momentos que no dependen de nosotros: para grabar el video que pide la
+ * revisión de Meta, y cuando Meta lo apruebe. Sin el permiso, lo que se
+ * mande pasadas las 24 horas rebota con el aviso de `FALTA_HUMAN_AGENT`.
+ *
+ * No es un secreto: es un sí o un no, y la bandeja lo necesita en el navegador.
+ * Cambiar de marca recarga la página, así que leerlo una vez al cargar alcanza.
+ */
+const HUMAN_AGENT =
+  (MODO_UNIFICADO
+    ? marcaEnElNavegador() === "hc"
+      ? process.env.NEXT_PUBLIC_HC_HUMAN_AGENT
+      : process.env.NEXT_PUBLIC_LAC_HUMAN_AGENT
+    : process.env.NEXT_PUBLIC_HUMAN_AGENT) === "si";
+
+/** Las horas de Instagram y Messenger: siete días con el permiso, 24 sin él. */
+const HORAS_DE_META = HUMAN_AGENT ? 24 * 7 : 24;
+
 export const CANALES: readonly Canal[] = [
   {
     clave: "whatsapp",
@@ -269,16 +300,19 @@ export const CANALES: readonly Canal[] = [
      * TODOS los mensajes —«(#100) No se puede agregar la etiqueta
      * HUMAN_AGENT»—, incluso un minuto después de que el cliente escribiera.
      *
-     * El día que Meta apruebe el permiso, esto vuelve a `24 * 7` y el texto de
-     * abajo a hablar de siete días. Es lo único que hay que tocar: el envío ya
-     * usa la etiqueta sola cuando pasaron las 24 horas.
+     * Con el permiso aprobado se prende `NEXT_PUBLIC_HUMAN_AGENT` y esto pasa
+     * a siete días: ver `HUMAN_AGENT`, arriba de la lista.
      */
-    ventanaHoras: 24,
-    laVentana:
-      "Hay 24 horas para contestar desde el último mensaje de la persona. Para " +
-      "llegar a siete días Meta pide el permiso «Human Agent», que la aplicación " +
-      "todavía no tiene aprobado. Pasada la ventana hay que esperar a que vuelva " +
-      "a escribir: Instagram no tiene plantillas.",
+    ventanaHoras: HORAS_DE_META,
+    laVentana: HUMAN_AGENT
+      ? "Hay siete días para contestar desde el último mensaje de la persona: " +
+        "pasadas las primeras 24 horas el CRM avisa a Meta que contesta una " +
+        "persona («Human Agent»). Después hay que esperar a que vuelva a " +
+        "escribir: Instagram no tiene plantillas."
+      : "Hay 24 horas para contestar desde el último mensaje de la persona. Para " +
+        "llegar a siete días Meta pide el permiso «Human Agent», que la aplicación " +
+        "todavía no tiene aprobado. Pasada la ventana hay que esperar a que vuelva " +
+        "a escribir: Instagram no tiene plantillas.",
     porDondeLlega: "a la cuenta de Instagram del instituto",
   },
   {
@@ -328,16 +362,19 @@ export const CANALES: readonly Canal[] = [
       llamadas: "pendiente",
     },
     /*
-     * 24 horas, por lo mismo que Instagram. Ver el comentario de allá.
+     * La misma ventana que Instagram, por lo mismo. Ver el comentario de allá.
      *
      * Es el canal donde se notó: la escuela no podía contestarle a nadie por
      * Messenger, ni un minuto después de que el cliente escribiera.
      */
-    ventanaHoras: 24,
-    laVentana:
-      "Hay 24 horas para contestar desde el último mensaje. Los siete días necesitan " +
-      "el permiso «Human Agent» de Meta, que la aplicación todavía no tiene " +
-      "aprobado. Messenger tampoco tiene plantillas para reabrir la conversación.",
+    ventanaHoras: HORAS_DE_META,
+    laVentana: HUMAN_AGENT
+      ? "Hay siete días para contestar desde el último mensaje: pasadas las " +
+        "primeras 24 horas el CRM avisa a Meta que contesta una persona («Human " +
+        "Agent»). Messenger no tiene plantillas para reabrir la conversación."
+      : "Hay 24 horas para contestar desde el último mensaje. Los siete días necesitan " +
+        "el permiso «Human Agent» de Meta, que la aplicación todavía no tiene " +
+        "aprobado. Messenger tampoco tiene plantillas para reabrir la conversación.",
     porDondeLlega: "a la página de Facebook del instituto",
   },
   {

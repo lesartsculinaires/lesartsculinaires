@@ -12,7 +12,7 @@ import {
   type PreguntaRapida,
 } from "@/lib/manual/contenido";
 import puntosDeLasFotos from "@/lib/manual/puntos.json";
-import { T, softer } from "@/lib/theme";
+import { T, softer, tinte } from "@/lib/theme";
 
 /**
  * El «Manual CRM» (12/11/2026).
@@ -92,7 +92,7 @@ export function ManualCrm({ accent, permitidos, onIrA }: Props) {
         [data-manual] .man-tarjeta:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(3,27,79,.14); }
         [data-manual] .man-punto { transition: transform .12s ease; }
         [data-manual] .man-punto:hover { transform: translate(-50%, -50%) scale(1.15) !important; }
-        @keyframes man-latido { 0%,100% { box-shadow: 0 0 0 0 ${accent}66; } 50% { box-shadow: 0 0 0 7px ${accent}00; } }
+        @keyframes man-latido { 0%,100% { box-shadow: 0 0 0 0 ${tinte(accent, 40)}; } 50% { box-shadow: 0 0 0 7px ${tinte(accent, 0)}; } }
       `}</style>
 
       {/* ── Encabezado: título, buscador y avance ─────────────────────────── */}

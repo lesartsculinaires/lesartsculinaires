@@ -31,7 +31,7 @@ import {
   type Vista,
 } from "@/lib/calendario";
 import { useCatalogo } from "@/lib/catalog";
-import { T, softer } from "@/lib/theme";
+import { T, softer, tinte } from "@/lib/theme";
 import type { Evento, Oportunidad, TipoEvento } from "@/lib/types";
 
 /**
@@ -228,7 +228,7 @@ export function Calendario({
         [data-calendario] .cal-lateral { width: 236px; flex-shrink: 0; }
         @media (max-width: 960px) { [data-calendario] .cal-lateral { display: none; } }
         @media (min-width: 961px) { [data-calendario] .cal-crear-angosto { display: none; } }
-        [data-calendario] .cal-hueco:hover { background: ${softer(accent)}55; }
+        [data-calendario] .cal-hueco:hover { background: ${tinte(accent, 4)}; }
         [data-calendario] .cal-dia-num:hover { background: ${T.paper}; }
       `}</style>
 

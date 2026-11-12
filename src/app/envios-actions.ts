@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { encabezadoParaMeta } from "@/lib/whatsapp/encabezadoParaMeta";
 import { enviarPlantilla, esDeLaCuenta, hayWhatsapp } from "@/lib/whatsapp/enviar";
@@ -954,11 +956,14 @@ async function dejarEnElHilo(
     if (error && error.code !== "23505") return;
 
     /*
-     * El hilo sube en la lista, pero sin ponerse en rojo.
+     * El hilo sube en la lista (en LAC), pero sin ponerse en rojo.
      *
      * `ultimo_mensaje_en` es por lo que se ordena la bandeja: sin tocarlo, el
      * hilo de alguien a quien le acabamos de escribir quedaría hundido entre
-     * conversaciones de hace meses. `sin_leer` NO se toca, por lo de arriba.
+     * conversaciones de hace meses. En HC se pidió lo contrario (12/11/2026):
+     * la plantilla sale, el chat queda donde estaba y sube cuando el cliente
+     * conteste; lo decide `plantillaSubeElChat` de la marca. `sin_leer` NO se
+     * toca, por lo de arriba.
      *
      * ------------------------------------------------------------------------
      * Y SE DESARCHIVA, QUE ES LO QUE FALTABA
@@ -984,7 +989,9 @@ async function dejarEnElHilo(
       .from("conversaciones")
       .update({
         ultimo_texto: texto.slice(0, 200),
-        ultimo_mensaje_en: new Date().toISOString(),
+        ...(MARCAS[marcaDelPedido()].plantillaSubeElChat
+          ? { ultimo_mensaje_en: new Date().toISOString() }
+          : {}),
         archivada: false,
       })
       .eq("id", conversacionId);

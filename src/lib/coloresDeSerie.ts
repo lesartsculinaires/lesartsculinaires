@@ -57,7 +57,7 @@ export const COLORES_DE_SERIE = [
  * sino lo que sobró, y darle un color de serie lo haría competir visualmente
  * con canales que sí existen.
  */
-export const COLOR_RESTO = "#8792AC";
+export const COLOR_RESTO = "var(--crm-faint)";
 
 /** Los nombres que no son una categoría de verdad y van en gris. */
 const SON_RESTO = new Set(["Otros", "Sin canal", "Sin programa"]);

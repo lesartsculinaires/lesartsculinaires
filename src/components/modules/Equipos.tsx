@@ -520,7 +520,7 @@ export function Equipos({
                       style={{
                         flex: 1,
                         height: 6,
-                        background: "#E4E9F3",
+                        background: "var(--crm-apagado)",
                         borderRadius: 3,
                         overflow: "hidden",
                       }}
@@ -574,7 +574,7 @@ export function Equipos({
                     style={{
                       display: "flex",
                       height: 6,
-                      background: "#E4E9F3",
+                      background: "var(--crm-apagado)",
                       borderRadius: 3,
                       overflow: "hidden",
                     }}

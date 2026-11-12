@@ -39,13 +39,13 @@ function NoSePudoConfirmar() {
         placeItems: "center",
         padding: 24,
         fontFamily: "system-ui, sans-serif",
-        color: "#031B4F",
-        background: "#F4F6FB",
+        color: "var(--crm-ink)",
+        background: "var(--crm-paper)",
       }}
     >
       <div style={{ maxWidth: 420, textAlign: "center", lineHeight: 1.55 }}>
         <h1 style={{ fontSize: 20, marginBottom: 10 }}>No pudimos confirmar tu sesión</h1>
-        <p style={{ fontSize: 14, color: "#4C5A7A", marginBottom: 18 }}>
+        <p style={{ fontSize: 14, color: "var(--crm-muted)", marginBottom: 18 }}>
           Tu sesión sigue abierta: lo que pasó es que la base tardó en responder.
           No hace falta que vuelvas a entrar.
         </p>
@@ -55,7 +55,7 @@ function NoSePudoConfirmar() {
             display: "inline-block",
             padding: "9px 18px",
             borderRadius: 6,
-            background: "#031B4F",
+            background: "var(--crm-ink)",
             color: "#fff",
             fontSize: 14,
             textDecoration: "none",

@@ -9,6 +9,8 @@ import { olvidarModulo } from "@/lib/ultimoModulo";
 import { ACCENT, T, soft } from "@/lib/theme";
 import { SelectorDeIdioma } from "@/components/SelectorDeIdioma";
 import { useT } from "@/lib/i18n/idioma";
+import { useMarca } from "@/components/marca/MarcaContexto";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 
 interface Props {
   redirectTo: string;
@@ -45,6 +47,7 @@ export function LoginForm({
   recienCerrada,
 }: Props) {
   const t = useT();
+  const marca = useMarca();
   const router = useRouter();
   const [modo, setModo] = useState<Modo>("ventas");
   const [email, setEmail] = useState("");
@@ -147,6 +150,16 @@ export function LoginForm({
       }}
     >
       <div style={{ width: "100%", maxWidth: 380 }}>
+        {(marca.clave !== "lac" || MODO_UNIFICADO) && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={marca.logo}
+            alt={marca.nombre}
+            width={Math.round((marca.clave === "lac" ? 28 : 40) * marca.logoProporcion)}
+            height={marca.clave === "lac" ? 28 : 40}
+            style={{ display: "block", margin: "0 0 20px", maxWidth: "100%", height: "auto" }}
+          />
+        )}
         <p
           className="mono"
           style={{
@@ -157,7 +170,7 @@ export function LoginForm({
             textTransform: "uppercase",
           }}
         >
-          {t("Les Arts Culinaires · CRM")}
+          {marca.clave === "lac" && !MODO_UNIFICADO ? t("Les Arts Culinaires · CRM") : "CRM"}
         </p>
         <div style={{ margin: "0 0 14px", color: T.faint }}>
           <SelectorDeIdioma />
@@ -182,7 +195,7 @@ export function LoginForm({
             padding: 4,
             marginBottom: 16,
             borderRadius: 10,
-            background: "#E4E9F3",
+            background: "var(--crm-apagado)",
           }}
         >
           {(["ventas", "admin"] as const).map((m) => (

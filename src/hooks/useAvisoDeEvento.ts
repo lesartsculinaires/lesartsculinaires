@@ -8,6 +8,8 @@ import {
   type AvisoDeEvento,
   type Quien,
 } from "@/lib/avisoDeEvento";
+import { marcaEnElNavegador } from "@/lib/marca/navegador";
+import { MARCAS } from "@/lib/marcas";
 import type { Evento } from "@/lib/types";
 
 /**
@@ -128,7 +130,7 @@ function avisarAlNavegador(texto: string): void {
   try {
     if (typeof Notification === "undefined") return;
     if (Notification.permission !== "granted") return;
-    new Notification("Les Arts Culinaires", { body: texto, tag: texto });
+    new Notification(MARCAS[marcaEnElNavegador()].nombre, { body: texto, tag: texto });
   } catch {
     // Navegador sin permisos, en un iframe, o con las notificaciones
     // desactivadas. El cartel en pantalla sigue estando.

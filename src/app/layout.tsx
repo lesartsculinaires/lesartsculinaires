@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Montserrat, Old_Standard_TT } from "next/font/google";
+import { Jost, Montserrat, Old_Standard_TT, Tinos } from "next/font/google";
+import type { CSSProperties } from "react";
 
+import { ProveedorDeMarca } from "@/components/marca/MarcaContexto";
 import { GALLETA_IDIOMA, type Idioma } from "@/lib/i18n/galleta";
 import { IdiomaProvider } from "@/lib/i18n/idioma";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS, MODO_UNIFICADO, variablesDeColor } from "@/lib/marcas";
 
 import "./globals.css";
 
@@ -12,28 +16,53 @@ import "./globals.css";
  * dominio. Además de ser más rápido que pedirlas a Google en cada carga,
  * evita que la app dependa de un tercero para renderizar texto.
  */
-const titulos = Old_Standard_TT({
+/*
+ * Las tipografías de las dos marcas (12/11/2026). Cada una deja su variable,
+ * y el <html> apunta `--fuente-titulos` y `--fuente-cuerpo` a las de la marca
+ * en uso. LAC: Old Standard TT y Montserrat. HC: Tinos (las medidas de la
+ * Times del manual) y Jost (el pariente libre de Neuzeit Grotesk).
+ */
+const titulosLac = Old_Standard_TT({
   subsets: ["latin"],
   weight: ["400", "700"],
   style: ["normal", "italic"],
-  variable: "--fuente-titulos",
+  variable: "--fuente-titulos-lac",
   display: "swap",
 });
 
-const cuerpo = Montserrat({
+const cuerpoLac = Montserrat({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--fuente-cuerpo",
+  variable: "--fuente-cuerpo-lac",
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "CRM · Les Arts Culinaires",
-  description:
-    "CRM de ventas de Les Arts Culinaires: leads, seguimiento, pipeline y cierre de matrículas.",
-  // Ver el `translate="no"` de abajo: esto es lo mismo dicho a Google.
-  other: { google: "notranslate" },
-};
+const titulosHc = Tinos({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
+  variable: "--fuente-titulos-hc",
+  display: "swap",
+  preload: false,
+});
+
+const cuerpoHc = Jost({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--fuente-cuerpo-hc",
+  display: "swap",
+  preload: false,
+});
+
+export async function generateMetadata(): Promise<Metadata> {
+  const marca = MARCAS[marcaDelPedido()];
+  return {
+    title: MODO_UNIFICADO ? `CRM Peñagroup · ${marca.nombre}` : `CRM · ${marca.nombre}`,
+    description: marca.descripcion,
+    // Ver el `translate="no"` de abajo: esto es lo mismo dicho a Google.
+    other: { google: "notranslate" },
+  };
+}
 
 export default async function RootLayout({
   children,
@@ -42,6 +71,14 @@ export default async function RootLayout({
 }) {
   // El idioma que se eligió la última vez; castellano si no hay nada.
   const idioma: Idioma = (await cookies()).get(GALLETA_IDIOMA)?.value === "en" ? "en" : "es";
+
+  // La marca del pedido: sus colores y tipografías van en el <html>.
+  const marca = marcaDelPedido();
+  const estilo = {
+    ...variablesDeColor(marca),
+    "--fuente-titulos": `var(--fuente-titulos-${marca})`,
+    "--fuente-cuerpo": `var(--fuente-cuerpo-${marca})`,
+  } as CSSProperties;
 
   return (
     /*
@@ -54,9 +91,17 @@ export default async function RootLayout({
      * castellano y lo usa un equipo que habla castellano; no hay nada que
      * traducir y sí mucho que perder.
      */
-    <html lang={idioma} translate="no" className={`${titulos.variable} ${cuerpo.variable}`}>
+    <html
+      lang={idioma}
+      translate="no"
+      data-marca={marca}
+      style={estilo}
+      className={`${titulosLac.variable} ${cuerpoLac.variable} ${titulosHc.variable} ${cuerpoHc.variable}`}
+    >
       <body>
-        <IdiomaProvider inicial={idioma}>{children}</IdiomaProvider>
+        <ProveedorDeMarca marca={marca}>
+          <IdiomaProvider inicial={idioma}>{children}</IdiomaProvider>
+        </ProveedorDeMarca>
       </body>
     </html>
   );

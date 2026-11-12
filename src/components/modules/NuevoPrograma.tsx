@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { crearPrograma } from "@/app/programas-actions";
+import { useMarca } from "@/components/marca/MarcaContexto";
 import { CAMPO, ETIQUETA } from "@/components/modules/estilosDePrograma";
 import { CATEGORIAS } from "@/lib/programas";
 import { T } from "@/lib/theme";
@@ -24,6 +25,7 @@ interface Props {
  * donde hay uno, y la importación de bases deja de emparejar.
  */
 export function NuevoPrograma({ accent, onCerrar, onCreado }: Props) {
+  const marca = useMarca();
   const [nombre, setNombre] = useState("");
   const [categoria, setCategoria] = useState<string>("Diplomado");
   const [precio, setPrecio] = useState("");
@@ -106,7 +108,7 @@ export function NuevoPrograma({ accent, onCerrar, onCreado }: Props) {
               setParecidos(null);
               setError(null);
             }}
-            placeholder="Diplomado de Cocina"
+            placeholder={marca.ejemploPrograma}
             autoFocus
             style={CAMPO}
           />

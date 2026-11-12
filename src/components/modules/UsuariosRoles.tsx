@@ -788,7 +788,7 @@ export function UsuariosRoles({
                         fontSize: 11,
                         padding: "3px 9px",
                         borderRadius: 20,
-                        background: u.activo ? "#E6F0E9" : "#E4E9F3",
+                        background: u.activo ? "#E6F0E9" : "var(--crm-apagado)",
                         color: u.activo ? "#2F6B4F" : T.muted,
                       }}
                     >
@@ -1148,7 +1148,7 @@ export function UsuariosRoles({
                       fontSize: 10.5,
                       padding: "2px 8px",
                       borderRadius: 20,
-                      background: r.activo ? "#E6F0E9" : "#E4E9F3",
+                      background: r.activo ? "#E6F0E9" : "var(--crm-apagado)",
                       color: r.activo ? "#2F6B4F" : T.muted,
                     }}
                   >

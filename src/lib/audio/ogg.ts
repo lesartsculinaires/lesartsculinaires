@@ -66,6 +66,9 @@
  * usar desde afuera.
  */
 
+import { marcaEnElNavegador } from "@/lib/marca/navegador";
+import { MARCAS } from "@/lib/marcas";
+
 /** El resultado de abrir el WebM: la cabecera de Opus y sus paquetes. */
 interface Adentro {
   /**
@@ -408,7 +411,7 @@ function pagina(
 
 /** «OpusTags», que el formato exige aunque no tengamos nada que decir. */
 function etiquetas(): Uint8Array {
-  const quien = new TextEncoder().encode("CRM Les Arts Culinaires");
+  const quien = new TextEncoder().encode(`CRM ${MARCAS[marcaEnElNavegador()].nombre}`);
   const b = new Uint8Array(8 + 4 + quien.length + 4);
   const v = new DataView(b.buffer);
 

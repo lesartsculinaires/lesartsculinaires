@@ -7,6 +7,8 @@ import { IconoModulo } from "@/components/ui/IconoModulo";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { T, soft } from "@/lib/theme";
 import { SelectorDeIdioma } from "@/components/SelectorDeIdioma";
+import { useMarca } from "@/components/marca/MarcaContexto";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
@@ -54,6 +56,7 @@ export function Sidebar({
   onSelect,
 }: Props) {
   const t = useT();
+  const marca = useMarca();
 
   // Quién sos, con lo mejor que se sepa y sin repetir.
   const principal = rol ? t(rol) : (nombre ?? userEmail);
@@ -120,18 +123,30 @@ export function Sidebar({
         height: "100vh",
       }}
     >
-      <p
-        className="mono"
-        style={{
-          margin: "0 0 14px",
-          fontSize: 10,
-          letterSpacing: "0.12em",
-          color: T.faint,
-          textTransform: "uppercase",
-        }}
-      >
-        {t("Les Arts Culinaires")}
-      </p>
+      {/* LAC sola sigue con su rótulo de texto; HC y el unificado, con el logo. */}
+      {marca.clave === "lac" && !MODO_UNIFICADO ? (
+        <p
+          className="mono"
+          style={{
+            margin: "0 0 14px",
+            fontSize: 10,
+            letterSpacing: "0.12em",
+            color: T.faint,
+            textTransform: "uppercase",
+          }}
+        >
+          {t("Les Arts Culinaires")}
+        </p>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={marca.logo}
+          alt={marca.nombre}
+          width={Math.round((marca.clave === "lac" ? 20 : 26) * marca.logoProporcion)}
+          height={marca.clave === "lac" ? 20 : 26}
+          style={{ display: "block", margin: "2px 0 16px", maxWidth: "100%", height: "auto" }}
+        />
+      )}
 
       <div
         style={{

@@ -186,7 +186,7 @@ export function Formularios({
                         padding: "2px 8px",
                         borderRadius: 20,
                         fontSize: 10.5,
-                        background: "#E4E9F3",
+                        background: "var(--crm-apagado)",
                         color: T.muted,
                       }}
                     >

@@ -34,6 +34,10 @@ export interface Paleta {
   muted: string;
   faint: string;
   warn: string;
+  /** Fondo de lo apagado: una cuenta o un rol inactivo. */
+  apagado: string;
+  /** Fondo de los avisos suaves (versión nueva del CRM). */
+  aviso: string;
   /** El color de la marca (botones, selección). */
   acento: string;
   /** El de acción: hover, foco y selección. */
@@ -67,6 +71,13 @@ export interface Marca {
    */
   prefijo: "LAC" | "HC";
   paleta: Paleta;
+  /** Un nombre de programa de ejemplo, para los campos vacíos. */
+  ejemploPrograma: string;
+  /**
+   * Si mandar una plantilla sube el chat arriba de todo en la bandeja. En HC
+   * no (pedido del 12/11/2026: que quede en su lugar); en LAC, como siempre.
+   */
+  plantillaSubeElChat: boolean;
 }
 
 export const MARCAS: Record<ClaveMarca, Marca> = {
@@ -80,7 +91,7 @@ export const MARCAS: Record<ClaveMarca, Marca> = {
     logo: "/marca/les-arts-culinaires.webp",
     logoProporcion: 7.19,
     simbolo: "/marca/les-arts-culinaires-simbolo.png",
-    correoDatos: "info@lesartsculinaires.com",
+    correoDatos: "sistemas@lesarts.com",
     prefijo: "LAC",
     paleta: {
       ink: "#031B4F",
@@ -92,10 +103,14 @@ export const MARCAS: Record<ClaveMarca, Marca> = {
       muted: "#4C5A7A",
       faint: "#8792AC",
       warn: "#B07D00",
+      apagado: "#E4E9F3",
+      aviso: "#E8EEF9",
       acento: "#031B4F",
       resalte: "#FFCE00",
       sobreResalte: "#031B4F",
     },
+    ejemploPrograma: "Diplomado de Cocina",
+    plantillaSubeElChat: true,
   },
   hc: {
     clave: "hc",
@@ -119,10 +134,14 @@ export const MARCAS: Record<ClaveMarca, Marca> = {
       muted: "#57534B",
       faint: "#8A847A",
       warn: "#B07D00",
+      apagado: "#EBE7DF",
+      aviso: "#F6F4F0",
       acento: "#000000",
       resalte: "#CE9847",
       sobreResalte: "#000000",
     },
+    ejemploPrograma: "Diplomado Internacional de Fashion Design",
+    plantillaSubeElChat: false,
   },
 };
 
@@ -168,6 +187,8 @@ export function variablesDeColor(clave: ClaveMarca): Record<string, string> {
     "--crm-muted": p.muted,
     "--crm-faint": p.faint,
     "--crm-warn": p.warn,
+    "--crm-apagado": p.apagado,
+    "--crm-aviso": p.aviso,
     "--crm-acento": p.acento,
     "--crm-resalte": p.resalte,
     "--crm-sobre-resalte": p.sobreResalte,

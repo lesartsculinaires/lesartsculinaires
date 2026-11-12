@@ -5,7 +5,7 @@ import { useState, type CSSProperties } from "react";
 import { IconoDeCanal } from "@/components/IconoDeCanal";
 import { refrescarNombresMeta } from "@/app/meta-nombres-actions";
 import { CANALES, CAPACIDADES, COMO_SE_DICE, canalDe, type Canal } from "@/lib/canales";
-import { T } from "@/lib/theme";
+import { T, tinte } from "@/lib/theme";
 import { useT } from "@/lib/i18n/idioma";
 
 /** La clave de la sección «Académico» entre las de los canales. */
@@ -280,7 +280,7 @@ function Seccion({
         fontSize: 12.5,
         fontWeight: abierta ? 700 : 500,
         color: usable ? T.ink : T.faint,
-        background: abierta ? `${accent}12` : "transparent",
+        background: abierta ? tinte(accent, 7) : "transparent",
         // La línea de color a la izquierda es lo que hace que la sección
         // abierta se vea abierta sin tener que leer nada.
         borderLeft: `3px solid ${abierta ? accent : "transparent"}`,

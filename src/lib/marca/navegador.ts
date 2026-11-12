@@ -1,5 +1,3 @@
-"use client";
-
 import { GALLETA_MARCA, MARCA_FIJA, MODO_UNIFICADO, marcaDeLaGalleta, type ClaveMarca } from "@/lib/marcas";
 
 /**
@@ -9,6 +7,9 @@ import { GALLETA_MARCA, MARCA_FIJA, MODO_UNIFICADO, marcaDeLaGalleta, type Clave
  * siempre hablan con la misma base. Para cambiar de marca se usa
  * `cambiarDeMarca`, que recarga la página: así se cierran las conexiones en
  * vivo con la base anterior y nada de la otra marca queda en memoria.
+ *
+ * Sin "use client" a propósito: lo importan módulos que también corren en el
+ * servidor (`@/lib/canales`), y ahí `marcaEnElNavegador` devuelve la marca fija.
  */
 export function marcaEnElNavegador(): ClaveMarca {
   if (!MODO_UNIFICADO || typeof document === "undefined") return MARCA_FIJA;

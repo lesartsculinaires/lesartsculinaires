@@ -9,6 +9,7 @@ import {
   quedarmeConLasRespuestas,
   type Preparado,
 } from "@/app/envios-actions";
+import { useMarca } from "@/components/marca/MarcaContexto";
 import { ImagenDeEncabezado } from "@/components/ui/ImagenDeEncabezado";
 import { aprobadas } from "@/components/ui/SelectorPlantilla";
 import { MARGEN, POR_QUE, TOPE_DIARIO, cuantosQuedan, type Valor } from "@/lib/envios";
@@ -67,6 +68,7 @@ export function EnvioMasivo({
   /** Con qué opción abre «¿Quién atiende las respuestas?». Académico: «yo». */
   atiendoPorOmision?: "asesora" | "yo";
 }) {
+  const marca = useMarca();
   const [nombre, setNombre] = useState(
     `Envío del ${new Date().toLocaleDateString("es-SV", { day: "2-digit", month: "long" })}`,
   );
@@ -351,7 +353,7 @@ export function EnvioMasivo({
               <input
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
-                placeholder="Diplomado de Cocina — agosto"
+                placeholder={`${marca.ejemploPrograma} — agosto`}
                 style={campo}
               />
               <span style={{ display: "block", marginTop: 4, fontSize: 11, color: T.faint }}>

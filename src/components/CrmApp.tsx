@@ -55,6 +55,7 @@ import {
 } from "@/lib/parcheBandeja";
 import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
+import { useMarca } from "@/components/marca/MarcaContexto";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import { ManualCrm } from "@/components/modules/ManualCrm";
 import { horarioDelEvento } from "@/lib/calendario";
@@ -204,6 +205,7 @@ export default function CrmApp({
   loadError,
 }: Props) {
   const t = useT();
+  const marca = useMarca();
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
 
@@ -937,8 +939,8 @@ export default function CrmApp({
                 fontSize: 12.5,
                 fontWeight: 600,
                 borderRadius: 9,
-                background: "#FFCE00",
-                color: "#031B4F",
+                background: "var(--crm-resalte)",
+                color: "var(--crm-ink)",
               }}
             >
               Entorno de pruebas. Lo que hagas acá no es la operación real.
@@ -1134,7 +1136,7 @@ export default function CrmApp({
           {mod === "Tablero Comercial" && (
             <TableroComercial
               accent={accent}
-              empresa="Les Arts Culinaires"
+              empresa={marca.nombre}
               permisos={casillas.tablero}
               miFicha={accesos.yo?.vendedorId ?? null}
             />
