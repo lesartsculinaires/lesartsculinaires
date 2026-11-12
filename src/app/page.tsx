@@ -7,6 +7,7 @@ import { puedeVerCanales } from "@/lib/permisos";
 import { COOKIE_MODULO, moduloInicial, pantallaProbable } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
+import { puedeVerAmbas } from "@/lib/marca/ambas";
 import { contarSinLeer } from "@/lib/supabase/inbox";
 import { canalesListos, salidaDisponible } from "@/app/inbox-actions";
 import { llamadasDisponibles } from "@/app/llamadas-actions";
@@ -213,6 +214,7 @@ export default async function Page({
     puedeResponder,
     conectados,
     puedeLlamar,
+    ambas,
   ] = await Promise.all([
     fetchOportunidades(),
     fetchCatalogo(),
@@ -240,6 +242,9 @@ export default async function Page({
      * número, y ahí el botón no tiene que aparecer.
      */
     llamadasDisponibles(),
+    // crm-peñagroup: si ofrecer «Ambas marcas» (la puerta de Dirección).
+    // Fuera del unificado contesta que no sin consultar nada.
+    puedeVerAmbas().catch(() => ({ puede: false })),
   ]);
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
@@ -291,6 +296,7 @@ export default async function Page({
    */
   return (
     <CrmApp
+      veAmbasMarcas={ambas.puede}
       oportunidades={ops.data}
       catalogo={catalogo.data}
       eventos={eventos.data}

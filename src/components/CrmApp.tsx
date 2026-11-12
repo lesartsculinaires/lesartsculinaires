@@ -180,11 +180,14 @@ interface Props {
    */
   modInicial?: string;
   loadError: string | null;
+  /** crm-peñagroup: si el selector ofrece «Ambas marcas» (puerta de Dirección). */
+  veAmbasMarcas?: boolean;
 }
 
 
 
 export default function CrmApp({
+  veAmbasMarcas = false,
   oportunidades: initial,
   catalogo,
   eventos,
@@ -929,7 +932,7 @@ export default function CrmApp({
             nombre={accesos.yo?.nombre ?? null}
             modulos={permitidos}
             avisos={avisos}
-            veAmbas={accesos.esAdmin || rolActual?.veAmbasMarcas === true}
+            veAmbas={veAmbasMarcas}
             onSelect={(m) => {
               setMenuAbierto(false);
               actions.setMod(m);

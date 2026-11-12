@@ -44,7 +44,7 @@ export async function fetchAccesos(userId: string): Promise<{
    * cuatro veces lo que tardaba una. Separadas siguen estando, por lo que
    * explica cada una; lo que cambió es que ya no se esperan.
    */
-  const [mods, rls, perms, usrs, casillaPropios, casillaReparto, vends, dispositivos, casillaAmbas] = await Promise.all([
+  const [mods, rls, perms, usrs, casillaPropios, casillaReparto, vends, dispositivos] = await Promise.all([
     supabase.from("modulos").select("clave, nombre, padre, orden").order("orden"),
     supabase.from("roles").select("id, nombre, descripcion, activo, es_admin, ve_todo").order("nombre"),
     supabase.from("rol_permisos").select("*"),
@@ -55,8 +55,6 @@ export async function fetchAccesos(userId: string): Promise<{
     // Los dispositivos por rol (20261201120000). Aparte y tolerante, como las
     // casillas de arriba: sin la migración, la pantalla no muestra los campos.
     supabase.from("roles").select("id, disp_computadora, disp_celular, disp_tablet"),
-    // «Ver ambas marcas» (20261202120000), aparte por lo mismo.
-    supabase.from("roles").select("id, ve_ambas_marcas"),
   ]);
 
   /*
@@ -95,13 +93,6 @@ export async function fetchAccesos(userId: string): Promise<{
       for (const r of (data ?? []) as Row[]) {
         if (r.recibe_leads === true) recibenLeads.add(Number(r.id));
       }
-    }
-  }
-
-  const venAmbas = new Set<number>();
-  if (!casillaAmbas.error) {
-    for (const r of (casillaAmbas.data ?? []) as Row[]) {
-      if (r.ve_ambas_marcas === true) venAmbas.add(Number(r.id));
     }
   }
 
@@ -147,8 +138,6 @@ export async function fetchAccesos(userId: string): Promise<{
     pipelineSoloPropios: soloPropios.has(Number(r.id)),
     recibeLeads: recibenLeads.has(Number(r.id)),
     dispositivos: dispositivosDe.get(Number(r.id)) ?? null,
-    // Sin la columna queda sin definir, y la pantalla no muestra la casilla.
-    veAmbasMarcas: casillaAmbas.error ? undefined : venAmbas.has(Number(r.id)),
   }));
 
   const usuarios: Usuario[] = rows(usrs).map((r) => ({

@@ -271,17 +271,6 @@ export function UsuariosRoles({
     }
   };
 
-  const cambiarVeAmbas = async (id: number, ve: boolean) => {
-    setBusy(true);
-    const r = await actualizarRol(id, { ve_ambas_marcas: ve });
-    setBusy(false);
-    if (!r.ok) setError(r.error);
-    else {
-      setError(null);
-      onRefresh();
-    }
-  };
-
   const cambiarVeTodo = async (id: number, veTodo: boolean) => {
     setBusy(true);
     const r = await actualizarRol(id, { ve_todo: veTodo });
@@ -1153,24 +1142,7 @@ export function UsuariosRoles({
                       </span>
                     </div>
                   )}
-                  {/* «Ambas marcas»: la vista de Dirección de crm-peñagroup. */}
-                  {r.veAmbasMarcas !== undefined && !r.esAdmin && (
-                    <label
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: T.ink, cursor: "pointer" }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={r.veAmbasMarcas}
-                        disabled={busy}
-                        onChange={(e) => void cambiarVeAmbas(r.id, e.target.checked)}
-                      />
-                      Ver ambas marcas
-                      <span style={{ color: T.faint, fontSize: 11 }}>
-                        · LAC y HC lado a lado en crm-peñagroup, solo lectura
-                      </span>
-                    </label>
-                  )}
+
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span className="pill"
