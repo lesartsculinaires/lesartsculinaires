@@ -8,7 +8,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { SUPABASE_URL } from "@/lib/supabase/config";
+import { env, marcaDelPedido } from "@/lib/marca/servidor";
+import { supabasePublico } from "@/lib/supabase/config";
 import {
   altaLead,
   anotarCanal,
@@ -747,12 +748,10 @@ export async function diagnosticarServiceRole(): Promise<
   const problema = await exigirAdmin();
   if (problema) return { ok: false, error: problema };
 
-  const bruto = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const bruto = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const llave = bruto.trim();
-  const anon =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    "";
+  const publico = supabasePublico(marcaDelPedido());
+  const anon = publico.anon || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 
   const datos: Diagnostico = {
     presente: llave.length > 0,
@@ -760,7 +759,7 @@ export async function diagnosticarServiceRole(): Promise<
     formato: "ausente",
     esLaAnon: llave.length > 0 && llave === anon.trim(),
     prueba: "sin-llave",
-    proyecto: SUPABASE_URL.replace(/^https:\/\/|\.supabase\.co.*$/g, ""),
+    proyecto: publico.url.replace(/^https:\/\/|\.supabase\.co.*$/g, ""),
   };
 
   if (llave.startsWith("sb_publishable_")) datos.formato = "publicable-o-anon";

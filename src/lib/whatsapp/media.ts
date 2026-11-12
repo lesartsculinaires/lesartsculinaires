@@ -1,4 +1,5 @@
 import "server-only";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Traer de Meta el archivo de un mensaje.
@@ -39,7 +40,7 @@ export async function bajarMedia(
   mediaId: string,
   senal?: AbortSignal,
 ): Promise<ResultadoMedia> {
-  const token = process.env.WHATSAPP_TOKEN;
+  const token = env("WHATSAPP_TOKEN");
   if (!token) return { ok: false, error: "Falta WHATSAPP_TOKEN en el servidor." };
 
   try {

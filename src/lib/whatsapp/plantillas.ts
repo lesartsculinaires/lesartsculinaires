@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cuantosHuecos } from "@/lib/whatsapp/huecos";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Las plantillas, leídas de Meta.
@@ -35,7 +36,7 @@ export type ResultadoPlantillas =
 
 /** El identificador de la cuenta de WhatsApp Business, que no es el del número. */
 export const hayWaba = (): boolean =>
-  Boolean(process.env.WHATSAPP_WABA_ID && process.env.WHATSAPP_TOKEN);
+  Boolean(env("WHATSAPP_WABA_ID") && env("WHATSAPP_TOKEN"));
 
 /**
  * La dirección del panel de Meta donde se crean.
@@ -44,15 +45,15 @@ export const hayWaba = (): boolean =>
  * plantillas de esta escuela y no en el panel general.
  */
 export function panelDeMeta(): string {
-  const waba = process.env.WHATSAPP_WABA_ID;
+  const waba = env("WHATSAPP_WABA_ID");
   return waba
     ? `https://business.facebook.com/wa/manage/message-templates/?waba_id=${waba}`
     : "https://business.facebook.com/wa/manage/message-templates/";
 }
 
 export async function traerPlantillas(): Promise<ResultadoPlantillas> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const waba = process.env.WHATSAPP_WABA_ID;
+  const token = env("WHATSAPP_TOKEN");
+  const waba = env("WHATSAPP_WABA_ID");
 
   if (!token || !waba) {
     return {

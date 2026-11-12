@@ -6,11 +6,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SE_PASO, conTope } from "@/lib/conTope";
 import { leerLaFirma } from "@/lib/supabase/firmaDelToken";
-import {
-  SUPABASE_ANON_KEY,
-  SUPABASE_URL,
-  isSupabaseConfigured,
-} from "@/lib/supabase/config";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { isSupabaseConfigured, supabasePublico } from "@/lib/supabase/config";
 
 /**
  * Los errores que dan los relojes desfasados, no la sesión.
@@ -298,11 +295,14 @@ function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
  * the anon key alone must not reach customer data.
  */
 export async function getServerClient(): Promise<SupabaseClient | null> {
-  if (!isSupabaseConfigured()) return null;
+  // La base de la marca del pedido (en el CRM unificado, la elegida).
+  const marca = marcaDelPedido();
+  if (!isSupabaseConfigured(marca)) return null;
+  const { url, anon } = supabasePublico(marca);
 
   const cookieStore = await cookies();
 
-  return conTopeDeAuth(createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return conTopeDeAuth(createServerClient(url, anon, {
     global: { fetch: conReintentoDeReloj },
     cookies: {
       getAll: () => cookieStore.getAll(),

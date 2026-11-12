@@ -15,6 +15,7 @@ import {
   type PerfilMeta,
 } from "@/lib/meta/perfil";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Envío por la API de mensajes de Instagram.
@@ -128,12 +129,12 @@ const base = (): string => {
    * llevarse a ningún lado. Cualquier otro valor se ignora en silencio y se usa
    * el de Meta, que es lo correcto en producción.
    */
-  const propuesta = process.env.INSTAGRAM_GRAPH_URL;
+  const propuesta = env("INSTAGRAM_GRAPH_URL");
   if (propuesta && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(propuesta.trim())) {
     return `${propuesta.trim()}/${VERSION}`;
   }
 
-  return (process.env.INSTAGRAM_API ?? "").trim().toLowerCase() === "instagram"
+  return (env("INSTAGRAM_API") ?? "").trim().toLowerCase() === "instagram"
     ? `https://graph.instagram.com/${VERSION}`
     : `https://graph.facebook.com/${VERSION}`;
 };
@@ -178,7 +179,7 @@ export interface ResultadoIg {
  * equivocado.
  */
 export const hayInstagram = (): boolean =>
-  Boolean(process.env.INSTAGRAM_TOKEN && process.env.INSTAGRAM_ACCOUNT_ID);
+  Boolean(env("INSTAGRAM_TOKEN") && env("INSTAGRAM_ACCOUNT_ID"));
 
 /**
  * Le escribe a una persona por Instagram.
@@ -417,7 +418,7 @@ function explicar(
  * nombre es el IGSID, que no le dice nada a nadie.
  */
 export async function perfilDe(igsid: string): Promise<PerfilMeta> {
-  const token = process.env.INSTAGRAM_TOKEN;
+  const token = env("INSTAGRAM_TOKEN");
   if (!token) return sinPerfil("Falta INSTAGRAM_TOKEN en el servidor.");
 
   try {
@@ -442,7 +443,7 @@ export async function perfilDe(igsid: string): Promise<PerfilMeta> {
        * empieza a negar la consulta por persona, sin avisar y sin que cambie
        * nada de este lado. Ver `meta/perfil.ts`.
        */
-      const pagina = process.env.INSTAGRAM_ACCOUNT_ID;
+      const pagina = env("INSTAGRAM_ACCOUNT_ID");
       if (pagina) {
         const porHilo = await perfilPorConversacion(
           "Instagram",

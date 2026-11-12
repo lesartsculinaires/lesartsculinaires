@@ -1,5 +1,6 @@
 import "server-only";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Llamadas por la API de Meta.
@@ -45,7 +46,7 @@ export interface ResultadoLlamada {
 }
 
 export const hayLlamadas = (): boolean =>
-  Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+  Boolean(env("WHATSAPP_TOKEN") && env("WHATSAPP_PHONE_NUMBER_ID"));
 
 /**
  * Le manda una orden a Meta sobre una llamada.
@@ -68,8 +69,8 @@ async function ordenar(
   cuerpo: Record<string, unknown>,
   queEs: string,
 ): Promise<ResultadoLlamada> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = env("WHATSAPP_TOKEN");
+  const numero = env("WHATSAPP_PHONE_NUMBER_ID");
 
   if (!token || !numero) {
     return {
@@ -184,8 +185,8 @@ export const marcar = (telefono: string, sdp: string): Promise<ResultadoLlamada>
  * escribe.
  */
 export async function pedirPermisoParaLlamar(telefono: string): Promise<ResultadoLlamada> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = env("WHATSAPP_TOKEN");
+  const numero = env("WHATSAPP_PHONE_NUMBER_ID");
 
   if (!token || !numero) {
     return { ok: false, callId: null, error: "WhatsApp no está configurado en el servidor." };

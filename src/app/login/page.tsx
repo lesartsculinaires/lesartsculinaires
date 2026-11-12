@@ -1,4 +1,5 @@
 import { LoginForm } from "@/components/LoginForm";
+import { marcaDelPedido } from "@/lib/marca/servidor";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getUser } from "@/lib/supabase/server";
 
@@ -15,7 +16,7 @@ export default async function LoginPage({
   return (
     <LoginForm
       redirectTo={redirect ?? "/"}
-      configured={isSupabaseConfigured()}
+      configured={isSupabaseConfigured(marcaDelPedido())}
       sesionDe={user?.email ?? null}
       recienCerrada={Boolean(fin)}
     />

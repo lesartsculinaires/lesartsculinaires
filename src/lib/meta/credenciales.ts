@@ -1,5 +1,7 @@
 import "server-only";
 
+import { env } from "@/lib/marca/servidor";
+
 import { getAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -102,13 +104,13 @@ function deLasVariables(canal: CanalConectable): Credencial | null {
    */
   const token =
     canal === "messenger"
-      ? texto(process.env.MESSENGER_TOKEN) ?? texto(process.env.INSTAGRAM_TOKEN)
-      : texto(process.env.INSTAGRAM_TOKEN);
+      ? texto(env("MESSENGER_TOKEN")) ?? texto(env("INSTAGRAM_TOKEN"))
+      : texto(env("INSTAGRAM_TOKEN"));
 
   const pagina =
     canal === "messenger"
-      ? texto(process.env.MESSENGER_PAGE_ID) ?? texto(process.env.INSTAGRAM_ACCOUNT_ID)
-      : texto(process.env.INSTAGRAM_ACCOUNT_ID);
+      ? texto(env("MESSENGER_PAGE_ID")) ?? texto(env("INSTAGRAM_ACCOUNT_ID"))
+      : texto(env("INSTAGRAM_ACCOUNT_ID"));
 
   if (!token || !pagina) return null;
 

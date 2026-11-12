@@ -48,6 +48,9 @@ export async function compilar(ruta) {
       // servidor desde el navegador. Acá se apunta a un archivo vacío, porque
       // estas pruebas corren en Node, que es donde ese módulo sí puede estar.
       `--alias:server-only=${path.join(RAIZ, "supabase/pruebas/server-only-vacio.mjs")}`,
+      // `next/headers` lo usa `marcaDelPedido()` (CRM unificado). Fuera de un
+      // pedido de Next no hay galletas: el reemplazo falla y se usa la marca fija.
+      `--alias:next/headers=${path.join(RAIZ, "supabase/pruebas/next-headers-vacio.mjs")}`,
       `--outfile=${salida}`,
       // Lo del navegador no se ejecuta en estas pruebas, pero si un módulo lo
       // importa de paso, sin esto el empaquetado falla entero.
