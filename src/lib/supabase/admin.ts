@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { env, marcaDelPedido } from "@/lib/marca/servidor";
 import { supabasePublico } from "@/lib/supabase/config";
+import type { ClaveMarca } from "@/lib/marcas";
 
 /**
  * Service-role client, for the few operations the anon key cannot do —
@@ -14,8 +15,7 @@ import { supabasePublico } from "@/lib/supabase/config";
  * the browser bundle, and every caller must check the signed-in user is an
  * administrator before reaching for it.
  */
-export function getAdminClient(): SupabaseClient | null {
-  const marca = marcaDelPedido();
+export function getAdminClient(marca: ClaveMarca = marcaDelPedido()): SupabaseClient | null {
   const { url } = supabasePublico(marca);
   const key = env("SUPABASE_SERVICE_ROLE_KEY", marca);
   if (!url || !key) return null;

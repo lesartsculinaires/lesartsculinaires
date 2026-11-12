@@ -4,6 +4,8 @@ import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getAdminClient } from "@/lib/supabase/admin";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import type { ClaveMarca } from "@/lib/marcas";
 import { traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import { SIN_ASIGNAR, SIN_DATO } from "@/lib/types";
@@ -447,8 +449,19 @@ export const ETIQUETA_CATALOGO = "catalogo";
  * CRM lento que uno que no abre.
  */
 const catalogoGuardado = unstable_cache(
-  async (): Promise<LoadResult<Catalogo>> => {
-    const admin = getAdminClient();
+  /*
+   * LA MARCA VA COMO ARGUMENTO, Y ES LO QUE SEPARA LAS DOS COPIAS (12/11/2026).
+   *
+   * Adentro de `unstable_cache` no se pueden leer las galletas, así que acá no
+   * se sabe qué marca eligió la persona. Antes se preguntaba igual, la
+   * pregunta fallaba en silencio y contestaba LAC: en crm-peñagroup, con HC
+   * elegida, los leads de HC salían con los programas y vendedores de LAC
+   * («Curso corto Bollería Francesa» en un lead de un diplomado de HC). Ahora
+   * la marca se averigua afuera, en el pedido, y entra como argumento:
+   * `unstable_cache` la suma a la llave, así que cada marca tiene su copia.
+   */
+  async (marca: ClaveMarca): Promise<LoadResult<Catalogo>> => {
+    const admin = getAdminClient(marca);
     if (!admin) return { data: EMPTY_CATALOGO, error: null };
 
     const leido = await leerCatalogo(admin);
@@ -493,10 +506,11 @@ const catalogoGuardado = unstable_cache(
 
 /** Load the six catalogue tables plus the activity types in one round trip. */
 export async function fetchCatalogo(): Promise<LoadResult<Catalogo>> {
-  const admin = getAdminClient();
+  const marca = marcaDelPedido();
+  const admin = getAdminClient(marca);
   if (admin) {
     try {
-      return await catalogoGuardado();
+      return await catalogoGuardado(marca);
     } catch (e) {
       /*
        * La lectura falló y por eso no quedó guardada. Se reintenta acá mismo,

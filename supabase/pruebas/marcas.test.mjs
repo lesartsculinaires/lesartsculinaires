@@ -61,8 +61,9 @@ test("CRM unificado: cada marca con sus llaves, sin caer en las de la otra", asy
       const s = await compilar("src/lib/marca/servidor.ts");
       assert.equal(s.env("WHATSAPP_TOKEN", "lac"), "token-lac");
       assert.equal(s.env("WHATSAPP_TOKEN", "hc"), "token-hc");
-      // Fuera de un pedido (sin galletas) se usa la marca fija.
-      assert.equal(s.marcaDelPedido(), "lac");
+      // Fuera de un pedido (sin galletas) NO se adivina: en el unificado eso
+      // mostró el catálogo de LAC en HC. Se falla a la vista.
+      assert.throws(() => s.marcaDelPedido(), /fuera de un pedido/);
       // A una marca sin la variable no se le presta la de la otra.
       assert.equal(s.env("WHATSAPP_WABA_ID", "hc"), undefined);
     },

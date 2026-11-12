@@ -25,17 +25,31 @@ import {
  * vez (`UnsafeUnwrappedCookies`). Se usa a propósito: las ~40 lecturas de
  * variables del servidor (`WHATSAPP_TOKEN`, la llave de servicio…) están en
  * funciones que contestan al momento —«¿hay WhatsApp configurado?»— y
- * volverlas todas promesas obligaría a tocar cientos de llamadas. Fuera de un
- * pedido (un script, una prueba) la lectura falla y se usa la marca fija.
+ * volverlas todas promesas obligaría a tocar cientos de llamadas.
+ *
+ * ----------------------------------------------------------------------------
+ * EN EL UNIFICADO, SIN PEDIDO NO HAY MARCA: SE FALLA, NO SE ADIVINA
+ * ----------------------------------------------------------------------------
+ *
+ * Fuera de un pedido —dentro de `unstable_cache`, un script— no hay galletas.
+ * Antes se contestaba la marca fija (LAC) y nadie se enteraba: así el catálogo
+ * guardado salió siempre de LAC, y en HC se vieron programas y vendedores de
+ * LAC (12/11/2026). Ahora, en el unificado, eso es un error a la vista: un
+ * dato de la otra marca es peor que una pantalla que avisa. Quien necesite la
+ * marca fuera del pedido la tiene que recibir como argumento.
  */
 export function marcaDelPedido(): ClaveMarca {
   if (!MODO_UNIFICADO) return MARCA_FIJA;
+  let galletas: UnsafeUnwrappedCookies;
   try {
-    const galletas = cookies() as unknown as UnsafeUnwrappedCookies;
-    return marcaDeLaGalleta(galletas.get(GALLETA_MARCA)?.value);
-  } catch {
-    return MARCA_FIJA;
+    galletas = cookies() as unknown as UnsafeUnwrappedCookies;
+  } catch (e) {
+    throw new Error(
+      "crm-peñagroup: se pidió la marca fuera de un pedido. Pásala como argumento " +
+        `(ver marcaDelPedido). Detalle: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
+  return marcaDeLaGalleta(galletas.get(GALLETA_MARCA)?.value);
 }
 
 /**
