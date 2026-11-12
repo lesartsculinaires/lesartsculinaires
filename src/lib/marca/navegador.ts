@@ -17,6 +17,17 @@ export function marcaEnElNavegador(): ClaveMarca {
   return marcaDeLaGalleta(par ? decodeURIComponent(par.slice(GALLETA_MARCA.length + 1)) : null);
 }
 
+/**
+ * Una llave del navegador (localStorage, sessionStorage) que no se mezcle
+ * entre marcas. En crm-peñagroup las dos marcas comparten el mismo sitio, y un
+ * borrador guardado con el número de un chat de LAC no puede aparecer en el
+ * chat de HC que tiene el mismo número. En los sitios de una sola marca la
+ * llave queda igual que siempre.
+ */
+export function llaveDeLaMarca(base: string): string {
+  return MODO_UNIFICADO ? `${base}.${marcaEnElNavegador()}` : base;
+}
+
 /** Cambia de marca y recarga en `destino` (por omisión, la portada). */
 export function cambiarDeMarca(marca: ClaveMarca, destino = "/"): void {
   const unAnio = 60 * 60 * 24 * 365;

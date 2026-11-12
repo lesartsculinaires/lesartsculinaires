@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { SE_PASO, conTope } from "@/lib/conTope";
 import { leerLaFirma } from "@/lib/supabase/firmaDelToken";
 import { marcaDelPedido } from "@/lib/marca/servidor";
+import type { ClaveMarca } from "@/lib/marcas";
 import { isSupabaseConfigured, supabasePublico } from "@/lib/supabase/config";
 
 /**
@@ -294,9 +295,12 @@ function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
  * apply. Without a session the database returns nothing — which is the point:
  * the anon key alone must not reach customer data.
  */
-export async function getServerClient(): Promise<SupabaseClient | null> {
-  // La base de la marca del pedido (en el CRM unificado, la elegida).
-  const marca = marcaDelPedido();
+export async function getServerClient(
+  // La base de la marca del pedido (en el CRM unificado, la elegida). Sólo la
+  // vista «Ambas marcas» pide una marca puntual, y lo hace con la sesión que
+  // la persona tiene en ESA marca: cada base sigue aplicando sus permisos.
+  marca: ClaveMarca = marcaDelPedido(),
+): Promise<SupabaseClient | null> {
   if (!isSupabaseConfigured(marca)) return null;
   const { url, anon } = supabasePublico(marca);
 

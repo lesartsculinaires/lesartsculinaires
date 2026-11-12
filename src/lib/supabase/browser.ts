@@ -20,12 +20,15 @@ const clientes = new Map<ClaveMarca, SupabaseClient>();
  * ya no, porque cada cliente abre su propio websocket y tendríamos varias
  * conexiones repitiendo el mismo aviso.
  */
-export const getBrowserClient = (): SupabaseClient => {
-  const marca = marcaEnElNavegador();
+export const getBrowserClient = (marca: ClaveMarca = marcaEnElNavegador()): SupabaseClient => {
   let cliente = clientes.get(marca);
   if (!cliente) {
     const { url, anon } = supabasePublico(marca);
-    cliente = createBrowserClient(url, anon);
+    // `isSingleton: false`: @supabase/ssr guarda UN cliente en el navegador y
+    // lo devuelve aunque se le pida otra URL. Con dos marcas eso haría que el
+    // cliente «de HC» le hablara a la base de LAC. El Map de arriba ya evita
+    // crear más de uno por marca.
+    cliente = createBrowserClient(url, anon, { isSingleton: false });
     clientes.set(marca, cliente);
   }
   return cliente;

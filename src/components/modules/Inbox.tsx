@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { llaveDeLaMarca } from "@/lib/marca/navegador";
 
 import { IconoDeCanal } from "@/components/IconoDeCanal";
 import { archivar, marcar, marcarLeida } from "@/app/whatsapp-actions";
@@ -82,7 +83,7 @@ import {
 type EnviadoAca = Mensaje & { despuesDe?: number };
 
 /** Dónde queda el borrador del chat mientras se recarga la pestaña. */
-const CLAVE_BORRADOR = "lac.inbox.borrador";
+const CLAVE_BORRADOR = llaveDeLaMarca("lac.inbox.borrador");
 
 /** Cuántos chats se dibujan de una vez en la lista. Ver `filasDeLaLista`. */
 const POR_PAGINA_DE_CHATS = 250;

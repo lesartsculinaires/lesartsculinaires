@@ -55,7 +55,10 @@ import {
 } from "@/lib/parcheBandeja";
 import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
+import { useLimiteDeDispositivos } from "@/hooks/useLimiteDeDispositivos";
 import { useMarca } from "@/components/marca/MarcaContexto";
+import { FranjaDeMarca } from "@/components/marca/FranjaDeMarca";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import { ManualCrm } from "@/components/modules/ManualCrm";
 import { horarioDelEvento } from "@/lib/calendario";
@@ -206,6 +209,8 @@ export default function CrmApp({
 }: Props) {
   const t = useT();
   const marca = useMarca();
+  // crm-peñagroup: una sesión por dispositivo según el rol.
+  useLimiteDeDispositivos();
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
 
@@ -897,6 +902,7 @@ export default function CrmApp({
         onPoner={llamadas.poner}
         onVerHilo={abrirElHilo}
       />
+      {MODO_UNIFICADO && <FranjaDeMarca />}
       <div
         className="lac"
         style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
@@ -923,6 +929,7 @@ export default function CrmApp({
             nombre={accesos.yo?.nombre ?? null}
             modulos={permitidos}
             avisos={avisos}
+            veAmbas={accesos.esAdmin || rolActual?.veAmbasMarcas === true}
             onSelect={(m) => {
               setMenuAbierto(false);
               actions.setMod(m);

@@ -24,6 +24,7 @@ import {
   repartir,
 } from "@/lib/crm/lotesImportacion";
 import { anotarSeguimientoDeNota, filaDeSeguimiento } from "@/lib/crm/notaConSeguimiento";
+import { cerrarMiDispositivo } from "@/app/sesiones-actions";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import {
   COLUMNAS_DE_FUSION,
@@ -407,8 +408,12 @@ export async function createEvento(
   return { ok: true, error: null, id: (data as { id: number }).id };
 }
 
-export async function signOut(): Promise<never> {
+export async function signOut(motivo?: "otro_dispositivo" | "administrador"): Promise<never> {
   const supabase = await getServerClient();
+
+  // crm-peñagroup: la sesión de este dispositivo se da por cerrada en la base
+  // (si no la cerró ya otro dispositivo). Fuera del unificado no hace nada.
+  if (!motivo) await cerrarMiDispositivo();
 
   // Revocar en Supabase es lo deseable, pero no puede ser lo que decida si la
   // sesión se cierra: si la red falla o el token ya venció, el usuario quedaría
@@ -433,10 +438,13 @@ export async function signOut(): Promise<never> {
   // siguiente persona que entre en esta computadora no tiene por qué aparecer
   // donde la dejó la anterior.
   cookieStore.delete(COOKIE_MODULO);
+  for (const { name } of cookieStore.getAll()) {
+    if (name.startsWith("crm.sesion.")) cookieStore.delete(name);
+  }
 
   // Navegar desde el servidor, ya sin cookie: así no depende de que el
   // navegador haga bien su parte.
-  redirect("/login?fin=1");
+  redirect(motivo ? `/login?fin=1&motivo=${motivo}` : "/login?fin=1");
 }
 
 // ---------------------------------------------------------------- accesos
@@ -502,6 +510,7 @@ export async function actualizarRol(
     disp_computadora?: number;
     disp_celular?: number;
     disp_tablet?: number;
+    ve_ambas_marcas?: boolean;
   },
 ): Promise<ActionResult> {
   const supabase = await getServerClient();

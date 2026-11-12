@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SesionesAbiertas } from "@/components/marca/SesionesAbiertas";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 
 import {
   actualizarRol,
@@ -261,6 +263,17 @@ export function UsuariosRoles({
     if (!Number.isFinite(valor) || valor < 0 || valor > 9) return;
     setBusy(true);
     const r = await actualizarRol(id, { [campo]: Math.round(valor) });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
+  };
+
+  const cambiarVeAmbas = async (id: number, ve: boolean) => {
+    setBusy(true);
+    const r = await actualizarRol(id, { ve_ambas_marcas: ve });
     setBusy(false);
     if (!r.ok) setError(r.error);
     else {
@@ -1099,9 +1112,8 @@ export function UsuariosRoles({
                   </p>
                   {/*
                     Cuántos dispositivos puede tener abiertos cada persona con
-                    este rol (12/11/2026). Por ahora sólo se guarda: se hará
-                    cumplir con el CRM unificado, cerrando la sesión anterior de
-                    ese tipo cuando se pase el límite.
+                    este rol (12/11/2026). Se cumple en crm-peñagroup: al pasar
+                    el límite se cierra la sesión anterior de ese tipo.
                   */}
                   {r.dispositivos && (
                     <div
@@ -1137,9 +1149,27 @@ export function UsuariosRoles({
                         </label>
                       ))}
                       <span style={{ color: T.faint }}>
-                        Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica con el CRM unificado
+                        Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica en crm-peñagroup
                       </span>
                     </div>
+                  )}
+                  {/* «Ambas marcas»: la vista de Dirección de crm-peñagroup. */}
+                  {r.veAmbasMarcas !== undefined && !r.esAdmin && (
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: T.ink, cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={r.veAmbasMarcas}
+                        disabled={busy}
+                        onChange={(e) => void cambiarVeAmbas(r.id, e.target.checked)}
+                      />
+                      Ver ambas marcas
+                      <span style={{ color: T.faint, fontSize: 11 }}>
+                        · LAC y HC lado a lado en crm-peñagroup, solo lectura
+                      </span>
+                    </label>
                   )}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
@@ -1409,6 +1439,12 @@ export function UsuariosRoles({
             )}
           </div>
         </div>
+      )}
+      {/* crm-peñagroup: las sesiones por dispositivo, para cerrarlas a mano. */}
+      {MODO_UNIFICADO && accesos.esAdmin && (
+        <SesionesAbiertas
+          nombres={new Map(accesos.usuarios.map((u) => [u.id, u.nombre ? `${u.nombre} · ${u.correo}` : u.correo]))}
+        />
       )}
     </div>
   );

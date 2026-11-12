@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { llaveDeLaMarca } from "@/lib/marca/navegador";
 
 import { useT } from "@/lib/i18n/idioma";
 import { T, softer } from "@/lib/theme";
@@ -67,7 +68,7 @@ export const REGLAS: { titulo: string; detalle: string }[] = [
 const hoy = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
 
-const CLAVE_VISTO = "crm.reglas.visto";
+const CLAVE_VISTO = llaveDeLaMarca("crm.reglas.visto");
 
 /**
  * El botón «Reglas del equipo» y la lista.

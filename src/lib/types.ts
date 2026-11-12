@@ -500,6 +500,12 @@ export interface Rol {
    */
   dispositivos?: { computadora: number; celular: number; tablet: number } | null;
   /**
+   * Ve «Ambas marcas» en crm-peñagroup: la vista de Dirección, de solo
+   * lectura, con las cifras de LAC y HC lado a lado. Los administradores la
+   * ven siempre. Falso mientras no esté la migración 20261202120000.
+   */
+  veAmbasMarcas?: boolean;
+  /**
    * Ve todos los clientes, pero en el Pipeline sólo sus propios leads.
    *
    * Estrecha nada más el tablero. Existe porque `veTodo` es una sola llave

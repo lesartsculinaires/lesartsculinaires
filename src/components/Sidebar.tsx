@@ -8,6 +8,7 @@ import { getBrowserClient } from "@/lib/supabase/browser";
 import { T, soft } from "@/lib/theme";
 import { SelectorDeIdioma } from "@/components/SelectorDeIdioma";
 import { useMarca } from "@/components/marca/MarcaContexto";
+import { SelectorDeMarca } from "@/components/marca/SelectorDeMarca";
 import { MODO_UNIFICADO } from "@/lib/marcas";
 import { useT } from "@/lib/i18n/idioma";
 
@@ -42,6 +43,8 @@ interface Props {
    * más en quien lo arma, sin tocar nada de acá.
    */
   avisos?: Readonly<Record<string, number>>;
+  /** crm-peñagroup: si el selector ofrece «Ambas marcas» (Dirección). */
+  veAmbas?: boolean;
   onSelect: (mod: string) => void;
 }
 
@@ -53,15 +56,21 @@ export function Sidebar({
   nombre,
   modulos,
   avisos = {},
+  veAmbas = false,
   onSelect,
 }: Props) {
   const t = useT();
   const marca = useMarca();
 
   // Quién sos, con lo mejor que se sepa y sin repetir.
-  const principal = rol ? t(rol) : (nombre ?? userEmail);
+  // En crm-peñagroup va el nombre y no el rol (pedido del 12/11/2026).
+  const principal = rol && !MODO_UNIFICADO ? t(rol) : (nombre ?? userEmail);
   const secundario =
-    principal === userEmail ? null : rol && nombre ? `${nombre} · ${userEmail}` : userEmail;
+    principal === userEmail
+      ? null
+      : rol && nombre && !MODO_UNIFICADO
+        ? `${nombre} · ${userEmail}`
+        : userEmail;
 
   const navStyle = (label: string): CSSProperties => ({
     // De bloque a fila: el icono a la izquierda, el nombre al medio y el
@@ -123,8 +132,10 @@ export function Sidebar({
         height: "100vh",
       }}
     >
-      {/* LAC sola sigue con su rótulo de texto; HC y el unificado, con el logo. */}
-      {marca.clave === "lac" && !MODO_UNIFICADO ? (
+      {/* LAC sola sigue con su rótulo de texto; HC, con el logo; crm-peñagroup, con el selector. */}
+      {MODO_UNIFICADO ? (
+        <SelectorDeMarca veAmbas={veAmbas} />
+      ) : marca.clave === "lac" ? (
         <p
           className="mono"
           style={{
@@ -142,8 +153,8 @@ export function Sidebar({
         <img
           src={marca.logo}
           alt={marca.nombre}
-          width={Math.round((marca.clave === "lac" ? 20 : 26) * marca.logoProporcion)}
-          height={marca.clave === "lac" ? 20 : 26}
+          width={Math.round(26 * marca.logoProporcion)}
+          height={26}
           style={{ display: "block", margin: "2px 0 16px", maxWidth: "100%", height: "auto" }}
         />
       )}

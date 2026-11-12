@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { llaveDeLaMarca } from "@/lib/marca/navegador";
 
 /**
  * Una ventana que interrumpe como mucho una vez por día.
@@ -17,7 +18,9 @@ import { useCallback, useEffect, useState } from "react";
  * la base y vale en todas las computadoras; esto otro es nada más «hoy ya me
  * lo mostraste acá», y no vale la pena una fila en la base por eso.
  */
-export function useAvisoDiario(llave: string, hayAlgoQueMostrar: boolean) {
+export function useAvisoDiario(llaveBase: string, hayAlgoQueMostrar: boolean) {
+  // Cada marca lleva su cuenta: lo visto en LAC no apaga el aviso de HC.
+  const llave = llaveDeLaMarca(llaveBase);
   const [mostrar, setMostrar] = useState(false);
 
   useEffect(() => {
