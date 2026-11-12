@@ -703,6 +703,14 @@ export default function CrmApp({
         actividad: de("tablero.actividad").editar,
         metas: de("tablero.metas").editar,
       },
+      /*
+       * Las reglas del equipo en el Inbox, estrictas: sólo con la casilla
+       * marcada en el rol. Sin fila no se ven, y ser administrador no alcanza
+       * —se pidieron para el equipo de ventas—. Ver `ReglasDelEquipo`.
+       */
+      reglasDelInbox:
+        rolId != null &&
+        accesos.permisos.some((p) => p.rolId === rolId && p.modulo === "inbox.reglas" && p.ver),
     };
   }, [accesos]);
 
@@ -1156,6 +1164,10 @@ export default function CrmApp({
             <Inbox
               conversaciones={conversaciones}
               area={area}
+              reglas={{
+                ver: casillas.reglasDelInbox,
+                miVendedorId: accesos.yo?.vendedorId ?? null,
+              }}
               mensajes={mensajes}
               oportunidades={oportunidades}
               etiquetas={etiquetas}

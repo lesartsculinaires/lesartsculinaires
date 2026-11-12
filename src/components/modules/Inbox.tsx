@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { IconoDeCanal } from "@/components/IconoDeCanal";
-import { archivar, marcarLeida } from "@/app/whatsapp-actions";
+import { archivar, marcar, marcarLeida } from "@/app/whatsapp-actions";
+import { AvisoDeReglas, BotonReglas } from "@/components/modules/ReglasDelEquipo";
 import {
   abrirLeadDelHilo,
   asignar,
@@ -154,6 +155,11 @@ interface Props {
    * dos, como la ve administración. Ver `@/lib/areas`.
    */
   area?: Area | null;
+  /**
+   * Las reglas del equipo de ventas: si se ven, y de quién es quien mira.
+   * Null o `ver: false` = no se muestra nada. Ver `ReglasDelEquipo`.
+   */
+  reglas?: { ver: boolean; miVendedorId: number | null } | null;
 }
 
 /** Etiqueta legible de un mensaje sin texto. */
@@ -256,6 +262,7 @@ export function Inbox({
   abrirHilo,
   soloHilo = false,
   area = null,
+  reglas = null,
 }: Props) {
   const t = useT();
   const cat = useCatalogo();
@@ -2006,6 +2013,8 @@ export function Inbox({
 
           <span style={{ flex: 1 }} />
 
+          {reglas?.ver && <BotonReglas accent={accent} />}
+
           <button
             type="button"
             onClick={() => setNuevoChat(true)}
@@ -2806,6 +2815,28 @@ export function Inbox({
                 )}
               </span>
             </div>
+
+            {/* Las reglas del equipo que se olvidan justo acá: un chat sin
+                dueña, o el de otra persona. Ver `ReglasDelEquipo`. */}
+            {reglas?.ver && (
+              <AvisoDeReglas
+                vendedorId={actual.vendedorId}
+                miVendedorId={reglas.miVendedorId}
+                nombreDeLaDuena={
+                  cat.vendedores.find((v) => v.id === actual.vendedorId)?.nombre ?? null
+                }
+                onDejarNoLeido={async () => {
+                  const id = actual.id;
+                  const r = await marcar(id, "no_leida", true);
+                  if (!r.ok) {
+                    window.alert(r.error ?? t("No se pudo dejar en «No leído»."));
+                    return;
+                  }
+                  setAbierta(null);
+                  onRefrescar(id);
+                }}
+              />
+            )}
 
             {/* En qué anda la venta, y las etiquetas de la conversación. Van
                 juntos pero son cosas distintas: lo de arriba es el pipeline de
