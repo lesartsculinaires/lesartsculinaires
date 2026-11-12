@@ -493,7 +493,15 @@ export async function crearRol(
 
 export async function actualizarRol(
   id: number,
-  patch: { nombre?: string; descripcion?: string | null; activo?: boolean; ve_todo?: boolean },
+  patch: {
+    nombre?: string;
+    descripcion?: string | null;
+    activo?: boolean;
+    ve_todo?: boolean;
+    disp_computadora?: number;
+    disp_celular?: number;
+    disp_tablet?: number;
+  },
 ): Promise<ActionResult> {
   const supabase = await getServerClient();
   if (!supabase) return NO_SESSION;

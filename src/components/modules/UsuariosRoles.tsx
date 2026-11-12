@@ -252,6 +252,23 @@ export function UsuariosRoles({
   const faltaFicha = (u: (typeof accesos.usuarios)[number]): boolean =>
     comoSeExplica(motivoFicha(u)) !== null;
 
+  /** Cuántos dispositivos de un tipo puede tener abiertos cada persona del rol. */
+  const cambiarDispositivos = async (
+    id: number,
+    campo: "disp_computadora" | "disp_celular" | "disp_tablet",
+    valor: number,
+  ) => {
+    if (!Number.isFinite(valor) || valor < 0 || valor > 9) return;
+    setBusy(true);
+    const r = await actualizarRol(id, { [campo]: Math.round(valor) });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
+  };
+
   const cambiarVeTodo = async (id: number, veTodo: boolean) => {
     setBusy(true);
     const r = await actualizarRol(id, { ve_todo: veTodo });
@@ -1080,6 +1097,50 @@ export function UsuariosRoles({
                       ? "Además puede mirar el tablero de cada asesor por separado en el Pipeline."
                       : "Sin esto, cada quien ve sólo los clientes que tiene asignados, más los que no son de nadie."}
                   </p>
+                  {/*
+                    Cuántos dispositivos puede tener abiertos cada persona con
+                    este rol (12/11/2026). Por ahora sólo se guarda: se hará
+                    cumplir con el CRM unificado, cerrando la sesión anterior de
+                    ese tipo cuando se pase el límite.
+                  */}
+                  {r.dispositivos && (
+                    <div
+                      data-dispositivos-rol={r.id}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: T.ink }}
+                    >
+                      <span style={{ fontWeight: 600 }}>Dispositivos por persona:</span>
+                      {(
+                        [
+                          ["disp_computadora", "computadora", "💻", "Computadora"],
+                          ["disp_celular", "celular", "📱", "Celular"],
+                          ["disp_tablet", "tablet", "📲", "Tablet / iPad"],
+                        ] as const
+                      ).map(([campo, clave, icono, nombre]) => (
+                        <label key={campo} title={nombre} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span aria-hidden>{icono}</span>
+                          <span>{nombre}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={9}
+                            disabled={busy}
+                            defaultValue={r.dispositivos![clave]}
+                            key={`${r.id}-${campo}-${r.dispositivos![clave]}`}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (v !== r.dispositivos![clave]) void cambiarDispositivos(r.id, campo, v);
+                            }}
+                            aria-label={`${nombre}: cuántos puede tener abiertos`}
+                            style={{ width: 42, height: 24, padding: "0 4px", fontSize: 12, border: `1px solid ${T.border}`, borderRadius: 5 }}
+                          />
+                        </label>
+                      ))}
+                      <span style={{ color: T.faint }}>
+                        Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica con el CRM unificado
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span className="pill"

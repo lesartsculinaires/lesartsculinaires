@@ -495,6 +495,11 @@ export interface Rol {
    */
   veTodo: boolean;
   /**
+   * Cuántas sesiones puede tener abiertas cada persona con este rol, por tipo
+   * de dispositivo. Null mientras no esté la migración 20261201120000.
+   */
+  dispositivos?: { computadora: number; celular: number; tablet: number } | null;
+  /**
    * Ve todos los clientes, pero en el Pipeline sólo sus propios leads.
    *
    * Estrecha nada más el tablero. Existe porque `veTodo` es una sola llave

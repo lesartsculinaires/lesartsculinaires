@@ -44,7 +44,7 @@ export async function fetchAccesos(userId: string): Promise<{
    * cuatro veces lo que tardaba una. Separadas siguen estando, por lo que
    * explica cada una; lo que cambió es que ya no se esperan.
    */
-  const [mods, rls, perms, usrs, casillaPropios, casillaReparto, vends] = await Promise.all([
+  const [mods, rls, perms, usrs, casillaPropios, casillaReparto, vends, dispositivos] = await Promise.all([
     supabase.from("modulos").select("clave, nombre, padre, orden").order("orden"),
     supabase.from("roles").select("id, nombre, descripcion, activo, es_admin, ve_todo").order("nombre"),
     supabase.from("rol_permisos").select("*"),
@@ -52,6 +52,9 @@ export async function fetchAccesos(userId: string): Promise<{
     supabase.from("roles").select("id, pipeline_solo_propios"),
     supabase.from("roles").select("id, recibe_leads"),
     supabase.from("vendedores").select("id, usuario_id").not("usuario_id", "is", null),
+    // Los dispositivos por rol (20261201120000). Aparte y tolerante, como las
+    // casillas de arriba: sin la migración, la pantalla no muestra los campos.
+    supabase.from("roles").select("id, disp_computadora, disp_celular, disp_tablet"),
   ]);
 
   /*
@@ -93,6 +96,17 @@ export async function fetchAccesos(userId: string): Promise<{
     }
   }
 
+  const dispositivosDe = new Map<number, { computadora: number; celular: number; tablet: number }>();
+  if (!dispositivos.error) {
+    for (const r of (dispositivos.data ?? []) as Row[]) {
+      dispositivosDe.set(Number(r.id), {
+        computadora: Number(r.disp_computadora ?? 1),
+        celular: Number(r.disp_celular ?? 1),
+        tablet: Number(r.disp_tablet ?? 0),
+      });
+    }
+  }
+
   // El enlace usuario→vendedor vive en `vendedores`, no en `usuarios`: es esa
   // ficha la que apunta a la cuenta. Se trae aparte y se cruza acá.
   const vendedorDe = new Map<string, number>();
@@ -123,6 +137,7 @@ export async function fetchAccesos(userId: string): Promise<{
     veTodo: r.ve_todo === true,
     pipelineSoloPropios: soloPropios.has(Number(r.id)),
     recibeLeads: recibenLeads.has(Number(r.id)),
+    dispositivos: dispositivosDe.get(Number(r.id)) ?? null,
   }));
 
   const usuarios: Usuario[] = rows(usrs).map((r) => ({
