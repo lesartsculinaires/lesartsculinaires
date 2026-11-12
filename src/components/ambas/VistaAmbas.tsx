@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 
 import type { DatosTablero } from "@/app/tablero-actions";
 import { HojaTableroConjunto, type EmpresaDelSitio } from "@/components/ambas/HojaTableroConjunto";
+import { IDENTIDAD, LogoDeMarca, SimboloDeMarca } from "@/components/ambas/identidad";
 import { SelectorDeMarca } from "@/components/marca/SelectorDeMarca";
 import { HojaAcciones } from "@/components/modules/tablero/HojaAcciones";
 import { HojaActividad } from "@/components/modules/tablero/HojaActividad";
@@ -35,6 +36,27 @@ import { kpisDelMes } from "@/lib/tablero/calculos";
 import { mesAnterior, nombreDelMes } from "@/lib/tablero/semanas";
 
 const CADA_CUANTO_MS = 60_000;
+
+/*
+ * Una paleta neutra para esta vista: la del <html> es la de la marca que se
+ * eligió en el selector, y acá ninguna de las dos manda. Así los colores de
+ * cada marca (`IDENTIDAD`) son los únicos que distinguen una de otra.
+ */
+const NEUTRA = {
+  "--crm-ink": "#141826",
+  "--crm-fondo": "#FFFFFF",
+  "--crm-surface": "#FFFFFF",
+  "--crm-paper": "#F6F7FA",
+  "--crm-border": "#E3E7EF",
+  "--crm-border-strong": "#C9D0DC",
+  "--crm-muted": "#4B5468",
+  "--crm-faint": "#8A93A6",
+  "--crm-apagado": "#ECEFF4",
+  "--crm-aviso": "#F3F5F9",
+  "--crm-acento": "#141826",
+  "--crm-resalte": "#C9D0DC",
+  "--crm-sobre-resalte": "#141826",
+} as React.CSSProperties;
 const TINTA = "#141826";
 const BORDE = "#E3E7EF";
 
@@ -113,7 +135,7 @@ export function VistaAmbas({
     mes,
     hoy,
     empresa: elegida.nombre,
-    accent: vista === "hc" ? "#000000" : MARCAS.lac.paleta.ink,
+    accent: IDENTIDAD[elegida.clave].color,
     datos: elegida.datos,
     ...elegida.armado,
     permisos: SIN_PERMISOS,
@@ -125,19 +147,28 @@ export function VistaAmbas({
     .map((k) => ({ e: empresas[k], d: empresas[k].datos }))
     .filter(({ d }) => d.faltaMigracion || d.error);
 
-  const boton = (activo: boolean) => ({
-    fontSize: 13,
-    padding: "7px 14px",
-    borderRadius: 20,
-    cursor: "pointer",
-    border: `1px solid ${activo ? TINTA : BORDE}`,
-    background: activo ? TINTA : "#fff",
-    color: activo ? "#fff" : TINTA,
-    fontWeight: activo ? 700 : 500,
-  });
+  // Las pestañas de cada marca llevan su símbolo y, elegidas, su color.
+  const boton = (activo: boolean, marca?: "lac" | "hc") => {
+    const fuerte = marca ? IDENTIDAD[marca].color : TINTA;
+    const franja = marca ? IDENTIDAD[marca].franja : TINTA;
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      fontSize: 13,
+      padding: "7px 14px",
+      borderRadius: 20,
+      cursor: "pointer",
+      border: `1px solid ${activo ? franja : BORDE}`,
+      boxShadow: activo && marca === "hc" ? `inset 0 -3px 0 ${franja}` : undefined,
+      background: activo ? fuerte : marca ? IDENTIDAD[marca].tinte : "#fff",
+      color: activo ? "#fff" : fuerte,
+      fontWeight: activo ? 700 : 600,
+    };
+  };
 
   return (
-    <div className="lac" style={{ minHeight: "100vh", background: "#F6F7FA", color: TINTA }}>
+    <div className="lac" style={{ ...NEUTRA, minHeight: "100vh", background: "#F6F7FA", color: TINTA }}>
       <div style={{ display: "flex" }} aria-hidden>
         <div style={{ flex: 1, height: 5, background: MARCAS.lac.paleta.ink }} />
         <div style={{ flex: 1, height: 5, background: MARCAS.hc.paleta.resalte }} />
@@ -214,12 +245,22 @@ export function VistaAmbas({
 
           <nav aria-label="Empresa" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             <button type="button" data-vista="juntas" aria-current={vista === "juntas" ? "page" : undefined} onClick={() => setVista("juntas")} style={boton(vista === "juntas")}>
+              <span style={{ background: "#fff", borderRadius: 4, padding: 1, display: "inline-flex", gap: 2 }}>
+                <SimboloDeMarca clave="lac" medida={16} />
+                <SimboloDeMarca clave="hc" medida={16} />
+              </span>
               LAC + HC
             </button>
-            <button type="button" data-vista="lac" aria-current={vista === "lac" ? "page" : undefined} onClick={() => setVista("lac")} style={boton(vista === "lac")}>
+            <button type="button" data-vista="lac" aria-current={vista === "lac" ? "page" : undefined} onClick={() => setVista("lac")} style={boton(vista === "lac", "lac")}>
+              <span style={{ background: "#fff", borderRadius: 4, padding: 1, display: "inline-flex" }}>
+                <SimboloDeMarca clave="lac" medida={16} />
+              </span>
               {lac.nombre}
             </button>
-            <button type="button" data-vista="hc" aria-current={vista === "hc" ? "page" : undefined} onClick={() => setVista("hc")} style={boton(vista === "hc")}>
+            <button type="button" data-vista="hc" aria-current={vista === "hc" ? "page" : undefined} onClick={() => setVista("hc")} style={boton(vista === "hc", "hc")}>
+              <span style={{ background: "#fff", borderRadius: 4, padding: 1, display: "inline-flex" }}>
+                <SimboloDeMarca clave="hc" medida={16} />
+              </span>
               {hc.nombre}
             </button>
           </nav>
@@ -239,8 +280,29 @@ export function VistaAmbas({
           ) : vista === "juntas" ? (
             <HojaTableroConjunto lac={empresas.lac} hc={empresas.hc} mes={mes} hoy={hoy} />
           ) : (
-            ctx && (
+            ctx && elegida && (
               <>
+                {/* La marca abierta, con su logo y su franja, para no perderse. */}
+                <div
+                  data-cabecera-de={elegida.clave}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    flexWrap: "wrap",
+                    padding: "12px 16px",
+                    marginBottom: 12,
+                    borderRadius: 12,
+                    background: IDENTIDAD[elegida.clave].tinte,
+                    borderLeft: `6px solid ${IDENTIDAD[elegida.clave].franja}`,
+                  }}
+                >
+                  <LogoDeMarca clave={elegida.clave} alto={34} />
+                  <span style={{ fontSize: 12.5, color: "#4B5468" }}>
+                    {MARCAS[elegida.clave].instituto} · solo lectura
+                    {elegida.clave === "hc" && hc.como === "llave" ? " · leído con la llave del Tablero" : ""}
+                  </span>
+                </div>
                 <nav aria-label="Hojas del Tablero" style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: `1px solid ${BORDE}`, marginBottom: 16 }}>
                   {HOJAS.map((h) => (
                     <button
@@ -255,8 +317,8 @@ export function VistaAmbas({
                         border: "none",
                         cursor: "pointer",
                         background: "transparent",
-                        borderBottom: h === hoja ? `2px solid ${TINTA}` : "2px solid transparent",
-                        color: h === hoja ? TINTA : "#5B6478",
+                        borderBottom: h === hoja ? `3px solid ${IDENTIDAD[elegida.clave].franja}` : "3px solid transparent",
+                        color: h === hoja ? IDENTIDAD[elegida.clave].color : "#5B6478",
                         fontWeight: h === hoja ? 700 : 500,
                       }}
                     >

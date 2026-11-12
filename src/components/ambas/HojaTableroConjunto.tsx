@@ -26,6 +26,7 @@ import type { Armado } from "@/lib/tablero/armar";
 import type { DatosTablero } from "@/app/tablero-actions";
 import { T } from "@/lib/theme";
 import { Ancha, Semaforo, Tendencia, Titulo, formatear, tabla, td, tdNum, th, thNum } from "@/components/modules/tablero/comun";
+import { IDENTIDAD, LogoDeMarca, SelloDeMarca } from "@/components/ambas/identidad";
 
 export interface EmpresaDelSitio {
   clave: "lac" | "hc";
@@ -54,7 +55,21 @@ function calcular(e: EmpresaDelSitio, mes: string): Calculado {
   };
 }
 
-function Indice({ titulo, valor, anterior, chico = false }: { titulo: string; valor: number | null; anterior?: number | null; chico?: boolean }) {
+function Indice({
+  titulo,
+  valor,
+  anterior,
+  chico = false,
+  marca,
+}: {
+  titulo: string;
+  valor: number | null;
+  anterior?: number | null;
+  chico?: boolean;
+  /** Si es de una marca: su franja, su tinte y su logo. */
+  marca?: "lac" | "hc";
+}) {
+  const id = marca ? IDENTIDAD[marca] : null;
   const comparacion =
     valor == null || anterior == null
       ? null
@@ -62,9 +77,25 @@ function Indice({ titulo, valor, anterior, chico = false }: { titulo: string; va
       : valor < anterior ? `▼ Empeoró vs mes anterior (${formatear(anterior, "porcentaje")})`
       : "= Igual que el mes anterior";
   return (
-    <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 14px", minWidth: chico ? 150 : 190, background: T.surface }}>
-      <div style={{ fontSize: 11.5, color: T.muted }}>{titulo}</div>
-      <div data-indice={titulo} style={{ fontSize: chico ? 20 : 28, fontWeight: 700, color: T.ink, marginTop: 2 }}>
+    <div
+      data-indice-de={marca}
+      style={{
+        border: `1px solid ${T.border}`,
+        borderTop: id ? `4px solid ${id.franja}` : `1px solid ${T.border}`,
+        borderRadius: 10,
+        padding: "10px 14px",
+        minWidth: chico ? 150 : 190,
+        background: id ? id.tinte : T.surface,
+      }}
+    >
+      {marca ? (
+        <div style={{ margin: "2px 0 4px" }}>
+          <LogoDeMarca clave={marca} alto={22} />
+        </div>
+      ) : (
+        <div style={{ fontSize: 11.5, color: T.muted }}>{titulo}</div>
+      )}
+      <div data-indice={titulo} style={{ fontSize: chico ? 20 : 28, fontWeight: 700, color: id ? id.color : T.ink, marginTop: 2 }}>
         {valor == null ? "Sin datos" : formatear(valor, "porcentaje")}
       </div>
       {comparacion && (
@@ -82,7 +113,14 @@ function PorEmpresa({ filas, empresas, nota }: { filas: [string, string, string,
         <thead>
           <tr>
             <th style={th}>Concepto</th>
-            {empresas.map((c) => <th key={c.e.clave} style={thNum}>{c.e.nombre}</th>)}
+            {empresas.map((c) => (
+              <th
+                key={c.e.clave}
+                style={{ ...thNum, background: IDENTIDAD[c.e.clave].tinteFuerte, borderBottom: `3px solid ${IDENTIDAD[c.e.clave].franja}` }}
+              >
+                <SelloDeMarca clave={c.e.clave} estilo={{ justifyContent: "flex-end" }} />
+              </th>
+            ))}
             {nota && <th style={th}>{nota}</th>}
           </tr>
         </thead>
@@ -92,8 +130,8 @@ function PorEmpresa({ filas, empresas, nota }: { filas: [string, string, string,
             return (
               <tr key={concepto}>
                 <td style={{ ...td, whiteSpace: "pre", fontWeight: fuerte ? 700 : 400 }}>{concepto}</td>
-                <td style={{ ...tdNum, fontWeight: 600 }}>{a}</td>
-                <td style={{ ...tdNum, fontWeight: 600 }}>{b}</td>
+                <td style={{ ...tdNum, fontWeight: 600, background: IDENTIDAD[empresas[0].e.clave].tinte, color: IDENTIDAD[empresas[0].e.clave].color }}>{a}</td>
+                <td style={{ ...tdNum, fontWeight: 600, background: IDENTIDAD[empresas[1].e.clave].tinte, color: IDENTIDAD[empresas[1].e.clave].color }}>{b}</td>
                 {nota && <td style={{ ...td, color: T.faint }}>{de ?? ""}</td>}
               </tr>
             );
@@ -155,11 +193,31 @@ export function HojaTableroConjunto({ lac, hc, mes, hoy }: { lac: EmpresaDelSiti
         Les Arts Culinaires y Haute Couture. Cada área llena su parte en el CRM de su empresa; acá se ve todo junto, al momento.
         Índice de cumplimiento: % de los KPIs con meta y con datos que llegaron a su meta.
       </p>
+      <div data-leyenda-marcas style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "0 0 16px" }}>
+        {empresas.map((c) => (
+          <span
+            key={c.e.clave}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px 6px 10px",
+              borderRadius: 8,
+              background: IDENTIDAD[c.e.clave].tinte,
+              borderLeft: `4px solid ${IDENTIDAD[c.e.clave].franja}`,
+              fontSize: 12.5,
+            }}
+          >
+            <SelloDeMarca clave={c.e.clave} />
+            <span style={{ color: T.muted, fontWeight: 400 }}>· {c.e.clave === "lac" ? "azul" : "dorado"} en todo el tablero</span>
+          </span>
+        ))}
+      </div>
 
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
         {celdaDe("Índice de cumplimiento general", <Indice titulo="LAC + HC" valor={indiceDe(todos)} anterior={todosAntes.length ? indiceDe(todosAntes) : null} />)}
         {celdaDe("Por instituto", empresas.map((c) => (
-          <Indice key={c.e.clave} chico titulo={c.e.nombre} valor={indiceDe(c.kpis)} anterior={c.kpisAntes.length ? indiceDe(c.kpisAntes) : null} />
+          <Indice key={c.e.clave} chico marca={c.e.clave} titulo={c.e.nombre} valor={indiceDe(c.kpis)} anterior={c.kpisAntes.length ? indiceDe(c.kpisAntes) : null} />
         )))}
         {celdaDe("Por responsable", <>
           <Indice chico titulo="Gerente de Ventas" valor={indiceDe(todos, "ventas")} />
@@ -197,8 +255,10 @@ export function HojaTableroConjunto({ lac, hc, mes, hoy }: { lac: EmpresaDelSiti
           </thead>
           <tbody>
             {empresas.map(({ e, r }) => (
-              <tr key={e.clave} data-cuadre={e.clave}>
-                <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap" }}>{e.nombre}</td>
+              <tr key={e.clave} data-cuadre={e.clave} style={{ background: IDENTIDAD[e.clave].tinte }}>
+                <td style={{ ...td, whiteSpace: "nowrap", borderLeft: `4px solid ${IDENTIDAD[e.clave].franja}` }}>
+                  <SelloDeMarca clave={e.clave} />
+                </td>
                 <td style={tdNum}>{formatear(r.leads)}</td>
                 <td style={tdNum}>{formatear(r.contactados)}</td>
                 <td style={tdNum}>{r.leads == null || r.contactados == null ? "—" : formatear(r.leads - r.contactados)}</td>
@@ -293,8 +353,14 @@ export function HojaTableroConjunto({ lac, hc, mes, hoy }: { lac: EmpresaDelSiti
           <tbody>
             {empresas.flatMap(({ e, kpis }) =>
               kpis.map((k, i) => (
-                <tr key={`${e.clave}-${k.kpi.clave}`} data-kpi={`${e.clave}.${k.kpi.clave}`} style={{ borderTop: i === 0 ? `2px solid ${T.borderStrong}` : undefined }}>
-                  <td style={{ ...td, fontWeight: 600, whiteSpace: "nowrap", color: i === 0 ? T.ink : T.faint }}>{e.corto}</td>
+                <tr
+                  key={`${e.clave}-${k.kpi.clave}`}
+                  data-kpi={`${e.clave}.${k.kpi.clave}`}
+                  style={{ borderTop: i === 0 ? `3px solid ${IDENTIDAD[e.clave].franja}` : undefined, background: i % 2 ? IDENTIDAD[e.clave].tinte : undefined }}
+                >
+                  <td style={{ ...td, whiteSpace: "nowrap", borderLeft: `4px solid ${IDENTIDAD[e.clave].franja}` }}>
+                    <SelloDeMarca clave={e.clave} corto medida={16} estilo={{ opacity: i === 0 ? 1 : 0.55 }} />
+                  </td>
                   <td style={{ ...td, color: T.muted, whiteSpace: "nowrap" }}>{RESPONSABLE[k.kpi.responsable]}</td>
                   <td style={td}>{k.kpi.nombre}</td>
                   <td style={tdNum}>{formatear(k.meta, k.kpi.formato)}{k.meta != null && <span style={{ color: T.faint, fontSize: 10.5 }}> {k.kpi.sentido === "min" ? "mín." : "máx."}</span>}</td>
@@ -317,8 +383,14 @@ export function HojaTableroConjunto({ lac, hc, mes, hoy }: { lac: EmpresaDelSiti
       ) : (
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
           {comentarios.map(({ c, h, x }) => (
-            <section key={`${c.e.clave}-${h.hoja}`} data-comentario-de={`${c.e.clave}.${h.hoja}`} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 12px", background: T.paper }}>
-              <div style={{ fontSize: 11.5, color: T.muted, fontWeight: 600 }}>{c.e.nombre} · {h.nombre}</div>
+            <section
+              key={`${c.e.clave}-${h.hoja}`}
+              data-comentario-de={`${c.e.clave}.${h.hoja}`}
+              style={{ border: `1px solid ${T.border}`, borderLeft: `4px solid ${IDENTIDAD[c.e.clave].franja}`, borderRadius: 10, padding: "10px 12px", background: IDENTIDAD[c.e.clave].tinte }}
+            >
+              <div style={{ fontSize: 11.5, color: T.muted, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                <SelloDeMarca clave={c.e.clave} medida={16} /> · {h.nombre}
+              </div>
               <p style={{ margin: "4px 0 0", fontSize: 13, color: T.ink, whiteSpace: "pre-wrap" }}>{x!.texto}</p>
               {x!.actualizadoEn && (
                 <p style={{ margin: "4px 0 0", fontSize: 11, color: T.faint }}>
