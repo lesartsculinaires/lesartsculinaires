@@ -57,6 +57,8 @@ export const EN: Record<string, string> = {
   ". Sin eso no se puede iniciar sesión.": ". Without them sign-in is not possible.",
   Usuario: "User",
   Contraseña: "Password",
+  "Mostrar contraseña": "Show password",
+  "Ocultar contraseña": "Hide password",
   "La contraseña es correcta, pero esta cuenta no tiene rol de administrador. Un administrador puede asignártelo desde Usuarios y Roles.":
     "The password is correct, but this account does not have the administrator role. An administrator can assign it in Users and Roles.",
   "Continuar al CRM con tu acceso normal ›": "Continue to the CRM with your regular access ›",

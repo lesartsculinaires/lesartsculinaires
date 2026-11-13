@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { CampoClave } from "@/components/ui/CampoClave";
 import { useState, type FormEvent } from "react";
 
 import { signOut } from "@/app/actions";
@@ -294,8 +295,9 @@ export function LoginForm({
 
           <label style={{ display: "grid", gap: 5 }}>
             <span style={{ fontSize: 12.5, color: T.muted }}>{t("Contraseña")}</span>
-            <input
-              type="password"
+            {/* Con ojo, para ver si se está escribiendo bien (13/11/2026). */}
+            <CampoClave
+              bloque
               autoComplete="current-password"
               required
               value={password}
