@@ -80,11 +80,26 @@ export const MOD_CANALES = "canales";
  * Así que es al revés: sólo entra quien tiene la casilla marcada a propósito. Y
  * dirección, que puede todo por definición.
  */
+/**
+ * El módulo «Canales», oculto (13/11/2026).
+ *
+ * Se pidió quitarlo del CRM porque no se está usando: las cuentas de
+ * WhatsApp, Instagram y Messenger ya están conectadas. Se oculta y no se
+ * borra: la pantalla, sus rutas y los permisos guardados siguen ahí, y si un
+ * día hay que volver a conectar una cuenta alcanza con poner esto en `true`.
+ *
+ * Con `false` nadie lo ve —tampoco dirección—: ni en la barra, ni con
+ * `?mod=Canales`, ni en la tabla de permisos de Usuarios y Roles, ni en el
+ * Manual CRM (que muestra sólo los capítulos de los módulos permitidos).
+ */
+export const CANALES_VISIBLE = false;
+
 export function puedeVerCanales(
   permisos: readonly Permiso[],
   rolId: number | null,
   esAdmin: boolean,
 ): boolean {
+  if (!CANALES_VISIBLE) return false;
   if (esAdmin) return true;
   if (rolId == null) return false;
   return permisos.some((p) => p.rolId === rolId && p.modulo === MOD_CANALES && p.ver);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CANALES_VISIBLE, MOD_CANALES as MOD_CANALES_CLAVE } from "@/lib/permisos";
 import { SesionesAbiertas } from "@/components/marca/SesionesAbiertas";
 import { MODO_UNIFICADO } from "@/lib/marcas";
 
@@ -1332,7 +1333,9 @@ export function UsuariosRoles({
                 </tr>
               </thead>
               <tbody>
-                {accesos.modulos.map((m, i) => {
+                {/* «Canales» oculto: su fila tampoco se muestra (ver CANALES_VISIBLE). Lo
+                    guardado no se toca: `claves` sigue teniéndola. */}
+                {accesos.modulos.filter((m) => CANALES_VISIBLE || m.clave !== MOD_CANALES_CLAVE).map((m, i) => {
                   const padre = m.padre
                     ? accesos.modulos.find((x) => x.clave === m.padre)
                     : null;
