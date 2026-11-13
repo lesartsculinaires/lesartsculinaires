@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { CampoClave } from "@/components/ui/CampoClave";
 
 import { signOut } from "@/app/actions";
 import { registrarDispositivo } from "@/app/sesiones-actions";
@@ -198,8 +199,8 @@ export function LoginUnificado({
         </label>
         <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
           Contraseña
-          <input
-            type="password"
+          <CampoClave
+            bloque
             autoComplete="current-password"
             required
             value={clave}

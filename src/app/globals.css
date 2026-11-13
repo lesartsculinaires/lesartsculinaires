@@ -373,3 +373,10 @@ body {
     flex: 1 1 auto !important;
   }
 }
+
+/* El ojo de los campos de contraseña es nuestro (CampoClave): se esconde el del
+   navegador (Edge pone uno propio) para que no aparezcan dos. */
+input[data-campo-clave]::-ms-reveal,
+input[data-campo-clave]::-ms-clear {
+  display: none;
+}

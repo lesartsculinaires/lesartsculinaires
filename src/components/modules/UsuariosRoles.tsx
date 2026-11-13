@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CampoClave } from "@/components/ui/CampoClave";
 import { CANALES_VISIBLE, MOD_CANALES as MOD_CANALES_CLAVE } from "@/lib/permisos";
 import { SesionesAbiertas } from "@/components/marca/SesionesAbiertas";
 import { MODO_UNIFICADO } from "@/lib/marcas";
@@ -546,8 +547,9 @@ export function UsuariosRoles({
                       <span style={{ display: "block", marginBottom: 4, fontSize: 11.5, color: T.muted }}>
                         Contraseña
                       </span>
-                      <input
-                        type="text"
+                      {/* Oculta, con ojo para verla (13/11/2026): la pantalla puede estar a la vista de otros. */}
+                      <CampoClave
+                        bloque
                         autoComplete="new-password"
                         value={nPass}
                         onChange={(e) => setNPass(e.target.value)}
@@ -877,8 +879,7 @@ export function UsuariosRoles({
                         Nueva contraseña para{" "}
                         {accesos.usuarios.find((x) => x.id === passDe)?.correo}
                       </span>
-                      <input
-                        type="text"
+                      <CampoClave
                         autoComplete="new-password"
                         value={passNueva}
                         onChange={(e) => setPassNueva(e.target.value)}
