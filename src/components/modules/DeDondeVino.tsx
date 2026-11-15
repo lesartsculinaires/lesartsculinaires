@@ -33,11 +33,20 @@ import { useT } from "@/lib/i18n/idioma";
  */
 export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boolean }) {
   const t = useT();
-  const titulo = origen.titular ?? origen.cuerpo;
+  /*
+   * Los mensajes del agente de IA (15/11/2026).
+   *
+   * El agente guarda en `origen` sus propios datos (`agente_ia`, la salida…),
+   * no un `referral` de Meta. Sin `red`, la tarjeta caía en «Vino de un
+   * enlace», que no es cierto: ese mensaje lo mandó el agente. Se dice eso, sin
+   * enlace ni titular.
+   */
+  const delAgente = "agente_ia" in (origen as object) || (mio && !origen.red);
+  const titulo = delAgente ? null : (origen.titular ?? origen.cuerpo);
 
   return (
     <a
-      href={origen.url ?? undefined}
+      href={delAgente ? undefined : (origen.url ?? undefined)}
       target="_blank"
       rel="noopener noreferrer"
       /*
@@ -59,7 +68,7 @@ export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boole
         textDecoration: "none",
         // Sin dirección no hay a dónde ir: la tarjeta se ve igual pero no
         // parece un enlace que no lleva a ningún lado.
-        cursor: origen.url ? "pointer" : "default",
+        cursor: origen.url && !delAgente ? "pointer" : "default",
       }}
     >
       {/*
@@ -94,7 +103,7 @@ export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boole
             color: mio ? "rgba(255,255,255,0.85)" : T.muted,
           }}
         >
-          {COMO_SE_LEE[origen.red] ?? t("Vino de un enlace")}
+          {delAgente ? t("Respondió el agente") : (COMO_SE_LEE[origen.red] ?? t("Vino de un enlace"))}
         </span>
 
         {/*

@@ -190,6 +190,7 @@ export const EN: Record<string, string> = {
   "Un momento…": "One moment…",
   "Crear y ponerla": "Create and apply",
   "Vino de un enlace": "Came from a link",
+  "Respondió el agente": "The agent replied",
   "La puso el cliente": "Added by the client",
   "Tocá para sacarla": "Tap to remove it",
   "Pasaron más de 24 horas": "More than 24 hours have passed",
