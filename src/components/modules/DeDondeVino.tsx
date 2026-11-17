@@ -42,7 +42,13 @@ export function DeDondeVino({ origen, mio }: { origen: OrigenDelLead; mio: boole
    * enlace ni titular.
    */
   const delAgente = "agente_ia" in (origen as object) || (mio && !origen.red);
-  const titulo = delAgente ? null : (origen.titular ?? origen.cuerpo);
+  // Una historia de Instagram: el enlace a la historia, que dura 24 horas.
+  const deHistoria = origen.red?.startsWith("historia");
+  const titulo = delAgente
+    ? null
+    : deHistoria
+      ? t("Ver la historia en Instagram · disponible 24 horas")
+      : (origen.titular ?? origen.cuerpo);
 
   return (
     <a
@@ -138,4 +144,6 @@ const COMO_SE_LEE: Record<string, string> = {
   anuncio: "Vino de un anuncio",
   publicacion: "Vino de una publicación",
   enlace: "Vino de un enlace",
+  historia_mencion: "Te mencionó en su historia",
+  historia_respuesta: "Respondió a tu historia",
 };
