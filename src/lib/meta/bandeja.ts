@@ -143,6 +143,8 @@ export async function guardarEntranteMeta(
     media_ruta: archivo?.ruta ?? null,
     media_mime: archivo?.mime ?? null,
     media_error: archivo?.error ?? null,
+    // La historia de una mención o respuesta: la tarjeta con su enlace.
+    origen: m.origen ?? null,
   });
 
   // 23505 es la restricción de unicidad sobre `wa_id`: este mensaje ya estaba

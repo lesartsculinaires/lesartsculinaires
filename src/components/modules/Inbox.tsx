@@ -177,6 +177,8 @@ const ETIQUETA: Record<string, string> = {
   unknown: "⚠️ Mensaje que no se pudo recibir",
   unsupported: "⚠️ WhatsApp no deja recibir este tipo de mensaje acá",
   reaction: "Reacción",
+  story_mention: "📸 Te mencionó en su historia",
+  story_reply: "📸 Respondió a tu historia",
 };
 
 /**

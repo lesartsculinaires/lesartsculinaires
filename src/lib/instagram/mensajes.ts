@@ -82,6 +82,22 @@ export interface MensajeIg {
   cita: Cita | null;
   /** El objeto tal cual vino, para no perder lo que hoy no se usa. */
   crudo: unknown;
+  /**
+   * La historia de Instagram, si el mensaje es una mención o una respuesta a
+   * una (17/11/2026). Va a `mensajes.origen` con la misma forma que el origen
+   * de un anuncio, para que la bandeja dibuje la tarjeta con el enlace. El
+   * enlace sirve mientras la historia esté publicada (24 horas); por eso
+   * además se baja el archivo (ver `ARCHIVO_IG`).
+   */
+  origen?: {
+    red: "historia_mencion" | "historia_respuesta";
+    campana: string | null;
+    titular: null;
+    cuerpo: null;
+    url: string;
+    medio: null;
+    imagen: null;
+  } | null;
 }
 
 /**
@@ -225,7 +241,31 @@ export function leerWebhookIg(carga: unknown): {
        */
       const igsid = esEco ? destino : emisor;
 
-      const media = leerAdjunto(mensaje);
+      /*
+       * La historia (17/11/2026).
+       *
+       * Una MENCIÓN viene como adjunto `story_mention` con la URL de la
+       * historia. Una RESPUESTA a una historia nuestra viene como texto, con la
+       * historia en `reply_to.story`: sin leerla, la bandeja mostraba la
+       * respuesta sin saber a qué historia contestaba.
+       */
+      const adjunto = leerAdjunto(mensaje);
+      const respondida = obj(obj(mensaje.reply_to)?.story);
+      const urlRespondida = texto(respondida?.url);
+      const media: MediaIg | null =
+        adjunto ?? (urlRespondida ? { url: urlRespondida, clase: "story_reply" } : null);
+      const deHistoria = media?.clase === "story_mention" || media?.clase === "story_reply";
+      const origen = deHistoria
+        ? {
+            red: media!.clase === "story_mention" ? ("historia_mencion" as const) : ("historia_respuesta" as const),
+            campana: texto(respondida?.id),
+            titular: null,
+            cuerpo: null,
+            url: media!.url,
+            medio: null,
+            imagen: null,
+          }
+        : null;
 
       /*
        * La cita se lee antes de decidir el tipo, y gana.
@@ -250,6 +290,7 @@ export function leerWebhookIg(carga: unknown): {
         media,
         cita,
         crudo: s,
+        origen,
       });
     }
   }
@@ -313,4 +354,16 @@ export function resumenIg(tipo: string, cuerpo: string | null): string {
 }
 
 /** Los tipos de adjunto que son un archivo que se puede bajar y guardar. */
-export const ARCHIVO_IG = new Set(["image", "video", "audio", "file"]);
+export const ARCHIVO_IG = new Set([
+  "image",
+  "video",
+  "audio",
+  "file",
+  /*
+   * Las historias también se bajan (17/11/2026): la URL que manda Instagram
+   * deja de servir cuando la historia se borra, a las 24 horas. Guardada, la
+   * historia se sigue viendo en el hilo después.
+   */
+  "story_mention",
+  "story_reply",
+]);
