@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { CambioEnVivo } from "@/lib/aviso";
 import { crearRafaga } from "@/lib/rafaga";
 import { DISPERSION_MS } from "@/lib/refrescoEnVivo";
+import { marcaEnElNavegador } from "@/lib/marca/navegador";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getBrowserClient } from "@/lib/supabase/browser";
 
@@ -109,7 +110,7 @@ export function useEnVivo(
   });
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured(marcaEnElNavegador())) {
       setEstado("sin-conexion");
       return;
     }

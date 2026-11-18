@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { canalesDelContacto, type CanalDelContacto } from "@/app/canales-actions";
 import { cuandoConHora } from "@/lib/format";
-import { T } from "@/lib/theme";
+import { T, tinte } from "@/lib/theme";
 
 interface Props {
   clienteId: number;
@@ -97,7 +97,7 @@ export function CanalesDelContacto({ clienteId, accent }: Props) {
                   fontWeight: primero ? 700 : 500,
                   padding: "3px 10px",
                   borderRadius: 20,
-                  background: primero ? `${accent}1A` : T.paper,
+                  background: primero ? tinte(accent, 10) : T.paper,
                   color: primero ? accent : T.muted,
                   flexShrink: 0,
                 }}

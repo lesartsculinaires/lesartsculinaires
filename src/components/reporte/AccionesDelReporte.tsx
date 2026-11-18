@@ -36,7 +36,7 @@ export function AccionesDelReporte({
   return (
     <div className="rp-acciones" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       <form method="get" action="/reporte" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <label htmlFor="rp-periodo" style={{ fontSize: 12.5, color: "#4C5A7A" }}>
+        <label htmlFor="rp-periodo" style={{ fontSize: 12.5, color: "var(--crm-muted)" }}>
           {tipo === "dia" ? "Otro día" : "Otro mes"}
         </label>
         <input
@@ -44,7 +44,7 @@ export function AccionesDelReporte({
           type={tipo === "dia" ? "date" : "month"}
           name={tipo === "dia" ? "dia" : "mes"}
           defaultValue={tipo === "dia" ? desde : desde.slice(0, 7)}
-          style={{ font: "inherit", fontSize: 13, padding: "8px 10px", border: "1px solid #B4BFD8", borderRadius: 8, color: "#031B4F" }}
+          style={{ font: "inherit", fontSize: 13, padding: "8px 10px", border: "1px solid var(--crm-border-strong)", borderRadius: 8, color: "var(--crm-ink)" }}
         />
         <button type="submit" className="rp-boton">Ver</button>
       </form>

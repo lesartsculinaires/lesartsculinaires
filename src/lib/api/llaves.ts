@@ -1,5 +1,7 @@
 import "server-only";
 
+import { env } from "@/lib/marca/servidor";
+
 import { timingSafeEqual } from "node:crypto";
 
 /**
@@ -34,7 +36,7 @@ function igual(a: string, b: string): boolean {
 }
 
 function configuradas(): { nombre: string; clave: string }[] {
-  return (process.env.CRM_API_KEYS ?? "")
+  return (env("CRM_API_KEYS") ?? "")
     .split(",")
     .map((entrada) => entrada.trim())
     .filter(Boolean)

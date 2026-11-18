@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { CampoClave } from "@/components/ui/CampoClave";
 import { CANALES_VISIBLE, MOD_CANALES as MOD_CANALES_CLAVE } from "@/lib/permisos";
+import { SesionesAbiertas } from "@/components/marca/SesionesAbiertas";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 
 import {
   actualizarRol,
@@ -263,6 +265,18 @@ export function UsuariosRoles({
     if (!Number.isFinite(valor) || valor < 0 || valor > 9) return;
     setBusy(true);
     const r = await actualizarRol(id, { [campo]: Math.round(valor) });
+    setBusy(false);
+    if (!r.ok) setError(r.error);
+    else {
+      setError(null);
+      onRefresh();
+    }
+  };
+
+  const cambiarSoloSusEnvios = async (id: number, si: boolean) => {
+    setBusy(true);
+    // Con la casilla no se «ve todo»: la regla es lo suyo, lo sin asignar y sus envíos.
+    const r = await actualizarRol(id, si ? { solo_sus_envios: true, ve_todo: false } : { solo_sus_envios: false });
     setBusy(false);
     if (!r.ok) setError(r.error);
     else {
@@ -791,7 +805,7 @@ export function UsuariosRoles({
                         fontSize: 11,
                         padding: "3px 9px",
                         borderRadius: 20,
-                        background: u.activo ? "#E6F0E9" : "#E4E9F3",
+                        background: u.activo ? "#E6F0E9" : "var(--crm-apagado)",
                         color: u.activo ? "#2F6B4F" : T.muted,
                       }}
                     >
@@ -1101,9 +1115,8 @@ export function UsuariosRoles({
                   </p>
                   {/*
                     Cuántos dispositivos puede tener abiertos cada persona con
-                    este rol (12/11/2026). Por ahora sólo se guarda: se hará
-                    cumplir con el CRM unificado, cerrando la sesión anterior de
-                    ese tipo cuando se pase el límite.
+                    este rol (12/11/2026). Se cumple en crm-peñagroup: al pasar
+                    el límite se cierra la sesión anterior de ese tipo.
                   */}
                   {r.dispositivos && (
                     <div
@@ -1139,10 +1152,34 @@ export function UsuariosRoles({
                         </label>
                       ))}
                       <span style={{ color: T.faint }}>
-                        Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica con el CRM unificado
+                        Total {r.dispositivos.computadora + r.dispositivos.celular + r.dispositivos.tablet} · se aplica en crm-peñagroup
                       </span>
                     </div>
                   )}
+                  {/* «Solo sus envíos» (12/11/2026): arma masivos, no contesta chats. */}
+                  {r.soloSusEnvios !== undefined && !r.esAdmin && (
+                    <label
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ marginTop: 8, display: "flex", alignItems: "flex-start", gap: 7, fontSize: 12, color: T.ink, cursor: "pointer" }}
+                    >
+                      <input
+                        type="checkbox"
+                        data-solo-sus-envios={r.id}
+                        checked={r.soloSusEnvios}
+                        disabled={busy}
+                        onChange={(e) => void cambiarSoloSusEnvios(r.id, e.target.checked)}
+                        style={{ marginTop: 2 }}
+                      />
+                      <span>
+                        Solo sus envíos masivos, sin contestar chats
+                        <span style={{ display: "block", color: T.faint, fontSize: 11, lineHeight: 1.45 }}>
+                          Ve lo asignado a su ficha, los leads sin asignar (para armar envíos) y los clientes a los que
+                          les mandó un envío. En la bandeja sólo deja notas internas: contestan las asesoras.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span className="pill"
@@ -1150,7 +1187,7 @@ export function UsuariosRoles({
                       fontSize: 10.5,
                       padding: "2px 8px",
                       borderRadius: 20,
-                      background: r.activo ? "#E6F0E9" : "#E4E9F3",
+                      background: r.activo ? "#E6F0E9" : "var(--crm-apagado)",
                       color: r.activo ? "#2F6B4F" : T.muted,
                     }}
                   >
@@ -1413,6 +1450,12 @@ export function UsuariosRoles({
             )}
           </div>
         </div>
+      )}
+      {/* crm-peñagroup: las sesiones por dispositivo, para cerrarlas a mano. */}
+      {MODO_UNIFICADO && accesos.esAdmin && (
+        <SesionesAbiertas
+          nombres={new Map(accesos.usuarios.map((u) => [u.id, u.nombre ? `${u.nombre} · ${u.correo}` : u.correo]))}
+        />
       )}
     </div>
   );

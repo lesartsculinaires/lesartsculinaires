@@ -1,3 +1,30 @@
+/*
+ * Los colores de la marca (12/11/2026). El <html> trae los de la marca en uso
+ * (`variablesDeColor`, @/lib/marcas); éstos son los de LAC, por si una página
+ * se dibuja sin ellos.
+ */
+:root {
+  --crm-ink: #031b4f;
+  --crm-fondo: #ffffff;
+  --crm-surface: #ffffff;
+  --crm-paper: #f4f6fb;
+  --crm-border: #dce2ef;
+  --crm-border-strong: #b4bfd8;
+  --crm-muted: #4c5a7a;
+  --crm-faint: #8792ac;
+  --crm-warn: #b07d00;
+  --crm-apagado: #e4e9f3;
+  --crm-aviso: #e8eef9;
+  --crm-acento: #031b4f;
+  --crm-resalte: #ffce00;
+  --crm-sobre-resalte: #031b4f;
+}
+
+/* Haute Couture: el título de cada pantalla en itálica, como la Times del manual. */
+html[data-marca="hc"] .lac h1.dsp {
+  font-style: italic;
+}
+
 html,
 body {
   margin: 0;
@@ -11,7 +38,7 @@ body {
 
 .lac {
   font-family: var(--fuente-cuerpo), system-ui, sans-serif;
-  color: #031b4f;
+  color: var(--crm-ink);
 }
 
 /* Títulos y cifras destacadas. */
@@ -64,8 +91,8 @@ body {
 .lac button:hover:not(:disabled):not([role="switch"]),
 .lac .nav:hover,
 .lac .row:hover {
-  background: #ffce00 !important;
-  color: #031b4f !important;
+  background: var(--crm-resalte) !important;
+  color: var(--crm-ink) !important;
 }
 
 /*
@@ -76,12 +103,12 @@ body {
  */
 .lac .row:hover *:not(.pill):not(.pill *),
 .lac .nav:hover * {
-  color: #031b4f !important;
+  color: var(--crm-ink) !important;
 }
 
 /* Los interruptores se señalan con un aro, sin tocar su color. */
 .lac [role="switch"]:hover:not(:disabled) {
-  box-shadow: 0 0 0 3px #ffce00;
+  box-shadow: 0 0 0 3px var(--crm-resalte);
 }
 
 .lac button:focus-visible,
@@ -89,7 +116,7 @@ body {
 .lac select:focus-visible,
 .lac textarea:focus-visible,
 .lac [role="switch"]:focus-visible {
-  outline: 2px solid #031b4f;
+  outline: 2px solid var(--crm-ink);
   outline-offset: 2px;
 }
 
@@ -134,25 +161,25 @@ body {
 
 /* Texto seleccionado con el mouse: sólo queda en los campos. */
 .lac ::selection {
-  background: #ffce00;
-  color: #031b4f;
+  background: var(--crm-resalte);
+  color: var(--crm-ink);
 }
 
 .lac a {
-  color: #031b4f;
+  color: var(--crm-ink);
 }
 
 .lac a:hover {
-  background: #ffce00;
-  color: #031b4f;
+  background: var(--crm-resalte);
+  color: var(--crm-ink);
 }
 
 .lac .card:hover {
-  border-color: #031b4f;
+  border-color: var(--crm-ink);
 }
 
 .lac .gate:hover {
-  border-color: #031b4f;
+  border-color: var(--crm-ink);
   transform: translateY(-2px);
 }
 

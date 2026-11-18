@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PAUSA_PARA_INTERRUMPIR_MS, type LlamadaEnVivo } from "@/lib/llamadas";
+import { marcaEnElNavegador } from "@/lib/marca/navegador";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getBrowserClient } from "@/lib/supabase/browser";
 
@@ -216,7 +217,7 @@ export function useLlamadaEnVivo(): EnVivoDeLlamadas {
   // ------------------------------------------------------------- el canal
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured(marcaEnElNavegador())) return;
 
     const supabase = getBrowserClient();
     let vivo = true;
@@ -302,7 +303,7 @@ export function useLlamadaEnVivo(): EnVivoDeLlamadas {
    * siempre devuelve vacío, que es lo normal: la escuela no vive en llamada.
    */
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured(marcaEnElNavegador())) return;
 
     let vivo = true;
     let reloj: number | null = null;

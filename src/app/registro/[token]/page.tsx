@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 import { leerRecibo, type Recibo } from "@/lib/supabase/recibo";
 
 /** Cada apertura se cuenta y el detalle puede haber cambiado: nunca de caché. */
@@ -58,7 +60,7 @@ function ReciboImpreso({ recibo: r }: { recibo: Recibo }) {
 
   return (
     <main style={HOJA}>
-      <Titulo>LES ARTS CULINAIRES</Titulo>
+      <Titulo>{MARCAS[marcaDelPedido()].rotulo}</Titulo>
       <p style={{ margin: "0 0 18px", textAlign: "center" }}>DETALLE DE INSCRIPCIÓN</p>
 
       <Regla />
@@ -190,7 +192,7 @@ function Aviso({ estado }: { estado: string }) {
 
   return (
     <main style={{ ...HOJA, textAlign: "center" }}>
-      <Titulo>LES ARTS CULINAIRES</Titulo>
+      <Titulo>{MARCAS[marcaDelPedido()].rotulo}</Titulo>
       <p style={{ marginTop: 24, lineHeight: 1.7 }}>
         {texto[estado] ?? "No se pudo abrir este enlace."}
       </p>

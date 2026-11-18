@@ -1,46 +1,57 @@
 /**
- * Paleta de la marca.
+ * Paleta de la marca (12/11/2026: por variables, para el CRM unificado).
  *
- * Azul #031B4F como color principal, blanco como fondo dominante, y amarillo
- * #FFCE00 reservado para una sola cosa: señalar lo que el mouse está tocando
- * o lo que el usuario puede accionar. Si el amarillo apareciera también como
- * relleno decorativo dejaría de significar «acá se puede hacer clic».
+ * Cada valor es una variable CSS (`var(--crm-…)`) y no un color fijo: el
+ * `<html>` trae los colores de la marca en uso (`variablesDeColor`, en
+ * `@/lib/marcas`), así que en el CRM unificado cambiar de marca repinta todo
+ * sin tocar ningún componente. Los sitios de una sola marca se ven igual que
+ * antes: sus variables son los mismos colores que estaban escritos acá.
  *
- * Los grises son azules desaturados, no neutros: sobre un fondo blanco con
- * texto azul marino, un gris neutro se ve sucio al lado.
+ *   Les Arts Culinaires  azul #031B4F, amarillo #FFCE00 para la acción
+ *   Haute Couture        negro #000000, dorado #CE9847 para la acción
+ *
+ * El color de acción (`RESALTE`) es para una sola cosa: señalar lo que el
+ * mouse está tocando o lo que el usuario puede accionar.
+ *
+ * Por ser variables, NO se les puede pegar una transparencia al final
+ * (`${ACCENT}14`): para los tintes están `soft`, `softer`, `openTone` y
+ * `tinte`, que usan `color-mix`.
  */
 export const T = {
   /** Texto principal y títulos. */
-  ink: "#031B4F",
+  ink: "var(--crm-ink)",
   /** Fondo de la aplicación. */
-  fondo: "#FFFFFF",
+  fondo: "var(--crm-fondo)",
   /** Tarjetas y superficies elevadas. */
-  surface: "#FFFFFF",
+  surface: "var(--crm-surface)",
   /** Relleno sutil: encabezados de tabla, campos, celdas de indicadores. */
-  paper: "#F4F6FB",
-  border: "#DCE2EF",
-  borderStrong: "#B4BFD8",
+  paper: "var(--crm-paper)",
+  border: "var(--crm-border)",
+  borderStrong: "var(--crm-border-strong)",
   /** Texto secundario. */
-  muted: "#4C5A7A",
+  muted: "var(--crm-muted)",
   /** Texto terciario y marcas de agua. */
-  faint: "#8792AC",
-  warn: "#B07D00",
+  faint: "var(--crm-faint)",
+  warn: "var(--crm-warn)",
+  /** Fondo de lo apagado: una cuenta o un rol inactivo, una pastilla sin datos. */
+  apagado: "var(--crm-apagado)",
 } as const;
 
-/** Azul de la marca. El diseño lo pasa como prop; es el único tono que varía. */
-export const ACCENT = "#031B4F";
+/** El color de la marca. El diseño lo pasa como prop. */
+export const ACCENT = "var(--crm-acento)";
 
-/** Amarillo de acción: hover, foco y selección. */
-export const RESALTE = "#FFCE00";
-/** Texto sobre el amarillo. Es el único par de contraste aprobado. */
-export const SOBRE_RESALTE = "#031B4F";
+/** El color de acción: hover, foco y selección. */
+export const RESALTE = "var(--crm-resalte)";
+/** Texto sobre el color de acción. */
+export const SOBRE_RESALTE = "var(--crm-sobre-resalte)";
 
-/**
- * Tintes del azul. El diseño agrega sufijos de alfa de 8 bits al hex, así
- * que se mantienen en sintonía solos cuando cambia el acento.
- */
-export const soft = (accent: string) => `${accent}1A`;
+/** Un color con transparencia: `tinte(ACCENT, 10)` = el acento al 10 %. */
+export const tinte = (color: string, porciento: number) =>
+  `color-mix(in srgb, ${color} ${porciento}%, transparent)`;
+
+/** Tintes del acento (antes, sufijos de alfa 1A, 14 y 3D sobre el hex). */
+export const soft = (accent: string) => tinte(accent, 10);
 /** Relleno de menús y fichas — algo más claro que `soft`. */
-export const softer = (accent: string) => `${accent}14`;
+export const softer = (accent: string) => tinte(accent, 8);
 /** Segmentos «en pipeline», detrás del segmento sólido de lo ganado. */
-export const openTone = (accent: string) => `${accent}3D`;
+export const openTone = (accent: string) => tinte(accent, 24);

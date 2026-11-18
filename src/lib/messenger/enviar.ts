@@ -15,6 +15,7 @@ import {
   type PerfilMeta,
 } from "@/lib/meta/perfil";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Mandar y recibir por Messenger.
@@ -67,7 +68,7 @@ const VERSION = "v21.0";
  * es lo correcto en producción. Es la misma regla que WhatsApp e Instagram.
  */
 function base(): string {
-  const propuesta = process.env.MESSENGER_GRAPH_URL;
+  const propuesta = env("MESSENGER_GRAPH_URL");
   if (propuesta && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(propuesta.trim())) {
     return `${propuesta.trim()}/${VERSION}`;
   }
@@ -82,7 +83,7 @@ function base(): string {
  * encabezado.
  */
 const elToken = (): string | undefined =>
-  process.env.MESSENGER_TOKEN ?? process.env.INSTAGRAM_TOKEN;
+  env("MESSENGER_TOKEN") ?? env("INSTAGRAM_TOKEN");
 
 /**
  * El id de la Página.
@@ -99,7 +100,7 @@ const elToken = (): string | undefined =>
  * encuentre leyendo, y no probando.
  */
 const laPagina = (): string | undefined =>
-  process.env.MESSENGER_PAGE_ID ?? process.env.INSTAGRAM_ACCOUNT_ID;
+  env("MESSENGER_PAGE_ID") ?? env("INSTAGRAM_ACCOUNT_ID");
 
 export interface ResultadoMsn {
   ok: boolean;

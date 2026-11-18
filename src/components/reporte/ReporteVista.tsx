@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 import { AccionesDelReporte } from "@/components/reporte/AccionesDelReporte";
 import { money } from "@/lib/format";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 import type { FilaLead, Indicador, Reporte } from "@/lib/reporte";
 import type { Vendidos } from "@/lib/vendidos";
 
@@ -14,11 +16,11 @@ import type { Vendidos } from "@/lib/vendidos";
  * cortan a la mitad de una fila.
  */
 
-const AZUL = "#031B4F";
-const GRIS = "#4C5A7A";
-const TENUE = "#8792AC";
-const BORDE = "#DCE2EF";
-const PAPEL = "#F4F6FB";
+const AZUL = "var(--crm-ink)";
+const GRIS = "var(--crm-muted)";
+const TENUE = "var(--crm-faint)";
+const BORDE = "var(--crm-border)";
+const PAPEL = "var(--crm-paper)";
 
 /** Los indicadores en que subir es malo. */
 const MEJOR_SI_BAJA = new Set(["perdidos"]);
@@ -108,7 +110,7 @@ const filaDeLead = (l: FilaLead): ReactNode[] => [
 /** Los colores de lo vendido: los mismos en las tarjetas y en las barras. */
 const COLOR_CURSO = "#2E6FBF";
 const COLOR_DIPLOMADO = "#B8862B";
-const COLOR_OTRO = "#8792AC";
+const COLOR_OTRO = "var(--crm-faint)";
 
 /**
  * Cursos y diplomados vendidos, y quién los vendió (pedido el 23/10/2026).
@@ -232,7 +234,7 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
   return (
     <main className="rp" style={{ maxWidth: 1180, margin: "0 auto", padding: "28px 24px 60px", color: AZUL, fontFamily: "var(--fuente-cuerpo), system-ui, sans-serif" }}>
       <style>{`
-        .rp-boton { font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 9px; border: 1px solid #B4BFD8; background: #fff; color: ${AZUL}; cursor: pointer; min-height: 40px; display: inline-flex; align-items: center; }
+        .rp-boton { font: inherit; font-size: 13px; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--crm-border-strong); background: #fff; color: ${AZUL}; cursor: pointer; min-height: 40px; display: inline-flex; align-items: center; }
         .rp-principal { background: ${AZUL}; color: #fff; border-color: ${AZUL}; }
         .rp-tabla { width: 100%; border-collapse: collapse; font-size: 12.5px; }
         .rp-tabla th { background: ${PAPEL}; font-weight: 600; padding: 9px 10px; color: ${GRIS}; white-space: nowrap; }
@@ -250,7 +252,7 @@ export function ReporteVista({ reporte: r, csv, generado }: { reporte: Reporte; 
 
       <header style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 16, alignItems: "flex-end" }}>
         <div>
-          <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.14em", color: GRIS }}>LES ARTS CULINAIRES · CRM</p>
+          <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.14em", color: GRIS }}>{MARCAS[marcaDelPedido()].rotulo} · CRM</p>
           <h1 style={{ margin: "4px 0 2px", fontSize: 30, fontFamily: "var(--fuente-titulos), Georgia, serif" }}>
             Reporte {esDia ? "del día" : "del mes"}
           </h1>

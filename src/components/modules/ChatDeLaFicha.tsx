@@ -15,6 +15,8 @@ interface Props {
   plantillas: Plantilla[];
   canalesConectados: Record<string, boolean>;
   puedeResponder: boolean;
+  /** Rol de «solo sus envíos»: sólo notas internas. */
+  soloNotas?: boolean;
   accent: string;
   onRefrescar: (hilo?: number) => void;
   onLlamar: ((conversacionId: number) => void) | null;
@@ -49,6 +51,7 @@ export function ChatDeLaFicha({
   plantillas,
   canalesConectados,
   puedeResponder,
+  soloNotas = false,
   accent,
   onRefrescar,
   onLlamar,
@@ -125,6 +128,7 @@ export function ChatDeLaFicha({
           canalesConectados={canalesConectados}
           faltaMigracion={false}
           puedeResponder={puedeResponder}
+          soloNotas={soloNotas}
           abrirHilo={pedido}
           onLlamar={onLlamar}
           accent={accent}

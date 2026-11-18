@@ -500,6 +500,12 @@ export interface Rol {
    */
   dispositivos?: { computadora: number; celular: number; tablet: number } | null;
   /**
+   * Arma envíos masivos y no contesta chats: ve lo suyo, lo sin asignar y los
+   * clientes de sus envíos; en la bandeja sólo deja notas internas. Sin
+   * definir mientras no esté la migración 20261203120000.
+   */
+  soloSusEnvios?: boolean;
+  /**
    * Ve todos los clientes, pero en el Pipeline sólo sus propios leads.
    *
    * Estrecha nada más el tablero. Existe porque `veTodo` es una sola llave

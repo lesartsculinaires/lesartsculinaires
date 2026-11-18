@@ -72,8 +72,8 @@ export function AvisoDeVersionNueva() {
         padding: "10px 14px",
         marginBottom: 14,
         borderRadius: 9,
-        background: "#E8EEF9",
-        color: "#031B4F",
+        background: "var(--crm-aviso)",
+        color: "var(--crm-ink)",
         fontSize: 12.5,
         lineHeight: 1.45,
       }}
@@ -87,8 +87,8 @@ export function AvisoDeVersionNueva() {
         style={{
           padding: "4px 12px",
           borderRadius: 6,
-          border: "1px solid #031B4F",
-          background: "#031B4F",
+          border: "1px solid var(--crm-ink)",
+          background: "var(--crm-ink)",
           color: "#fff",
           fontSize: 12,
           fontWeight: 600,

@@ -216,6 +216,19 @@ export function parseDelimitado(texto: string, sep?: string): string[][] {
  * estadounidense se leería con el día y el mes cambiados; por eso la pantalla
  * muestra las fechas ya interpretadas antes de importar.
  */
+/**
+ * ¿Una fecha de registro que no puede ser? Más de cinco años antes de `hoy` o
+ * más de 31 días después. Ver el aviso de la fecha de registro, más abajo.
+ */
+export function fechaImposible(fecha: string, hoy: string): boolean {
+  const [a, m, d] = hoy.slice(0, 10).split("-");
+  const piso = `${Number(a) - 5}-${m}-${d}`;
+  const tope = new Date(`${hoy.slice(0, 10)}T00:00:00Z`);
+  tope.setUTCDate(tope.getUTCDate() + 31);
+  const f = fecha.slice(0, 10);
+  return f < piso || f > tope.toISOString().slice(0, 10);
+}
+
 export function parseFecha(v: unknown): string | null {
   if (v == null || v === "") return null;
 
@@ -498,9 +511,22 @@ export function construirFilas({
     };
 
     const crudaRegistro = valor(fila, "fecha_registro");
-    const fechaRegistro = parseFecha(crudaRegistro);
+    let fechaRegistro = parseFecha(crudaRegistro);
     if (crudaRegistro && !fechaRegistro) {
       avisos.push(`Fecha de registro «${crudaRegistro}» no se entiende; se usa la de hoy`);
+    }
+    /*
+     * Una fecha de registro imposible (12/11/2026). En HC entraron dos leads
+     * con 1985 y 2012: eran fechas de nacimiento en la columna de registro, y
+     * la Evolución dibujó un botón por cada mes desde 1985. Más de cinco años
+     * atrás o más de un mes adelante no es un registro: se avisa y se usa la
+     * fecha por defecto, como cuando no se entiende.
+     */
+    if (fechaRegistro && fechaImposible(fechaRegistro, fechaPorDefecto)) {
+      avisos.push(
+        `Fecha de registro «${crudaRegistro}» no puede ser (¿es una fecha de nacimiento?); se usa la de hoy`,
+      );
+      fechaRegistro = null;
     }
 
     const crudaCierre = valor(fila, "fecha_cierre");

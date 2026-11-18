@@ -3,8 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { SE_PASO, conTope } from "@/lib/conTope";
 
-const URL_ENV = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const KEY_ENV = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+import { GALLETA_MARCA, marcaDeLaGalleta } from "@/lib/marcas";
+import { supabasePublico } from "@/lib/supabase/config";
 
 /**
  * Cuánto se espera a que Supabase diga quién es esta persona.
@@ -83,6 +83,9 @@ export async function middleware(request: NextRequest) {
 
   // Unconfigured deployments fall through to the login page, which explains
   // what is missing rather than throwing.
+  // La base de la marca elegida (en los sitios de una marca, la de siempre).
+  const marca = marcaDeLaGalleta(request.cookies.get(GALLETA_MARCA)?.value);
+  const { url: URL_ENV, anon: KEY_ENV } = supabasePublico(marca);
   if (!URL_ENV || !KEY_ENV) return response;
 
   const supabase = createServerClient(URL_ENV, KEY_ENV, {

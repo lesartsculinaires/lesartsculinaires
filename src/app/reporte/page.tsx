@@ -11,14 +11,18 @@ import {
   type ProgramaDelCatalogo,
 } from "@/lib/reporte";
 import { getServerClient, quienEs } from "@/lib/supabase/server";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 
 /** Cada reporte se arma con los datos de ese momento: nunca de caché. */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Reporte · CRM Les Arts Culinaires",
-  robots: { index: false, follow: false, nocache: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: `Reporte · CRM ${MARCAS[marcaDelPedido()].nombre}`,
+    robots: { index: false, follow: false, nocache: true },
+  };
+}
 
 /**
  * El reporte del día (`/reporte?dia=2026-10-14`) o del mes
@@ -79,7 +83,7 @@ export default async function PaginaReporte({
       etiquetas: (etiquetas.data ?? []).map((e) => ({
         id: Number(e.id),
         nombre: String(e.nombre),
-        color: String(e.color ?? "#4C5A7A"),
+        color: String(e.color ?? "var(--crm-muted)"),
       })) as EtiquetaDelCatalogo[],
     },
   );
@@ -95,11 +99,11 @@ export default async function PaginaReporte({
 
 function NoSePudo({ texto }: { texto: string }) {
   return (
-    <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, fontFamily: "system-ui, sans-serif", color: "#031B4F" }}>
+    <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, fontFamily: "system-ui, sans-serif", color: "var(--crm-ink)" }}>
       <div style={{ maxWidth: 440, textAlign: "center", lineHeight: 1.55 }}>
         <h1 style={{ fontSize: 20 }}>No se pudo armar el reporte</h1>
-        <p style={{ fontSize: 14, color: "#4C5A7A" }}>{texto}</p>
-        <a href="/" style={{ color: "#031B4F" }}>Volver al CRM</a>
+        <p style={{ fontSize: 14, color: "var(--crm-muted)" }}>{texto}</p>
+        <a href="/" style={{ color: "var(--crm-ink)" }}>Volver al CRM</a>
       </div>
     </main>
   );

@@ -9,7 +9,7 @@ import { useT } from "@/lib/i18n/idioma";
 
 /** Colores para elegir. Ninguno tan claro que su texto blanco no se lea. */
 const COLORES = [
-  "#031B4F", "#1F6F4A", "#8A5200", "#9B2C2C",
+  "var(--crm-ink)", "#1F6F4A", "#8A5200", "#9B2C2C",
   "#5B3E8E", "#0E6E7D", "#6B665F", "#A8541B",
 ];
 

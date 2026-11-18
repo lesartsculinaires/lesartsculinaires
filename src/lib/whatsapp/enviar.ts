@@ -8,6 +8,7 @@ import {
   tiposQueSePueden,
 } from "@/lib/whatsapp/adjuntos";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Envío por la API de Meta.
@@ -52,7 +53,7 @@ const VERSION = "v21.0";
  * el de Meta, que es lo correcto en producción.
  */
 function base(): string {
-  const propuesta = process.env.WHATSAPP_GRAPH_URL;
+  const propuesta = env("WHATSAPP_GRAPH_URL");
   if (propuesta && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(propuesta.trim())) {
     return propuesta.trim();
   }
@@ -81,7 +82,7 @@ export interface ResultadoEnvio {
 }
 
 export const hayWhatsapp = (): boolean =>
-  Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+  Boolean(env("WHATSAPP_TOKEN") && env("WHATSAPP_PHONE_NUMBER_ID"));
 
 export async function enviarTexto(
   telefono: string,
@@ -233,8 +234,8 @@ async function mandar(
   cuerpoDelMensaje: Record<string, unknown>,
   { reintentar = true }: { reintentar?: boolean } = {},
 ): Promise<ResultadoEnvio> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = env("WHATSAPP_TOKEN");
+  const numero = env("WHATSAPP_PHONE_NUMBER_ID");
 
   if (!token || !numero) {
     return { ok: false, waId: null, error: "WhatsApp no está configurado en el servidor." };

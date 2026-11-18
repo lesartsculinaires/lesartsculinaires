@@ -55,6 +55,10 @@ import {
 } from "@/lib/parcheBandeja";
 import { hilosDeLaBandeja } from "@/app/inbox-actions";
 import { useAvisoDeEvento } from "@/hooks/useAvisoDeEvento";
+import { useLimiteDeDispositivos } from "@/hooks/useLimiteDeDispositivos";
+import { useMarca } from "@/components/marca/MarcaContexto";
+import { FranjaDeMarca } from "@/components/marca/FranjaDeMarca";
+import { MODO_UNIFICADO } from "@/lib/marcas";
 import { AvisoDeAgenda } from "@/components/ui/AvisoDeAgenda";
 import { ManualCrm } from "@/components/modules/ManualCrm";
 import { horarioDelEvento } from "@/lib/calendario";
@@ -176,11 +180,14 @@ interface Props {
    */
   modInicial?: string;
   loadError: string | null;
+  /** crm-peñagroup: si el selector ofrece «Ambas marcas» (puerta de Dirección). */
+  veAmbasMarcas?: boolean;
 }
 
 
 
 export default function CrmApp({
+  veAmbasMarcas = false,
   oportunidades: initial,
   catalogo,
   eventos,
@@ -204,6 +211,9 @@ export default function CrmApp({
   loadError,
 }: Props) {
   const t = useT();
+  const marca = useMarca();
+  // crm-peñagroup: una sesión por dispositivo según el rol.
+  useLimiteDeDispositivos();
   const router = useRouter();
   const { state, oportunidades, actions, syncError } = useCrm(initial, modInicial);
 
@@ -895,6 +905,7 @@ export default function CrmApp({
         onPoner={llamadas.poner}
         onVerHilo={abrirElHilo}
       />
+      {MODO_UNIFICADO && <FranjaDeMarca />}
       <div
         className="lac"
         style={{ minHeight: "100vh", background: T.fondo, display: "flex" }}
@@ -921,6 +932,7 @@ export default function CrmApp({
             nombre={accesos.yo?.nombre ?? null}
             modulos={permitidos}
             avisos={avisos}
+            veAmbas={veAmbasMarcas}
             onSelect={(m) => {
               setMenuAbierto(false);
               actions.setMod(m);
@@ -937,8 +949,8 @@ export default function CrmApp({
                 fontSize: 12.5,
                 fontWeight: 600,
                 borderRadius: 9,
-                background: "#FFCE00",
-                color: "#031B4F",
+                background: "var(--crm-resalte)",
+                color: "var(--crm-ink)",
               }}
             >
               Entorno de pruebas. Lo que hagas acá no es la operación real.
@@ -1134,7 +1146,7 @@ export default function CrmApp({
           {mod === "Tablero Comercial" && (
             <TableroComercial
               accent={accent}
-              empresa="Les Arts Culinaires"
+              empresa={marca.nombre}
               permisos={casillas.tablero}
               miFicha={accesos.yo?.vendedorId ?? null}
             />
@@ -1188,6 +1200,7 @@ export default function CrmApp({
               canalesConectados={canalesConectados}
               faltaMigracion={faltaMigracionInbox}
               puedeResponder={puedeResponderWhatsapp}
+              soloNotas={!accesos.esAdmin && rolActual?.soloSusEnvios === true}
               abrirHilo={hiloAAbrir}
               onLlamar={
                 puedeLlamarPorWhatsapp
@@ -1449,6 +1462,7 @@ export default function CrmApp({
                     plantillas={plantillas.plantillas}
                     canalesConectados={canalesConectados}
                     puedeResponder={puedeResponderWhatsapp}
+              soloNotas={!accesos.esAdmin && rolActual?.soloSusEnvios === true}
                     accent={accent}
                     onRefrescar={refrescarBandeja}
                     onLlamar={

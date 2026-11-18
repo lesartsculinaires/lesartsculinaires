@@ -6,11 +6,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SE_PASO, conTope } from "@/lib/conTope";
 import { leerLaFirma } from "@/lib/supabase/firmaDelToken";
-import {
-  SUPABASE_ANON_KEY,
-  SUPABASE_URL,
-  isSupabaseConfigured,
-} from "@/lib/supabase/config";
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import type { ClaveMarca } from "@/lib/marcas";
+import { isSupabaseConfigured, supabasePublico } from "@/lib/supabase/config";
 
 /**
  * Los errores que dan los relojes desfasados, no la sesión.
@@ -297,12 +295,18 @@ function conTopeDeAuth(cliente: SupabaseClient): SupabaseClient {
  * apply. Without a session the database returns nothing — which is the point:
  * the anon key alone must not reach customer data.
  */
-export async function getServerClient(): Promise<SupabaseClient | null> {
-  if (!isSupabaseConfigured()) return null;
+export async function getServerClient(
+  // La base de la marca del pedido (en el CRM unificado, la elegida). Sólo la
+  // vista «Ambas marcas» pide una marca puntual, y lo hace con la sesión que
+  // la persona tiene en ESA marca: cada base sigue aplicando sus permisos.
+  marca: ClaveMarca = marcaDelPedido(),
+): Promise<SupabaseClient | null> {
+  if (!isSupabaseConfigured(marca)) return null;
+  const { url, anon } = supabasePublico(marca);
 
   const cookieStore = await cookies();
 
-  return conTopeDeAuth(createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return conTopeDeAuth(createServerClient(url, anon, {
     global: { fetch: conReintentoDeReloj },
     cookies: {
       getAll: () => cookieStore.getAll(),

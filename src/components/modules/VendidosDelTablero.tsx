@@ -12,7 +12,7 @@ import { contarVendidos, type Vendidos } from "@/lib/vendidos";
 
 const COLOR_CURSO = "#2E6FBF";
 const COLOR_DIPLOMADO = "#B8862B";
-const COLOR_OTRO = "#8792AC";
+const COLOR_OTRO = "var(--crm-faint)";
 
 const comoVenta = (o: Oportunidad) => ({
   quien: o.vendedor && o.vendedor !== "—" ? o.vendedor : null,

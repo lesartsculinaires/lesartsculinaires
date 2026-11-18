@@ -1,6 +1,7 @@
 import "server-only";
 
 import { baseDeGraph, VERSION_DE_GRAPH } from "@/lib/whatsapp/enviar";
+import { env } from "@/lib/marca/servidor";
 
 /**
  * Subirle la imagen A Meta, en vez de pedirle que la vaya a buscar.
@@ -56,8 +57,8 @@ export type Subida = { ok: true; id: string } | { ok: false; error: string };
  * excepción.
  */
 export async function subirImagenAMeta(bytes: ArrayBuffer, mime: string): Promise<Subida> {
-  const token = process.env.WHATSAPP_TOKEN;
-  const numero = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const token = env("WHATSAPP_TOKEN");
+  const numero = env("WHATSAPP_PHONE_NUMBER_ID");
 
   if (!token || !numero) {
     return { ok: false, error: "WhatsApp no está configurado en el servidor." };

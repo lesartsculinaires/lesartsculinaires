@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { NO_CONTESTA, puedeContestar } from "@/lib/supabase/puedeContestar";
 
+import { marcaDelPedido } from "@/lib/marca/servidor";
+import { MARCAS } from "@/lib/marcas";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient, getUser } from "@/lib/supabase/server";
 import { enviarPlantilla } from "@/lib/whatsapp/enviar";
@@ -192,6 +195,7 @@ export async function enviarPlantillaAConversacion(
   const supabase = await getServerClient();
   const user = await getUser();
   if (!supabase || !user) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
 
   const [{ data: plantilla }, { data: conv }] = await Promise.all([
     supabase
@@ -327,11 +331,20 @@ export async function enviarPlantillaAConversacion(
     };
   }
 
+  /*
+   * ¿El hilo sube arriba de la bandeja? Depende de la marca (12/11/2026).
+   *
+   * En HC se pidió que NO: mandar una plantilla para contestar o reactivar a
+   * alguien desordena la lista que el equipo trabaja de arriba abajo, así que
+   * ahí no se toca `ultimo_mensaje_en` (por lo que se ordena) y el chat sube
+   * cuando el cliente conteste. En LAC sigue como siempre.
+   */
+  const sube = MARCAS[marcaDelPedido()].plantillaSubeElChat;
   await supabase
     .from("conversaciones")
     .update({
       ultimo_texto: texto.slice(0, 200),
-      ultimo_mensaje_en: new Date().toISOString(),
+      ...(sube ? { ultimo_mensaje_en: new Date().toISOString() } : {}),
       sin_leer: 0,
     })
     .eq("id", conversacionId);

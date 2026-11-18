@@ -7,6 +7,7 @@ import { puedeVerCanales } from "@/lib/permisos";
 import { COOKIE_MODULO, moduloInicial, pantallaProbable } from "@/lib/ultimoModulo";
 import { hayServiceRole } from "@/lib/supabase/admin";
 import { fetchAccesos } from "@/lib/supabase/accesos";
+import { puedeVerAmbas } from "@/lib/marca/ambas";
 import { contarSinLeer } from "@/lib/supabase/inbox";
 import { canalesListos, salidaDisponible } from "@/app/inbox-actions";
 import { llamadasDisponibles } from "@/app/llamadas-actions";
@@ -39,13 +40,13 @@ function NoSePudoConfirmar() {
         placeItems: "center",
         padding: 24,
         fontFamily: "system-ui, sans-serif",
-        color: "#031B4F",
-        background: "#F4F6FB",
+        color: "var(--crm-ink)",
+        background: "var(--crm-paper)",
       }}
     >
       <div style={{ maxWidth: 420, textAlign: "center", lineHeight: 1.55 }}>
         <h1 style={{ fontSize: 20, marginBottom: 10 }}>No pudimos confirmar tu sesión</h1>
-        <p style={{ fontSize: 14, color: "#4C5A7A", marginBottom: 18 }}>
+        <p style={{ fontSize: 14, color: "var(--crm-muted)", marginBottom: 18 }}>
           Tu sesión sigue abierta: lo que pasó es que la base tardó en responder.
           No hace falta que vuelvas a entrar.
         </p>
@@ -55,7 +56,7 @@ function NoSePudoConfirmar() {
             display: "inline-block",
             padding: "9px 18px",
             borderRadius: 6,
-            background: "#031B4F",
+            background: "var(--crm-ink)",
             color: "#fff",
             fontSize: 14,
             textDecoration: "none",
@@ -213,6 +214,7 @@ export default async function Page({
     puedeResponder,
     conectados,
     puedeLlamar,
+    ambas,
   ] = await Promise.all([
     fetchOportunidades(),
     fetchCatalogo(),
@@ -240,6 +242,9 @@ export default async function Page({
      * número, y ahí el botón no tiene que aparecer.
      */
     llamadasDisponibles(),
+    // crm-peñagroup: si ofrecer «Ambas marcas» (la puerta de Dirección).
+    // Fuera del unificado contesta que no sin consultar nada.
+    puedeVerAmbas().catch(() => ({ puede: false })),
   ]);
 
   const loadError = ops.error ?? catalogo.error ?? eventos.error;
@@ -291,6 +296,7 @@ export default async function Page({
    */
   return (
     <CrmApp
+      veAmbasMarcas={ambas.puede}
       oportunidades={ops.data}
       catalogo={catalogo.data}
       eventos={eventos.data}

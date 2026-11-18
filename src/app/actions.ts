@@ -8,7 +8,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getAdminClient } from "@/lib/supabase/admin";
-import { SUPABASE_URL } from "@/lib/supabase/config";
+import { env, marcaDelPedido } from "@/lib/marca/servidor";
+import { supabasePublico } from "@/lib/supabase/config";
 import {
   altaLead,
   anotarCanal,
@@ -23,6 +24,7 @@ import {
   repartir,
 } from "@/lib/crm/lotesImportacion";
 import { anotarSeguimientoDeNota, filaDeSeguimiento } from "@/lib/crm/notaConSeguimiento";
+import { cerrarMiDispositivo } from "@/app/sesiones-actions";
 import { buscarDuplicados, type Coincidencia, type DatosContacto } from "@/lib/duplicados";
 import {
   COLUMNAS_DE_FUSION,
@@ -406,8 +408,12 @@ export async function createEvento(
   return { ok: true, error: null, id: (data as { id: number }).id };
 }
 
-export async function signOut(): Promise<never> {
+export async function signOut(motivo?: "otro_dispositivo" | "administrador"): Promise<never> {
   const supabase = await getServerClient();
+
+  // crm-peñagroup: la sesión de este dispositivo se da por cerrada en la base
+  // (si no la cerró ya otro dispositivo). Fuera del unificado no hace nada.
+  if (!motivo) await cerrarMiDispositivo();
 
   // Revocar en Supabase es lo deseable, pero no puede ser lo que decida si la
   // sesión se cierra: si la red falla o el token ya venció, el usuario quedaría
@@ -432,10 +438,13 @@ export async function signOut(): Promise<never> {
   // siguiente persona que entre en esta computadora no tiene por qué aparecer
   // donde la dejó la anterior.
   cookieStore.delete(COOKIE_MODULO);
+  for (const { name } of cookieStore.getAll()) {
+    if (name.startsWith("crm.sesion.")) cookieStore.delete(name);
+  }
 
   // Navegar desde el servidor, ya sin cookie: así no depende de que el
   // navegador haga bien su parte.
-  redirect("/login?fin=1");
+  redirect(motivo ? `/login?fin=1&motivo=${motivo}` : "/login?fin=1");
 }
 
 // ---------------------------------------------------------------- accesos
@@ -501,6 +510,7 @@ export async function actualizarRol(
     disp_computadora?: number;
     disp_celular?: number;
     disp_tablet?: number;
+    solo_sus_envios?: boolean;
   },
 ): Promise<ActionResult> {
   const supabase = await getServerClient();
@@ -747,12 +757,10 @@ export async function diagnosticarServiceRole(): Promise<
   const problema = await exigirAdmin();
   if (problema) return { ok: false, error: problema };
 
-  const bruto = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const bruto = env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const llave = bruto.trim();
-  const anon =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    "";
+  const publico = supabasePublico(marcaDelPedido());
+  const anon = publico.anon || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 
   const datos: Diagnostico = {
     presente: llave.length > 0,
@@ -760,7 +768,7 @@ export async function diagnosticarServiceRole(): Promise<
     formato: "ausente",
     esLaAnon: llave.length > 0 && llave === anon.trim(),
     prueba: "sin-llave",
-    proyecto: SUPABASE_URL.replace(/^https:\/\/|\.supabase\.co.*$/g, ""),
+    proyecto: publico.url.replace(/^https:\/\/|\.supabase\.co.*$/g, ""),
   };
 
   if (llave.startsWith("sb_publishable_")) datos.formato = "publicable-o-anon";

@@ -10,6 +10,7 @@
  */
 
 import { getServerClient, getUser } from "@/lib/supabase/server";
+import type { ClaveMarca } from "@/lib/marcas";
 import { traerTodo } from "@/lib/supabase/paginar";
 import {
   CAMPOS_ACTIVIDAD,
@@ -109,8 +110,11 @@ function explicar(e: { code?: string; message?: string } | null | undefined): st
  * anteriores (para la Evolución y para comparar con el mismo mes del año
  * pasado) y la actividad y metas que correspondan.
  */
-export async function cargarTablero(mes: string): Promise<DatosTablero> {
-  const supabase = await getServerClient();
+export async function cargarTablero(mes: string, marca?: ClaveMarca): Promise<DatosTablero> {
+  // `marca`: sólo «Ambas marcas» de crm-peñagroup la pasa, para leer cada
+  // Tablero con la sesión que la persona tiene en esa marca. Sin ella, la del
+  // pedido, como siempre.
+  const supabase = await getServerClient(marca);
   const primerMes = (() => {
     const [a, m] = mes.split("-").map(Number);
     return `${a - 1}-${String(m).padStart(2, "0")}-01`;

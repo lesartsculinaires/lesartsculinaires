@@ -2,7 +2,9 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { SUPABASE_URL } from "@/lib/supabase/config";
+import { env, marcaDelPedido } from "@/lib/marca/servidor";
+import { supabasePublico } from "@/lib/supabase/config";
+import type { ClaveMarca } from "@/lib/marcas";
 
 /**
  * Service-role client, for the few operations the anon key cannot do —
@@ -13,14 +15,15 @@ import { SUPABASE_URL } from "@/lib/supabase/config";
  * the browser bundle, and every caller must check the signed-in user is an
  * administrator before reaching for it.
  */
-export function getAdminClient(): SupabaseClient | null {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!SUPABASE_URL || !key) return null;
+export function getAdminClient(marca: ClaveMarca = marcaDelPedido()): SupabaseClient | null {
+  const { url } = supabasePublico(marca);
+  const key = env("SUPABASE_SERVICE_ROLE_KEY", marca);
+  if (!url || !key) return null;
 
-  return createClient(SUPABASE_URL, key, {
+  return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
 export const hayServiceRole = (): boolean =>
-  Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  Boolean(env("SUPABASE_SERVICE_ROLE_KEY"));
