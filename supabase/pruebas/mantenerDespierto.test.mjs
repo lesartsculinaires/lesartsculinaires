@@ -140,5 +140,30 @@ console.log("\n── siempre devuelve cuánto tardó ──");
   es("y no son negativos", r.ms >= 0, true);
 }
 
+
+console.log("\n── el CRM unificado despierta a las dos marcas (18/11/2026) ──");
+{
+  /*
+   * crm-peñagroup no tiene NEXT_PUBLIC_SUPABASE_URL: tiene la de LAC y la de
+   * HC con el nombre de la marca. Antes avisaba que «faltaba» y no despertaba
+   * a ninguna de las dos.
+   */
+  const { proyectos } = await import("../../netlify/functions/mantener-despierto.mjs");
+  const unificado = proyectos({
+    NEXT_PUBLIC_LAC_SUPABASE_URL: "https://lac.supabase.co/",
+    NEXT_PUBLIC_LAC_SUPABASE_ANON_KEY: "llave-lac",
+    NEXT_PUBLIC_HC_SUPABASE_URL: "https://hc.supabase.co",
+    NEXT_PUBLIC_HC_SUPABASE_ANON_KEY: "llave-hc",
+  });
+  es("encuentra las dos", unificado.map((p) => p.marca).join(","), "lac,hc");
+  es("sin la barra del final", unificado[0].base, "https://lac.supabase.co");
+
+  const marca = proyectos({ NEXT_PUBLIC_SUPABASE_URL: "https://uno.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "l" });
+  es("el sitio de una marca sigue igual", marca.length === 1 && marca[0].marca === null, true);
+
+  es("sin nada, no inventa", proyectos({}).length, 0);
+  es("sin la llave, no la cuenta", proyectos({ NEXT_PUBLIC_HC_SUPABASE_URL: "https://hc.supabase.co" }).length, 0);
+}
+
 console.log(f === 0 ? "\nTodo bien." : `\n${f} fallaron.`);
 process.exit(f ? 1 : 0);
