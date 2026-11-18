@@ -145,17 +145,23 @@ export default async function handler() {
    * vienen en 300 ms y uno salió en 12.000, ese es el momento en que estuvo
    * dormido, y está anotado con su hora.
    */
-  for (const hecho of hechos) {
-    const quien = hecho.marca ? `${hecho.marca} ` : "";
-    const resumen = hecho.puertas.map((p) => `${p.puerta}=${p.estado}/${p.ms}ms`).join(" ");
-    if (hecho.ok) {
-      console.log(`[despierto] ${quien}${resumen}`);
-    } else {
-      console.warn(`[despierto] ${quien}algo no contestó: ${hecho.motivo ?? resumen}`);
-    }
+  const ok = hechos.every((h) => h.ok);
+
+  // Una sola línea por ejecución, con las dos marcas: Netlify guardaba sólo
+  // una de las dos cuando salían por separado en el mismo instante.
+  const linea = hechos
+    .map((hecho) => {
+      const quien = hecho.marca ? `${hecho.marca} ` : "";
+      const resumen = hecho.puertas.map((p) => `${p.puerta}=${p.estado}/${p.ms}ms`).join(" ");
+      return hecho.ok ? `${quien}${resumen}` : `${quien}algo no contestó: ${hecho.motivo ?? resumen}`;
+    })
+    .join(" · ");
+  if (ok) {
+    console.log(`[despierto] ${linea}`);
+  } else {
+    console.warn(`[despierto] ${linea}`);
   }
 
-  const ok = hechos.every((h) => h.ok);
   return new Response(JSON.stringify(hechos.length === 1 ? hechos[0] : { ok, proyectos: hechos }), {
     status: 200,
     headers: { "content-type": "application/json" },
