@@ -3,7 +3,8 @@ import "server-only";
 import { POR_TANDA, traerTodo } from "@/lib/supabase/paginar";
 import { getServerClient } from "@/lib/supabase/server";
 import type { Conversacion, Mensaje } from "@/lib/types";
-import type { SinLeerPorFicha } from "@/lib/areas";
+import { areaDe, fichasAcademicas, sinLeerDelArea, type SinLeerPorFicha } from "@/lib/areas";
+import type { ClaveMarca } from "@/lib/marcas";
 
 /** El `select` se arma como texto, así que las filas llegan sin tipar. */
 type Fila = Record<string, unknown>;
@@ -431,8 +432,11 @@ export function comoLosLee(filas: unknown[]): Mensaje[] {
  * un nulo acá quiere decir «no está archivada»: con `eq(false)` los hilos sin
  * la marca puesta quedarían fuera de la cuenta.
  */
-export async function contarSinLeer(): Promise<SinLeerPorFicha> {
-  const supabase = await getServerClient();
+export async function contarSinLeer(marca?: ClaveMarca): Promise<SinLeerPorFicha> {
+  // Sin marca, la del pedido. crm-peñagroup pasa una puntual para contar la
+  // OTRA marca con la sesión que la persona tiene en ella (ver
+  // `sinLeerDeLaPersona`).
+  const supabase = await getServerClient(marca);
   if (!supabase) return [];
 
   const pedir = (conSilenciadas: boolean) => {
@@ -465,4 +469,43 @@ export async function contarSinLeer(): Promise<SinLeerPorFicha> {
     porFicha.set(v, (porFicha.get(v) ?? 0) + Number(c.sin_leer ?? 0));
   }
   return [...porFicha].map(([vendedorId, sinLeer]) => ({ vendedorId, sinLeer }));
+}
+
+/**
+ * Los mensajes sin leer de una marca, como los vería la persona en su Inbox
+ * (18/11/2026, crm-peñagroup).
+ *
+ * Pedido: que junto a cada logo se vea el número de chats por atender de esa
+ * marca, para que las asesoras sepan en el momento dónde les escribieron.
+ *
+ * Es la misma cuenta que el globito rojo del Inbox —`contarSinLeer` y el área
+ * de la persona—, hecha con la sesión que la persona tiene en ESA marca: cada
+ * base aplica sus permisos, así que una asesora ve sólo lo suyo y lo sin
+ * asignar, y la de «sólo sus envíos», lo de sus envíos.
+ *
+ * Devuelve `null` si en esa marca no hay sesión (o no se pudo saber): sin
+ * sesión no hay número que mostrar, y un cero haría creer que no hay nada.
+ */
+export async function sinLeerDeLaPersona(marca: ClaveMarca): Promise<number | null> {
+  const supabase = await getServerClient(marca);
+  if (!supabase) return null;
+
+  const { data: quien } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+  if (!quien?.user) return null;
+
+  const [porFicha, admin, yo, vendedores] = await Promise.all([
+    contarSinLeer(marca),
+    supabase.rpc("es_admin"),
+    supabase.rpc("mi_vendedor_id"),
+    // Con `*` por lo mismo que el catálogo: `academico` llega con una migración.
+    supabase.from("vendedores").select("*"),
+  ]);
+
+  const fichas = ((vendedores.data ?? []) as { id: unknown; academico?: unknown }[]).map((v) => ({
+    id: Number(v.id),
+    academico: v.academico === true,
+  }));
+  const miFicha = yo.data == null ? null : Number(yo.data);
+  const area = areaDe(admin.data === true, miFicha, fichas);
+  return sinLeerDelArea(porFicha, area, fichasAcademicas(fichas));
 }

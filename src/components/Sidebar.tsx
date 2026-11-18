@@ -134,7 +134,7 @@ export function Sidebar({
     >
       {/* LAC sola sigue con su rótulo de texto; HC, con el logo; crm-peñagroup, con el selector. */}
       {MODO_UNIFICADO ? (
-        <SelectorDeMarca veAmbas={veAmbas} />
+        <SelectorDeMarca veAmbas={veAmbas} sinLeerActual={avisos["Inbox"] ?? 0} onIrAlInbox={() => onSelect("Inbox")} />
       ) : marca.clave === "lac" ? (
         <p
           className="mono"
