@@ -253,10 +253,12 @@ async function mandar(
       });
 
       const cuerpo = (await r.json().catch(() => null)) as
-        | { messages?: { id?: string }[]; error?: { message?: string; code?: number } }
+        | { messages?: { id?: string }[]; error?: ErrorDeMeta }
         | null;
 
       if (r.ok) return { ok: true, waId: cuerpo?.messages?.[0]?.id ?? null, error: null };
+
+      anotarFalla(r.status, cuerpo?.error, intento, telefono);
 
       if (reintentar && esFallaPasajera(cuerpo?.error?.code, r.status) && intento < ESPERAS_REINTENTO_MS.length) {
         await esperar(ESPERAS_REINTENTO_MS[intento]);
@@ -271,6 +273,39 @@ async function mandar(
       };
     }
   }
+}
+
+/** Lo que Meta devuelve cuando un envío falla. */
+interface ErrorDeMeta {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  fbtrace_id?: string;
+  error_data?: { details?: string };
+}
+
+/**
+ * Deja en el registro de Netlify qué contestó Meta cuando un envío falla.
+ *
+ * Pedido el 18/11/2026: a Estefany le salió «WhatsApp tuvo una falla de su
+ * lado» y no había forma de saber qué código había devuelto Meta, porque sólo
+ * se mostraba el aviso en la pantalla. Ahora cada intento fallido —también los
+ * que después se reintentan— queda anotado con el código, el subcódigo, el
+ * estado HTTP, el detalle y el `fbtrace_id`, que es lo que pide el soporte de
+ * Meta para rastrear una llamada.
+ *
+ * Nunca se anota el token ni el texto del mensaje, y del teléfono sólo los
+ * últimos cuatro dígitos: alcanza para ubicar el chat sin dejar el número en
+ * un registro.
+ */
+function anotarFalla(estado: number, error: ErrorDeMeta | undefined, intento: number, telefono: string) {
+  const detalle = (error?.error_data?.details ?? "").replace(/\s+/g, " ").slice(0, 200);
+  console.warn(
+    `[whatsapp] envío fallido · intento ${intento + 1} · http ${estado} · código ${error?.code ?? "—"}` +
+      `${error?.error_subcode ? `/${error.error_subcode}` : ""} · tel …${telefono.replace(/\D/g, "").slice(-4)}` +
+      ` · ${(error?.message ?? "sin mensaje").slice(0, 200)}` +
+      `${detalle ? ` · ${detalle}` : ""} · fbtrace ${error?.fbtrace_id ?? "—"}`,
+  );
 }
 
 /**

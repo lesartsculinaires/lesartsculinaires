@@ -53,8 +53,29 @@
 /** Cuánto se le da a cada llamada. Despertar tarda; el pozo medido fue de 16 s. */
 const ESPERA_MS = 20_000;
 
-const URL_BASE = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").trim().replace(/\/+$/, "");
-const LLAVE = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
+const limpiar = (v) => (v ?? "").trim().replace(/\/+$/, "");
+
+/**
+ * Los proyectos de Supabase que hay que mantener despiertos.
+ *
+ * El sitio de una marca tiene uno solo, con los nombres de siempre. El CRM
+ * unificado (crm-peñagroup, 18/11/2026) tiene dos —el de LAC y el de HC— con
+ * el nombre de la marca en el medio, y con los nombres de siempre vacíos: por
+ * eso acá avisaba que «faltaba» la dirección de Supabase. Se despiertan los
+ * dos, porque cualquiera de las marcas puede ser la primera en abrirse.
+ */
+export function proyectos(entorno = process.env) {
+  const lista = [];
+  const uno = (marca, url, llave) => {
+    const base = limpiar(url);
+    const clave = (llave ?? "").trim();
+    if (base && clave) lista.push({ marca, base, llave: clave });
+  };
+  uno(null, entorno.NEXT_PUBLIC_SUPABASE_URL, entorno.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  uno("lac", entorno.NEXT_PUBLIC_LAC_SUPABASE_URL, entorno.NEXT_PUBLIC_LAC_SUPABASE_ANON_KEY);
+  uno("hc", entorno.NEXT_PUBLIC_HC_SUPABASE_URL, entorno.NEXT_PUBLIC_HC_SUPABASE_ANON_KEY);
+  return lista;
+}
 
 /**
  * Las dos puertas que hay que tocar.
@@ -96,11 +117,13 @@ export async function tocar(base, llave, puerta, fetchImpl = fetch) {
  * empezar la otra duplicaría el tiempo del caso que importa, que es justamente
  * el lento.
  */
-export async function pingear(base = URL_BASE, llave = LLAVE, fetchImpl = fetch) {
+export async function pingear(base, llave, fetchImpl = fetch) {
   if (!base || !llave) {
     return {
       ok: false,
-      motivo: "falta NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      motivo:
+        "falta la dirección o la llave pública de Supabase (NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY, " +
+        "o en el CRM unificado NEXT_PUBLIC_LAC_… / NEXT_PUBLIC_HC_…)",
       puertas: [],
     };
   }
@@ -110,7 +133,10 @@ export async function pingear(base = URL_BASE, llave = LLAVE, fetchImpl = fetch)
 }
 
 export default async function handler() {
-  const hecho = await pingear();
+  const lista = proyectos();
+  const hechos = lista.length
+    ? await Promise.all(lista.map(async (p) => ({ marca: p.marca, ...(await pingear(p.base, p.llave)) })))
+    : [{ marca: null, ...(await pingear("", "")) }];
 
   /*
    * Los milisegundos van SIEMPRE al registro, salga bien o mal.
@@ -119,15 +145,18 @@ export default async function handler() {
    * vienen en 300 ms y uno salió en 12.000, ese es el momento en que estuvo
    * dormido, y está anotado con su hora.
    */
-  const resumen = hecho.puertas.map((p) => `${p.puerta}=${p.estado}/${p.ms}ms`).join(" ");
-
-  if (hecho.ok) {
-    console.log(`[despierto] ${resumen}`);
-  } else {
-    console.warn(`[despierto] algo no contestó: ${hecho.motivo ?? resumen}`);
+  for (const hecho of hechos) {
+    const quien = hecho.marca ? `${hecho.marca} ` : "";
+    const resumen = hecho.puertas.map((p) => `${p.puerta}=${p.estado}/${p.ms}ms`).join(" ");
+    if (hecho.ok) {
+      console.log(`[despierto] ${quien}${resumen}`);
+    } else {
+      console.warn(`[despierto] ${quien}algo no contestó: ${hecho.motivo ?? resumen}`);
+    }
   }
 
-  return new Response(JSON.stringify(hecho), {
+  const ok = hechos.every((h) => h.ok);
+  return new Response(JSON.stringify(hechos.length === 1 ? hechos[0] : { ok, proyectos: hechos }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
