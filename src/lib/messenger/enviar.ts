@@ -15,6 +15,7 @@ import {
   type PerfilMeta,
 } from "@/lib/meta/perfil";
 import { noLlegamosAMeta } from "@/lib/meta/noLlegamosAMeta";
+import { tokenDePagina } from "@/lib/meta/tokenDePagina";
 import { env } from "@/lib/marca/servidor";
 
 /**
@@ -199,7 +200,9 @@ async function mandar(
     return { ok: false, mid: null, error: "Messenger no está configurado en el servidor." };
   }
 
-  const { token, pageId: pagina } = credencial;
+  const { pageId: pagina } = credencial;
+  // Messenger sólo acepta un token de la Página; ver `tokenDePagina`.
+  const token = await tokenDePagina(credencial.token, pagina, base());
 
   try {
     const r = await fetch(`${base()}/${pagina}/messages`, {
