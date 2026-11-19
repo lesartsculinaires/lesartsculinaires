@@ -328,11 +328,19 @@ function explicar(
  * abre igual y el nombre se completa la próxima vez que escriba.
  */
 export async function perfilDeMsn(psid: string): Promise<PerfilMeta> {
-  const token = elToken();
+  const configurado = elToken();
   const pagina = laPagina();
-  if (!token) {
+  if (!configurado) {
     return sinPerfil("Falta MESSENGER_TOKEN (o INSTAGRAM_TOKEN) en el servidor.");
   }
+  /*
+   * Con el token de la Página (19/11/2026). La pregunta que sí devuelve el
+   * nombre —la de la conversación— sólo la contesta Meta con un token de
+   * Página; con uno de usuario dice «must be called with a Page Access Token»
+   * y el contacto se quedaba como «Contacto de Messenger · 2752». Era lo que
+   * pasaba en HC y no en LAC. Ver `tokenDePagina`.
+   */
+  const token = pagina ? await tokenDePagina(configurado, pagina, base()) : configurado;
 
   try {
     const r = await fetch(`${base()}/${psid}?fields=name`, {
