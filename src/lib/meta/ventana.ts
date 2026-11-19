@@ -102,6 +102,73 @@ export const esFaltaDePermisoHumanAgent = (
 ): boolean =>
   error?.code === 100 && /HUMAN_AGENT/i.test(error?.message ?? "");
 
+/** Lo que Meta devuelve en `error` cuando rechaza un envío. */
+export interface ErrorDeMeta {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  fbtrace_id?: string;
+}
+
+/**
+ * ¿Meta rechazó el envío porque se cerró la ventana para contestar?
+ *
+ * Antes bastaba el código 10 para decir «pasaron más de siete días», y eso
+ * mintió el 19 de noviembre de 2026: una clienta de HC había escrito 20
+ * minutos antes y el CRM le dijo a la asesora que habían pasado siete días.
+ * El 10 es «la aplicación no tiene permiso para esto» y la ventana cerrada es
+ * sólo UNO de sus casos. Lo que la identifica es el subcódigo o el texto.
+ */
+export const esVentanaCerrada = (error: ErrorDeMeta | undefined): boolean =>
+  error?.error_subcode === 2534022 ||
+  error?.error_subcode === 2018278 ||
+  (error?.code === 10 && /window|ventana/i.test(error?.message ?? ""));
+
+/**
+ * El otro caso del 10: Meta no deja que la aplicación le escriba a esta
+ * persona, esté o no abierta la ventana.
+ *
+ * Con «Acceso estándar» a `pages_messaging` / `instagram_manage_messages`, o
+ * con la app en modo Desarrollo, la aplicación sólo puede escribirle a quien
+ * tenga un rol en ella. Recibir sí funciona, y por eso confunde: los mensajes
+ * entran pero las respuestas no salen. Se arregla pidiendo «Acceso avanzado»
+ * a ese permiso en App Review, no tocando el token.
+ */
+export const esSinPermisoParaEscribir = (error: ErrorDeMeta | undefined): boolean =>
+  error?.code === 10 && !esVentanaCerrada(error);
+
+export function sinPermisoParaEscribir(canal: "Messenger" | "Instagram", error: ErrorDeMeta | undefined): string {
+  const permiso = canal === "Messenger" ? "pages_messaging" : "instagram_manage_messages";
+  return (
+    `Meta no dejó que la aplicación le escriba a esta persona por ${canal}. No es la ventana de ` +
+    `24 horas: la aplicación sólo tiene «Acceso estándar» a «${permiso}» (o está en modo ` +
+    "Desarrollo), y así sólo puede escribirle a quien tenga un rol en la app. Para contestarle a " +
+    `cualquier cliente hay que pedir «Acceso avanzado» a «${permiso}» en App Review.` +
+    (error?.message ? ` (Meta: ${error.message})` : "")
+  );
+}
+
+/**
+ * Deja en el registro de Netlify por qué Meta rechazó un envío.
+ *
+ * Sin esto, lo único que quedaba era el texto traducido en la pantalla de la
+ * asesora, y una traducción equivocada no se podía revisar. Sólo los últimos
+ * cuatro caracteres del destinatario: alcanza para ubicar el hilo.
+ */
+export function anotarFallaDeMeta(
+  canal: string,
+  estado: number,
+  error: ErrorDeMeta | undefined,
+  destino: string,
+): void {
+  console.warn(
+    `[${canal}] envío rechazado · http ${estado} · código ${error?.code ?? "?"}` +
+      `${error?.error_subcode ? `/${error.error_subcode}` : ""} · a …${destino.slice(-4)}` +
+      ` · ${error?.message ?? "sin mensaje"}` +
+      (error?.fbtrace_id ? ` · fbtrace ${error.fbtrace_id}` : ""),
+  );
+}
+
 /** Lo que hay que hacer cuando falta ese permiso, dicho para quien atiende. */
 export const FALTA_HUMAN_AGENT =
   "Pasaron más de 24 horas desde el último mensaje de esta persona. Para " +
