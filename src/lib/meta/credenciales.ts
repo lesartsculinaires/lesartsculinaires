@@ -133,8 +133,21 @@ export async function credencialDe(
   canal: CanalConectable,
   cuentaId?: string | null,
 ): Promise<Credencial | null> {
-  const piso = deLasVariables(canal);
   const quien = texto(cuentaId);
+  /*
+   * Messenger contesta SIEMPRE desde la Página que recibió el mensaje (19/11/2026).
+   *
+   * `cuentaId` es el `recipient.id` del último mensaje que entró: en Messenger
+   * eso es la Página, siempre. En crm-peñagroup, HC no tenía la Página en las
+   * variables y el CRM caía a `INSTAGRAM_ACCOUNT_ID`, que es la cuenta de
+   * Instagram: mandaba el Messenger «desde Instagram» y Meta contestaba
+   * «(#100) The requested user cannot be found». Tomando la Página del propio
+   * mensaje, la configuración de cada sitio deja de importar para esto; el
+   * token se convierte en el de esa Página al mandar (`tokenDePagina`).
+   */
+  const variables = deLasVariables(canal);
+  const piso: Credencial | null =
+    canal === "messenger" && variables && quien ? { ...variables, pageId: quien } : variables;
   if (!quien) return piso;
 
   try {
