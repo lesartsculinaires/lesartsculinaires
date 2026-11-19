@@ -2,7 +2,12 @@ import "server-only";
 
 import { credencialDe } from "@/lib/meta/credenciales";
 import {
+  anotarFallaDeMeta,
   esFaltaDePermisoHumanAgent,
+  esSinPermisoParaEscribir,
+  esVentanaCerrada,
+  sinPermisoParaEscribir,
+  type ErrorDeMeta,
   sobreDeEnvio,
   FALTA_HUMAN_AGENT,
 } from "@/lib/meta/ventana";
@@ -233,10 +238,13 @@ async function mandar(
     });
 
     const cuerpo = (await r.json().catch(() => null)) as
-      | { message_id?: string; error?: { message?: string; code?: number; error_subcode?: number } }
+      | { message_id?: string; error?: ErrorDeMeta }
       | null;
 
-    if (!r.ok) return { ok: false, mid: null, error: explicar(cuerpo?.error, r.status) };
+    if (!r.ok) {
+      anotarFallaDeMeta("messenger", r.status, cuerpo?.error, psid);
+      return { ok: false, mid: null, error: explicar(cuerpo?.error, r.status) };
+    }
 
     return { ok: true, mid: cuerpo?.message_id ?? null, error: null };
   } catch (e) {
@@ -256,14 +264,16 @@ async function mandar(
  * conocemos sería peor que mostrar el texto de Meta.
  */
 function explicar(
-  error: { message?: string; code?: number; error_subcode?: number } | undefined,
+  error: ErrorDeMeta | undefined,
   estado: number,
 ): string {
   // Antes que los demás: el 100 es genérico y lo que lo identifica es que el
   // texto nombre la etiqueta.
   if (esFaltaDePermisoHumanAgent(error)) return FALTA_HUMAN_AGENT;
 
-  if (error?.error_subcode === 2534022 || error?.code === 10) {
+  if (esSinPermisoParaEscribir(error)) return sinPermisoParaEscribir("Messenger", error);
+
+  if (esVentanaCerrada(error)) {
     return (
       "Pasaron más de siete días desde el último mensaje de esta persona. " +
       "Messenger ya no deja escribirle: hay que esperar a que vuelva a escribir. " +

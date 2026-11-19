@@ -33,6 +33,9 @@ const {
   sobreDeEnvio,
   dentroDeLaVentana,
   esFaltaDePermisoHumanAgent,
+  esVentanaCerrada,
+  esSinPermisoParaEscribir,
+  sinPermisoParaEscribir,
   HORAS_SIN_ETIQUETA,
 } = await compilar("src/lib/meta/ventana.ts");
 
@@ -105,4 +108,29 @@ test("── RECONOCER EL ERROR DEL PERMISO, Y NO CONFUNDIRLO ──", () => {
   // Y el de la ventana vencida es otro error, con otro arreglo.
   assert.equal(esFaltaDePermisoHumanAgent({ code: 10, message: "outside window" }), false);
   assert.equal(esFaltaDePermisoHumanAgent(undefined), false);
+});
+
+test("── EL 10 NO SIEMPRE ES LA VENTANA ──", () => {
+  // Lo que pasó el 19/11 en HC: la clienta había escrito 20 minutos antes y el
+  // CRM dijo «pasaron más de siete días». Era el permiso de la app.
+  const permiso = { code: 10, message: "(#10) Application does not have permission for this action" };
+  assert.equal(esVentanaCerrada(permiso), false);
+  assert.equal(esSinPermisoParaEscribir(permiso), true);
+  const texto = sinPermisoParaEscribir("Messenger", permiso);
+  assert.match(texto, /No es la ventana/);
+  assert.match(texto, /pages_messaging/);
+  assert.match(texto, /Application does not have permission/);
+  assert.match(sinPermisoParaEscribir("Instagram", permiso), /instagram_manage_messages/);
+
+  // La ventana de verdad sigue reconociéndose, por subcódigo o por texto.
+  for (const e of [
+    { code: 10, error_subcode: 2018278, message: "x" },
+    { code: 10, error_subcode: 2534022, message: "x" },
+    { code: 10, message: "This message is sent outside of allowed window." },
+  ]) {
+    assert.equal(esVentanaCerrada(e), true);
+    assert.equal(esSinPermisoParaEscribir(e), false);
+  }
+  assert.equal(esSinPermisoParaEscribir({ code: 100, message: "HUMAN_AGENT" }), false);
+  assert.equal(esSinPermisoParaEscribir(undefined), false);
 });
