@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { EN } from "@/lib/i18n/en";
+import { EN, MOLDES_EN } from "@/lib/i18n/en";
 import { GALLETA_IDIOMA, type Idioma } from "@/lib/i18n/galleta";
 
 /**
@@ -44,8 +44,21 @@ const Contexto = createContext<Valor>({
 });
 
 /** El texto en el idioma elegido. Lo que no está en el diccionario queda igual. */
-export const traducir = (idioma: Idioma, es: string): string =>
-  idioma === "en" ? (EN[es] ?? es) : es;
+export const traducir = (idioma: Idioma, es: string): string => {
+  if (idioma !== "en") return es;
+  const exacto = EN[es];
+  if (exacto !== undefined) return exacto;
+  /*
+   * Los textos que llevan un número o un nombre adentro —«Venció hace 5
+   * días», «6 pendientes para hoy», el error de Meta con su texto al final—
+   * no pueden ser una clave fija. Se prueban contra los moldes de `en.ts`.
+   */
+  for (const [molde, en] of MOLDES_EN) {
+    const m = molde.exec(es);
+    if (m) return en(m);
+  }
+  return es;
+};
 
 export function IdiomaProvider({ inicial, children }: { inicial: Idioma; children: ReactNode }) {
   const [idioma, setIdioma] = useState<Idioma>(inicial);

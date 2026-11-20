@@ -112,6 +112,7 @@ export function CanalesDeLaBandeja({
   academico?: { total: number; sinLeer: number } | null;
 }) {
   /** Cuál se está mirando en la ficha de abajo. Null = ninguna abierta. */
+  const t = useT();
   const [mirando, setMirando] = useState<string | null>(null);
 
   const total = Object.values(cuantos).reduce((a, b) => a + b, 0);
@@ -191,7 +192,7 @@ export function CanalesDeLaBandeja({
         */}
         {academico && (
           <Seccion
-            nombre="🎓 Académico"
+            nombre={t("🎓 Académico")}
             clave={CLAVE_ACADEMICO}
             total={academico.total}
             sinLeer={academico.sinLeer}

@@ -355,4 +355,133 @@ export const EN: Record<string, string> = {
   "Reservas por cobrar y seguimientos anotados en las fichas.": "Pending payments and follow-ups noted on the profiles.",
   "Nada por cobrar ni por llamar en los próximos días.": "Nothing to collect or call in the next few days.",
   "Ver todos los recordatorios": "See all reminders",
+
+  // ── Agregadas el 20/11/2026: lo que faltaba del flujo que revisa Meta ─────
+  "Abrir el menú": "Open the menu",
+  "Les Arts Culinaires": "Les Arts Culinaires",
+  "🎓 Área académica": "🎓 Academic area",
+  "🎓 Académico": "🎓 Academic",
+  "Académico": "Academic",
+  "Tus chats y las respuestas de tus masivos": "Your chats and the replies to your broadcasts",
+  "Todavía no hay chats asignados al área académica.": "There are no chats assigned to the academic area yet.",
+  "Volver a los chats": "Back to chats",
+  "Ocultar las opciones del chat": "Hide chat options",
+  "Opciones del chat": "Chat options",
+  "No se pudo dejar en «No leído».": "Could not mark as “Unread”.",
+  "Tu rol no contesta chats: los atienden las asesoras de ventas. Puedes dejar una nota interna para el equipo.":
+    "Your role does not reply to chats: the sales advisors handle them. You can leave an internal note for the team.",
+
+  // Reglas del equipo
+  "Las reglas del equipo para trabajar la bandeja": "The team rules for working the inbox",
+  "Reglas del equipo": "Team rules",
+  "léelas": "read them",
+  "Inbox · equipo de ventas": "Inbox · sales team",
+  "Para trabajar la misma bandeja sin pisarnos. Las dos primeras también aparecen como aviso dentro del chat.":
+    "So we can share the same inbox without stepping on each other. The first two also appear as a notice inside the chat.",
+  "Entendido": "Got it",
+  "Regla del equipo:": "Team rule:",
+  "este chat no tiene vendedora asignada. Asígnalo arriba antes de contestar.":
+    "this chat has no advisor assigned. Assign it above before replying.",
+  "este chat es de": "this chat belongs to",
+  "este chat es de otra persona.": "this chat belongs to someone else.",
+  "Si solo lo revisaste, déjalo en «No leído» para que lo vea.": "If you only checked it, leave it as “Unread” so they see it.",
+  "Dejando…": "Saving…",
+  "Dejar en «No leído» y salir": "Mark as “Unread” and leave",
+  "Si el chat es de otra persona, déjalo en «No leído»": "If the chat belongs to someone else, leave it as “Unread”",
+  "Abrir un chat lo marca como leído. Si está asignado a otra vendedora y solo lo revisaste, déjalo en «No leído» para que su dueña lo vea.":
+    "Opening a chat marks it as read. If it is assigned to another advisor and you only checked it, leave it as “Unread” so its owner sees it.",
+  "Antes de contestar, revisa que tenga vendedora asignada": "Before replying, check that it has an advisor assigned",
+  "Si el chat dice «Sin asignar», asígnalo primero (a ti o a quien le toque). Un chat sin dueña no lo sigue nadie.":
+    "If the chat says “Unassigned”, assign it first (to yourself or to whoever it belongs). Nobody follows up on a chat without an owner.",
+  "No contestes el chat de otra vendedora": "Do not reply to another advisor's chat",
+  "Si hace falta intervenir, deja una nota interna en el chat y avísale. Al cliente le escribe una sola persona.":
+    "If you need to step in, leave an internal note in the chat and let them know. Only one person writes to the client.",
+  "Si traspasas un chat, deja una nota interna": "If you hand over a chat, leave an internal note",
+  "Cambia la vendedora en el chat y escribe en una nota interna qué falta, para que quien lo recibe no empiece de cero.":
+    "Change the advisor in the chat and write in an internal note what is pending, so the person receiving it does not start from scratch.",
+  "Lo que es para el equipo va en nota interna": "Anything meant for the team goes in an internal note",
+  "Comentarios, recordatorios y contexto se escriben como nota interna: el cliente no los ve. Nunca como mensaje al cliente.":
+    "Comments, reminders and context are written as internal notes: the client does not see them. Never as a message to the client.",
+  "Pasadas 24 horas, solo con plantilla": "After 24 hours, only with a template",
+  "Si el cliente no escribió en las últimas 24 horas, WhatsApp solo deja escribirle con una plantilla aprobada.":
+    "If the client has not written in the last 24 hours, WhatsApp only allows writing to them with an approved template.",
+  "Después de cada conversación, actualiza el lead": "After each conversation, update the lead",
+  "Mueve la etapa y el estado en el Pipeline para que el Dashboard y el Tablero cuenten lo mismo que pasó en el chat.":
+    "Move the stage and status in the Pipeline so the Dashboard and the Scorecard reflect what happened in the chat.",
+  "Archiva solo lo terminado": "Archive only what is finished",
+  "Lo pendiente se deja en «No leído» o se fija arriba; archivar es para conversaciones cerradas. Fija solo lo urgente del día y desfíjalo al resolverlo.":
+    "Pending chats stay as “Unread” or are pinned to the top; archiving is for closed conversations. Pin only the day's urgent chats and unpin them once resolved.",
+
+  // Acuses de los mensajes
+  Enviado: "Sent",
+  Entregado: "Delivered",
+  "Leído": "Read",
+  "No se pudo entregar": "Could not be delivered",
+
+  // Ventana de pendientes para hoy
+  "Pendientes para hoy": "Due today",
+  "Un pendiente para hoy": "One item due today",
+  "Reservas a las que se les cumple el plazo, y llamadas que quedaron anotadas en las fichas.":
+    "Reservations reaching their deadline, and calls noted on the profiles.",
+  "Dejaron anticipo y se les cumple el plazo de quince días. Pasado eso el cupo se libera.":
+    "They left a deposit and their fifteen-day deadline is due. After that the spot is released.",
+  "Llamadas que quedaron anotadas en las notas de las fichas.": "Calls noted in the profile notes.",
+  "Abrir la ficha": "Open profile",
+  "Mañana": "Tomorrow",
+  "En 3 días": "In 3 days",
+  "En una semana": "In a week",
+  "Ya lo hice": "Done",
+  "Hecho este mes": "Done this month",
+  "Vuelve a aparecer mañana. Están siempre en Recordatorios.": "It shows up again tomorrow. They are always in Reminders.",
+  "Reserva": "Reservation",
+  "de": "of",
+  "Sin fecha de reserva": "No reservation date",
+  "Venció ayer": "Overdue since yesterday",
+  "Vence hoy": "Due today",
+  "Vence mañana": "Due tomorrow",
+  "Era ayer": "Was due yesterday",
+  "Es hoy": "Today",
+  "Es mañana": "Tomorrow",
+
+  // Ventanas para contestar, por canal
+  "Se puede escribir libremente durante 24 horas desde el último mensaje de la persona. Después, sólo con una plantilla aprobada por Meta.":
+    "You can write freely for 24 hours after the person's last message. After that, only with a template approved by Meta.",
+  "Hay siete días para contestar desde el último mensaje de la persona: pasadas las primeras 24 horas el CRM avisa a Meta que contesta una persona («Human Agent»). Después hay que esperar a que vuelva a escribir: Instagram no tiene plantillas.":
+    "There are seven days to reply after the person's last message: after the first 24 hours the CRM tells Meta that a person is replying (“Human Agent”). After that you must wait for them to write again: Instagram has no templates.",
+  "Hay 24 horas para contestar desde el último mensaje de la persona. Para llegar a siete días Meta pide el permiso «Human Agent», que la aplicación todavía no tiene aprobado. Pasada la ventana hay que esperar a que vuelva a escribir: Instagram no tiene plantillas.":
+    "There are 24 hours to reply after the person's last message. To extend it to seven days Meta requires the “Human Agent” permission, which the app does not have approved yet. After the window you must wait for them to write again: Instagram has no templates.",
+  "Hay siete días para contestar desde el último mensaje: pasadas las primeras 24 horas el CRM avisa a Meta que contesta una persona («Human Agent»). Messenger no tiene plantillas para reabrir la conversación.":
+    "There are seven days to reply after the last message: after the first 24 hours the CRM tells Meta that a person is replying (“Human Agent”). Messenger has no templates to reopen the conversation.",
+  "Hay 24 horas para contestar desde el último mensaje. Los siete días necesitan el permiso «Human Agent» de Meta, que la aplicación todavía no tiene aprobado. Messenger tampoco tiene plantillas para reabrir la conversación.":
+    "There are 24 hours to reply after the last message. Seven days require Meta's “Human Agent” permission, which the app does not have approved yet. Messenger has no templates to reopen the conversation either.",
+
+  // Errores de envío de Meta (ver `@/lib/meta/ventana` y los `enviar.ts`)
+  "Pasaron más de 24 horas desde el último mensaje de esta persona. Para contestar hasta los siete días, Meta pide el permiso «Human Agent», que la aplicación todavía no tiene aprobado: se solicita en el panel de Meta, en App Review → Permissions and Features. Mientras tanto hay que esperar a que la persona vuelva a escribir.":
+    "More than 24 hours have passed since this person's last message. To reply for up to seven days, Meta requires the “Human Agent” permission, which the app does not have approved yet: it is requested in the Meta dashboard, under App Review → Permissions and Features. Meanwhile you must wait for the person to write again.",
+  "Pasaron más de siete días desde el último mensaje de esta persona. Messenger ya no deja escribirle: hay que esperar a que vuelva a escribir. A diferencia de WhatsApp, no hay plantillas para reabrir la conversación.":
+    "More than seven days have passed since this person's last message. Messenger no longer allows writing to them: you must wait for them to write again. Unlike WhatsApp, there are no templates to reopen the conversation.",
+  "Pasaron más de siete días desde el último mensaje de esta persona. Instagram ya no deja escribirle: hay que esperar a que vuelva a escribir. A diferencia de WhatsApp, no hay plantillas para reabrir la conversación.":
+    "More than seven days have passed since this person's last message. Instagram no longer allows writing to them: you must wait for them to write again. Unlike WhatsApp, there are no templates to reopen the conversation.",
 };
+
+/**
+ * Los textos con un número o un nombre adentro.
+ *
+ * No pueden ser una clave fija de arriba: «Venció hace 5 días» y «Venció hace
+ * 6 días» son el mismo texto. `traducir` los prueba en orden cuando la clave
+ * exacta no está.
+ */
+export const MOLDES_EN: ReadonlyArray<readonly [RegExp, (m: RegExpExecArray) => string]> = [
+  [/^Venció hace (\d+) días$/, (m) => `Overdue by ${m[1]} days`],
+  [/^Vencen en (\d+) días$/, (m) => `Due in ${m[1]} days`],
+  [/^Era hace (\d+) días$/, (m) => `Was due ${m[1]} days ago`],
+  [/^En (\d+) días$/, (m) => `In ${m[1]} days`],
+  [/^(\d+) pendientes para hoy$/, (m) => `${m[1]} items due today`],
+  [/^Recordatorios, (\d+) por atender$/, (m) => `Reminders, ${m[1]} pending`],
+  [
+    /^Meta no dejó que la aplicación le escriba a esta persona por (Messenger|Instagram)\. No es la ventana de 24 horas: la aplicación sólo tiene «Acceso estándar» a «([a-z_]+)» \(o está en modo Desarrollo\), y así sólo puede escribirle a quien tenga un rol en la app\. Para contestarle a cualquier cliente hay que pedir «Acceso avanzado» a «[a-z_]+» en App Review\.(.*)$/s,
+    (m) =>
+      `Meta did not allow the app to message this person on ${m[1]}. This is not the 24-hour window: the app only has “Standard Access” to “${m[2]}” (or is in Development mode), so it can only message people with a role on the app. To reply to any client, request “Advanced Access” to “${m[2]}” in App Review.` +
+      m[3],
+  ],
+];

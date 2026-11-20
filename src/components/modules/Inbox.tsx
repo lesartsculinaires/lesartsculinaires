@@ -471,7 +471,7 @@ export function Inbox({
 
   /** Lo que está filtrando la lista, dicho en palabras. Ver `filtrosPlegados`. */
   const filtrosPuestos = [
-    ...[...abiertos].map((k) => (k === CLAVE_ACADEMICO ? "Académico" : canalDe(k).nombre)),
+    ...[...abiertos].map((k) => (k === CLAVE_ACADEMICO ? t("Académico") : canalDe(k).nombre)),
     ...(porVendedor != null ? [cat.vendedores.find((v) => v.id === porVendedor)?.nombre ?? "una asesora"] : []),
     ...(porEtiqueta != null ? [etiquetas.find((e) => e.id === porEtiqueta)?.nombre ?? "una etiqueta"] : []),
     ...(porBase != null ? [`base «${listasDeFiltro?.bases.find((b) => b.id === porBase)?.nombre ?? porBase}»`] : []),
@@ -3071,7 +3071,7 @@ export function Inbox({
                           dudar de si dice lo que uno cree. Si el valor no se
                           reconoce se muestra crudo, que es mejor que callarlo.
                         */}
-                        {mio && m.estado ? ` · ${acuse ? COMO_SE_DICE[acuse] : m.estado}` : ""}
+                        {mio && m.estado ? ` · ${acuse ? t(COMO_SE_DICE[acuse]) : m.estado}` : ""}
                         {acuse && (
                           <AcuseDeMensaje
                             acuse={acuse}
@@ -3128,7 +3128,7 @@ export function Inbox({
                   borderTop: `1px solid ${T.border}`,
                 }}
               >
-                {aviso}
+                {t(aviso)}
               </p>
             )}
 
@@ -3178,7 +3178,7 @@ export function Inbox({
                     </>
                   ) : (
                     <>
-                      {t("Se pasó la ventana para contestarle por")} {canal.nombre}. {canal.laVentana}
+                      {t("Se pasó la ventana para contestarle por")} {canal.nombre}. {t(canal.laVentana)}
                     </>
                   )}
                 </p>
