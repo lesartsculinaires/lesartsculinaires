@@ -36,12 +36,12 @@ interface Props {
   continuar?: ContinuarConCambio;
 }
 
-type Modo = "una" | "azar";
-
 const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : varios}`;
 
 /**
- * Pasar la cartera de una persona a otra, o repartirla al azar entre varias.
+ * Pasar la cartera de una persona a otra, repartirla entre varias elegidas a
+ * mano (23/11/2026: «poder elegir múltiples nombres»), o al azar entre todas
+ * las que reciben leads.
  *
  * Primero muestra qué se va a mover —contado en el momento, no lo que vio la
  * pantalla hace un rato— y recién con el clic lo mueve todo junto.
@@ -53,9 +53,8 @@ const n = (k: number, uno: string, varios: string) => `${k} ${k === 1 ? uno : va
 export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar, onHecho, continuar }: Props) {
   const azarPosibles = paraElAzar ?? candidatas;
   const [cartera, setCartera] = useState<Cartera | null>(null);
-  const [modo, setModo] = useState<Modo>("una");
-  const [a, setA] = useState<number | "">("");
-  const [entre, setEntre] = useState<number[]>(() => azarPosibles.map((x) => x.id));
+  /** Las personas elegidas a mano: una recibe todo; varias, se reparte parejo. */
+  const [elegidas, setElegidas] = useState<number[]>([]);
   const [darDeBaja, setDarDeBaja] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,22 +71,32 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
   }, [de.id]);
 
   const vacia = cartera != null && cartera.leads + cartera.conversaciones + cartera.citas === 0;
-  const destino = candidatas.find((x) => x.id === a);
+  const destino = elegidas.length === 1 ? candidatas.find((x) => x.id === elegidas[0]) : undefined;
   const nombreDe = (id: number) =>
     [...candidatas, ...azarPosibles].find((x) => x.id === id)?.nombre ?? `#${id}`;
 
-  /** Cuántos le tocan a cada una al repartir parejo: el piso, y algunas uno más. */
-  const porCabeza = cartera && entre.length > 0 ? Math.floor(cartera.leads / entre.length) : 0;
-  const conUnoMas = cartera && entre.length > 0 ? cartera.leads % entre.length : 0;
+  /** Cuántos le tocan a cada una al repartir parejo entre `k`: el piso, y algunas uno más. */
+  const reparto = (k: number) => {
+    if (!cartera || k === 0) return "";
+    const piso = Math.floor(cartera.leads / k);
+    return cartera.leads % k === 0
+      ? `A cada una le tocan ${n(piso, "lead", "leads")}.`
+      : `A cada una le tocan ${piso} o ${piso + 1} leads.`;
+  };
 
-  const listoParaMover = modo === "una" ? a !== "" : entre.length > 0;
-
-  const mover = async () => {
-    if (!listoParaMover) return;
+  /**
+   * Mueve la cartera. Sin `alAzar`, a las elegidas a mano: una recibe todo y
+   * varias se la reparten parejo. Con `alAzar` («Asignar aleatoriamente»),
+   * parejo entre todas las que reciben leads.
+   */
+  const mover = async (alAzar: boolean) => {
+    const entre = alAzar ? azarPosibles.map((x) => x.id) : elegidas;
+    if (entre.length === 0) return;
     setTrabajando(true);
     setError(null);
-    if (modo === "una") {
-      if (a === "") return;
+    if (entre.length === 1) {
+      const a = entre[0];
+      const quien = nombreDe(a);
       const r = await traspasarCartera(de.id, a);
       setTrabajando(false);
       if (!r.ok) {
@@ -97,7 +106,7 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
       const movido = r.movido ?? { leads: 0, conversaciones: 0, citas: 0 };
       setListo({
         movido,
-        texto: `${destino?.nombre ?? "La nueva asesora"} recibió ${n(movido.leads, "lead abierto", "leads abiertos")}, ${n(movido.conversaciones, "chat", "chats")} y ${n(movido.citas, "cita", "citas")}.`,
+        texto: `${quien} recibió ${n(movido.leads, "lead abierto", "leads abiertos")}, ${n(movido.conversaciones, "chat", "chats")} y ${n(movido.citas, "cita", "citas")}.`,
       });
     } else {
       const r = await repartirCartera(de.id, entre);
@@ -107,7 +116,7 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
         return;
       }
       const movido = r.movido ?? { leads: 0, conversaciones: 0, citas: 0 };
-      const reparto = (r.porPersona ?? [])
+      const cuanto = (r.porPersona ?? [])
         .sort((x, y) => y.leads - x.leads)
         .map((p) => `${nombreDe(p.id)}: ${p.leads}`)
         .join(" · ");
@@ -115,8 +124,9 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
         movido,
         texto:
           `Se repartieron ${n(movido.leads, "lead abierto", "leads abiertos")}, ` +
-          `${n(movido.conversaciones, "chat", "chats")} y ${n(movido.citas, "cita", "citas")} al azar` +
-          (reparto ? ` (${reparto}).` : "."),
+          `${n(movido.conversaciones, "chat", "chats")} y ${n(movido.citas, "cita", "citas")} ` +
+          (alAzar ? "al azar" : `entre ${n(entre.length, "persona", "personas")}`) +
+          (cuanto ? ` (${cuanto}).` : "."),
       });
     }
     onHecho();
@@ -256,102 +266,54 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
               <li>{n(cartera.citas, "cita por venir", "citas por venir")}</li>
             </ul>
 
-            <div role="radiogroup" aria-label="Cómo reasignar" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-              {(
-                [
-                  ["una", "A una persona"],
-                  ["azar", "Al azar entre varias"],
-                ] as const
-              ).map(([m, texto]) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="radio"
-                  aria-checked={modo === m}
-                  data-modo={m}
-                  onClick={() => {
-                    setModo(m);
-                    setError(null);
-                  }}
-                  disabled={trabajando}
-                  style={{
-                    ...BOTON,
-                    flex: 1,
-                    height: 34,
-                    fontSize: 12.5,
-                    fontWeight: modo === m ? 600 : 400,
-                    border: `1px solid ${modo === m ? accent : T.border}`,
-                    background: modo === m ? accent : T.surface,
-                    color: modo === m ? "#fff" : T.ink,
-                  }}
-                >
-                  {texto}
-                </button>
-              ))}
-            </div>
+            <fieldset data-elegir-personas style={{ border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px 10px", margin: "0 0 10px" }}>
+              <legend style={{ fontSize: 12, color: T.muted, padding: "0 4px" }}>
+                Pasárselos a… (una o varias personas)
+              </legend>
+              <div style={{ maxHeight: 190, overflowY: "auto" }}>
+                {candidatas.map((x) => (
+                  <label key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: T.ink, padding: "3px 0" }}>
+                    <input
+                      type="checkbox"
+                      data-elegir={x.id}
+                      checked={elegidas.includes(x.id)}
+                      disabled={trabajando}
+                      onChange={(e) =>
+                        setElegidas((v) => (e.target.checked ? [...v, x.id] : v.filter((id) => id !== x.id)))
+                      }
+                    />
+                    {x.nombre}
+                  </label>
+                ))}
+              </div>
+              {elegidas.length > 1 && cartera.leads > 0 && (
+                <p data-por-cabeza style={{ margin: "6px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
+                  {reparto(elegidas.length)} Se reparten parejo entre las elegidas.
+                </p>
+              )}
+            </fieldset>
 
-            {modo === "una" ? (
-              <>
-                <label htmlFor="traspaso-a" style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 4 }}>
-                  Pasarle todo a
-                </label>
-                <select
-                  id="traspaso-a"
-                  value={a}
-                  onChange={(e) => setA(e.target.value === "" ? "" : Number(e.target.value))}
-                  disabled={trabajando}
-                  style={{
-                    width: "100%",
-                    height: 36,
-                    font: "inherit",
-                    fontSize: 13,
-                    padding: "0 10px",
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 7,
-                    background: T.surface,
-                    color: T.ink,
-                    marginBottom: 12,
-                  }}
-                >
-                  <option value="">Elegí a alguien…</option>
-                  {candidatas.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.nombre}
-                    </option>
-                  ))}
-                </select>
-              </>
-            ) : (
-              <fieldset data-azar style={{ border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px 10px", margin: "0 0 12px" }}>
-                <legend style={{ fontSize: 12, color: T.muted, padding: "0 4px" }}>Repartir entre</legend>
-                {azarPosibles.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: 12, color: T.warn }}>No hay nadie más que reciba leads.</p>
-                ) : (
-                  azarPosibles.map((x) => (
-                    <label key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: T.ink, padding: "3px 0" }}>
-                      <input
-                        type="checkbox"
-                        data-entre={x.id}
-                        checked={entre.includes(x.id)}
-                        disabled={trabajando}
-                        onChange={(e) =>
-                          setEntre((v) => (e.target.checked ? [...v, x.id] : v.filter((id) => id !== x.id)))
-                        }
-                      />
-                      {x.nombre}
-                    </label>
-                  ))
-                )}
-                {entre.length > 0 && cartera.leads > 0 && (
-                  <p data-por-cabeza style={{ margin: "6px 0 0", fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}>
-                    {conUnoMas === 0
-                      ? `A cada una le tocan ${n(porCabeza, "lead", "leads")}.`
-                      : `A cada una le tocan ${porCabeza} o ${porCabeza + 1} leads.`}{" "}
-                    Quién recibe cuál lo decide el sorteo.
-                  </p>
-                )}
-              </fieldset>
-            )}
+            <div
+              data-al-azar-caja
+              style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "0 0 12px", fontSize: 11.5, color: T.faint, lineHeight: 1.45 }}
+            >
+              <button
+                type="button"
+                data-al-azar
+                onClick={() => void mover(true)}
+                disabled={trabajando || azarPosibles.length === 0}
+                style={{ ...BOTON, height: 32, fontSize: 12.5, border: `1px solid ${accent}`, color: accent, fontWeight: 600 }}
+              >
+                Asignar aleatoriamente
+              </button>
+              <span style={{ flex: "1 1 180px" }}>
+                {azarPosibles.length === 0
+                  ? "No hay nadie más que reciba leads."
+                  : azarPosibles.length === 1
+                    ? `Solo ${azarPosibles[0].nombre} recibe leads ahora: se le pasa todo.`
+                    : `Reparte parejo y al azar entre las ${azarPosibles.length} personas que reciben leads. ${reparto(azarPosibles.length)}`}
+              </span>
+            </div>
 
             <p style={{ margin: "0 0 12px", fontSize: 11.5, color: T.faint, lineHeight: 1.5 }}>
               Los leads ya ganados o perdidos se quedan con {de.nombre}: son su historia y cuentan en sus números de
@@ -370,24 +332,24 @@ export function TraspasarCartera({ de, candidatas, paraElAzar, accent, onCerrar,
               <button
                 type="button"
                 data-traspasar
-                onClick={() => void mover()}
-                disabled={trabajando || !listoParaMover}
+                onClick={() => void mover(false)}
+                disabled={trabajando || elegidas.length === 0}
                 style={{
                   ...BOTON,
                   fontWeight: 600,
                   border: "none",
-                  background: !listoParaMover ? T.border : accent,
+                  background: elegidas.length === 0 ? T.border : accent,
                   color: "#fff",
-                  cursor: trabajando ? "wait" : !listoParaMover ? "not-allowed" : "pointer",
+                  cursor: trabajando ? "wait" : elegidas.length === 0 ? "not-allowed" : "pointer",
                 }}
               >
                 {trabajando
                   ? "Un momento…"
-                  : modo === "azar"
-                    ? "Asignar aleatoriamente"
-                    : destino
-                      ? `Pasarle todo a ${destino.nombre}`
-                      : "Traspasar"}
+                  : destino
+                    ? `Pasarle todo a ${destino.nombre}`
+                    : elegidas.length > 1
+                      ? `Repartir entre las ${elegidas.length}`
+                      : "Elegí a quién"}
               </button>
             </div>
           </>

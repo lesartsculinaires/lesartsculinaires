@@ -141,9 +141,9 @@ try {
     (await p.locator("[data-cartera]").innerText()).split("\n").map((x) => x.trim()),
     ["1 lead abierto", "2 chats del Inbox", "1 cita por venir"]);
   es("Katya no aparece entre a quién pasársela",
-    await p.locator("#traspaso-a option", { hasText: "Katya" }).count(), 0);
+    await p.locator(`[data-elegir="${KATYA}"]`).count(), 0);
   if (process.env.FOTOS) await p.screenshot({ path: `${process.env.FOTOS}/equipos-traspaso.png` });
-  await p.locator("#traspaso-a").selectOption(String(ALE));
+  await p.locator(`[data-elegir="${ALE}"]`).check();
   await p.locator("[data-traspasar]").click();
   await p.locator("[data-traspaso-listo]").waitFor({ timeout: 15000 });
   es("el aviso dice lo que se movió",
