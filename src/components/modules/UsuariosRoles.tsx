@@ -324,14 +324,14 @@ export function UsuariosRoles({
   /**
    * Entre quiénes se puede repartir al azar: las mismas que reciben leads en el
    * reparto de todos los días (cuenta activa, rol que recibe leads, ficha
-   * activa). Si no hay ninguna, todas las fichas activas.
+   * activa). Si no hay ninguna, la lista queda vacía y la ventana lo dice: caer
+   * a «todas las fichas» repartía leads a fichas sin cuenta, que nadie atiende.
    */
   const paraElAzar = (sin: number): Vendedor[] => {
     const reciben = accesos.usuarios
       .filter((u) => u.activo && u.vendedorId != null && accesos.roles.find((r) => r.id === u.rolId)?.recibeLeads)
       .map((u) => u.vendedorId as number);
-    const lista = activos(cat.vendedores).filter((v) => v.id !== sin && reciben.includes(v.id));
-    return lista.length > 0 ? lista : activos(cat.vendedores).filter((v) => v.id !== sin);
+    return activos(cat.vendedores).filter((v) => v.id !== sin && reciben.includes(v.id));
   };
 
   /** Hace el cambio y, si se pidió, da de baja la ficha. Devuelve el error o null. */
