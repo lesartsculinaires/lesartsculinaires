@@ -125,7 +125,7 @@ try {
   p.on("pageerror", (e) => errores.push(e.message));
   await p.goto(`${APP}/`, { waitUntil: "networkidle" });
   await p.locator("[data-revision-equipo]").waitFor({ timeout: 20000 });
-  const textoKatya = await p.locator('[data-problema="baja_con_leads"]').innerText();
+  const textoKatya = await p.locator('[data-problema="baja_con_leads"]').filter({ hasText: "Katya" }).innerText();
   es("el aviso nombra a Katya y su lead", /Katya.*1 lead abierto/.test(textoKatya), true);
   es("y avisa del chat que no está con la dueña de su lead",
     /1 chat de Ale Prueba es de clientes cuyo lead lleva otra asesora/.test(await p.locator('[data-problema="chat_de_otra"]').innerText()), true);
@@ -135,7 +135,7 @@ try {
   await p.locator('[data-problema="chat_de_otra"]').waitFor({ state: "detached", timeout: 15000 });
   es("«Pasar cada chat a la dueña de su lead» deja el chat con Huri", vendedorDe("conversaciones", c3), HURI);
 
-  await p.locator('[data-problema="baja_con_leads"] button').click();
+  await p.locator('[data-problema="baja_con_leads"]').filter({ hasText: "Katya" }).locator("button").click();
   await p.locator("[data-cartera]").waitFor({ timeout: 15000 });
   es("la vista previa cuenta lo que se va a mover",
     (await p.locator("[data-cartera]").innerText()).split("\n").map((x) => x.trim()),
@@ -160,7 +160,7 @@ try {
   await p.getByRole("button", { name: "Cerrar", exact: true }).click();
   await p.waitForTimeout(2500);
   es("y la revisión queda limpia de Katya",
-    await p.locator('[data-problema="baja_con_leads"], [data-problema="baja_con_chats"]').count(), 0);
+    await p.locator('[data-problema="baja_con_leads"], [data-problema="baja_con_chats"]').filter({ hasText: "Katya" }).count(), 0);
   es("sin errores en la página", errores, []);
 } catch (e) {
   f++;

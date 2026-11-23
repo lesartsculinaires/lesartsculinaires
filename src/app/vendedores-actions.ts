@@ -469,6 +469,49 @@ export async function traspasarCartera(
   };
 }
 
+/**
+ * Repartir la cartera de una persona AL AZAR entre varias.
+ *
+ * Al azar pero parejo: la base baraja los clientes y los reparte por turnos,
+ * así que cada persona recibe lo mismo, con uno de diferencia como mucho. Los
+ * leads de un mismo cliente van juntos y su chat los sigue. Ver la migración
+ * 20261205120000_repartir_cartera.sql.
+ */
+export async function repartirCartera(
+  de: number,
+  entre: number[],
+): Promise<{
+  ok: boolean;
+  error: string | null;
+  movido?: Cartera;
+  porPersona?: { id: number; leads: number }[];
+}> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: "Sesión no válida. Volvé a iniciar sesión." };
+
+  const { data, error } = await supabase.rpc("repartir_cartera", { p_de: de, p_entre: entre });
+  if (error) {
+    if (error.code === "PGRST202") {
+      return { ok: false, error: "El reparto al azar todavía no está habilitado en la base. Avisale a sistemas." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  const por = Array.isArray(r.por_persona) ? (r.por_persona as Record<string, unknown>[]) : [];
+  revalidatePath("/");
+  return {
+    ok: true,
+    error: null,
+    movido: {
+      leads: Number(r.leads ?? 0),
+      conversaciones: Number(r.conversaciones ?? 0),
+      citas: Number(r.citas ?? 0),
+    },
+    porPersona: por.map((p) => ({ id: Number(p.id), leads: Number(p.leads ?? 0) })),
+  };
+}
+
 /** Un problema de la revisión del equipo: qué, de quién y cuántos. */
 export interface ProblemaDelEquipo {
   tipo:

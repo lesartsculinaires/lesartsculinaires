@@ -19,6 +19,8 @@ import {
   guardarPermisos,
   type Diagnostico,
 } from "@/app/actions";
+import { desactivarVendedor } from "@/app/vendedores-actions";
+import { TraspasarCartera, type ContinuarConCambio } from "@/components/modules/TraspasarCartera";
 import { useCatalogo } from "@/lib/catalog";
 import {
   comoSeExplica,
@@ -26,7 +28,7 @@ import {
   motivoDeFicha,
 } from "@/lib/crm/fichaDeVendedor";
 import { T, soft, softer } from "@/lib/theme";
-import { ACCIONES, activos, type Accesos, type Accion, type Permiso } from "@/lib/types";
+import { ACCIONES, activos, type Accesos, type Accion, type Permiso, type Vendedor } from "@/lib/types";
 
 interface Props {
   accesos: Accesos;
@@ -158,6 +160,11 @@ export function UsuariosRoles({
   const [aviso, setAviso] = useState<string | null>(null);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [creando, setCreando] = useState(false);
+  /**
+   * Alguien sale de ventas y lleva leads: antes de hacer el cambio se pregunta
+   * a quién pasárselos (a una persona, o al azar entre las que reciben leads).
+   */
+  const [reasignando, setReasignando] = useState<{ de: Vendedor; continuar: ContinuarConCambio } | null>(null);
 
   const claves = useMemo(() => accesos.modulos.map((m) => m.clave), [accesos.modulos]);
   const rol = accesos.roles.find((r) => r.id === rolSel) ?? null;
@@ -307,7 +314,63 @@ export function UsuariosRoles({
     }
   };
 
+  /** La ficha de vendedor de esta cuenta, si tiene una activa. */
+  const fichaActivaDe = (userId: string): Vendedor | null => {
+    const u = accesos.usuarios.find((x) => x.id === userId);
+    const v = u?.vendedorId != null ? cat.vendedores.find((x) => x.id === u.vendedorId) : undefined;
+    return v && v.activo !== false ? v : null;
+  };
+
+  /**
+   * Entre quiénes se puede repartir al azar: las mismas que reciben leads en el
+   * reparto de todos los días (cuenta activa, rol que recibe leads, ficha
+   * activa). Si no hay ninguna, todas las fichas activas.
+   */
+  const paraElAzar = (sin: number): Vendedor[] => {
+    const reciben = accesos.usuarios
+      .filter((u) => u.activo && u.vendedorId != null && accesos.roles.find((r) => r.id === u.rolId)?.recibeLeads)
+      .map((u) => u.vendedorId as number);
+    const lista = activos(cat.vendedores).filter((v) => v.id !== sin && reciben.includes(v.id));
+    return lista.length > 0 ? lista : activos(cat.vendedores).filter((v) => v.id !== sin);
+  };
+
+  /** Hace el cambio y, si se pidió, da de baja la ficha. Devuelve el error o null. */
+  const despuesDeReasignar = async (
+    cambio: () => Promise<{ ok: boolean; error: string | null }>,
+    ficha: Vendedor,
+    darDeBaja: boolean,
+  ): Promise<string | null> => {
+    const r = await cambio();
+    if (!r.ok) return r.error ?? "No se pudo hacer el cambio.";
+    if (darDeBaja) {
+      const d = await desactivarVendedor(ficha.id);
+      if (!d.ok) return `El cambio se hizo, pero la ficha no se pudo dar de baja: ${d.error ?? ""}`;
+    }
+    onRefresh();
+    return null;
+  };
+
   const cambiarRolUsuario = async (userId: string, rolId: number | null) => {
+    /*
+     * ¿Sale de ventas? Pasa de un rol que recibe leads a uno que no (o a
+     * ninguno). Entonces primero se pregunta qué pasa con sus leads: sin esto
+     * quedaban a su nombre y nadie los seguía.
+     */
+    const u = accesos.usuarios.find((x) => x.id === userId);
+    const antes = accesos.roles.find((r) => r.id === u?.rolId);
+    const despues = accesos.roles.find((r) => r.id === rolId);
+    const ficha = fichaActivaDe(userId);
+    if (antes?.recibeLeads && !despues?.recibeLeads && ficha) {
+      setReasignando({
+        de: ficha,
+        continuar: {
+          que: `sacar a ${ficha.nombre} de ventas`,
+          boton: despues ? `Cambiar el rol a ${despues.nombre}` : "Quitarle el rol",
+          hacer: (baja) => despuesDeReasignar(() => actualizarUsuario(userId, { rol_id: rolId }), ficha, baja),
+        },
+      });
+      return;
+    }
     setBusy(true);
     const r = await actualizarUsuario(userId, { rol_id: rolId });
     setBusy(false);
@@ -369,6 +432,19 @@ export function UsuariosRoles({
   };
 
   const borrarUsuario = async (userId: string, correo: string) => {
+    // Con ficha de vendedor activa, primero sus leads; la ventana confirma.
+    const ficha = fichaActivaDe(userId);
+    if (ficha) {
+      setReasignando({
+        de: ficha,
+        continuar: {
+          que: `eliminar la cuenta de ${correo}`,
+          boton: "Eliminar la cuenta",
+          hacer: (baja) => despuesDeReasignar(() => eliminarUsuario(userId), ficha, baja),
+        },
+      });
+      return;
+    }
     if (!confirm(`¿Eliminar la cuenta de ${correo}? No se puede deshacer.`)) return;
     setBusy(true);
     setError(null);
@@ -416,6 +492,17 @@ export function UsuariosRoles({
 
   return (
     <div>
+      {reasignando && (
+        <TraspasarCartera
+          de={reasignando.de}
+          candidatas={activos(cat.vendedores).filter((v) => v.id !== reasignando.de.id)}
+          paraElAzar={paraElAzar(reasignando.de.id)}
+          accent={accent}
+          continuar={reasignando.continuar}
+          onCerrar={() => setReasignando(null)}
+          onHecho={onRefresh}
+        />
+      )}
       <div style={{ borderBottom: `1px solid ${T.border}`, marginBottom: 20, display: "flex" }}>
         <button type="button" onClick={() => setPestana("usuarios")} style={tabStyle("usuarios")}>
           👤 Usuarios
