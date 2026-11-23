@@ -1,4 +1,5 @@
 import { COMO_SE_DICE, CUANTOS_TILDES, type Acuse } from "@/lib/acuses";
+import { useT } from "@/lib/i18n/idioma";
 
 interface Props {
   acuse: Acuse;
@@ -29,7 +30,8 @@ interface Props {
  * WhatsApp desaparecería ahí adentro.
  */
 export function AcuseDeMensaje({ acuse, color }: Props) {
-  const dicho = COMO_SE_DICE[acuse];
+  const t = useT();
+  const dicho = t(COMO_SE_DICE[acuse]);
 
   if (acuse === "fallo") {
     return (

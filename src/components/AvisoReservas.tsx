@@ -8,6 +8,7 @@ import { TONO } from "@/components/ui/tonoRecordatorio";
 import { money } from "@/lib/format";
 import { comoSeLee, type Recordatorio } from "@/lib/recordatorios";
 import { comoSeLeeSeguimiento, resumenDe, type SeguimientoPendiente } from "@/lib/seguimientos";
+import { useT } from "@/lib/i18n/idioma";
 import { T } from "@/lib/theme";
 
 /**
@@ -51,6 +52,7 @@ export function AvisoReservas({
   const [ocultos, setOcultos] = useState<number[]>([]);
   const [hechos, setHechos] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   const visibles = lista.filter((r) => !ocultos.includes(r.oportunidad.id));
   const llamadas = seguimientos.filter((p) => !hechos.includes(p.seguimiento.id));
@@ -99,7 +101,7 @@ export function AvisoReservas({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Pendientes para hoy"
+      aria-label={t("Pendientes para hoy")}
       style={{
         position: "fixed",
         inset: 0,
@@ -130,15 +132,15 @@ export function AvisoReservas({
         <div style={{ padding: "18px 20px 12px" }}>
           <h2 className="dsp" style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 700 }}>
             {visibles.length + llamadas.length === 1
-              ? "Un pendiente para hoy"
-              : `${visibles.length + llamadas.length} pendientes para hoy`}
+              ? t("Un pendiente para hoy")
+              : t(`${visibles.length + llamadas.length} pendientes para hoy`)}
           </h2>
           <p style={{ margin: 0, fontSize: 12.5, color: T.muted, lineHeight: 1.5 }}>
             {visibles.length > 0 && llamadas.length > 0
-              ? "Reservas a las que se les cumple el plazo, y llamadas que quedaron anotadas en las fichas."
+              ? t("Reservas a las que se les cumple el plazo, y llamadas que quedaron anotadas en las fichas.")
               : visibles.length > 0
-                ? "Dejaron anticipo y se les cumple el plazo de quince días. Pasado eso el cupo se libera."
-                : "Llamadas que quedaron anotadas en las notas de las fichas."}
+                ? t("Dejaron anticipo y se les cumple el plazo de quince días. Pasado eso el cupo se libera.")
+                : t("Llamadas que quedaron anotadas en las notas de las fichas.")}
           </p>
         </div>
 
@@ -172,12 +174,12 @@ export function AvisoReservas({
                     className="mono"
                     style={{ fontSize: 11.5, fontWeight: 700, color: tono.fuerte }}
                   >
-                    {comoSeLee(r)}
+                    {t(comoSeLee(r))}
                   </span>
                 </div>
 
                 <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-                  {o.producto} · Reserva {money(o.reserva ?? 0)} de{" "}
+                  {o.producto} · {t("Reserva")} {money(o.reserva ?? 0)} {t("de")}{" "}
                   {money(o.valor ?? 0)} · {o.vendedor}
                   {o.telefono && ` · ${o.telefono}`}
                 </p>
@@ -188,7 +190,7 @@ export function AvisoReservas({
                     onClick={() => onAbrirFicha(o.id)}
                     style={{ ...BOTON, background: accent, color: "#fff", border: "none" }}
                   >
-                    Abrir la ficha
+                    {t("Abrir la ficha")}
                   </button>
                   {/*
                     Tres plazos y no una casilla de «ya está».
@@ -198,13 +200,13 @@ export function AvisoReservas({
                     único hecho que de verdad lo termina.
                   */}
                   <button type="button" onClick={() => void posponer(o.id, 1)} style={BOTON}>
-                    Mañana
+                    {t("Mañana")}
                   </button>
                   <button type="button" onClick={() => void posponer(o.id, 3)} style={BOTON}>
-                    En 3 días
+                    {t("En 3 días")}
                   </button>
                   <button type="button" onClick={() => void posponer(o.id, 7)} style={BOTON}>
-                    En una semana
+                    {t("En una semana")}
                   </button>
                 </div>
               </div>
@@ -250,7 +252,7 @@ export function AvisoReservas({
                     className="mono"
                     style={{ fontSize: 11.5, fontWeight: 700, color: tono.fuerte }}
                   >
-                    {comoSeLeeSeguimiento(p)}
+                    {t(comoSeLeeSeguimiento(p))}
                   </span>
                 </div>
 
@@ -258,7 +260,7 @@ export function AvisoReservas({
                   {resumenDe(s)}
                 </p>
                 <p style={{ margin: "2px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.5 }}>
-                  {s.vendedor ?? "Sin asignar"}
+                  {s.vendedor ?? t("Sin asignar")}
                   {s.telefono && ` · ${s.telefono}`}
                 </p>
 
@@ -268,28 +270,28 @@ export function AvisoReservas({
                     onClick={() => onAbrirFicha(s.oportunidadId)}
                     style={{ ...BOTON, background: accent, color: "#fff", border: "none" }}
                   >
-                    Abrir la ficha
+                    {t("Abrir la ficha")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void resolver(s.id, () => marcarSeguimientoHecho(s.id))}
                     style={BOTON}
                   >
-                    {s.diaDelMes == null ? "Ya lo hice" : "Hecho este mes"}
+                    {s.diaDelMes == null ? t("Ya lo hice") : t("Hecho este mes")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void resolver(s.id, () => posponerSeguimiento(s.id, 1))}
                     style={BOTON}
                   >
-                    Mañana
+                    {t("Mañana")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void resolver(s.id, () => posponerSeguimiento(s.id, 3))}
                     style={BOTON}
                   >
-                    En 3 días
+                    {t("En 3 días")}
                   </button>
                 </div>
               </div>
@@ -313,10 +315,10 @@ export function AvisoReservas({
           }}
         >
           <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.45 }}>
-            Vuelve a aparecer mañana. Están siempre en Recordatorios.
+            {t("Vuelve a aparecer mañana. Están siempre en Recordatorios.")}
           </span>
           <button type="button" onClick={onCerrar} style={{ ...BOTON, flexShrink: 0 }}>
-            Cerrar
+            {t("Cerrar")}
           </button>
         </div>
       </div>

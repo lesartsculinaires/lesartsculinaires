@@ -84,7 +84,7 @@ export function Recordatorios({
         type="button"
         onClick={() => setAbierto((v) => !v)}
         aria-label={
-          cuantos > 0 ? `Recordatorios, ${cuantos} por atender` : t("Recordatorios")
+          cuantos > 0 ? t(`Recordatorios, ${cuantos} por atender`) : t("Recordatorios")
         }
         aria-expanded={abierto}
         style={{
