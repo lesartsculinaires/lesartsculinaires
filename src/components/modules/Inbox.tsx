@@ -30,6 +30,8 @@ import { porQueNoLlego } from "@/lib/whatsapp/porQueNoLlego";
 import { cuantosPendientes, estaPendiente } from "@/lib/pendientes";
 import type { ContactoCompartido } from "@/lib/whatsapp/contactos";
 import { ContactoDelMensaje } from "@/components/modules/ContactoDelMensaje";
+import { TelefonosDelMensaje } from "@/components/modules/TelefonosDelMensaje";
+import { telefonosEnTexto } from "@/lib/telefonosEnTexto";
 import { getBrowserClient } from "@/lib/supabase/browser";
 import { useCatalogo } from "@/lib/catalog";
 import { T, softer } from "@/lib/theme";
@@ -3051,6 +3053,21 @@ export function Inbox({
                           contactos={contactos[m.id]}
                           mio={mio}
                           onAbierto={onRefrescar}
+                        />
+                      )}
+                      {/*
+                        El número que el cliente ESCRIBIÓ (25/11/2026): la misma
+                        tarjeta que la de un contacto compartido, para copiarlo
+                        o guardarlo en su ficha. Sólo en lo que escribe el
+                        cliente, y sin el número desde el que ya está escribiendo.
+                      */}
+                      {!mio && !m.privado && !contactos[m.id] && m.texto && (
+                        <TelefonosDelMensaje
+                          telefonos={telefonosEnTexto(m.texto).filter(
+                            (x) => x.paraMarcar !== (actual.telefono ?? "").replace(/\D/g, ""),
+                          )}
+                          conversacionId={actual.id}
+                          onGuardado={() => onRefrescar(actual.id)}
                         />
                       )}
                       <span

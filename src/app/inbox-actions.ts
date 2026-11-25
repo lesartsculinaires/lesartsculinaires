@@ -1055,6 +1055,77 @@ export async function contactosDeMensajes(
 }
 
 /**
+ * Guarda en la ficha del cliente de este chat un número que escribió en un
+ * mensaje (ver `@/lib/telefonosEnTexto`).
+ *
+ * Va al teléfono principal si está vacío —el caso de quien escribió por
+ * Instagram o Messenger y da su número—; si no, al secundario. No pisa nada: si
+ * los dos están ocupados con otros números, lo dice y no cambia la ficha. Si el
+ * número ya es de OTRA persona en la base tampoco lo guarda, por lo mismo que
+ * el alta revisa duplicados: dos fichas con el mismo teléfono parten el
+ * historial de un cliente en dos.
+ */
+export async function guardarTelefonoEnFicha(
+  conversacionId: number,
+  telefono: string,
+): Promise<{ ok: boolean; error: string | null; dicho?: string }> {
+  const supabase = await getServerClient();
+  if (!supabase) return { ok: false, error: SIN_SESION.error };
+  if (!(await puedeContestar(supabase))) return { ok: false, error: NO_CONTESTA };
+
+  const numero = telefono.replace(/\D/g, "");
+  if (numero.length < 10 || numero.length > 15) {
+    return { ok: false, error: "El número tiene que tener código de país y entre 10 y 15 dígitos." };
+  }
+
+  const { data: conv } = await supabase
+    .from("conversaciones")
+    .select("cliente_id")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  const clienteId = (conv as { cliente_id: number | null } | null)?.cliente_id ?? null;
+  if (!clienteId) {
+    return { ok: false, error: "Este chat todavía no tiene ficha. Usá «Abrir lead» arriba y después guardá el número." };
+  }
+
+  const { data: ficha, error: e1 } = await supabase
+    .from("clientes")
+    .select("telefono, telefono_secundario")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (e1 || !ficha) return { ok: false, error: e1?.message ?? "No se encontró la ficha." };
+  const { telefono: principal, telefono_secundario: secundario } = ficha as {
+    telefono: string | null;
+    telefono_secundario: string | null;
+  };
+  const igual = (x: string | null) => (x ?? "").replace(/\D/g, "") === numero;
+  if (igual(principal) || igual(secundario)) return { ok: true, error: null, dicho: "Ese número ya está en la ficha." };
+
+  const { data: otros } = await supabase
+    .from("clientes")
+    .select("id, nombre")
+    .or(`telefono.eq.${numero},telefono_secundario.eq.${numero}`)
+    .neq("id", clienteId)
+    .limit(1);
+  const otro = (otros ?? [])[0] as { nombre: string | null } | undefined;
+  if (otro) return { ok: false, error: `Ese número ya es de ${otro.nombre ?? "otra ficha"}. No se guardó para no duplicar.` };
+
+  const campo = !principal ? "telefono" : !secundario ? "telefono_secundario" : null;
+  if (!campo) {
+    return { ok: false, error: "La ficha ya tiene teléfono principal y secundario. Cambialo a mano desde «Ver ficha» si corresponde." };
+  }
+
+  const { error: e2 } = await supabase.from("clientes").update({ [campo]: numero }).eq("id", clienteId);
+  if (e2) return { ok: false, error: e2.message };
+  revalidatePath("/");
+  return {
+    ok: true,
+    error: null,
+    dicho: campo === "telefono" ? "Guardado como teléfono de la ficha." : "Guardado como teléfono secundario de la ficha.",
+  };
+}
+
+/**
  * Abre un chat con alguien que ya está en la base.
  *
  * Es «buscar o crear»: si ese número ya tiene conversación se devuelve la que
