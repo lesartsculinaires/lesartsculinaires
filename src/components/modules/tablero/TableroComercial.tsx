@@ -38,6 +38,7 @@ import { mesAnterior, mesDe, nombreDelMes } from "@/lib/tablero/semanas";
 import { hoyEnSalvador } from "@/lib/seguimientos";
 import { T } from "@/lib/theme";
 import { HojaGuia } from "@/components/modules/tablero/HojaGuia";
+import { PanelProyeccion } from "@/components/modules/tablero/PanelProyeccion";
 import { HojaTablero } from "@/components/modules/tablero/HojaTablero";
 import { HojaSemanal } from "@/components/modules/tablero/HojaSemanal";
 import { HojaGrupos } from "@/components/modules/tablero/HojaGrupos";
@@ -306,6 +307,13 @@ export function TableroComercial({
           Lo que viene del CRM se ve en gris dentro de la celda. Escribe solo lo que falta o hay que corregir.
         </span>
       </div>
+
+      {/*
+        Lo primero: la proyección de la meta del mes elegido (25/11/2026).
+        Quien entra al Tablero lo ve todo con nombre; Dirección puede cambiar
+        la meta desde acá mismo.
+      */}
+      <PanelProyeccion accent={accent} puedeCambiarMeta={permisos.metas} completo mes={mes} onMetaCambiada={() => void recargar()} />
 
       <nav aria-label="Hojas del Tablero" style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: `1px solid ${T.border}`, marginBottom: 16 }}>
         {HOJAS.map((h) => (

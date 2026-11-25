@@ -710,6 +710,7 @@ export default function CrmApp({
        * `puede_llenar_tablero()` en cada guardado.
        */
       tablero: {
+        ver: de("tablero").ver,
         mk: de("tablero.mk").editar,
         ventas: de("tablero.ventas").editar,
         actividad: de("tablero.actividad").editar,
@@ -1140,7 +1141,11 @@ export default function CrmApp({
           ) : (
           <>
           {mod === "Dashboard" && (
-            <Dashboard oportunidades={delTablero} accent={accent} />
+            <Dashboard
+              oportunidades={delTablero}
+              accent={accent}
+              proyeccion={{ puedeCambiarMeta: casillas.tablero.metas, completo: casillas.tablero.ver }}
+            />
           )}
 
           {mod === "Tablero Comercial" && (
