@@ -418,6 +418,15 @@ export const EN: Record<string, string> = {
   "Leído": "Read",
   "No se pudo entregar": "Could not be delivered",
 
+  // Números escritos en el mensaje (25/11/2026)
+  "Número en el mensaje": "Number in the message",
+  "Números en el mensaje": "Numbers in the message",
+  "Guardado en la ficha.": "Saved to the profile.",
+  "Guardado como teléfono de la ficha.": "Saved as the profile's phone.",
+  "Guardado como teléfono secundario de la ficha.": "Saved as the profile's secondary phone.",
+  "Ese número ya está en la ficha.": "That number is already on the profile.",
+  "No se pudo guardar.": "Could not save.",
+
   // Ventana de pendientes para hoy
   "Pendientes para hoy": "Due today",
   "Un pendiente para hoy": "One item due today",
