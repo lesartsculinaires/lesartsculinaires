@@ -346,3 +346,51 @@ export async function borrarAccion(id: number): Promise<ActionResult> {
   const { error } = await supabase.from("tablero_acciones").delete().eq("id", id);
   return error ? { ok: false, error: explicar(error) } : { ok: true, error: null };
 }
+
+/**
+ * Lo que necesita el panel de la proyección de la meta (Dashboard, Tablero):
+ * lo vendido por día de los seis meses que terminan en `mes`, las metas de
+ * venta de esos meses y los nombres de las asesoras. Ver
+ * `@/lib/tablero/proyeccion` y la migración 20261206120000_tablero_proyeccion.sql.
+ *
+ * Quien no tiene permiso para ver el Tablero recibe el total del equipo con
+ * sólo su propio nombre: la base esconde de quién es cada venta ajena.
+ */
+export async function cargarProyeccion(mes: string, marca?: ClaveMarca): Promise<{
+  ventas: { fecha: string; vendedorId: number | null; categoria: "diplomado" | "curso_corto" | "corporativo"; cantidad: number; monto: number }[];
+  metas: { mes: string; valor: number }[];
+  nombres: [number, string][];
+  faltaMigracion: boolean;
+  error: string | null;
+}> {
+  const vacio = { ventas: [], metas: [], nombres: [] as [number, string][], faltaMigracion: false };
+  if (!esMes(mes)) return { ...vacio, error: "Mes no válido." };
+  const supabase = await getServerClient(marca);
+  if (!supabase) return { ...vacio, error: "Sesión no válida. Vuelve a iniciar sesión." };
+  const [a, m] = mes.split("-").map(Number);
+  const desde = new Date(Date.UTC(a, m - 1 - 5, 1)).toISOString().slice(0, 10);
+  const hasta = new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
+
+  const [ventas, metas, vendedores] = await Promise.all([
+    supabase.rpc("tablero_ventas", { p_desde: desde, p_hasta: hasta }),
+    supabase.rpc("tablero_metas_de_venta", { p_desde: desde, p_hasta: hasta }),
+    supabase.from("vendedores").select("id, nombre"),
+  ]);
+  if (ventas.error?.code === "PGRST202" || metas.error?.code === "PGRST202") {
+    return { ...vacio, faltaMigracion: true, error: null };
+  }
+  const err = ventas.error ?? metas.error;
+  return {
+    ventas: ((ventas.data ?? []) as Fila[]).map((r) => ({
+      fecha: String(r.fecha).slice(0, 10),
+      vendedorId: r.vendedor_id == null ? null : Number(r.vendedor_id),
+      categoria: (r.categoria === "diplomado" || r.categoria === "curso_corto" ? r.categoria : "corporativo") as "diplomado" | "curso_corto" | "corporativo",
+      cantidad: Number(r.cantidad ?? 0),
+      monto: Number(r.monto ?? 0),
+    })),
+    metas: ((metas.data ?? []) as Fila[]).map((r) => ({ mes: String(r.mes).slice(0, 10), valor: Number(r.valor) })),
+    nombres: ((vendedores.data ?? []) as Fila[]).map((r) => [Number(r.id), String(r.nombre ?? "")] as [number, string]),
+    faltaMigracion: false,
+    error: err ? (err.message ?? "No se pudieron leer las ventas.") : null,
+  };
+}

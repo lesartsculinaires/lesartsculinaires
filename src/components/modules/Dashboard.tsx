@@ -22,10 +22,13 @@ import { estaAbierta, esGanada, groupBars, motivosDePerdida, totalCerrado } from
 import { T, openTone } from "@/lib/theme";
 import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
+import { PanelProyeccion } from "@/components/modules/tablero/PanelProyeccion";
 
 interface Props {
   oportunidades: Oportunidad[];
   accent: string;
+  /** La proyección de la meta arriba de todo (25/11/2026). Ver `PanelProyeccion`. */
+  proyeccion?: { puedeCambiarMeta: boolean; completo: boolean };
 }
 
 /**
@@ -68,7 +71,7 @@ interface Props {
  * empiece a cargar la fecha de cierre, se puede ofrecer la otra lectura al
  * lado; mientras tanto, mostrar una sola y decir cuál es, es lo honesto.
  */
-export function Dashboard({ oportunidades, accent }: Props) {
+export function Dashboard({ oportunidades, accent, proyeccion }: Props) {
   const open = openTone(accent);
 
   const periodos = useMemo(() => periodosDisponibles(oportunidades), [oportunidades]);
@@ -139,6 +142,9 @@ export function Dashboard({ oportunidades, accent }: Props) {
 
   return (
     <div>
+      {proyeccion && (
+        <PanelProyeccion accent={accent} puedeCambiarMeta={proyeccion.puedeCambiarMeta} completo={proyeccion.completo} />
+      )}
       <SelectorDePeriodo
         periodos={periodos}
         elegido={periodo}
