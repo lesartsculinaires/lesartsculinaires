@@ -649,6 +649,13 @@ export interface Conversacion {
   agenteActivo?: boolean;
   /** Desde cuándo lo lleva el agente. */
   agenteDesde?: string | null;
+  /**
+   * La alerta del agente IA que nadie atendió todavía: el cliente dejó de
+   * contestar en un momento que importa y el agente pidió que alguien lo mire.
+   * Se apaga cuando una persona del equipo le escribe al cliente. Ver
+   * «Monitoreo Agente» en la bandeja.
+   */
+  alertaAgente?: { en: string; motivo: string | null; urgente: boolean } | null;
 }
 
 /** Una reacción sobre un mensaje: quién la puso y cuál es. */
