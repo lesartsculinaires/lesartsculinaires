@@ -308,6 +308,8 @@ export async function fetchInbox(
     mensajes = comoLosLee(msgs ?? []);
   }
 
+  const alertas = await alertasDelAgente(supabase, soloIds);
+
   return {
     conversaciones: ((convs ?? []) as unknown as Fila[]).map((c) => ({
       id: Number(c.id),
@@ -361,11 +363,91 @@ export async function fetchInbox(
       // Sin las columnas viene `undefined`: el agente no lleva nada.
       agenteActivo: c.agente_activo === true,
       agenteDesde: c.agente_activo === true && c.agente_cambiado_en ? String(c.agente_cambiado_en) : null,
+      alertaAgente: alertas.get(Number(c.id)) ?? null,
     })),
     mensajes,
     faltaMigracion: false,
     error: null,
   };
+}
+
+/** Hasta cuántos días atrás se miran las alertas del agente. */
+const DIAS_DE_ALERTAS = 7;
+
+/**
+ * Las alertas del agente IA que nadie atendió todavía, por chat
+ * («Monitoreo Agente», 26/11/2026).
+ *
+ * Cuando el cliente deja de contestar unos minutos en un momento que importa
+ * —ya tiene programa y costo, mandó sus datos, quiere agendar— el agente deja
+ * en el chat una nota interna con `origen.tipo` «alerta» o «alerta_urgente».
+ * La alerta queda pendiente hasta que alguien del equipo le escribe al cliente
+ * DESPUÉS de ella: un mensaje saliente, no privado, que no sea del agente.
+ *
+ * Se lee de `mensajes` y no de `agente_alertas`, que es la cola del agente y
+ * no está abierta a las sesiones del CRM. Así cada asesora ve sólo las de sus
+ * chats: las políticas de `mensajes` ya lo resuelven.
+ *
+ * Si algo falla —una base sin la columna `origen`, por ejemplo— no hay
+ * alertas: la pestaña queda vacía y la bandeja sigue andando.
+ */
+async function alertasDelAgente(
+  supabase: NonNullable<Awaited<ReturnType<typeof getServerClient>>>,
+  soloIds?: readonly number[],
+): Promise<Map<number, NonNullable<Conversacion["alertaAgente"]>>> {
+  const fuera = new Map<number, NonNullable<Conversacion["alertaAgente"]>>();
+  const desde = new Date(Date.now() - DIAS_DE_ALERTAS * 86_400_000).toISOString();
+
+  let q = supabase
+    .from("mensajes")
+    .select("conversacion_id, creado_en, texto, origen")
+    .eq("privado", true)
+    .like("origen->>tipo", "alerta%")
+    .gte("creado_en", desde)
+    .order("creado_en", { ascending: false })
+    .limit(500);
+  if (soloIds) q = q.in("conversacion_id", [...soloIds]);
+  const { data: notas, error } = await q;
+  if (error || !notas?.length) return fuera;
+
+  // La más nueva de cada chat: es la que cuenta.
+  const ultima = new Map<number, Fila>();
+  for (const n of notas as Fila[]) {
+    const id = Number(n.conversacion_id);
+    if (!ultima.has(id)) ultima.set(id, n);
+  }
+
+  const ids = [...ultima.keys()];
+  const masVieja = [...ultima.values()].map((n) => String(n.creado_en)).sort()[0];
+  const { data: salidas, error: errSal } = await supabase
+    .from("mensajes")
+    .select("conversacion_id, creado_en, origen")
+    .in("conversacion_id", ids)
+    .eq("direccion", "saliente")
+    .eq("privado", false)
+    .gte("creado_en", masVieja)
+    .limit(2000);
+  if (errSal) return fuera;
+
+  // La última vez que una PERSONA le escribió al cliente, por chat.
+  const persona = new Map<number, number>();
+  for (const m of (salidas ?? []) as Fila[]) {
+    const o = m.origen as Record<string, unknown> | null;
+    if (o && typeof o === "object" && "agente_ia" in o) continue;
+    const id = Number(m.conversacion_id);
+    const t = Date.parse(String(m.creado_en));
+    if (t > (persona.get(id) ?? 0)) persona.set(id, t);
+  }
+
+  for (const [id, n] of ultima) {
+    const en = String(n.creado_en);
+    if ((persona.get(id) ?? 0) > Date.parse(en)) continue;
+    const texto = n.texto ? String(n.texto) : "";
+    const motivo = /Motivo:\s*(.+)/.exec(texto)?.[1]?.trim() ?? null;
+    const tipo = (n.origen as Record<string, unknown> | null)?.tipo;
+    fuera.set(id, { en, motivo, urgente: tipo === "alerta_urgente" });
+  }
+  return fuera;
 }
 
 /**

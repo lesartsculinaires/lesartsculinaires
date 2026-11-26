@@ -304,6 +304,8 @@ export function Inbox({
    * filtro que más se usa en una jornada y no existía.
    */
   const [soloPendientes, setSoloPendientes] = useState(false);
+  /** «Monitoreo Agente»: los chats con una alerta del agente sin atender. */
+  const [soloMonitoreo, setSoloMonitoreo] = useState(false);
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   /** Null = todas las redes juntas, que es como se trabaja hoy. */
@@ -751,6 +753,7 @@ export function Inbox({
                 : (verTodas || c.archivada === verArchivadas) &&
                   (!soloSinAsignar || c.vendedorId == null) &&
                   (!soloPendientes || estaPendiente(c)) &&
+                  (!soloMonitoreo || c.alertaAgente != null) &&
                   (porVendedor == null || c.vendedorId === porVendedor)) &&
                 (abiertos.size === 0 ||
                   (abiertos.has(CLAVE_ACADEMICO)
@@ -775,7 +778,7 @@ export function Inbox({
          * nueva que no importa, que es justo el problema que fijar resuelve.
          */
         .sort((a, b) => Number(b.fijada) - Number(a.fijada)),
-    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto, academicos, area],
+    [conversaciones, verArchivadas, verTodas, soloSinAsignar, soloPendientes, soloMonitoreo, porVendedor, abiertos, porEtiqueta, buscando, busqueda, nombreEnElCrm, contestadasIds, clientesDeLaBase, clientesDelEnvioPuesto, academicos, area],
   );
 
   /** Cuántos hilos hay de cada red, para la fila de pestañas. */
@@ -832,6 +835,12 @@ export function Inbox({
 
   /** Cuántos hilos activos esperan algo. Es el número de la pestaña. */
   const pendientes = useMemo(() => cuantosPendientes(delArea), [delArea]);
+
+  /** Cuántos chats tienen una alerta del agente sin atender. */
+  const conAlerta = useMemo(
+    () => delArea.filter((c) => !c.archivada && c.alertaAgente != null).length,
+    [delArea],
+  );
 
   const actual = useMemo(
     () => conversaciones.find((c) => c.id === abierta) ?? null,
@@ -1849,7 +1858,9 @@ export function Inbox({
                 Instagram esos asteriscos son asteriscos de verdad y
                 borrarlos sería cambiar lo que dijo la persona.
               */}
-              {c.ultimoTexto == null
+              {soloMonitoreo && c.alertaAgente?.motivo
+                ? `${t("Motivo")}: ${c.alertaAgente.motivo}`
+                : c.ultimoTexto == null
                 ? "—"
                 : canalDe(c.canal).puede.formato === "si"
                   ? textoPlano(c.ultimoTexto)
@@ -1868,6 +1879,16 @@ export function Inbox({
                   </span>
                 );
               })}
+              {c.alertaAgente && (
+                <span
+                  className="pill"
+                  data-pastilla-alerta
+                  title={c.alertaAgente.motivo ?? t("El agente pidió que alguien atienda este chat")}
+                  style={chip("#fff", "#C62828")}
+                >
+                  {c.alertaAgente.urgente ? "🚨" : "⚠️"} {t("Sin respuesta")} · {horaCorta(c.alertaAgente.en)}
+                </span>
+              )}
               {c.agenteActivo && (
                 <span className="pill" data-pastilla-agente style={chip("#fff", AGENTE_VERDE.fuerte)}>
                   🤖 {t("Agente IA")}
@@ -1921,7 +1942,7 @@ export function Inbox({
         );
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lista, tope, abierta, leadDe, variasRedes, etiquetas, cat.vendedores, accent, soft, onRefrescar, onVerFicha, t],
+    [lista, tope, abierta, leadDe, variasRedes, etiquetas, cat.vendedores, accent, soft, onRefrescar, onVerFicha, t, soloMonitoreo],
   );
 
   return (
@@ -1966,8 +1987,8 @@ export function Inbox({
         <div style={{ ...th, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
-            style={pestana(!verTodas && !verArchivadas && !soloSinAsignar && !soloPendientes, accent)}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setSoloMonitoreo(false); setDiaContestadas(null); }}
+            style={pestana(!verTodas && !verArchivadas && !soloSinAsignar && !soloPendientes && !soloMonitoreo, accent)}
           >
             {t("Activas")}
           </button>
@@ -1987,6 +2008,7 @@ export function Inbox({
             type="button"
             onClick={() => {
               setSoloPendientes(true);
+              setSoloMonitoreo(false);
               setDiaContestadas(null);
               setVerArchivadas(false);
               setSoloSinAsignar(false);
@@ -2018,7 +2040,7 @@ export function Inbox({
           {area !== "academico" && (
           <button
             type="button"
-            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
+            onClick={() => { setVerArchivadas(false); setSoloSinAsignar(true); setVerTodas(false); setSoloPendientes(false); setSoloMonitoreo(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && !verArchivadas && soloSinAsignar, accent)}
           >
             {t("Sin asignar")}
@@ -2044,16 +2066,57 @@ export function Inbox({
             )}
           </button>
           )}
+          {/*
+            MONITOREO AGENTE (26/11/2026).
+            ------------------------------------------------------------------
+            Los chats donde el agente IA avisó que el cliente necesita atención
+            —dejó de contestar en un momento que importa— y nadie del equipo
+            le escribió todavía. El número es cuántos son, en rojo mientras
+            haya alguno: es lo primero que hay que atender.
+          */}
           <button
             type="button"
-            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setDiaContestadas(null); }}
+            data-pestana-monitoreo
+            onClick={() => {
+              setSoloMonitoreo(true);
+              setSoloPendientes(false);
+              setDiaContestadas(null);
+              setVerArchivadas(false);
+              setSoloSinAsignar(false);
+              setVerTodas(false);
+            }}
+            style={pestana(soloMonitoreo, accent)}
+          >
+            🤖 {t("Monitoreo Agente")}
+            {conAlerta > 0 && (
+              <span
+                data-alertas={conAlerta}
+                style={{
+                  minWidth: 17,
+                  padding: "0 5px",
+                  borderRadius: 9,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  lineHeight: "16px",
+                  textAlign: "center",
+                  background: soloMonitoreo ? "rgba(255,255,255,0.25)" : "#C62828",
+                  color: "#fff",
+                }}
+              >
+                {conAlerta}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setVerArchivadas(true); setSoloSinAsignar(false); setVerTodas(false); setSoloPendientes(false); setSoloMonitoreo(false); setDiaContestadas(null); }}
             style={pestana(!verTodas && verArchivadas, accent)}
           >
             {t("Archivadas")}
           </button>
           <button
             type="button"
-            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); setDiaContestadas(null); }}
+            onClick={() => { setVerTodas(true); setSoloSinAsignar(false); setSoloPendientes(false); setSoloMonitoreo(false); setDiaContestadas(null); }}
             style={pestana(verTodas, accent)}
           >
             {t("Todas")}
@@ -2597,7 +2660,9 @@ export function Inbox({
                 días —la bandeja mezcla los canales— y nombrar uno solo ahí
                 volvería a mentir, esta vez al revés.
               */}
-              {soloPendientes
+              {soloMonitoreo
+                ? t("No hay alertas del agente sin atender.")
+                : soloPendientes
                 ? /*
                      Con «Pendientes» puesto, la lista vacía es una BUENA
                      noticia y tiene que leerse así. El texto de abajo —«todavía
