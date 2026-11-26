@@ -641,6 +641,14 @@ export interface Conversacion {
   permisoLlamadaRespuesta: "acepto" | "rechazo" | null;
   /** Etiquetas puestas a mano. No incluye la etapa ni el estado de la venta. */
   etiquetaIds: number[];
+  /**
+   * El agente IA lleva este hilo: contesta solo y hace el seguimiento
+   * (`conversaciones.agente_activo`). Se apaga solo cuando una persona escribe
+   * a mano. Opcional: los hilos armados en otro lado no lo traen.
+   */
+  agenteActivo?: boolean;
+  /** Desde cuándo lo lleva el agente. */
+  agenteDesde?: string | null;
 }
 
 /** Una reacción sobre un mensaje: quién la puso y cuál es. */

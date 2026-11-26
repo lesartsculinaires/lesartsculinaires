@@ -104,6 +104,11 @@ export const EN: Record<string, string> = {
   "Todavía no ha escrito nadie. Cuando llegue el primer mensaje, va a aparecer acá.":
     "Nobody has written yet. When the first message arrives, it will show up here.",
   "Fijada arriba": "Pinned to top",
+  "El agente IA lleva este chat": "The AI agent is handling this chat",
+  "Agente IA": "AI agent",
+  "El agente IA está contestando este chat": "The AI agent is answering this chat",
+  "desde": "since",
+  "Lleva el seguimiento de este lead. Si escribes tú, el agente se hace a un lado.": "It is following up on this lead. If you write, the agent steps aside.",
   "Mostrar más": "Show more",
   "Una nota interna no lleva audio": "An internal note can't carry audio",
   "Pasaron 24 horas desde el último mensaje del cliente: hasta que vuelva a escribir, WhatsApp sólo deja mandar una plantilla":

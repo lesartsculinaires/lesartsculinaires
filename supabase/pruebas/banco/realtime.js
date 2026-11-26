@@ -157,7 +157,7 @@ const VIGILADAS = [
   { tabla: "conversaciones",
     que: "json_build_object('id', c.id, 'ultimo_mensaje_en', c.ultimo_mensaje_en, 'sin_leer', c.sin_leer," +
          " 'archivada', c.archivada, 'estado', c.estado, 'vendedor_id', c.vendedor_id," +
-         " 'no_leida', c.no_leida, 'fijada', c.fijada)",
+         " 'no_leida', c.no_leida, 'fijada', c.fijada, 'agente_activo', c.agente_activo)",
     desde: "public.conversaciones c", donde: "" },
 ];
 
