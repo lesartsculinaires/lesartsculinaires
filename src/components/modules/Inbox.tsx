@@ -219,6 +219,19 @@ const contenido = (m: Mensaje): string => {
 const hora = (iso: string) => enSalvador(new Date(iso), { hour: "2-digit", minute: "2-digit" });
 
 const dia = (iso: string) => enSalvador(new Date(iso), { day: "2-digit", month: "short" });
+/** La hora si fue hoy; si no, también el día. */
+const horaCorta = (iso: string) =>
+  dia(iso) === dia(new Date().toISOString()) ? hora(iso) : `${dia(iso)} ${hora(iso)}`;
+
+/** El verde de los chats que lleva el agente IA (26/11/2026). */
+const AGENTE_VERDE = {
+  fondo: "#E8F6EE",
+  /** La fila abierta: el mismo verde, más fuerte, para que se note cuál es. */
+  abierta: "#C9EBD7",
+  raya: "#2E9E62",
+  fuerte: "#1F8A52",
+  texto: "#14532D",
+} as const;
 
 /** Horas desde el último mensaje entrante: define la ventana de WhatsApp. */
 function horasDesdeEntrante(msgs: Mensaje[]): number | null {
@@ -1702,8 +1715,16 @@ export function Inbox({
               gap: 2,
               padding: "0 8px 0 0",
               borderBottom: `1px solid ${T.border}`,
-              background: activa ? soft : "transparent",
+              /*
+               * En verde cuando el agente IA lleva el hilo (26/11/2026): la
+               * asesora ve de un vistazo qué chats está atendiendo el agente
+               * y no le pisa la conversación. La raya a la izquierda queda
+               * también con la fila abierta, que tiene su propio fondo.
+               */
+              background: c.agenteActivo ? (activa ? AGENTE_VERDE.abierta : AGENTE_VERDE.fondo) : activa ? soft : "transparent",
+              boxShadow: c.agenteActivo ? `inset 3px 0 0 ${AGENTE_VERDE.raya}` : undefined,
             }}
+            data-agente={c.agenteActivo ? "si" : undefined}
           >
           <button
             type="button"
@@ -1737,6 +1758,15 @@ export function Inbox({
                 {c.fijada && (
                   <span title={t("Fijada arriba")} style={{ fontSize: 10, flexShrink: 0 }}>
                     📌
+                  </span>
+                )}
+                {c.agenteActivo && (
+                  <span
+                    title={t("El agente IA lleva este chat")}
+                    aria-label={t("El agente IA lleva este chat")}
+                    style={{ fontSize: 12, flexShrink: 0 }}
+                  >
+                    🤖
                   </span>
                 )}
                 {/*
@@ -1838,6 +1868,11 @@ export function Inbox({
                   </span>
                 );
               })}
+              {c.agenteActivo && (
+                <span className="pill" data-pastilla-agente style={chip("#fff", AGENTE_VERDE.fuerte)}>
+                  🤖 {t("Agente IA")}
+                </span>
+              )}
               {c.vendedorId == null ? (
                 <span className="pill" style={chip("#8A5200", "#FFF6D6")}>{t("sin asignar")}</span>
               ) : (
@@ -3131,6 +3166,35 @@ export function Inbox({
               })}
               <div ref={finRef} />
             </div>
+
+            {/*
+              El agente IA está contestando (26/11/2026).
+
+              Justo arriba de donde se escribe, que es donde hace falta
+              saberlo: si la asesora contesta a mano, el agente se hace a un
+              lado solo. Se apaga en vivo cuando el agente suelta el hilo.
+            */}
+            {actual.agenteActivo && (
+              <p
+                role="status"
+                data-agente-contestando
+                style={{
+                  margin: 0,
+                  padding: "9px 14px",
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  background: AGENTE_VERDE.fondo,
+                  color: AGENTE_VERDE.texto,
+                  borderTop: `1px solid ${AGENTE_VERDE.raya}`,
+                  borderLeft: `4px solid ${AGENTE_VERDE.raya}`,
+                }}
+              >
+                <b>🤖 {t("El agente IA está contestando este chat")}</b>
+                {actual.agenteDesde ? ` (${t("desde")} ${horaCorta(actual.agenteDesde)})` : ""}
+                <br />
+                {t("Lleva el seguimiento de este lead. Si escribes tú, el agente se hace a un lado.")}
+              </p>
+            )}
 
             {aviso && (
               <p

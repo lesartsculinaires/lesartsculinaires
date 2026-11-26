@@ -70,6 +70,14 @@ export async function fetchInbox(
    * tiene que seguir mostrando los hilos en vez de quedarse en blanco.
    */
   const ORIGEN = ", origen";
+  /*
+   * Si el agente IA lleva el hilo (26/11/2026). Pedido: que la asesora vea en
+   * la lista y adentro del chat que el agente está contestando, para no
+   * pisarle la conversación. Las columnas existen en las dos bases desde
+   * `20261110120000_agente_en_conversaciones.sql`; igual va en su capa, la
+   * primera en soltarse, para que una base sin ellas no deje la bandeja vacía.
+   */
+  const AGENTE = ", agente_activo, agente_cambiado_en";
   const MARCAS = ", no_leida, fijada, silenciada";
   const PERMISO =
     ", llamada_permiso_hasta, llamada_permiso_pedido_en, llamada_permiso_respuesta" +
@@ -133,6 +141,7 @@ export async function fetchInbox(
   let extras = "";
   let error = null;
   for (const cand of [
+    AGENTE + ORIGEN + IDENTIDAD + MARCAS + PERMISO,
     ORIGEN + IDENTIDAD + MARCAS + PERMISO,
     IDENTIDAD + MARCAS + PERMISO,
     MARCAS + PERMISO,
@@ -349,6 +358,9 @@ export async function fetchInbox(
       // Nulo mientras no se haya corrido la migración del origen, y nulo en
       // la enorme mayoría: quien escribe por su cuenta no viene de una pauta.
       origen: (c.origen as Conversacion["origen"]) ?? null,
+      // Sin las columnas viene `undefined`: el agente no lleva nada.
+      agenteActivo: c.agente_activo === true,
+      agenteDesde: c.agente_activo === true && c.agente_cambiado_en ? String(c.agente_cambiado_en) : null,
     })),
     mensajes,
     faltaMigracion: false,
