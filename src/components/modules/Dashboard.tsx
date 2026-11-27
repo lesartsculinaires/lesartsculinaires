@@ -23,6 +23,7 @@ import { T, openTone } from "@/lib/theme";
 import { ROTULO_VENTA_CERRADA } from "@/lib/montosDelLead";
 import type { Oportunidad } from "@/lib/types";
 import { PanelProyeccion } from "@/components/modules/tablero/PanelProyeccion";
+import { PanelMathieu } from "@/components/modules/tablero/PanelMathieu";
 
 interface Props {
   oportunidades: Oportunidad[];
@@ -145,6 +146,8 @@ export function Dashboard({ oportunidades, accent, proyeccion }: Props) {
       {proyeccion && (
         <PanelProyeccion accent={accent} puedeCambiarMeta={proyeccion.puedeCambiarMeta} completo={proyeccion.completo} />
       )}
+      {/* Mathieu, el agente IA (27/11/2026): sólo para quien lo entrena y Dirección. */}
+      <PanelMathieu />
       <SelectorDePeriodo
         periodos={periodos}
         elegido={periodo}
