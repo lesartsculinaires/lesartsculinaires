@@ -14,7 +14,7 @@
  * Lo ven Raquel, Alexandra y los administradores (ver
  * `20261207120000_entrenamiento_agente.sql`). Nadie más.
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   activarEjemplo,
@@ -76,6 +76,7 @@ export function EntrenamientoMathieu({
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
   const [ejemplos, setEjemplos] = useState<EjemploEnviado[] | null>(null);
+  const hiloRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void escenariosDelAgente().then(setEscenarios);
@@ -94,6 +95,13 @@ export function EntrenamientoMathieu({
     setMensajes(null);
     void mensajesParaMarcar(chat).then((r) => {
       setMensajes(r.mensajes);
+      // Al abrir un chat se ve lo último, como en el Inbox; si se llegó desde
+      // «Enseñar a Mathieu», el mensaje elegido.
+      requestAnimationFrame(() => {
+        const marcado = inicial ? hiloRef.current?.querySelector(`[data-msg-agente="${inicial.mensajeId}"]`) : null;
+        if (marcado) marcado.scrollIntoView({ block: "center" });
+        else if (hiloRef.current) hiloRef.current.scrollTop = hiloRef.current.scrollHeight;
+      });
       if (r.error) setAviso({ ok: false, texto: r.error });
     });
   }, [chat]);
@@ -202,9 +210,15 @@ export function EntrenamientoMathieu({
       )}
 
       {pestana === "nuevo" && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, flex: 1, minHeight: 0, alignItems: "stretch" }}>
+        /*
+         * Cada columna se desplaza por su cuenta (28/11/2026): sin «wrap», las
+         * tres toman el alto de la fila y la página no se alarga. Así se
+         * llega a un chat viejo de la lista, o a un mensaje de arriba, sin
+         * bajar toda la pantalla.
+         */
+        <div data-columnas-ent style={{ display: "flex", gap: 12, flex: 1, minHeight: 0, alignItems: "stretch", overflow: "hidden" }}>
           {/* 1. El lead */}
-          <section aria-label={t("Elegir el lead")} style={{ ...caja, flex: "1 1 230px", maxWidth: 300 }}>
+          <section aria-label={t("Elegir el lead")} style={{ ...caja, flex: "1 1 230px", minWidth: 200, maxWidth: 300 }}>
             <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, borderBottom: `1px solid ${T.border}` }}>
               <h3 style={titulo}>1. {t("¿Qué lead contestó Mathieu?")}</h3>
               <input
@@ -276,7 +290,7 @@ export function EntrenamientoMathieu({
           </section>
 
           {/* 2. Los mensajes */}
-          <section aria-label={t("Marcar el mensaje de Mathieu")} style={{ ...caja, flex: "2 1 380px" }}>
+          <section aria-label={t("Marcar el mensaje de Mathieu")} style={{ ...caja, flex: "2 1 380px", minWidth: 0 }}>
             <div style={{ padding: 12, borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <h3 style={titulo}>
                 2. {t("Marca el mensaje de Mathieu")}
@@ -288,7 +302,7 @@ export function EntrenamientoMathieu({
                 </span>
               )}
             </div>
-            <div style={{ overflowY: "auto", flex: 1, padding: 12, background: T.paper, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div ref={hiloRef} data-hilo-ent style={{ overflowY: "auto", flex: 1, minHeight: 0, padding: 12, background: T.paper, display: "flex", flexDirection: "column", gap: 10 }}>
               {chat == null && <p style={{ margin: "auto", fontSize: 12.5, color: T.muted }}>{t("Elige un lead a la izquierda.")}</p>}
               {chat != null && mensajes == null && <p style={{ margin: "auto", fontSize: 12.5, color: T.muted }}>{t("Cargando…")}</p>}
               {(mensajes ?? []).map((m) => {
@@ -350,7 +364,7 @@ export function EntrenamientoMathieu({
           </section>
 
           {/* 3. Cómo queremos que conteste */}
-          <section aria-label={t("Cómo queremos que conteste")} style={{ ...caja, flex: "1 1 280px", maxWidth: 380 }}>
+          <section aria-label={t("Cómo queremos que conteste")} style={{ ...caja, flex: "1 1 280px", minWidth: 250, maxWidth: 380 }}>
             <div style={{ padding: 12, borderBottom: `1px solid ${T.border}` }}>
               <h3 style={titulo}>3. {t("Cómo queremos que conteste")}</h3>
             </div>
