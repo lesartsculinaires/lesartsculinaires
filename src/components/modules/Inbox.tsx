@@ -59,6 +59,8 @@ import { EtiquetasConversacion } from "@/components/modules/EtiquetasConversacio
 import { MandarPlantilla } from "@/components/modules/MandarPlantilla";
 import { NuevoChat } from "@/components/modules/NuevoChat";
 import { DeDondeVino } from "@/components/modules/DeDondeVino";
+import { EntrenamientoMathieu, MORADO } from "@/components/modules/EntrenamientoMathieu";
+import { resumenEntrenamiento, type ResumenEntrenamiento } from "@/app/entrenamiento-actions";
 import { CitaMensaje } from "@/components/modules/CitaMensaje";
 import { MediaMensaje } from "@/components/modules/MediaMensaje";
 import { VisorArchivo } from "@/components/ui/VisorArchivo";
@@ -306,6 +308,20 @@ export function Inbox({
   const [soloPendientes, setSoloPendientes] = useState(false);
   /** «Monitoreo Agente»: los chats con una alerta del agente sin atender. */
   const [soloMonitoreo, setSoloMonitoreo] = useState(false);
+  /*
+   * «Entrenamiento Mathieu» (27/11/2026): el chat fijo para enseñarle al
+   * agente. `resumenEnt` dice si quien mira puede usarlo (Raquel, Alexandra y
+   * los administradores) y lo que lleva la fila; `entrenando` lo abre, a
+   * pantalla completa, a veces con un chat y un mensaje ya elegidos.
+   */
+  const [resumenEnt, setResumenEnt] = useState<ResumenEntrenamiento | null>(null);
+  const [entrenando, setEntrenando] = useState<null | { conversacionId: number; mensajeId: number } | "fijo">(null);
+  const recargarResumenEnt = useCallback(() => {
+    void resumenEntrenamiento().then(setResumenEnt).catch(() => setResumenEnt(null));
+  }, []);
+  useEffect(() => {
+    if (!soloHilo) recargarResumenEnt();
+  }, [soloHilo, recargarResumenEnt]);
   /** Null = sin filtrar por etiqueta. */
   const [porEtiqueta, setPorEtiqueta] = useState<number | null>(null);
   /** Null = todas las redes juntas, que es como se trabaja hoy. */
@@ -1945,6 +1961,21 @@ export function Inbox({
     [lista, tope, abierta, leadDe, variasRedes, etiquetas, cat.vendedores, accent, soft, onRefrescar, onVerFicha, t, soloMonitoreo],
   );
 
+  if (entrenando && resumenEnt?.puede) {
+    return (
+      <EntrenamientoMathieu
+        key={entrenando === "fijo" ? "fijo" : `${entrenando.conversacionId}-${entrenando.mensajeId}`}
+        resumen={resumenEnt}
+        inicial={entrenando === "fijo" ? null : entrenando}
+        onVolver={() => {
+          setEntrenando(null);
+          recargarResumenEnt();
+        }}
+        onCambio={recargarResumenEnt}
+      />
+    );
+  }
+
   return (
     /*
      * En el teléfono se ve una columna a la vez, como en WhatsApp: la lista, o
@@ -2685,6 +2716,62 @@ export function Inbox({
             </p>
           )}
 
+          {/*
+            ENTRENAMIENTO MATHIEU, fijo arriba de todo (27/11/2026).
+            ------------------------------------------------------------------
+            No es un chat con un cliente: abre la pantalla donde Raquel y
+            Alexandra le enseñan a Mathieu y Dirección aprueba. En morado para
+            que no se confunda con un lead ni con el verde del agente.
+          */}
+          {resumenEnt?.puede && !buscando && (
+            <button
+              type="button"
+              data-fila-entrenamiento
+              onClick={() => setEntrenando("fijo")}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 14px",
+                border: "none",
+                borderBottom: `1px solid ${MORADO.borde}`,
+                background: MORADO.fondo,
+                boxShadow: `inset 4px 0 0 ${MORADO.fuerte}`,
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ display: "flex", justifyContent: "space-between", gap: 8, width: "100%" }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>📌 🤖 {t("Entrenamiento Mathieu")}</span>
+                <span style={{ fontSize: 10.5, color: MORADO.texto }}>{t("fijo")}</span>
+              </span>
+              <span style={{ fontSize: 11.5, color: MORADO.texto, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {resumenEnt.ultimo
+                  ? `${resumenEnt.ultimo.quien ?? t("Equipo")}: ${resumenEnt.ultimo.situacion}`
+                  : t("Elige un lead y enséñale cómo contestar")}
+              </span>
+              <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <span className="pill" style={chip("#fff", MORADO.fuerte)}>{t("Chat interno")}</span>
+                {resumenEnt.admin && resumenEnt.porAprobar > 0 && (
+                  <span className="pill" data-por-aprobar={resumenEnt.porAprobar} style={chip("#7A5200", "#FFF4D6")}>
+                    {resumenEnt.porAprobar} {t("por aprobar")}
+                  </span>
+                )}
+                {!resumenEnt.admin && resumenEnt.miosPendientes > 0 && (
+                  <span className="pill" style={chip("#7A5200", "#FFF4D6")}>
+                    {resumenEnt.miosPendientes} {t("esperando aprobación")}
+                  </span>
+                )}
+                {resumenEnt.miosDevueltos > 0 && (
+                  <span className="pill" style={chip("#fff", "#9E2F29")}>
+                    {resumenEnt.miosDevueltos} {t("devueltos")}
+                  </span>
+                )}
+              </span>
+            </button>
+          )}
+
           {filasDeLaLista}
           {lista.length > tope && (
             <button
@@ -3211,6 +3298,35 @@ export function Inbox({
                         </span>
                       )}
                       </div>
+
+                      {/*
+                        «Enseñar a Mathieu» (27/11/2026): debajo de lo que
+                        escribió el agente, para quien puede entrenarlo. Abre
+                        el entrenamiento con este chat y este mensaje ya
+                        marcados: no hay que copiar ni hacer captura.
+                      */}
+                      {resumenEnt?.puede && mio && !m.privado && m.origen && "agente_ia" in (m.origen as object) && (
+                        <button
+                          type="button"
+                          data-ensenar-mathieu={m.id}
+                          onClick={() => setEntrenando({ conversacionId: actual.id, mensajeId: m.id })}
+                          style={{
+                            alignSelf: "flex-end",
+                            marginTop: 3,
+                            height: 24,
+                            padding: "0 9px",
+                            borderRadius: 12,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            border: `1px solid ${MORADO.borde}`,
+                            background: MORADO.fondo,
+                            color: MORADO.texto,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🤖 {t("Enseñar a Mathieu")}
+                        </button>
+                      )}
 
                       {/* Las reacciones van FUERA de la burbuja.
                           Adentro heredarían su fondo —el azul de los nuestros—
