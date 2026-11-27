@@ -4,9 +4,10 @@
  * Entrenamiento de Mathieu desde el CRM (27/11/2026, LAC).
  *
  * Raquel y Alexandra eligen un lead que contestó Mathieu, marcan el mensaje que
- * no les gustó y escriben cómo quieren que conteste. Dirección (los
- * administradores) lo aprueba y pasa a `agente_casos`, que es lo que Mathieu
- * consulta antes de responder.
+ * no les gustó y escriben cómo quieren que conteste. Se aplica al momento
+ * —ellas dos están a cargo, sin aprobación—: pasa a `agente_casos`, que es lo
+ * que Mathieu consulta antes de responder. Un cambio que salió mal se
+ * desactiva desde el mismo chat.
  *
  * Todo va por funciones de la base (`20261207120000_entrenamiento_agente.sql`)
  * que revisan el permiso adentro: acá sólo se llaman y se traducen los errores.
@@ -14,14 +15,16 @@
  * y la bandeja sigue igual, sin la fila fija.
  */
 import { getServerClient } from "@/lib/supabase/server";
+import { leerMetricasMathieu, type MetricasMathieu } from "@/lib/agente/metricas";
 
 export interface ResumenEntrenamiento {
   puede: boolean;
   admin: boolean;
-  porAprobar: number;
-  miosPendientes: number;
-  miosDevueltos: number;
-  ultimo: { estado: string; situacion: string; quien: string | null; en: string } | null;
+  /** Cambios que Mathieu está usando. */
+  activos: number;
+  /** Cambios hechos hoy. */
+  hoy: number;
+  ultimo: { situacion: string; quien: string | null; en: string } | null;
 }
 
 export interface ChatConMathieu {
@@ -56,23 +59,15 @@ export interface EjemploEnviado {
   respuestaDeseada: string;
   situacion: string;
   escenario: number | null;
-  estado: "pendiente" | "aprobado" | "devuelto" | "descartado";
+  estado: "activo" | "desactivado";
   creadoPor: string | null;
   creadoEn: string;
-  revisadoPor: string | null;
-  revisadoEn: string | null;
-  nota: string | null;
+  cambiadoPor: string | null;
+  cambiadoEn: string | null;
   mio: boolean;
 }
 
-const NO_PUEDE: ResumenEntrenamiento = {
-  puede: false,
-  admin: false,
-  porAprobar: 0,
-  miosPendientes: 0,
-  miosDevueltos: 0,
-  ultimo: null,
-};
+const NO_PUEDE: ResumenEntrenamiento = { puede: false, admin: false, activos: 0, hoy: 0, ultimo: null };
 
 /** El mensaje de la base, sin el «CONTEXT:» ni el código: lo escribimos para leerse. */
 const claro = (e: { message?: string } | null | undefined, porDefecto: string) =>
@@ -89,12 +84,10 @@ export async function resumenEntrenamiento(): Promise<ResumenEntrenamiento> {
   return {
     puede: true,
     admin: d.admin === true,
-    porAprobar: Number(d.por_aprobar ?? 0),
-    miosPendientes: Number(d.mios_pendientes ?? 0),
-    miosDevueltos: Number(d.mios_devueltos ?? 0),
+    activos: Number(d.activos ?? 0),
+    hoy: Number(d.hoy ?? 0),
     ultimo: u
       ? {
-          estado: String(u.estado ?? ""),
           situacion: String(u.situacion ?? ""),
           quien: u.quien ? String(u.quien) : null,
           en: String(u.en ?? ""),
@@ -191,38 +184,40 @@ export async function ejemplosEnviados(): Promise<{ ejemplos: EjemploEnviado[]; 
       respuestaDeseada: String(e.respuesta_deseada ?? ""),
       situacion: String(e.situacion ?? ""),
       escenario: e.escenario == null ? null : Number(e.escenario),
-      estado: (["pendiente", "aprobado", "devuelto", "descartado"].includes(String(e.estado))
-        ? String(e.estado)
-        : "pendiente") as EjemploEnviado["estado"],
+      estado: e.estado === "desactivado" ? "desactivado" : "activo",
       creadoPor: e.creado_por_nombre ? String(e.creado_por_nombre) : null,
       creadoEn: String(e.creado_en),
-      revisadoPor: e.revisado_por_nombre ? String(e.revisado_por_nombre) : null,
-      revisadoEn: e.revisado_en ? String(e.revisado_en) : null,
-      nota: e.nota_revision ? String(e.nota_revision) : null,
+      cambiadoPor: e.cambiado_por_nombre ? String(e.cambiado_por_nombre) : null,
+      cambiadoEn: e.cambiado_en ? String(e.cambiado_en) : null,
       mio: e.mio === true,
     })),
     error: null,
   };
 }
 
-export async function revisarEjemplo(datos: {
-  id: number;
-  accion: "aprobar" | "devolver" | "descartar";
-  respuesta?: string;
-  situacion?: string;
-  escenario?: number | null;
-  nota?: string;
-}): Promise<{ ok: boolean; error: string | null }> {
+/** Desactivar (o volver a activar) un cambio: Mathieu deja de usarlo, o lo retoma. */
+export async function activarEjemplo(id: number, activo: boolean): Promise<{ ok: boolean; error: string | null }> {
   const supabase = await getServerClient();
   if (!supabase) return { ok: false, error: "Sin sesión." };
-  const { error } = await supabase.rpc("agente_ejemplo_revisar", {
-    p_id: datos.id,
-    p_accion: datos.accion,
-    p_respuesta: datos.respuesta ?? null,
-    p_situacion: datos.situacion ?? null,
-    p_escenario: datos.escenario ?? null,
-    p_nota: datos.nota ?? null,
-  });
-  if (error) return { ok: false, error: claro(error, "No se pudo guardar la revisión.") };
+  const { error } = await supabase.rpc("agente_ejemplo_activar", { p_id: id, p_activo: activo });
+  if (error) return { ok: false, error: claro(error, "No se pudo cambiar.") };
   return { ok: true, error: null };
+}
+
+/**
+ * La métrica de Mathieu del mes (Dashboard). `null` = quien mira no tiene
+ * permiso, o la base no tiene la migración (HC): el panel no se muestra.
+ *
+ * En el CRM la ven sólo quienes entrenan a Mathieu (Raquel, Alexandra) y los
+ * administradores. La base además la abre a quien entra al sitio de
+ * Dirección, pero eso es para el sitio: acá se pregunta primero lo nuestro.
+ */
+export async function metricasDeMathieu(mes: string): Promise<MetricasMathieu | null> {
+  const supabase = await getServerClient();
+  if (!supabase) return null;
+  const { data: puede, error: e0 } = await supabase.rpc("puede_entrenar_agente");
+  if (e0 || puede !== true) return null;
+  const { data, error } = await supabase.rpc("agente_metricas", { p_mes: mes });
+  if (error || !data) return null;
+  return leerMetricasMathieu(data);
 }

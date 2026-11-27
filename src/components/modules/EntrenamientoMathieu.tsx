@@ -6,22 +6,23 @@
  *
  * Tres pasos, de izquierda a derecha: elegir un lead que contestó Mathieu,
  * marcar el mensaje suyo que no gustó, y escribir cómo queremos que conteste.
- * Se envía a Dirección; al aprobarlo pasa a los casos que Mathieu consulta.
- * Sin capturas ni copiar: el mensaje se toma tal cual de la base.
+ * Se aplica al momento —Raquel y Alexandra están a cargo, sin aprobación—: pasa
+ * a los casos que Mathieu consulta. Un cambio que salió mal se desactiva en
+ * «Cambios hechos». Sin capturas ni copiar: el mensaje se toma tal cual de la
+ * base.
  *
  * Lo ven Raquel, Alexandra y los administradores (ver
- * `20261207120000_entrenamiento_agente.sql`). Los administradores además
- * tienen la pestaña «Por aprobar».
+ * `20261207120000_entrenamiento_agente.sql`). Nadie más.
  */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
+  activarEjemplo,
   chatsConMathieu,
   ejemplosEnviados,
   enviarEjemplo,
   escenariosDelAgente,
   mensajesParaMarcar,
-  revisarEjemplo,
   type ChatConMathieu,
   type EjemploEnviado,
   type Escenario,
@@ -39,14 +40,12 @@ const hora = (iso: string) => enSalvador(new Date(iso), { hour: "2-digit", minut
 const diaYHora = (iso: string) =>
   enSalvador(new Date(iso), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
-type Pestana = "nuevo" | "enviados" | "aprobar";
+type Pestana = "nuevo" | "cambios";
 type Filtro = "hoy" | "semana" | "alerta";
 
 const ESTADOS: Record<EjemploEnviado["estado"], { texto: string; fondo: string; color: string }> = {
-  pendiente: { texto: "Pendiente de aprobación", fondo: "#FFF4D6", color: "#7A5200" },
-  aprobado: { texto: "Aprobado · Mathieu ya lo usa", fondo: "#E8F6EE", color: "#14532D" },
-  devuelto: { texto: "Devuelto con comentario", fondo: "#FDECEA", color: "#9E2F29" },
-  descartado: { texto: "Descartado", fondo: "#EEF0F4", color: "#5B6478" },
+  activo: { texto: "Activo · Mathieu ya lo usa", fondo: "#E8F6EE", color: "#14532D" },
+  desactivado: { texto: "Desactivado", fondo: "#EEF0F4", color: "#5B6478" },
 };
 
 export function EntrenamientoMathieu({
@@ -59,7 +58,7 @@ export function EntrenamientoMathieu({
   /** Al llegar desde «Enseñar a Mathieu» en un chat: ese chat y ese mensaje ya elegidos. */
   inicial?: { conversacionId: number; mensajeId: number } | null;
   onVolver: () => void;
-  /** Algo cambió (se envió o se revisó): el número de la fila fija se recalcula. */
+  /** Algo cambió (se guardó o se desactivó): la fila fija se recalcula. */
   onCambio: () => void;
 }) {
   const t = useT();
@@ -131,7 +130,7 @@ export function EntrenamientoMathieu({
       setAviso({ ok: false, texto: r.error ?? t("No se pudo enviar.") });
       return;
     }
-    setAviso({ ok: true, texto: t("Enviado a Dirección para aprobar. Lo ves en «Enviados».") });
+    setAviso({ ok: true, texto: t("Guardado: Mathieu lo usa desde su próximo mensaje. Lo ves en «Cambios hechos».") });
     setMarcados([]);
     setRespuesta("");
     setSituacion("");
@@ -171,7 +170,7 @@ export function EntrenamientoMathieu({
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: T.ink }}>🤖 {t("Entrenamiento Mathieu")}</p>
             <p style={{ margin: 0, fontSize: 11.5, color: T.muted }}>
-              {t("Elige el lead, marca el mensaje de Mathieu y escribe cómo queremos que conteste. Dirección lo aprueba.")}
+              {t("Elige el lead, marca el mensaje de Mathieu y escribe cómo queremos que conteste. Se aplica al momento.")}
             </p>
           </div>
         </div>
@@ -179,15 +178,9 @@ export function EntrenamientoMathieu({
           <button type="button" role="tab" aria-selected={pestana === "nuevo"} data-pestana-ent="nuevo" onClick={() => setPestana("nuevo")} style={pastilla(pestana === "nuevo")}>
             {t("Nuevo ejemplo")}
           </button>
-          <button type="button" role="tab" aria-selected={pestana === "enviados"} data-pestana-ent="enviados" onClick={() => setPestana("enviados")} style={pastilla(pestana === "enviados")}>
-            {t("Enviados")}
-            {resumen.miosDevueltos > 0 && ` · ${resumen.miosDevueltos} ${t("devueltos")}`}
+          <button type="button" role="tab" aria-selected={pestana === "cambios"} data-pestana-ent="cambios" onClick={() => setPestana("cambios")} style={pastilla(pestana === "cambios")}>
+            {t("Cambios hechos")} · {resumen.activos}
           </button>
-          {resumen.admin && (
-            <button type="button" role="tab" aria-selected={pestana === "aprobar"} data-pestana-ent="aprobar" onClick={() => setPestana("aprobar")} style={pastilla(pestana === "aprobar")}>
-              {t("Por aprobar")} · {resumen.porAprobar}
-            </button>
-          )}
         </div>
       </div>
 
@@ -414,7 +407,7 @@ export function EntrenamientoMathieu({
                 </label>
               )}
               <span style={{ fontSize: 11.5, lineHeight: 1.45, padding: "7px 10px", borderRadius: 8, background: "#FFF8E6", color: "#5C4300" }}>
-                {t("Va a Dirección para aprobar. Mathieu lo usa con clientes cuando se apruebe.")}
+                {t("Se aplica al momento: Mathieu lo usa desde su próximo mensaje. Si sale mal, se desactiva en «Cambios hechos».")}
               </span>
             </div>
             <div style={{ padding: 12, borderTop: `1px solid ${T.border}`, display: "flex", justifyContent: "flex-end" }}>
@@ -436,41 +429,32 @@ export function EntrenamientoMathieu({
                   opacity: enviando || chat == null || marcados.length === 0 || !respuesta.trim() || !situacion.trim() ? 0.5 : 1,
                 }}
               >
-                {enviando ? t("Enviando…") : t("Enviar a aprobación")}
+                {enviando ? t("Guardando…") : t("Guardar cambio")}
               </button>
             </div>
           </section>
         </div>
       )}
 
-      {pestana !== "nuevo" && (
+      {pestana === "cambios" && (
         <div style={{ overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
           {ejemplos == null && <p style={{ fontSize: 12.5, color: T.muted }}>{t("Cargando…")}</p>}
-          {ejemplos != null &&
-            (pestana === "aprobar" ? ejemplos.filter((e) => e.estado === "pendiente") : ejemplos).length === 0 && (
-              <p style={{ fontSize: 12.5, color: T.muted }}>
-                {pestana === "aprobar" ? t("No hay ejemplos por aprobar.") : t("Todavía no hay ejemplos enviados.")}
-              </p>
-            )}
-          {(ejemplos ?? [])
-            .filter((e) => (pestana === "aprobar" ? e.estado === "pendiente" : true))
-            .map((e) =>
-              pestana === "aprobar" ? (
-                <TarjetaPorAprobar
-                  key={e.id}
-                  ejemplo={e}
-                  escenarios={escenarios}
-                  onListo={async (texto) => {
-                    setAviso({ ok: true, texto });
-                    await cargarEjemplos();
-                    onCambio();
-                  }}
-                  onError={(texto) => setAviso({ ok: false, texto })}
-                />
-              ) : (
-                <TarjetaEnviada key={e.id} ejemplo={e} escenarios={escenarios} />
-              ),
-            )}
+          {ejemplos != null && ejemplos.length === 0 && (
+            <p style={{ fontSize: 12.5, color: T.muted }}>{t("Todavía no hay cambios hechos.")}</p>
+          )}
+          {(ejemplos ?? []).map((e) => (
+            <TarjetaCambio
+              key={e.id}
+              ejemplo={e}
+              escenarios={escenarios}
+              onListo={async (texto) => {
+                setAviso({ ok: true, texto });
+                await cargarEjemplos();
+                onCambio();
+              }}
+              onError={(texto) => setAviso({ ok: false, texto })}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -495,32 +479,51 @@ function DosColumnas({ agente, deseada }: { agente: string; deseada: ReactNode }
   );
 }
 
-function Cabecera({ e }: { e: EjemploEnviado }) {
+function TarjetaCambio({
+  ejemplo: e,
+  escenarios,
+  onListo,
+  onError,
+}: {
+  ejemplo: EjemploEnviado;
+  escenarios: Escenario[];
+  onListo: (texto: string) => Promise<void>;
+  onError: (texto: string) => void;
+}) {
   const t = useT();
+  const [ocupado, setOcupado] = useState(false);
   const est = ESTADOS[e.estado];
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-      <span style={{ fontSize: 12.5, color: T.ink }}>
-        <b>{e.situacion}</b>
-        <span style={{ color: T.muted }}>
-          {" · "}
-          {e.creadoPor ?? t("Equipo")} · {diaYHora(e.creadoEn)}
-          {e.cliente ? ` · ${t("chat con")} ${e.cliente}` : ""}
-        </span>
-      </span>
-      <span data-estado-ejemplo={e.estado} style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 9, background: est.fondo, color: est.color }}>
-        {t(est.texto)}
-      </span>
-    </div>
-  );
-}
-
-function TarjetaEnviada({ ejemplo: e, escenarios }: { ejemplo: EjemploEnviado; escenarios: Escenario[] }) {
-  const t = useT();
   const esc = escenarios.find((x) => x.escenario === e.escenario)?.nombre;
+  const activo = e.estado === "activo";
+
+  const cambiar = async () => {
+    if (activo && !window.confirm(t("¿Desactivar este cambio? Mathieu deja de usarlo."))) return;
+    setOcupado(true);
+    const r = await activarEjemplo(e.id, !activo);
+    setOcupado(false);
+    if (!r.ok) {
+      onError(r.error ?? t("No se pudo cambiar."));
+      return;
+    }
+    await onListo(activo ? t("Desactivado: Mathieu ya no lo usa.") : t("Activado otra vez: Mathieu lo vuelve a usar."));
+  };
+
   return (
-    <article data-ejemplo={e.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <Cabecera e={e} />
+    <article data-ejemplo={e.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10, opacity: activo ? 1 : 0.75 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 12.5, color: T.ink }}>
+          <b>{e.situacion}</b>
+          <span style={{ color: T.muted }}>
+            {" · "}
+            {e.creadoPor ?? t("Equipo")} · {diaYHora(e.creadoEn)}
+            {e.cliente ? ` · ${t("chat con")} ${e.cliente}` : ""}
+            {esc ? ` · ${esc}` : ""}
+          </span>
+        </span>
+        <span data-estado-ejemplo={e.estado} style={{ fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 9, background: est.fondo, color: est.color }}>
+          {t(est.texto)}
+        </span>
+      </div>
       {e.textoCliente && (
         <span style={{ fontSize: 12, color: T.muted }}>
           {t("El cliente escribió")}: «{e.textoCliente}»
@@ -534,138 +537,29 @@ function TarjetaEnviada({ ejemplo: e, escenarios }: { ejemplo: EjemploEnviado; e
           </span>
         }
       />
-      {(e.nota || esc) && (
-        <span style={{ fontSize: 12, color: T.ink }}>
-          {esc && <>{t("Tipo")}: {esc}. </>}
-          {e.nota && (
-            <>
-              <b>{t("Comentario de Dirección")}:</b> {e.nota}
-            </>
-          )}
-        </span>
-      )}
-      {e.revisadoPor && e.revisadoEn && (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, color: T.faint }}>
-          {t("Revisado por")} {e.revisadoPor} · {diaYHora(e.revisadoEn)}
+          {e.cambiadoPor && e.cambiadoEn ? `${activo ? t("Activado por") : t("Desactivado por")} ${e.cambiadoPor} · ${diaYHora(e.cambiadoEn)}` : ""}
         </span>
-      )}
-    </article>
-  );
-}
-
-function TarjetaPorAprobar({
-  ejemplo: e,
-  escenarios,
-  onListo,
-  onError,
-}: {
-  ejemplo: EjemploEnviado;
-  escenarios: Escenario[];
-  onListo: (texto: string) => Promise<void>;
-  onError: (texto: string) => void;
-}) {
-  const t = useT();
-  const [respuesta, setRespuesta] = useState(e.respuestaDeseada);
-  const [situacion, setSituacion] = useState(e.situacion);
-  const [escenario, setEscenario] = useState<number | null>(e.escenario);
-  const [nota, setNota] = useState("");
-  const [ocupado, setOcupado] = useState(false);
-
-  const hacer = async (accion: "aprobar" | "devolver" | "descartar") => {
-    if (accion === "devolver" && !nota.trim()) {
-      onError(t("Escribe en el comentario qué hay que cambiar para devolverlo."));
-      return;
-    }
-    if (accion === "descartar" && !window.confirm(t("¿Descartar este ejemplo? Mathieu no lo va a usar."))) return;
-    setOcupado(true);
-    const r = await revisarEjemplo({ id: e.id, accion, respuesta, situacion, escenario, nota });
-    setOcupado(false);
-    if (!r.ok) {
-      onError(r.error ?? t("No se pudo guardar la revisión."));
-      return;
-    }
-    await onListo(
-      accion === "aprobar"
-        ? t("Aprobado: Mathieu lo usa desde su próximo mensaje.")
-        : accion === "devolver"
-          ? t("Devuelto con tu comentario.")
-          : t("Descartado."),
-    );
-  };
-
-  const boton = (fondo: string, color: string, borde: string): CSSProperties => ({
-    height: 36,
-    padding: "0 14px",
-    borderRadius: 8,
-    fontSize: 12.5,
-    fontWeight: 600,
-    background: fondo,
-    color,
-    border: borde,
-    cursor: "pointer",
-    opacity: ocupado ? 0.5 : 1,
-  });
-
-  return (
-    <article data-ejemplo={e.id} style={{ background: T.surface, border: "1px solid #F0D592", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-      <Cabecera e={e} />
-      {e.textoCliente && (
-        <span style={{ fontSize: 12, color: T.muted }}>
-          {t("El cliente escribió")}: «{e.textoCliente}»
-        </span>
-      )}
-      <DosColumnas
-        agente={e.textoAgente}
-        deseada={
-          <textarea
-            data-editar-respuesta
-            rows={4}
-            value={respuesta}
-            onChange={(x) => setRespuesta(x.target.value)}
-            style={{ fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.45, padding: "8px 10px", border: `1.5px solid ${MORADO.borde}`, borderRadius: 8, resize: "vertical", color: T.ink }}
-          />
-        }
-      />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <input
-          aria-label={t("Situación")}
-          value={situacion}
-          onChange={(x) => setSituacion(x.target.value)}
-          style={{ fontFamily: "inherit", flex: "1 1 200px", height: 34, padding: "0 10px", fontSize: 12.5, border: `1px solid ${T.border}`, borderRadius: 8 }}
-        />
-        {escenarios.length > 0 && (
-          <select
-            aria-label={t("Tipo de situación")}
-            value={escenario ?? ""}
-            onChange={(x) => setEscenario(x.target.value ? Number(x.target.value) : null)}
-            style={{ fontFamily: "inherit", flex: "1 1 200px", height: 34, padding: "0 8px", fontSize: 12.5, border: `1px solid ${T.border}`, borderRadius: 8 }}
-          >
-            <option value="">{t("Otra situación / escenario libre")}</option>
-            {escenarios.map((x) => (
-              <option key={x.escenario} value={x.escenario}>
-                {x.nombre}
-              </option>
-            ))}
-          </select>
-        )}
-        <input
-          data-nota
-          aria-label={t("Comentario para quien lo envió")}
-          placeholder={t("Comentario para quien lo envió (obligatorio para devolver)")}
-          value={nota}
-          onChange={(x) => setNota(x.target.value)}
-          style={{ fontFamily: "inherit", flex: "2 1 280px", height: 34, padding: "0 10px", fontSize: 12.5, border: `1px solid ${T.border}`, borderRadius: 8 }}
-        />
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <button type="button" data-aprobar disabled={ocupado} onClick={() => void hacer("aprobar")} style={boton("#1F8A52", "#fff", "none")}>
-          {t("Aprobar")}
-        </button>
-        <button type="button" data-devolver disabled={ocupado} onClick={() => void hacer("devolver")} style={boton(T.surface, "#7A5200", "1px solid #F0D592")}>
-          {t("Devolver con comentario")}
-        </button>
-        <button type="button" data-descartar disabled={ocupado} onClick={() => void hacer("descartar")} style={boton(T.surface, "#9E2F29", "1px solid #F0C2BE")}>
-          {t("Descartar")}
+        <button
+          type="button"
+          data-activar={activo ? "no" : "si"}
+          disabled={ocupado}
+          onClick={() => void cambiar()}
+          style={{
+            height: 32,
+            padding: "0 13px",
+            borderRadius: 8,
+            fontSize: 12.5,
+            fontWeight: 600,
+            background: T.surface,
+            color: activo ? "#9E2F29" : "#14532D",
+            border: `1px solid ${activo ? "#F0C2BE" : "#BFE3CD"}`,
+            cursor: "pointer",
+            opacity: ocupado ? 0.5 : 1,
+          }}
+        >
+          {activo ? t("Desactivar") : t("Activar otra vez")}
         </button>
       </div>
     </article>

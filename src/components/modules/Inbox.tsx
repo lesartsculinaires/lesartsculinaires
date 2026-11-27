@@ -311,7 +311,7 @@ export function Inbox({
   /*
    * «Entrenamiento Mathieu» (27/11/2026): el chat fijo para enseñarle al
    * agente. `resumenEnt` dice si quien mira puede usarlo (Raquel, Alexandra y
-   * los administradores) y lo que lleva la fila; `entrenando` lo abre, a
+   * los administradores; nadie más lo ve) y lo que lleva la fila; `entrenando` lo abre, a
    * pantalla completa, a veces con un chat y un mensaje ya elegidos.
    */
   const [resumenEnt, setResumenEnt] = useState<ResumenEntrenamiento | null>(null);
@@ -2720,8 +2720,9 @@ export function Inbox({
             ENTRENAMIENTO MATHIEU, fijo arriba de todo (27/11/2026).
             ------------------------------------------------------------------
             No es un chat con un cliente: abre la pantalla donde Raquel y
-            Alexandra le enseñan a Mathieu y Dirección aprueba. En morado para
-            que no se confunda con un lead ni con el verde del agente.
+            Alexandra le enseñan a Mathieu (se aplica al momento). Sólo lo
+            ven ellas y los administradores. En morado para que no se
+            confunda con un lead ni con el verde del agente.
           */}
           {resumenEnt?.puede && !buscando && (
             <button
@@ -2753,19 +2754,12 @@ export function Inbox({
               </span>
               <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                 <span className="pill" style={chip("#fff", MORADO.fuerte)}>{t("Chat interno")}</span>
-                {resumenEnt.admin && resumenEnt.porAprobar > 0 && (
-                  <span className="pill" data-por-aprobar={resumenEnt.porAprobar} style={chip("#7A5200", "#FFF4D6")}>
-                    {resumenEnt.porAprobar} {t("por aprobar")}
-                  </span>
-                )}
-                {!resumenEnt.admin && resumenEnt.miosPendientes > 0 && (
-                  <span className="pill" style={chip("#7A5200", "#FFF4D6")}>
-                    {resumenEnt.miosPendientes} {t("esperando aprobación")}
-                  </span>
-                )}
-                {resumenEnt.miosDevueltos > 0 && (
-                  <span className="pill" style={chip("#fff", "#9E2F29")}>
-                    {resumenEnt.miosDevueltos} {t("devueltos")}
+                <span className="pill" data-cambios-activos={resumenEnt.activos} style={chip(MORADO.texto, "#fff")}>
+                  {resumenEnt.activos} {resumenEnt.activos === 1 ? t("cambio activo") : t("cambios activos")}
+                </span>
+                {resumenEnt.hoy > 0 && (
+                  <span className="pill" style={chip("#14532D", "#E8F6EE")}>
+                    {resumenEnt.hoy} {t("hoy")}
                   </span>
                 )}
               </span>
